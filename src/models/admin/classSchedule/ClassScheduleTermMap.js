@@ -53,6 +53,12 @@ const ClassScheduleTermMap = sequelize.define(
       onUpdate: "CASCADE",
       onDelete: "CASCADE",
     },
+    // ✅ New status field with default "pending"
+    status: {
+      type: DataTypes.ENUM("pending", "active", "completed", "cancelled"),
+      allowNull: false,
+      defaultValue: "pending",
+    },
   },
   {
     tableName: "class_schedule_term_maps",

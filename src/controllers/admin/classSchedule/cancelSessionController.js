@@ -27,33 +27,26 @@ exports.cancelClassSession = async (req, res) => {
       console.log("📥 Roles config:", roles);
     }
 
-    // --- NEW: extract sessionPlanId from query ---
-    const sessionPlanIdRaw = req.query.sessionPlanId;
-    const sessionPlanId = sessionPlanIdRaw
-      ? parseInt(sessionPlanIdRaw, 10)
-      : null;
+    // --- NEW: extract mapId from query ---
+    const mapIdRaw = req.query.mapId;
+    const mapId = mapIdRaw ? parseInt(mapIdRaw, 10) : null;
 
     if (DEBUG) {
-      console.log(
-        "🔍 sessionPlanId from query:",
-        sessionPlanIdRaw,
-        "parsed:",
-        sessionPlanId
-      );
+      console.log("🔍 mapId from query:", mapIdRaw, "parsed:", mapId);
     }
 
-    if (!sessionPlanId) {
+    if (!mapId) {
       await logActivity(
         req,
         PANEL,
         MODULE,
         "cancel",
-        { message: "sessionPlanId query param required" },
+        { message: "mapId query param required" },
         false
       );
       return res.status(400).json({
         status: false,
-        message: "Missing required query parameter: sessionPlanId",
+        message: "Missing required query parameter: mapId",
       });
     }
 
@@ -87,7 +80,7 @@ exports.cancelClassSession = async (req, res) => {
       notifyTrialists,
       notifyCoaches,
       notifications,
-      targetSessionPlanId: sessionPlanId,
+      mapId,
     };
 
     const cancelResult = await CancelClassService.createCancellationRecord(

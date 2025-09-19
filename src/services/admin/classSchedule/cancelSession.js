@@ -9,6 +9,7 @@ const {
   Term,
   SessionPlanGroup,
   Venue,
+  ClassScheduleTermMap,
 } = require("../../../models");
 const { Op } = require("sequelize");
 const sendEmail = require("../../../utils/email/sendEmail");
@@ -19,8 +20,9 @@ exports.createCancellationRecord = async (
   adminId
 ) => {
   try {
-    const targetSessionPlanId = cancelData.targetSessionPlanId; // ✅ FIX
-    console.log("🎯 Cancelling only sessionPlanId:", targetSessionPlanId);
+    const targetMapId = cancelData.mapId; // ✅ expect ClassScheduleTermMap id
+    console.log("🎯 Cancelling ClassScheduleTermMap id:", targetMapId);
+
     // Step 1: Fetch class schedule with venue
     const classSchedule = await ClassSchedule.findByPk(classScheduleId, {
       include: [{ model: Venue, as: "venue" }],
@@ -52,76 +54,19 @@ exports.createCancellationRecord = async (
       cancelledAt: new Date(),
     });
 
-    // Step 4: Update related session plans (only targetSessionPlanId)
-    if (classSchedule.venueId) {
-      console.log("➡️ classSchedule.venueId:", classSchedule.venueId);
+    // Step 4: Update only the target ClassScheduleTermMap
+    if (targetMapId) {
+      const mapEntry = await ClassScheduleTermMap.findByPk(targetMapId);
 
-      const venue = await Venue.findByPk(classSchedule.venueId);
-      console.log(
-        "🏟 Venue found:",
-        venue?.id,
-        "termGroupId:",
-        venue?.termGroupId
-      );
-
-      let termGroupIds = [];
-      if (venue?.termGroupId) {
-        termGroupIds = Array.isArray(venue.termGroupId)
-          ? venue.termGroupId
-          : JSON.parse(venue.termGroupId);
-      }
-      console.log("📌 termGroupIds:", termGroupIds);
-
-      if (termGroupIds.length) {
-        const terms = await Term.findAll({
-          where: { termGroupId: { [Op.in]: termGroupIds } },
-        });
-        console.log(
-          "📚 Found terms:",
-          terms.map((t) => ({ id: t.id, name: t.termName }))
-        );
-
-        for (const term of terms) {
-          console.log("🔎 Checking term:", term.id, term.termName);
-
-          const sessions = Array.isArray(term.sessionsMap)
-            ? term.sessionsMap
-            : JSON.parse(term.sessionsMap);
-
-          console.log("🗓 Sessions in term:", sessions);
-
-          for (const session of sessions) {
-            console.log("➡️ Checking session:", session);
-
-            if (session.sessionPlanId) {
-              if (session.sessionPlanId === targetSessionPlanId) {
-                console.log("✅ Match found! Cancelling:", targetSessionPlanId);
-
-                const sessionPlan = await SessionPlanGroup.findByPk(
-                  session.sessionPlanId
-                );
-                if (sessionPlan) {
-                  await sessionPlan.update({ status: "cancelled" });
-                  console.log("✔️ sessionPlan updated:", sessionPlan.id);
-                } else {
-                  console.log(
-                    "⚠️ No sessionPlan found for id:",
-                    session.sessionPlanId
-                  );
-                }
-              } else {
-                console.log("⏭ Skipping sessionPlanId:", session.sessionPlanId);
-              }
-            }
-          }
-        }
+      if (mapEntry) {
+        await mapEntry.update({ status: "cancelled" });
+        console.log("✔️ ClassScheduleTermMap cancelled:", mapEntry.id);
       } else {
-        console.log("⚠️ No termGroupIds found, skipping.");
+        console.log("⚠️ No ClassScheduleTermMap found for id:", targetMapId);
       }
     } else {
-      console.log("⚠️ No venueId in classSchedule, skipping.");
+      console.log("⚠️ No mapId provided in request");
     }
-
     // Step 5: If no bookings → skip emails
     if (!bookings.length) {
       return {

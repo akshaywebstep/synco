@@ -49,6 +49,7 @@ const models = {
 
   //Class Schedule
   ClassSchedule: require("./admin/classSchedule/ClassSchedule"),
+  ClassScheduleTermMap: require("./admin/classSchedule/ClassScheduleTermMap"),
 
   //cancel class
   CancelSession: require("./admin/classSchedule/CancelSession"),
@@ -107,6 +108,7 @@ const {
   Term,
   Venue,
   ClassSchedule,
+  ClassScheduleTermMap,
   CancelSession,
   Booking,
   BookingStudentMeta,
@@ -305,6 +307,7 @@ module.exports = {
 
   Venue,
   ClassSchedule,
+  ClassScheduleTermMap,
   CancelSession,
 
   Booking,

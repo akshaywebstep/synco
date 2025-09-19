@@ -6,6 +6,7 @@ const {
   SessionPlanGroup,
   SessionExercise,
   PaymentPlan,
+  ClassScheduleTermMap,
 } = require("../../../models");
 
 const parseSessionPlanGroupLevels = async (spg) => {
@@ -110,14 +111,10 @@ exports.getAllClasses = async (adminId) => {
       }
 
       // ✅ Attach PaymentPlans
-      if (paymentPlanIds.length > 0) {
-        const plans = await PaymentPlan.findAll({
-          where: { id: paymentPlanIds },
-        });
-        venue.dataValues.paymentPlans = plans;
-      } else {
-        venue.dataValues.paymentPlans = [];
-      }
+      venue.dataValues.paymentPlans =
+        paymentPlanIds.length > 0
+          ? await PaymentPlan.findAll({ where: { id: paymentPlanIds } })
+          : [];
 
       // ✅ Parse termGroupId
       let termGroupIds = [];
@@ -198,13 +195,12 @@ exports.getAllClasses = async (adminId) => {
                       "video",
                       "banner",
                       "player",
-                      "status",
                     ],
                   }
                 );
 
                 if (spg) {
-                  await parseSessionPlanGroupLevels(spg); // same as in getAllVenues
+                  await parseSessionPlanGroupLevels(spg);
                   entry.sessionPlan = spg;
                 } else {
                   entry.sessionPlan = null;
@@ -212,6 +208,26 @@ exports.getAllClasses = async (adminId) => {
               }
 
               term.dataValues.sessionsMap = parsedSessionsMap;
+
+              // ✅ Attach ClassScheduleTermMap entries for this term
+              const mappings = await ClassScheduleTermMap.findAll({
+                where: {
+                  classScheduleId: cls.id,
+                  termId: term.id,
+                },
+                attributes: [
+                  "id",
+                  "classScheduleId",
+                  "termGroupId",
+                  "termId",
+                  "sessionPlanId",
+                  "status",
+                  "createdAt",
+                  "updatedAt",
+                ],
+              });
+
+              term.dataValues.classScheduleTermMaps = mappings;
             }
           }
         }

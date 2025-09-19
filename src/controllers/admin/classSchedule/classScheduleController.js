@@ -1,10 +1,16 @@
 const { validateFormData } = require("../../../utils/validateFormData");
 const ClassScheduleService = require("../../../services/admin/classSchedule/classSchedule");
 const { logActivity } = require("../../../utils/admin/activityLogger");
-const { Venue } = require("../../../models");
+const {
+  Venue,
+  TermGroup,
+  Term,
+  ClassScheduleTermMap,
+} = require("../../../models");
 const {
   createNotification,
 } = require("../../../utils/admin/notificationHelper");
+
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "class-schedule";
@@ -18,6 +24,7 @@ function timeToMinutes(time) {
 
   return hours * 60 + minutes;
 }
+
 exports.createClassSchedule = async (req, res) => {
   const {
     className,
@@ -36,7 +43,7 @@ exports.createClassSchedule = async (req, res) => {
     console.log("📥 Creating new class schedule:", req.body);
   }
 
-  // ✅ Validation (do NOT include createdBy)
+  // ✅ Validation
   const validation = validateFormData(req.body, {
     requiredFields: ["className", "day", "startTime", "endTime", "venueId"],
   });
@@ -47,7 +54,7 @@ exports.createClassSchedule = async (req, res) => {
     return res.status(400).json({ status: false, ...validation });
   }
 
-  // ✅ Ensure startTime is before endTime
+  // ✅ Ensure startTime < endTime
   if (timeToMinutes(startTime) > timeToMinutes(endTime)) {
     if (DEBUG) console.log("❌ Start time must be before end time");
     await logActivity(
@@ -92,7 +99,7 @@ exports.createClassSchedule = async (req, res) => {
       allowFreeTrial,
       facility,
       venueId,
-      createdBy, // ✅ Added here
+      createdBy,
     });
 
     if (!result.status) {
@@ -101,7 +108,102 @@ exports.createClassSchedule = async (req, res) => {
       return res.status(500).json({ status: false, message: result.message });
     }
 
-    if (DEBUG) console.log("✅ Class schedule created:", result.data);
+    const newClass = result.data;
+
+    // ✅ Create mappings in ClassScheduleTermMap with status "pending"
+    try {
+      let termGroupIds = [];
+
+      if (venue.termGroupId) {
+        if (typeof venue.termGroupId === "string") {
+          try {
+            termGroupIds = JSON.parse(venue.termGroupId); // JSON array
+          } catch {
+            termGroupIds = venue.termGroupId
+              .split(",")
+              .map((id) => Number(id.trim()))
+              .filter(Boolean); // comma-separated fallback
+          }
+        } else if (Array.isArray(venue.termGroupId)) {
+          termGroupIds = venue.termGroupId;
+        } else {
+          termGroupIds = [venue.termGroupId]; // single number fallback
+        }
+      }
+
+      if (DEBUG) console.log("👉 termGroupIds resolved:", termGroupIds);
+
+      if (termGroupIds.length > 0) {
+        const termGroups = await TermGroup.findAll({
+          where: { id: termGroupIds },
+        });
+
+        if (DEBUG)
+          console.log(
+            "👉 Loaded termGroups:",
+            termGroups.map((tg) => tg.id)
+          );
+
+        for (const termGroup of termGroups) {
+          const terms = await Term.findAll({
+            where: { termGroupId: termGroup.id },
+          });
+
+          if (DEBUG)
+            console.log(
+              `👉 Processing termGroup ${termGroup.id}, terms:`,
+              terms.map((t) => t.id)
+            );
+
+          for (const term of terms) {
+            let sessionsMap = [];
+            try {
+              sessionsMap =
+                typeof term.sessionsMap === "string"
+                  ? JSON.parse(term.sessionsMap)
+                  : term.sessionsMap || [];
+            } catch (err) {
+              console.error(
+                "❌ Failed to parse sessionsMap for term:",
+                term.id,
+                err
+              );
+              continue;
+            }
+
+            if (DEBUG)
+              console.log(
+                `👉 Term ${term.id} sessionsMap:`,
+                JSON.stringify(sessionsMap)
+              );
+
+            for (const session of sessionsMap) {
+              if (session.sessionPlanId) {
+                await ClassScheduleTermMap.create({
+                  classScheduleId: newClass.id,
+                  termGroupId: termGroup.id,
+                  termId: term.id,
+                  sessionPlanId: session.sessionPlanId,
+                  status: "pending", // ✅ default
+                });
+
+                if (DEBUG)
+                  console.log(
+                    `✅ Mapping created: classSchedule ${newClass.id} → term ${term.id} → sessionPlan ${session.sessionPlanId}`
+                  );
+              }
+            }
+          }
+        }
+      }
+    } catch (mapError) {
+      console.error(
+        "⚠️ Failed to create ClassScheduleTermMap entries:",
+        mapError
+      );
+    }
+
+    if (DEBUG) console.log("✅ Class schedule created:", newClass);
     await logActivity(req, PANEL, MODULE, "create", result, true);
 
     await createNotification(
@@ -114,7 +216,7 @@ exports.createClassSchedule = async (req, res) => {
     return res.status(201).json({
       status: true,
       message: "Class schedule created successfully.",
-      data: result.data,
+      data: newClass,
     });
   } catch (error) {
     console.error("❌ Server error during creation:", error);
