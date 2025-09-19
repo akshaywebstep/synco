@@ -1,0 +1,70 @@
+-----------------Capcity listing stats ------------------------------
+
+🧮 Per Venue Stats
+
+Let’s say a venue has 2 classes:
+
+Class A → capacity 30, bookings 25 (10 free trials, 15 paid)
+
+Class B → capacity 20, bookings 15 (5 free trials, 10 paid)
+
+Now, per venue:
+
+1. Total Capacity
+
+Sum of all class capacities.
+
+Class A capacity (30) + Class B capacity (20) = 50
+
+2. Total Booked
+
+Sum of all bookings (students count).
+
+Class A booked (25) + Class B booked (15) = 40
+
+3. Available Spaces
+
+Total capacity - total booked.
+
+50 - 40 = 10
+
+4. Members
+
+Count all students in paid bookings.
+
+Class A paid = 15
+Class B paid = 10
+Total members = 25
+
+5. Free Trials
+
+Count all students in free bookings.
+
+Class A free = 10
+Class B free = 5
+Total free trials = 15
+
+6. Occupancy Rate
+
+(totalBooked / totalCapacity) × 100
+
+40 / 50 × 100 = 80%
+
+🧮 Global Stats (All Venues)
+
+Now imagine you have Venue 1 (above example) and Venue 2 with its own numbers.
+Global stats are just the sum of all venue stats:
+
+Total Capacity → sum of all venues’ capacities
+
+Total Booked → sum of all venues’ booked
+
+Available Spaces → totalCapacity - totalBooked
+
+Members → sum of all venue members
+
+Free Trials → sum of all venue free trials
+
+Occupancy Rate → (globalTotalBooked / globalTotalCapacity) × 100
+
+------------------------------------------------------------------------------------------------------------------------

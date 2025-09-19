@@ -1,0 +1,370 @@
+
+https://manage-sandbox.gocardless.com/developers/access-tokens/create
+WebstepAkshay@123
+--------------------------------stats of listing ----------------------------------
+
+Total Students->>>>>>>>>>>>>>>>>>>>>>>>>>>>
+Explanation:
+
+b.paymentPlanData.students → number of students in this booking.
+
+If students is missing, default to 1.
+
+reduce sums all student counts across all bookings.
+
+Example with your data:
+
+Booking 1 → 3 students
+
+Booking 2 → 1 student
+
+Total Students = 3 + 1 = 4
+
+total revenue ->>>>>>>>>>>>>>>>>>>>>>>>>>>>...
+Explanation:
+
+Revenue per booking = (price + joiningFee) × number of students.
+
+Multiply by studentsCount because one booking covers multiple students.
+
+reduce sums revenue from all bookings.
+
+Example:
+
+Booking 1 → (369 + 560) × 3 = 929 × 3 = 2787
+
+Booking 2 → (222 + 900) × 1 = 1122
+
+Total Revenue = 2787 + 1122 = 3909
+
+3️⃣ Average Monthly Fee per Student->>>>>>>>>>>>>>>>>>>>>>>>.
+xplanation:
+
+First, calculate monthly fee per booking: (price + joiningFee) / duration.
+
+Multiply by students → total monthly contribution from all students in this booking.
+
+Sum all bookings using reduce.
+
+Divide by total students to get average monthly fee per student.
+
+Example:
+
+Booking 1 → (369 + 560)/3 = 309.67 per month per student × 3 students = 929
+
+Booking 2 → (222 + 900)/1 = 1122 per student × 1 = 1122
+
+Total = 929 + 1122 = 2051
+
+Divide by 4 students → avgMonthlyFee ≈ 512.75
+
+
+4️⃣ Average Life Cycle per Student->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>..
+Explanation:
+
+Weighted average based on number of students per booking.
+
+Multiply plan duration by number of students → total months across all students.
+
+Divide by total students → average membership length per student.
+
+Example:
+
+Booking 1 → 3 months × 3 students = 9
+
+Booking 2 → 1 month × 1 student = 1
+
+Total = 10 months
+
+Divide by 4 students → avgLifeCycle = 2.5 months
+
+
+
+
+
+1️⃣ Waiting List Module
+
+Purpose: Manage leads who are interested but not yet booked.
+
+Features / Actions:
+
+Add to Waiting List
+
+Add a lead directly to a class waiting list.
+
+Pre-populates venue and allows input of student, parent, and emergency contacts.
+
+Tag Level of Interest (Low / Medium / High).
+
+Optional notes/comments.
+
+Waiting List Overview
+
+Displays all waiting list entries.
+
+Filter by:
+
+Student Name
+
+Venue
+
+Date Added
+
+Level of Interest
+
+Analytics:
+
+Top Referrer
+
+Total on list
+
+Average Wait Time
+
+Most Requested Venue
+
+Assign leads to yourself via filters/actions.
+
+Waiting List Member Actions
+
+Book membership or cancel a spot from the waiting list.
+
+Forms include:
+
+Confirm Venue/Class
+
+Review Membership Plan
+
+Notes
+
+Remove from Waiting List
+
+Prompt for reason + optional notes.
+
+Status updated to cancelled.
+
+Data used for lost opportunity analysis.
+
+2️⃣ Account / Service History Module
+
+Purpose: Central view for each lead/account.
+
+Features / Actions:
+
+Detailed Account View
+
+Clicking a lead shows full account details:
+
+Parent Info
+
+Student Info
+
+Service History (trials, bookings, membership)
+
+Current Status (Lead, Waiting List, Trial, Member, Cancelled)
+
+Options:
+
+Reactivate lead
+
+Add to waiting list
+
+Transfer lead
+
+Cancel lead
+
+3️⃣ Central Lead Database Module
+
+Purpose: Master repository of all incoming leads.
+
+Features / Actions:
+
+Lead Sources
+
+Facebook Leads (via API)
+
+Referral Leads
+
+Other Sources (website, walk-in)
+
+Manual Entry
+
+Lead Filters & Stats
+
+Widgets for:
+
+Total Leads
+
+New Leads This Period
+
+Leads to Trials (% + count)
+
+Leads to Sales (% + count)
+
+Filters:
+
+Source
+
+Venue
+
+Date
+
+Agent
+
+Student Age
+
+Expandable Lead Entry
+
+Each row expands to show:
+
+Nearest Venue Cards (top 2 initially, option to show all 5)
+
+Availability, parking, congestion, map
+
+Matches “Find a Class” UI.
+
+Manual Lead Entry
+
+Add new lead manually.
+
+Fields: First Name, Last Name, Email, Postcode, Phone, Child Age, Comments.
+
+Assign Lead
+
+Assign one or more leads to an agent.
+
+Shows current assigned agent in the row.
+
+Lead Detail Link
+
+Clicking a lead opens full Account Info panel.
+
+If still a lead, Service History shows “Lead.”
+
+Facebook Lead Ingestion
+
+Automatic import from Facebook Ads via API.
+
+Auto-classified under “Facebook Leads.”
+
+4️⃣ Lead Conversion Module
+
+Purpose: Move leads from interest to actual bookings/memberships.
+
+Actions / Flow:
+
+Convert Lead → Trial
+
+Creates a trial booking in Booking table.
+
+Links to ClassSchedule.
+
+Convert Lead → Membership
+
+Creates paid booking.
+
+Updates status to member.
+
+Convert Lead → Other Services
+
+Custom services as required.
+
+Notifications
+
+Optional Email/SMS triggers on booking or membership.
+
+5️⃣ Stats & Reporting Module
+
+Purpose: Analytics for lead performance and agent efficiency.
+
+Metrics:
+
+Total Leads, New Leads This Period
+
+Leads converted to Trials (%)
+
+Leads converted to Sales (%)
+
+Average wait time (for waiting list)
+
+Top referrers
+
+Most requested venues
+
+Logic:
+
+Pulls filtered data from Lead and Booking tables.
+
+Aggregates counts and percentages for dashboard widgets.
+
+✅ Summary of Module Flow:
+
+Lead Captured (Facebook / Referral / Manual / Other)
+          │
+          ▼
+  Central Lead Database (All leads)
+          │
+          ├─ Assign Lead → Agent
+          │
+          ├─ Add to Waiting List → Waiting List Module
+          │      ├─ Remove / Cancel
+          │      ├─ Member Actions (Book Membership / Reactivate)
+          │      └─ Overview & Stats
+          │
+          └─ Convert Lead → Trial / Membership / Services → Conversion Module
+          │
+          ▼
+     Account / Service History → Detailed View + Status Tracking
+          │
+          ▼
+      Stats & Reporting Module → Dashboard Metrics
+
+
+
+
+      Waiting List Member Actions	For leads on the waiting list – allow booking membership or cancelling their spot.	Waiting List Entry	Admin/Agent	Active	MVP	Medium	Class + Venue	Form: Reactivate From, Confirm Venue/Class, Review Membership Plan (breakdown), Notes.
+
+Waiting List Overview	Displays all current waiting list entries with filtering by student name, venue, date added, level of interest, etc. Includes analytics such as top referrer, total on list, average wait time, and most requested venue.	Waiting List → Overview	Agent/Admin	✅ Live	MVP	High	Waiting list entry data	Email, text, and export options are available for filtered results. Widgets show summary stats. Interest level averaged for insight. Agents can also assign leads to themselves via filters or actions.
+
+Remove from Waiting List	Allows agents to remove an account from the waiting list. Prompt requires a reason and optional notes.	Account → Service History	Agent/Admin	✅ Live	MVP	Medium	N/A	Ensures agents record reasons for lost leads. Data can be used in lost opportunity analysis.
+
+Detailed Account View	Clicking a name leads to account details and service history where status is shown (cancelled or request to cancel).	Service History	Admin	Active	MVP	High	Account Database	Connects to full cancellation flow and gives options like reactivation, add to waiting list, transfer, etc.
+
+Central Lead Database	A centralised view of all incoming leads, categorized by source (Facebook, referral, other). Users can filter, search, assign, and convert leads into trials, members, or other services. Integrated with external APIs to automatically ingest lead data.	Weekly Classes > Leads	Admin, Agent	Active	MVP	High	Facebook API, Account Info	The master database of all incoming leads. Fully searchable, filterable, and actionable. Used as a launch point for free trial bookings and lead conversion.
+Lead Filters & Stats	Top-of-screen widgets display total leads, new leads this period, conversion to trials and sales (with counts and percentages). Filtering by source, venue, date, agent, and student age is available.	Leads Dashboard	Admin, Agent	Active	MVP	High	Data Ingestion, CRM	Metrics help evaluate campaign effectiveness and agent productivity.
+Expandable Lead Entry	Each row can be expanded to show nearest venues (top 2) with option to view more. Shows cards identical to “Find a Class,” with live class availability, congestion/parking info, and booking options.	Leads Dashboard	Admin, Agent	Active	MVP	High	Venue Cards UI, Trial Booking	Speeds up on-phone conversion; UI parity with Find a Class flow.
+Manual Lead Entry	Agents can add a new lead manually, entering all contact details and child info. A comment box is also available to capture any notes.	Leads Dashboard	Admin, Agent	Active	MVP	High	Account Info	For phone-generated or in-person leads.
+Assign Lead	One or more leads can be assigned to an agent using the "Assign Agent" button. Each row shows who it’s currently assigned to.	Leads Dashboard	Admin	Active	MVP	High	Agent Database	Helps coordinate team workloads and track lead follow-ups.
+Lead Detail Link	Clicking a lead opens their full Account Info panel (parent/student/service history/etc). If they’re still a lead, their Service History simply shows “Lead.”	Leads Dashboard	Admin, Agent	Active	MVP	High	Account Info	Ensures consistency across Synco.
+Facebook Lead Ingestion	All Facebook ad leads are imported automatically via API. Data includes all fields from lead form and is auto-classified under "Facebook Leads" tab.	Leads Dashboard	System	Active	MVP	High	Facebook API, Meta Lead Forms	Fully automated ingestion. Supports live campaigns.
+
+
+
+
+
+new table 
+
+id class schedeule banana tu
+ class schedeule id , term id ., term grup id , session plan id,
+
+  class schedule = terup, term , sesiplan   
+
+
+
+        "classScheduleId": 59,
+             "termGroups": [
+                    {
+                        "id": 167,
+                        "terms": [
+                            
+                            {
+                                "id": 173,
+                                sessionsMap": [
+                                    {
+                                        "session plans sessionPlanId": 150,sessionPlanId": 150,sessionPlanId": 150,sessionPlanId": 150,sessionPlanId": 150,
+                        terms": [
+                            
+                            {
+                                "id": 173,
+                                sessionsMap": [
+                                    {
+                                        "session plans sessionPlanId": 150,sessionPlanId": 150,sessionPlanId": 150,sessionPlanId": 150,sessionPlanId": 150,
