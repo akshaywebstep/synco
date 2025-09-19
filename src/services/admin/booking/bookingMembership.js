@@ -16,8 +16,13 @@ const { Op } = require("sequelize");
 const bcrypt = require("bcrypt");
 const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
-const { createCustomer, removeCustomer } = require("../../../utils/payment/pay360/customer");
-const { createBillingRequest } = require("../../../utils/payment/pay360/payment");
+const {
+  createCustomer,
+  removeCustomer,
+} = require("../../../utils/payment/pay360/customer");
+const {
+  createBillingRequest,
+} = require("../../../utils/payment/pay360/payment");
 
 const DEBUG = process.env.DEBUG === "true";
 
@@ -200,7 +205,9 @@ exports.createBooking = async (data, options) => {
             postal_code: data.payment.postalCode || "",
             country_code: data.payment.countryCode || "",
             region: data.payment.region || "",
-            crm_id: `CUSTID-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+            crm_id: `CUSTID-${Date.now()}-${Math.floor(
+              1000 + Math.random() * 9000
+            )}`,
             account_holder_name: data.payment.account_holder_name || "",
             account_number: data.payment.account_number || "",
             branch_code: data.payment.branch_code || "",
@@ -214,32 +221,49 @@ exports.createBooking = async (data, options) => {
           // Step 2: Create customer + bank account
           const createCustomerRes = await createCustomer(customerPayload);
           if (!createCustomerRes.status) {
-            throw new Error(createCustomerRes.message || "Failed to create goCardless customer.");
+            throw new Error(
+              createCustomerRes.message ||
+                "Failed to create goCardless customer."
+            );
           }
 
           // Step 3: Prepare payload for billing request
           const billingRequestPayload = {
             customerId: createCustomerRes.customer.id,
-            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-              }`,
+            description: `${venue?.name || "Venue"} - ${
+              classSchedule?.className || "Class"
+            }`,
             amount: price,
             scheme: "faster_payments",
             currency: "GBP",
-            reference: `TRX-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
-            mandateReference: `MD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+            reference: `TRX-${Date.now()}-${Math.floor(
+              1000 + Math.random() * 9000
+            )}`,
+            mandateReference: `MD-${Date.now()}-${Math.floor(
+              1000 + Math.random() * 9000
+            )}`,
             metadata: {
               crm_id: customerPayload.crm_id,
             },
             fallbackEnabled: true,
           };
 
-          if (DEBUG) console.log("🛠 Generated billing request payload:", billingRequestPayload);
+          if (DEBUG)
+            console.log(
+              "🛠 Generated billing request payload:",
+              billingRequestPayload
+            );
 
           // Step 4: Create billing request
-          const createBillingRequestRes = await createBillingRequest(billingRequestPayload);
+          const createBillingRequestRes = await createBillingRequest(
+            billingRequestPayload
+          );
           if (!createBillingRequestRes.status) {
             await removeCustomer(createCustomerRes.customer.id);
-            throw new Error(createBillingRequestRes.message || "Failed to create billing request.");
+            throw new Error(
+              createBillingRequestRes.message ||
+                "Failed to create billing request."
+            );
           }
 
           goCardlessCustomer = createCustomerRes.customer;
@@ -259,8 +283,9 @@ exports.createBooking = async (data, options) => {
               currency: "GBP",
               amount: price,
               merchantRef,
-              description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-                }`,
+              description: `${venue?.name || "Venue"} - ${
+                classSchedule?.className || "Class"
+              }`,
               commerceType: "ECOM",
             },
             paymentMethod: {
@@ -328,7 +353,8 @@ exports.createBooking = async (data, options) => {
               gatewayResponse?.transaction?.merchantRef || merchantRef,
             description:
               gatewayResponse?.transaction?.description ||
-              `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+              `${venue?.name || "Venue"} - ${
+                classSchedule?.className || "Class"
               }`,
             commerceType: "ECOM",
             gatewayResponse,
@@ -588,29 +614,29 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
 
         const paymentData = payment
           ? {
-            id: payment.id,
-            bookingId: payment.bookingId,
-            firstName: payment.firstName,
-            lastName: payment.lastName,
-            email: payment.email,
-            billingAddress: payment.billingAddress,
-            cardHolderName: payment.cardHolderName,
-            cv2: payment.cv2,
-            expiryDate: payment.expiryDate,
-            paymentType: payment.paymentType,
-            pan: payment.pan,
-            paymentStatus: payment.paymentStatus,
-            referenceId: payment.referenceId,
-            currency: payment.currency,
-            merchantRef: payment.merchantRef,
-            description: payment.description,
-            commerceType: payment.commerceType,
-            createdAt: payment.createdAt,
-            updatedAt: payment.updatedAt,
-            gatewayResponse: parsedGatewayResponse,
-            transactionMeta: parsedTransactionMeta,
-            totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
-          }
+              id: payment.id,
+              bookingId: payment.bookingId,
+              firstName: payment.firstName,
+              lastName: payment.lastName,
+              email: payment.email,
+              billingAddress: payment.billingAddress,
+              cardHolderName: payment.cardHolderName,
+              cv2: payment.cv2,
+              expiryDate: payment.expiryDate,
+              paymentType: payment.paymentType,
+              pan: payment.pan,
+              paymentStatus: payment.paymentStatus,
+              referenceId: payment.referenceId,
+              currency: payment.currency,
+              merchantRef: payment.merchantRef,
+              description: payment.description,
+              commerceType: payment.commerceType,
+              createdAt: payment.createdAt,
+              updatedAt: payment.updatedAt,
+              gatewayResponse: parsedGatewayResponse,
+              transactionMeta: parsedTransactionMeta,
+              totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
+            }
           : null;
 
         const { venue: _venue, ...bookingData } = booking.dataValues;
@@ -738,7 +764,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
           return (
             acc +
             ((plan.price + (plan.joiningFee || 0)) / plan.duration) *
-            studentsCount
+              studentsCount
           );
         }
         return acc;
@@ -958,29 +984,29 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
       // Combine all payment info into a fully structured object
       const paymentData = payment
         ? {
-          id: payment.id,
-          bookingId: payment.bookingId,
-          firstName: payment.firstName,
-          lastName: payment.lastName,
-          email: payment.email,
-          billingAddress: payment.billingAddress,
-          cardHolderName: payment.cardHolderName,
-          cv2: payment.cv2,
-          expiryDate: payment.expiryDate,
-          paymentType: payment.paymentType,
-          pan: payment.pan,
-          paymentStatus: payment.paymentStatus,
-          referenceId: payment.referenceId,
-          currency: payment.currency,
-          merchantRef: payment.merchantRef,
-          description: payment.description,
-          commerceType: payment.commerceType,
-          createdAt: payment.createdAt,
-          updatedAt: payment.updatedAt,
-          gatewayResponse: parsedGatewayResponse, // fully parsed JSON
-          transactionMeta: parsedTransactionMeta, // fully parsed JSON
-          totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
-        }
+            id: payment.id,
+            bookingId: payment.bookingId,
+            firstName: payment.firstName,
+            lastName: payment.lastName,
+            email: payment.email,
+            billingAddress: payment.billingAddress,
+            cardHolderName: payment.cardHolderName,
+            cv2: payment.cv2,
+            expiryDate: payment.expiryDate,
+            paymentType: payment.paymentType,
+            pan: payment.pan,
+            paymentStatus: payment.paymentStatus,
+            referenceId: payment.referenceId,
+            currency: payment.currency,
+            merchantRef: payment.merchantRef,
+            description: payment.description,
+            commerceType: payment.commerceType,
+            createdAt: payment.createdAt,
+            updatedAt: payment.updatedAt,
+            gatewayResponse: parsedGatewayResponse, // fully parsed JSON
+            transactionMeta: parsedTransactionMeta, // fully parsed JSON
+            totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
+          }
         : null;
 
       return {
@@ -995,12 +1021,12 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
 
         bookedBy: booking.admin
           ? {
-            id: booking.admin.id,
-            firstName: booking.admin.firstName,
-            lastName: booking.admin.lastName,
-            email: booking.admin.email,
-            role: booking.admin.role,
-          }
+              id: booking.admin.id,
+              firstName: booking.admin.firstName,
+              lastName: booking.admin.lastName,
+              email: booking.admin.email,
+              role: booking.admin.role,
+            }
           : null,
 
         // totalStudents: students.length,
@@ -1010,12 +1036,12 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
 
         paymentPlanData: plan
           ? {
-            id: plan.id,
-            title: plan.title,
-            price: plan.price,
-            joiningFee: plan.joiningFee,
-            duration: plan.duration,
-          }
+              id: plan.id,
+              title: plan.title,
+              price: plan.price,
+              joiningFee: plan.joiningFee,
+              duration: plan.duration,
+            }
           : null,
 
         payment: paymentData,
@@ -1564,11 +1590,11 @@ exports.getWaitingList = async () => {
 
       const emergency = emergencyContactRaw
         ? {
-          emergencyFirstName: emergencyContactRaw.emergencyFirstName,
-          emergencyLastName: emergencyContactRaw.emergencyLastName,
-          emergencyPhoneNumber: emergencyContactRaw.emergencyPhoneNumber,
-          emergencyRelation: emergencyContactRaw.emergencyRelation,
-        }
+            emergencyFirstName: emergencyContactRaw.emergencyFirstName,
+            emergencyLastName: emergencyContactRaw.emergencyLastName,
+            emergencyPhoneNumber: emergencyContactRaw.emergencyPhoneNumber,
+            emergencyRelation: emergencyContactRaw.emergencyRelation,
+          }
         : null;
 
       return {
@@ -1731,13 +1757,13 @@ exports.getBookingsById = async (bookingId) => {
 
       paymentData: payment
         ? {
-          firstName: payment.firstName,
-          lastName: payment.lastName,
-          email: payment.email,
-          billingAddress: payment.billingAddress,
-          paymentStatus: payment.paymentStatus,
-          totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
-        }
+            firstName: payment.firstName,
+            lastName: payment.lastName,
+            email: payment.email,
+            billingAddress: payment.billingAddress,
+            paymentStatus: payment.paymentStatus,
+            totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
+          }
         : null,
 
       bookedByAdmin: booking.bookedByAdmin || null,
@@ -1827,8 +1853,9 @@ exports.retryBookingPayment = async (bookingId, newData) => {
             payment_request: {
               amount: Math.round(price * 100), // in pence
               currency: "GBP",
-              description: `Booking retry for ${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-                }`,
+              description: `Booking retry for ${venue?.name || "Venue"} - ${
+                classSchedule?.className || "Class"
+              }`,
               metadata: {
                 bookingId: String(booking.id), // must be string
                 retry: "true", // must be string
@@ -1900,8 +1927,9 @@ exports.retryBookingPayment = async (bookingId, newData) => {
             currency: "GBP",
             amount: price,
             merchantRef,
-            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-              }`,
+            description: `${venue?.name || "Venue"} - ${
+              classSchedule?.className || "Class"
+            }`,
             commerceType: "ECOM",
           },
           paymentMethod: { card: { pan, expiryDate, cardHolderName, cv2 } },
@@ -1985,8 +2013,9 @@ exports.retryBookingPayment = async (bookingId, newData) => {
           newData.payment.firstName || firstParent.parentFirstName || "Parent",
         lastName: newData.payment.lastName || firstParent.parentLastName || "",
         merchantRef,
-        description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-          }`,
+        description: `${venue?.name || "Venue"} - ${
+          classSchedule?.className || "Class"
+        }`,
         commerceType: "ECOM",
         email: newData.payment.email || firstParent.parentEmail || "",
         billingAddress: newData.payment.billingAddress || "",

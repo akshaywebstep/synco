@@ -17,7 +17,7 @@ const {
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
-const MODULE = "book-paid-trial"; 
+const MODULE = "book-paid-trial";
 
 // Controller: Create Booking (Paid )
 exports.createBooking = async (req, res) => {
