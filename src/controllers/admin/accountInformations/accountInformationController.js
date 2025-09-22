@@ -8,6 +8,7 @@ const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "account_information";
 
+//  controller
 exports.getAllStudentsListing = async (req, res) => {
   try {
     const filters = {
