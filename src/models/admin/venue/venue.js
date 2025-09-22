@@ -32,11 +32,18 @@ const Venue = sequelize.define(
       type: DataTypes.TEXT,
     },
     // ✅ FK → PaymentPlans.id
-    paymentPlanId: {
+    // paymentPlanId: {
+    //   type: DataTypes.TEXT("long"), // LONGTEXT in MySQL
+    //   allowNull: true,
+    //   comment:
+    //     "Selected payment plan for paid bookings (stored as text instead of FK)",
+    // },
+
+    paymentGroupId: {
       type: DataTypes.TEXT("long"), // LONGTEXT in MySQL
       allowNull: true,
       comment:
-        "Selected payment plan for paid bookings (stored as text instead of FK)",
+        "Selected payment group for paid bookings (stored as text instead of FK)",
     },
     // paymentPlanId: {
     //   type: DataTypes.INTEGER.UNSIGNED,

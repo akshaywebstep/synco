@@ -4,6 +4,11 @@ const { sequelize } = require("../../../config/db");
 const SessionPlanGroup = sequelize.define(
   "SessionPlanGroup",
   {
+    id: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      autoIncrement: true,
+      primaryKey: true,
+    },
     groupName: {
       type: DataTypes.STRING,
       allowNull: false,

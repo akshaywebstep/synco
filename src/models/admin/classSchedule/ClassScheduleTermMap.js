@@ -14,11 +14,12 @@ const ClassScheduleTermMap = sequelize.define(
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
       references: {
-        model: "class_schedules",
+        model: "class_schedules", // make sure table is snake_case in DB
         key: "id",
       },
       onUpdate: "CASCADE",
       onDelete: "CASCADE",
+      comment: "Class schedule associated with Term Map",
     },
 
     termGroupId: {

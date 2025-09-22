@@ -16,6 +16,8 @@ app.use(bodyParser.json());
 // ✅ Serve static files from /uploads
 app.use("/uploads", express.static("uploads"));
 
+app.use("/api", require("./routes/open"));
+
 // ✅ Auth & Profile
 app.use("/api/admin/auth", require("./routes/admin/authRoutes")); // Login, Logout, etc.
 app.use("/api/admin/profile", require("./routes/admin/profileRoutes")); // Admin profile CRUD
