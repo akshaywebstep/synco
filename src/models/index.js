@@ -1,5 +1,4 @@
 const { sequelize } = require("../config/db");
-// const FreezeBooking = require("./admin/booking/FreezeBooking");
 
 // =================== Import All Models =================== //
 const models = {
@@ -63,6 +62,7 @@ const models = {
   CancelBooking: require("./admin/booking/CancelBooking"),
   // WaitingList: require("./admin/booking/WaitingList"),
   FreezeBooking: require("./admin/booking/FreezeBooking"),
+  KeyInformation: require("./admin/booking/KeyInformation"),
 
   // Book MemberShip
   BookingPayment: require("./admin/booking/BookingPayment"),
@@ -123,6 +123,7 @@ const {
   Credits,
   Feedback,
   Lead,
+  KeyInformation,
 } = models;
 
 // Many-to-Many
@@ -326,4 +327,5 @@ module.exports = {
   Credits,
   Feedback,
   Lead,
+  KeyInformation,
 };

@@ -66,6 +66,7 @@ router.use("/service-history", require("./serviceHistoryRoutes"));
 router.use("/reebooking", require("./reebookFreeTrialRoutes"));
 router.use("/cancel-freeTrial", require("./cancelBookingRoutes"));
 router.use("/no-membership", require("./noMembershipTrialRoutes"));
+router.use("/key-information", require("./keyInformationRoutes"));
 
 // Book Membership Modle Base Routes
 router.use("/book-membership", require("./bookingMembershipRoutes"));
