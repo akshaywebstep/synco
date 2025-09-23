@@ -50,6 +50,7 @@ router.get(
   getBookFreeTrialDetails
 );
 
+// service histrory-------------------------------------------------------------------------------------
 const {
   // getSelectedBookFreeTrials,
   getAccountProfile,
@@ -68,6 +69,90 @@ router.put(
   authMiddleware,
   permissionMiddleware("book-membership", "update"),
   updateBooking
+);
+
+// rebooking routes--------------------------------------------------------------------------------------
+const {
+  createRebookingTrial,
+  getAllRebookingTrials,
+  sendRebookingEmail,
+} = require("../../controllers/admin/booking/reebookFreeTrialController");
+
+// POST → create a rebooking
+router.post(
+  "/reebooking",
+  authMiddleware,
+  permissionMiddleware("rebooking", "create"),
+  createRebookingTrial
+);
+
+// GET → get all rebookings for a booking
+router.get(
+  "/reebooking",
+  authMiddleware,
+  permissionMiddleware("rebooking", "view-listing"),
+  getAllRebookingTrials
+);
+router.post(
+  "/reebooking/trial/send-email",
+  authMiddleware,
+  permissionMiddleware("rebooking", "view-listing"),
+  sendRebookingEmail
+);
+
+// cancel free trials ------------------------------------------------------------------------------------
+const {
+  createCancelBooking,
+  getCancelBookings,
+  sendCancelBookingEmail,
+  // createNoMembership,
+} = require("../../controllers/admin/booking/cancelBookingController");
+
+router.post(
+  "/cancel-freeTrial",
+  authMiddleware,
+  permissionMiddleware("cancel-free-trial", "create"),
+  createCancelBooking
+);
+
+router.get(
+  "/cancel-freeTrial",
+  authMiddleware,
+  permissionMiddleware("cancel-free-trial", "view-listing"),
+  getCancelBookings
+);
+
+router.post(
+  "/cancel-freeTrial/send-email",
+  authMiddleware,
+  permissionMiddleware("cancel-free-trial", "view-listing"),
+  sendCancelBookingEmail
+);
+
+// no membership selected --------------------------------------------------------------------------------
+const {
+  createNoMembershipTrial,
+  getNoMembershipTrials,
+  sendNoMembershipTrialEmail,
+} = require("../../controllers/admin/booking/noMembershipTrialController");
+
+router.post(
+  "/",
+  authMiddleware,
+  permissionMiddleware("no-membership-trial", "create"),
+  createNoMembershipTrial
+);
+router.get(
+  "/",
+  authMiddleware,
+  permissionMiddleware("no-membership-trial", "view-listing"),
+  getNoMembershipTrials
+);
+router.post(
+  "/send-email/",
+  authMiddleware,
+  permissionMiddleware("no-membership-trial", "view-listing"),
+  sendNoMembershipTrialEmail
 );
 
 module.exports = router;
