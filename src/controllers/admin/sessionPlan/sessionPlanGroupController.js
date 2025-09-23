@@ -126,7 +126,7 @@ exports.createSessionPlanGroup = async (req, res) => {
       } catch (err) {
         console.error(`Failed to upload ${type}:`, err.message);
       } finally {
-        await fs.promises.unlink(localPath).catch(() => {});
+        await fs.promises.unlink(localPath).catch(() => { });
       }
       return uploadedPath;
     };
@@ -636,7 +636,7 @@ exports.updateSessionPlanGroup = async (req, res) => {
 
     // STEP 4: Helper to save files if new file provided
     const saveFileIfExists = async (file, type, oldUrl = null, level = null) => {
-      if (!file) return oldUrl || null; // No new file, return old URL
+      if (!file) return oldUrl || null;
 
       const path = require('path');
       const fs = require('fs').promises;
@@ -644,32 +644,40 @@ exports.updateSessionPlanGroup = async (req, res) => {
       const uniqueId = Date.now() + "_" + Math.floor(Math.random() * 1e9);
       const ext = path.extname(file.originalname || "file");
       const localPath = path.join(
-        process.cwd(), "uploads", "temp", "admin", `${adminId}`, "session-plan-group", `${id}`, type, level || '', uniqueId + ext
+        process.cwd(), "uploads", "temp", "admin", `${adminId}`,
+        "session-plan-group", `${id}`, type, level || '', uniqueId + ext
       );
 
       console.log(`STEP 4: Saving file locally at:`, localPath);
       await fs.mkdir(path.dirname(localPath), { recursive: true });
-      await saveFile(file, localPath); // assume saveFile is your helper to save locally
+      await saveFile(file, localPath);
 
       const uploadedUrl = level
         ? `https://webstepdev.com/demo/syncoUploads/temp/admin/${adminId}/session-plan-group/${id}/recording/${level}/${uniqueId + ext}`
         : `https://webstepdev.com/demo/syncoUploads/temp/admin/${adminId}/session-plan-group/${id}/${type}/${uniqueId + ext}`;
 
       try {
-        await uploadToFTP(localPath, uniqueId + ext); // upload to FTP
+        await uploadToFTP(localPath, uniqueId + ext);
         console.log(`STEP 4: Uploaded ${type}/${level || ''} to FTP:`, uploadedUrl);
       } catch (err) {
         console.error(`STEP 4: Failed to upload ${type}/${level || ''}`, err);
       } finally {
-        await fs.unlink(localPath).catch(() => {});
+        await fs.unlink(localPath).catch(() => { });
       }
 
       return uploadedUrl;
     };
 
-    // STEP 5: Update banner and video
-    const bannerFile = files.banner?.[0] || files['0']?.[0];
-    const videoFile = files.video?.[0] || files['1']?.[0];
+    // STEP 5: Update banner and video (robust to multiple field names)
+    const bannerFile =
+      files.banner?.[0] ||
+      files.banner_file?.[0] ||
+      Object.values(files).find(f => f[0]?.originalname?.toLowerCase().includes('banner'))?.[0];
+
+    const videoFile =
+      files.video?.[0] ||
+      files.video_file?.[0] ||
+      Object.values(files).find(f => f[0]?.originalname?.toLowerCase().includes('video'))?.[0];
 
     const banner = await saveFileIfExists(bannerFile, "banner", existing.banner);
     const video = await saveFileIfExists(videoFile, "video", existing.video);
@@ -677,15 +685,20 @@ exports.updateSessionPlanGroup = async (req, res) => {
     console.log("STEP 5: Banner URL after update:", banner);
     console.log("STEP 5: Video URL after update:", video);
 
-    // STEP 6: Update recordings
+    // STEP 6: Update recordings robustly
     const recordingFields = {};
     for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
-      const fileArr = files[level + "_recording"] || files[level + "_recording_file"] || files[level];
-      recordingFields[level + "_recording"] = fileArr?.[0]
-        ? await saveFileIfExists(fileArr[0], "recording", existing[level + "_recording"], level)
-        : existing[level + "_recording"] || null;
+      const fileArr =
+        files[`${level}_recording`] ||
+        files[`${level}_recording_file`] ||
+        files[level] ||
+        Object.values(files).find(f => f[0]?.originalname?.toLowerCase().includes(level)) || [];
 
-      console.log(`STEP 6: recordingFields[${level}_recording] =`, recordingFields[level + "_recording"]);
+      recordingFields[`${level}_recording`] = fileArr?.[0]
+        ? await saveFileIfExists(fileArr[0], "recording", existing[`${level}_recording`], level)
+        : existing[`${level}_recording`] || null;
+
+      console.log(`STEP 6: recordingFields[${level}_recording] =`, recordingFields[`${level}_recording`]);
     }
 
     // STEP 7: Prepare update payload
@@ -731,7 +744,6 @@ exports.updateSessionPlanGroup = async (req, res) => {
     return res.status(500).json({ status: false, message: "Failed to update Session Plan Group." });
   }
 };
-
 
 exports.deleteSessionPlanGroup = async (req, res) => {
   const { id } = req.params;
