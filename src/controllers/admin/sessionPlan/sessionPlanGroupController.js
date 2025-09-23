@@ -590,23 +590,21 @@ exports.updateSessionPlanGroup = async (req, res) => {
     };
 
     // ✅ Accept both "banner"/"video" and "banner_file"/"video_file"
-    const banner =
-      files.banner?.[0] || files.banner_file?.[0]
-        ? await saveAndUploadFile(
-          files.banner?.[0] || files.banner_file?.[0],
-          "banner",
-          existing.banner
-        )
-        : existing.banner || null;
+    const banner = (files.banner?.[0] || files.banner_file?.[0])
+  ? await saveAndUploadFile(
+      files.banner?.[0] || files.banner_file?.[0],
+      "banner",
+      existing.banner
+    )
+  : existing.banner || null;
 
-    const video =
-      files.video?.[0] || files.video_file?.[0]
-        ? await saveAndUploadFile(
-          files.video?.[0] || files.video_file?.[0],
-          "video",
-          existing.video
-        )
-        : existing.video || null;
+const video = (files.video?.[0] || files.video_file?.[0])
+  ? await saveAndUploadFile(
+      files.video?.[0] || files.video_file?.[0],
+      "video",
+      existing.video
+    )
+  : existing.video || null;
 
     // STEP 5: Merge levels instead of replacing them all
     let mergedLevels = existing.levels;
