@@ -198,8 +198,8 @@ exports.createSessionPlanGroup = async (req, res) => {
     const attachRecordingsToLevels = async (levelsObj) => {
       const recordingFields = {}; // will hold beginner_recording, etc.
 
-      for (const [level, sessions] of Object.entries(levelsObj)) {
-        const fieldName = `recording_${level}`;
+      for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
+        const fieldName = `${level}_recording`; // match frontend key
         const fileArr = filesMap[fieldName];
 
         let uploadedRecording = null;
@@ -209,14 +209,12 @@ exports.createSessionPlanGroup = async (req, res) => {
               fileArr[0],
               path.join("recording", level)
             );
-            if (DEBUG)
-              console.log(`🎙️ Attached recording for ${level}:`, uploadedRecording);
+            if (DEBUG) console.log(`🎙️ Attached recording for ${level}:`, uploadedRecording);
           } catch (err) {
             console.error(`❌ Error saving recording for ${level}:`, err.message);
           }
         }
 
-        // ✅ Save into Sequelize top-level columns only
         recordingFields[`${level}_recording`] = uploadedRecording;
       }
 
@@ -652,7 +650,7 @@ exports.updateSessionPlanGroup = async (req, res) => {
     const recordingFields = {};
 
     for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
-      const fieldName = `recording_${level}`;
+      const fieldName = `${level}_recording`; // match frontend key
       const fileArr = files[fieldName];
 
       if (fileArr && fileArr[0]) {
