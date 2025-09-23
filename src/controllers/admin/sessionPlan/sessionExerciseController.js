@@ -51,38 +51,70 @@ exports.createSessionExercise = async (req, res) => {
     }
 
     // ✅ STEP 1: Upload files first
+    // let savedImagePaths = [];
+    // if (files.length > 0) {
+    //   for (const file of files) {
+    //     const uniqueId = Math.floor(Math.random() * 1e9);
+    //     const ext = path.extname(file.originalname).toLowerCase();
+    //     const fileName = `${Date.now()}_${uniqueId}${ext}`;
+    //     const localPath = path.join(
+    //       process.cwd(),
+    //       "uploads",
+    //       "temp",
+    //       "admin",
+    //       `${req.admin.id}`, // use admin id folder (or sessionPlan id if needed later)
+    //       "sessionExercise",
+    //       fileName
+    //     );
+
+    //     await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
+    //     await saveFile(file, localPath);
+
+    //     try {
+    //       // Upload to FTP
+    //       const savedPath = await uploadToFTP(localPath, fileName);
+    //       console.log("✅ Uploaded to FTP:", savedPath);
+    //       savedImagePaths.push(savedPath);
+    //     } catch (err) {
+    //       console.error("❌ FTP upload failed:", err.message);
+    //     } finally {
+    //       // Clean local temp
+    //       await fs.promises.unlink(localPath).catch(() => {});
+    //     }
+    //   }
+    // }
     let savedImagePaths = [];
-    if (files.length > 0) {
-      for (const file of files) {
-        const uniqueId = Math.floor(Math.random() * 1e9);
-        const ext = path.extname(file.originalname).toLowerCase();
-        const fileName = `${Date.now()}_${uniqueId}${ext}`;
-        const localPath = path.join(
-          process.cwd(),
-          "uploads",
-          "temp",
-          "admin",
-          `${req.admin.id}`, // use admin id folder (or sessionPlan id if needed later)
-          "sessionExercise",
-          fileName
-        );
+if (files.length > 0) {
+  for (const file of files) {
+    const uniqueId = Math.floor(Math.random() * 1e9);
+    const ext = path.extname(file.originalname).toLowerCase();
+    const fileName = `${Date.now()}_${uniqueId}${ext}`;
+    const localPath = path.join(
+      process.cwd(),
+      "uploads",
+      "temp",
+      "admin",
+      `${req.admin.id}`,
+      "sessionExercise",
+      fileName
+    );
 
-        await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
-        await saveFile(file, localPath);
+    await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
+    await saveFile(file, localPath);
 
-        try {
-          // Upload to FTP
-          const savedPath = await uploadToFTP(localPath, fileName);
-          console.log("✅ Uploaded to FTP:", savedPath);
-          savedImagePaths.push(savedPath);
-        } catch (err) {
-          console.error("❌ FTP upload failed:", err.message);
-        } finally {
-          // Clean local temp
-          await fs.promises.unlink(localPath).catch(() => {});
-        }
-      }
+    try {
+      // Upload to FTP and get public URL
+      const publicUrl = await uploadToFTP(localPath, fileName);
+      if (DEBUG) console.log("✅ Uploaded to FTP, Public URL:", publicUrl);
+      if (publicUrl) savedImagePaths.push(publicUrl); // save URL in DB
+    } catch (err) {
+      console.error("❌ FTP upload failed:", err.message);
+    } finally {
+      // Remove local temp file
+      await fs.promises.unlink(localPath).catch(() => {});
     }
+  }
+}
 
     // ✅ STEP 2: Create exercise with final image array
     const createResult = await SessionExerciseService.createSessionExercise({
