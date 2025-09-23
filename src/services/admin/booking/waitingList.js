@@ -74,7 +74,7 @@ exports.createBooking = async (data, options) => {
             : "free",
         className: data.className,
         classTime: data.classTime,
-        keyInformation: data.keyInformation,
+        // keyInformation: data.keyInformation,
         status: bookingStatus,
         bookedBy: adminId,
         intrest: data.intrest,
@@ -811,7 +811,7 @@ exports.convertToMembership = async (data, options) => {
           startDate: data.startDate ?? booking.startDate,
           // ✅ Clear startDate when converting to membership
           trialDate: null,
-          keyInformation: data.keyInformation ?? booking.keyInformation,
+          // keyInformation: data.keyInformation ?? booking.keyInformation,
           // ✅ Convert to paid membership if paymentPlanId is passed
           bookingType: data.paymentPlanId ? "paid" : booking.bookingType,
           paymentPlanId: data.paymentPlanId ?? booking.paymentPlanId,
@@ -832,7 +832,7 @@ exports.convertToMembership = async (data, options) => {
           classScheduleId: data.classScheduleId,
           trialDate: null, // always null for waiting list
           startDate: data.startDate,
-          keyInformation: data.keyInformation || null,
+          // keyInformation: data.keyInformation || null,
           bookingType: data.paymentPlanId ? "paid" : "waiting list",
           paymentPlanId: data.paymentPlanId || null,
           status: data.status || "active",

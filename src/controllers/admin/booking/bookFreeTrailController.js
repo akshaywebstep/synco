@@ -41,7 +41,6 @@ exports.createBooking = async (req, res) => {
       "trialDate",
       "totalStudents",
       "classScheduleId",
-      "keyInformation",
       "students",
       "parents",
       "emergency",

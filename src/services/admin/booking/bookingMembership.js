@@ -48,7 +48,7 @@ exports.createBooking = async (data, options) => {
         totalStudents: data.totalStudents,
         classScheduleId: data.classScheduleId,
         startDate: data.startDate || null,
-        keyInformation: data.keyInformation || null,
+        // keyInformation: data.keyInformation || null,
         bookingType: data.paymentPlanId ? "paid" : "free",
         paymentPlanId: data.paymentPlanId || null,
         status: data.status || "active",
@@ -1390,7 +1390,7 @@ exports.addToWaitingListService = async (data, adminId) => {
         status: "waiting list",
         totalStudents: originalBooking.totalStudents || 1,
         interest: originalBooking.interest || "medium",
-        keyInformation: originalBooking.keyInformation || null,
+        // keyInformation: originalBooking.keyInformation || null,
       },
       { transaction: t }
     );
@@ -1492,7 +1492,7 @@ exports.addToWaitingListService = async (data, adminId) => {
       paymentPlanId: finalBooking.paymentPlanId,
       startDate: finalBooking.startDate,
       totalStudents: finalBooking.totalStudents,
-      keyInformation: finalBooking.keyInformation,
+      // keyInformation: finalBooking.keyInformation,
       students: finalBooking.students.map((s) => ({
         studentFirstName: s.studentFirstName,
         studentLastName: s.studentLastName,

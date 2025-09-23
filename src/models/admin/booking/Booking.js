@@ -111,7 +111,6 @@ const Booking = sequelize.define(
       comment: "Indicates the level of interest for the booking",
     },
 
-    keyInformation: DataTypes.STRING,
     // ✅ NEW FIELD — FK → Admins.id
     bookedBy: {
       type: DataTypes.INTEGER.UNSIGNED,

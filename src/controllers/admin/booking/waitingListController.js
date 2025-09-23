@@ -36,7 +36,6 @@ exports.createBooking = async (req, res) => {
       "totalStudents",
       "classScheduleId",
       "startDate",
-      "keyInformation",
       "students", // array, validate inside loop
       "parents", // array, validate inside loop
       "emergency", // object, validate inside

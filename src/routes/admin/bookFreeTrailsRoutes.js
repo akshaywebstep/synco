@@ -50,4 +50,24 @@ router.get(
   getBookFreeTrialDetails
 );
 
+const {
+  // getSelectedBookFreeTrials,
+  getAccountProfile,
+  updateBooking,
+} = require("../../controllers/admin/booking/serviceHistoryController");
+
+// router.get("/selected/:id", authMiddleware, getSelectedBookFreeTrials);
+router.get(
+  "/service-history/account-profile/:id",
+  authMiddleware,
+  permissionMiddleware("service-history", "view-listing"),
+  getAccountProfile
+);
+router.put(
+  "/service-history/trial-to-membership/:id",
+  authMiddleware,
+  permissionMiddleware("book-membership", "update"),
+  updateBooking
+);
+
 module.exports = router;

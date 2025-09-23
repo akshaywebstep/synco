@@ -47,7 +47,6 @@ exports.createBooking = async (data, options) => {
         trialDate: data.trialDate,
         className: data.className,
         classTime: data.classTime,
-        keyInformation: data.keyInformation,
         status: data.status || "pending",
         bookedBy: adminId,
         createdAt: new Date(),

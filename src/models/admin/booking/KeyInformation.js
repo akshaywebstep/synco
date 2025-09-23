@@ -10,9 +10,13 @@ const KeyInformation = sequelize.define(
       autoIncrement: true,
     },
 
-    keyInformation: {
-      type: DataTypes.STRING,
-      allowNull: false, 
+    // keyInformation: {
+    //   type: DataTypes.STRING,
+    //   allowNull: false, 
+    // },
+     keyInformation: {
+      type: DataTypes.TEXT, // ✅ Changed from STRING to TEXT
+      allowNull: false,
     },
   },
   {
