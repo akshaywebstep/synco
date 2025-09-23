@@ -177,140 +177,63 @@ exports.createCancellationRecord = async (
   }
 };
 
-// exports.getAllCancelledSessions = async () => {
-//   console.log("🛠 Service: getAllCancelledSessions called");
+// ✅ Get a single cancelled session by ID
+exports.getCancelledSessionById = async (id) => {
+  console.log(`🛠 Service: getCancelledSessionById called for id=${id}`);
 
-//   try {
-//     const sessions = await CancelClass.findAll({
-//       order: [["cancelledAt", "DESC"]],
-//       include: [
-//         {
-//           model: ClassSchedule,
-//           as: "classSchedule",
-//           include: [
-//             {
-//               model: Venue,
-//               as: "venue", // full Venue data
-//             },
-//           ],
-//         },
-//       ],
-//     });
+  try {
+    const session = await CancelSession.findByPk(id, {
+      include: [
+        {
+          model: ClassSchedule,
+          as: "classSchedule",
+          include: [{ model: Venue, as: "venue" }],
+        },
+      ],
+    });
 
-//     if (!sessions.length) {
-//       console.warn("⚠️ No cancelled sessions found");
-//       return { status: false, message: "No cancelled sessions found." };
-//     }
+    if (!session) {
+      console.warn(`⚠️ No cancelled session found for id=${id}`);
+      return { status: false, message: "Cancelled session not found." };
+    }
 
-//     const formattedData = sessions.map((s) => {
-//       const json = s.toJSON();
+    const json = session.toJSON();
 
-//       // Safely parse notifications
-//       let notificationsArray = [];
-//       if (Array.isArray(json.notifications)) {
-//         notificationsArray = json.notifications;
-//       } else if (typeof json.notifications === "string") {
-//         try {
-//           notificationsArray = JSON.parse(json.notifications);
-//         } catch (err) {
-//           notificationsArray = [];
-//         }
-//       }
+    // Safely parse notifications
+    let notificationsArray = [];
+    if (Array.isArray(json.notifications)) {
+      notificationsArray = json.notifications;
+    } else if (typeof json.notifications === "string") {
+      try {
+        notificationsArray = JSON.parse(json.notifications);
+      } catch {
+        notificationsArray = [];
+      }
+    }
 
-//       return {
-//         id: json.id,
-//         classScheduleId: json.classScheduleId,
-//         reasonForCancelling: json.reasonForCancelling,
-//         notifyMembers: json.notifyMembers,
-//         creditMembers: json.creditMembers,
-//         notifyTrialists: json.notifyTrialists,
-//         notifyCoaches: json.notifyCoaches,
-//         cancelledAt: json.cancelledAt,
-//         createdBy: json.createdBy,
-//         notifications: notificationsArray.map((n) => ({
-//           role: n.role,
-//           subjectLine: n.subjectLine,
-//           emailBody: n.emailBody,
-//           deliveryMethod: n.deliveryMethod,
-//           templateKey: n.templateKey,
-//         })),
-//         classSchedule: json.classSchedule || null, // full ClassSchedule + Venue
-//       };
-//     });
+    const formattedData = {
+      id: json.id,
+      classScheduleId: json.classScheduleId,
+      reasonForCancelling: json.reasonForCancelling,
+      notifyMembers: json.notifyMembers,
+      creditMembers: json.creditMembers,
+      notifyTrialists: json.notifyTrialists,
+      notifyCoaches: json.notifyCoaches,
+      cancelledAt: json.cancelledAt,
+      createdBy: json.createdBy,
+      notifications: notificationsArray.map((n) => ({
+        role: n.role,
+        subjectLine: n.subjectLine,
+        emailBody: n.emailBody,
+        deliveryMethod: n.deliveryMethod,
+        templateKey: n.templateKey,
+      })),
+      classSchedule: json.classSchedule || null,
+    };
 
-//     return { status: true, data: formattedData };
-//   } catch (error) {
-//     console.error("❌ getAllCancelledSessions Error:", error.message);
-//     return { status: false, message: error.message };
-//   }
-// };
-
-// Step 4: Update SessionPlanGroup if Term.sessionsMap contains the sessionPlanId
-// let updatedGroupsCount = 0;
-
-// if (classSchedule.venueId) {
-//   const venue = await Venue.findByPk(classSchedule.venueId);
-
-//   // Get the termGroupIds linked to this venue
-//   const termGroupIds = venue?.termGroupId
-//     ? Array.isArray(venue.termGroupId)
-//       ? venue.termGroupId
-//       : JSON.parse(venue.termGroupId)
-//     : [];
-
-//   if (termGroupIds.length) {
-//     // Fetch all terms under these termGroupIds
-//     const terms = await Term.findAll({
-//       where: { termGroupId: { [Op.in]: termGroupIds } },
-//     });
-
-//     const sessionPlanGroupIdsToUpdate = new Set();
-
-//     for (const term of terms) {
-//       // Parse the sessionsMap array
-//       const sessionsMap = Array.isArray(term.sessionsMap)
-//         ? term.sessionsMap
-//         : JSON.parse(term.sessionsMap || "[]");
-
-//       // If any session has the matching sessionPlanId
-//       const matchingSession = sessionsMap.find(
-//         (s) =>
-//           Number(s.sessionPlanId) === Number(classSchedule.sessionPlanId)
-//       );
-
-//       if (matchingSession && term.sessionPlanGroupId) {
-//         const groupIds = Array.isArray(term.sessionPlanGroupId)
-//           ? term.sessionPlanGroupId
-//           : JSON.parse(term.sessionPlanGroupId);
-//         groupIds.forEach((id) => sessionPlanGroupIdsToUpdate.add(id));
-//       }
-//     }
-
-//     // Update the SessionPlanGroup status
-//     if (sessionPlanGroupIdsToUpdate.size) {
-//       const sessionPlanGroups = await SessionPlanGroup.findAll({
-//         where: { id: { [Op.in]: Array.from(sessionPlanGroupIdsToUpdate) } },
-//       });
-
-//       for (const group of sessionPlanGroups) {
-//         await group.update({ status: "cancelled" });
-//         updatedGroupsCount++;
-//       }
-//     }
-//   }
-// }
-
-// // Optional: Return a message if nothing was updated
-// if (updatedGroupsCount === 0) {
-//   console.log("No SessionPlanGroup matched the sessionPlanId for update.");
-// }
-
-// // Step 5: If no bookings OR no session plan groups updated → skip emails
-// if (!bookings.length && updatedGroupsCount === 0) {
-//   return {
-//     status: true,
-//     message:
-//       "Cancellation saved. No bookings & no session plan groups matched for update, so no emails sent.",
-//     data: cancelEntry,
-//   };
-// }
+    return { status: true, data: formattedData };
+  } catch (error) {
+    console.error(`❌ getCancelledSessionById Error:`, error.message);
+    return { status: false, message: error.message };
+  }
+};

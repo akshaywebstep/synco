@@ -48,7 +48,10 @@ const validateLevels = (levels) => {
 exports.createSessionPlanGroup = async (req, res) => {
   try {
     const formData = req.body;
-    // normalize req.files: multer.any() -> array, or multer.fields() -> object
+    const DEBUG = true;
+    const createdBy = req.admin?.id || req.user?.id;
+
+    // Normalize req.files
     let filesMap = {};
     if (Array.isArray(req.files)) {
       filesMap = req.files.reduce((acc, f) => {
@@ -60,18 +63,7 @@ exports.createSessionPlanGroup = async (req, res) => {
       filesMap = req.files || {};
     }
 
-    const createdBy = req.admin?.id || req.user?.id;
-    const DEBUG = true;
-
-    if (DEBUG) console.log("📥 Received formData:", formData);
-    if (DEBUG) console.log("📥 Received files:", Object.keys(filesMap));
-
-    if (!createdBy) {
-      if (DEBUG) console.log("❌ Unauthorized request: no user/admin id");
-      return res
-        .status(403)
-        .json({ status: false, message: "Unauthorized request" });
-    }
+    if (!createdBy) return res.status(403).json({ status: false, message: "Unauthorized request" });
 
     const { groupName, levels, player } = formData;
 
@@ -82,8 +74,6 @@ exports.createSessionPlanGroup = async (req, res) => {
 
     if (!validation.isValid) {
       const firstErrorMsg = Object.values(validation.error)[0];
-      if (DEBUG) console.log("❌ Validation failed:", firstErrorMsg);
-      await logActivity(req, PANEL, MODULE, "create", firstErrorMsg, false);
       return res.status(400).json({ status: false, message: firstErrorMsg });
     }
 
@@ -91,31 +81,32 @@ exports.createSessionPlanGroup = async (req, res) => {
     let parsedLevels;
     try {
       parsedLevels = typeof levels === "string" ? JSON.parse(levels) : levels;
-      if (DEBUG) console.log("✅ Parsed levels:", parsedLevels);
-    } catch (err) {
-      if (DEBUG) console.log("❌ Failed to parse levels JSON:", err.message);
-      return res
-        .status(400)
-        .json({ status: false, message: "Invalid JSON for levels" });
+    } catch {
+      return res.status(400).json({ status: false, message: "Invalid JSON for levels" });
     }
 
     // Validate levels
     const levelError = validateLevels(parsedLevels);
-    if (levelError) {
-      if (DEBUG) console.log("❌ Levels validation error:", levelError);
-      return res.status(400).json({ status: false, message: levelError });
-    }
+    if (levelError) return res.status(400).json({ status: false, message: levelError });
 
+    // STEP 1: Create DB row without banner/video first
+    const payloadWithoutFiles = { groupName, levels: parsedLevels, player, createdBy };
+    const result = await SessionPlanGroupService.createSessionPlanGroup(payloadWithoutFiles);
+
+    if (!result.status) return res.status(400).json({ status: false, message: result.message || "Failed to create session plan group." });
+
+    const sessionPlanId = result.data.id; // ✅ DB-generated ID
     const baseUploadDir = path.join(
       process.cwd(),
       "uploads",
       "temp",
       "admin",
       `${createdBy}`,
-      "session-plan-group"
+      "session-plan-group",
+      `${sessionPlanId}`
     );
 
-    // Helper to save & upload file (unchanged)
+    // Helper to save & upload files
     const saveAndUploadFile = async (file, type) => {
       const uniqueId = Math.floor(Math.random() * 1e9);
       const ext = path.extname(file.originalname).toLowerCase();
@@ -123,213 +114,70 @@ exports.createSessionPlanGroup = async (req, res) => {
       const localPath = path.join(baseUploadDir, type, fileName);
 
       await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
-
-      // If multer used memoryStorage => file.buffer exists; handle both cases
       if (file.buffer) {
         await fs.promises.writeFile(localPath, file.buffer);
-      } else if (file.path) {
-        // file already on disk (multer diskStorage)
-        await saveFile(file, localPath);
       } else {
-        // fallback: try saveFile as before
         await saveFile(file, localPath);
       }
-
-      if (DEBUG) console.log(`💾 Saved ${type} locally at:`, localPath);
 
       let uploadedPath = null;
       try {
         uploadedPath = await uploadToFTP(localPath, fileName);
-        if (DEBUG) console.log(`☁️ Uploaded ${type} to FTP:`, uploadedPath);
       } catch (err) {
-        console.error(`❌ Failed to upload ${type}:`, err.message);
+        console.error(`Failed to upload ${type}:`, err.message);
       } finally {
-        await fs.promises.unlink(localPath).catch(() => { });
+        await fs.promises.unlink(localPath).catch(() => {});
       }
-
       return uploadedPath;
     };
 
-    // Save top-level banner & video (if present)
-    const banner = filesMap.banner?.[0]
-      ? await saveAndUploadFile(filesMap.banner[0], "banner")
-      : null;
-    const video = filesMap.video?.[0]
-      ? await saveAndUploadFile(filesMap.video[0], "video")
-      : null;
+    // STEP 2: Upload banner & video
+    const banner = filesMap.banner?.[0] ? await saveAndUploadFile(filesMap.banner[0], "banner") : null;
+    const video = filesMap.video?.[0] ? await saveAndUploadFile(filesMap.video[0], "video") : null;
 
-    if (DEBUG) console.log("📌 Banner URL:", banner);
-    if (DEBUG) console.log("📌 Video URL:", video);
-
-    // Attach recordings into each level/session. Expect frontend keys: recording_<level>_<index>
-    // const attachRecordingsToLevels = async (levelsObj) => {
-    //   for (const [level, sessions] of Object.entries(levelsObj)) {
-    //     const fieldName = `recording_${level}`;
-    //     const fileArr = filesMap[fieldName];
-
-    //     let uploadedRecording = null;
-    //     if (fileArr && fileArr[0]) {
-    //       try {
-    //         uploadedRecording = await saveAndUploadFile(
-    //           fileArr[0],
-    //           path.join("recording", level)
-    //         );
-    //         if (DEBUG)
-    //           console.log(
-    //             `🎙️ Attached recording for ${level}:`,
-    //             uploadedRecording
-    //           );
-    //       } catch (err) {
-    //         console.error(
-    //           `❌ Error saving recording for ${level}:`,
-    //           err.message
-    //         );
-    //       }
-    //     }
-
-    //     // apply same recording to all sessions in this level
-    //     sessions.forEach((session) => {
-    //       session.recording = uploadedRecording;
-    //     });
-    //   }
-
-    //   return levelsObj;
-    // };
+    // STEP 3: Upload recordings with proper path
     const attachRecordingsToLevels = async (levelsObj) => {
-      const recordingFields = {}; // will hold beginner_recording, etc.
-
+      const recordingFields = {};
       for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
-        const fieldName = `${level}_recording`; // match frontend key
-        const fileArr = filesMap[fieldName];
-
+        const fileArr = filesMap[`${level}_recording`];
         let uploadedRecording = null;
         if (fileArr && fileArr[0]) {
-          try {
-            uploadedRecording = await saveAndUploadFile(
-              fileArr[0],
-              path.join("recording", level)
-            );
-            if (DEBUG) console.log(`🎙️ Attached recording for ${level}:`, uploadedRecording);
-          } catch (err) {
-            console.error(`❌ Error saving recording for ${level}:`, err.message);
-          }
+          // Save recordings under "recording/<level>/" folder
+          uploadedRecording = await saveAndUploadFile(fileArr[0], path.join("recording", level));
         }
-
         recordingFields[`${level}_recording`] = uploadedRecording;
       }
-
       return { levelsObj, recordingFields };
     };
 
-    // const levelsWithRecordings = await attachRecordingsToLevels(parsedLevels);
-    const { levelsObj: levelsWithRecordings, recordingFields } =
-      await attachRecordingsToLevels(parsedLevels);
+    const { levelsObj: levelsWithRecordings, recordingFields } = await attachRecordingsToLevels(parsedLevels);
 
-    // Build DB payload
-    const payload = {
-      groupName,
-      levels: levelsWithRecordings,
-      createdBy,
-      player,
-      banner,
-      video,
-      ...recordingFields,
-    };
+    // STEP 4: Update DB row with banner, video, and recordings
+    const updatePayload = { banner, video, ...recordingFields };
+    await SessionPlanGroupService.updateSessionPlanGroup(sessionPlanId, updatePayload, createdBy);
 
-    if (DEBUG) console.log("📌 DB payload:", payload);
-
-    const result = await SessionPlanGroupService.createSessionPlanGroup(
-      payload
-    );
-    if (DEBUG) console.log("📌 DB result:", result);
-
-    if (!result.status) {
-      if (DEBUG) console.log("❌ Failed to create session plan group");
-      await logActivity(req, PANEL, MODULE, "create", result, false);
-      return res.status(400).json({
-        status: false,
-        message: result.message || "Failed to create session plan group.",
-      });
-    }
-
-    // Collect all sessionExerciseIds
-    const allExerciseIds = [];
-    Object.values(levelsWithRecordings).forEach((sessions) => {
-      sessions.forEach((session) => {
-        if (Array.isArray(session.sessionExerciseId)) {
-          allExerciseIds.push(...session.sessionExerciseId);
-        }
-      });
-    });
-
-    if (DEBUG) console.log("📌 All exercise IDs to fetch:", allExerciseIds);
-
-    // Build clean response
-    const responseLevels = {};
-    for (const [level, sessions] of Object.entries(levelsWithRecordings)) {
-      responseLevels[level] = sessions.map((session) => ({
-        skillOfTheDay: session.skillOfTheDay,
-        description: session.description,
-        sessionExerciseId: session.sessionExerciseId || [],
-        // recording: session.recording || null, // ✅ included
-      }));
-    }
-
+    // STEP 5: Build response
     const responseData = {
-      id: result.data.id,
+      id: sessionPlanId,
       groupName: result.data.groupName,
       player: result.data.player,
       sortOrder: result.data.sortOrder || 0,
-      status: result.data.status || "active",
       createdAt: result.data.createdAt,
       updatedAt: result.data.updatedAt,
       banner,
       video,
-      beginner_recording: result.data.beginner_recording,
-      intermediate_recording: result.data.intermediate_recording,
-      advanced_recording: result.data.advanced_recording,
-      pro_recording: result.data.pro_recording,
-      levels: responseLevels,
+      beginner_recording: updatePayload.beginner_recording,
+      intermediate_recording: updatePayload.intermediate_recording,
+      advanced_recording: updatePayload.advanced_recording,
+      pro_recording: updatePayload.pro_recording,
+      levels: levelsWithRecordings,
     };
 
-    if (DEBUG) console.log("📦 Final responseData:", responseData);
+    return res.status(201).json({ status: true, message: "Session Plan Group created successfully.", data: responseData });
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "create",
-      { oneLineMessage: `Created session plan group: ${groupName}` },
-      true
-    );
-
-    await createNotification(
-      req,
-      "Session Plan Group Created",
-      `Session Plan Group '${groupName}' was created by ${req?.admin?.firstName || "Admin"
-      }.`,
-      "System"
-    );
-
-    return res.status(201).json({
-      status: true,
-      message: "Session Plan Group created successfully.",
-      data: responseData,
-    });
   } catch (error) {
-    console.error("❌ Server error in createSessionPlanGroup:", error);
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "create",
-      { error: error.message },
-      false
-    );
-    return res.status(500).json({
-      status: false,
-      message: "Server error occurred while creating the session plan group.",
-    });
+    console.error("Server error in createSessionPlanGroup:", error);
+    return res.status(500).json({ status: false, message: "Server error occurred while creating the session plan group." });
   }
 };
 
@@ -761,203 +609,129 @@ exports.downloadSessionPlanGroupVideo = async (req, res) => {
 
 exports.updateSessionPlanGroup = async (req, res) => {
   const { id } = req.params;
-  const formData = req.body;
+  const { groupName, levels, player } = req.body;
   const adminId = req.admin?.id;
   const files = req.files || {};
 
   if (!adminId) {
-    return res.status(401).json({
-      status: false,
-      message: "Unauthorized: Admin ID not found.",
-    });
+    return res.status(401).json({ status: false, message: "Unauthorized: Admin ID not found." });
   }
 
-  if (DEBUG) {
-    console.log("🛠️ STEP 1: Updating Session Plan Group ID:", id);
-    console.log("📥 Received Update FormData:", formData);
-    console.log("📎 Uploaded Files:", Object.keys(files));
-  }
+  console.log("STEP 1: Received request", { id, groupName, levels, player, files: Object.keys(files) });
 
   try {
     // STEP 2: Fetch existing group
     const existingResult = await SessionPlanGroupService.getSessionPlanGroupById(id, adminId);
     if (!existingResult.status || !existingResult.data) {
-      return res.status(404).json({
-        status: false,
-        message: existingResult.message || "Session Plan Group not found.",
-      });
+      console.log("STEP 2: Session Plan Group not found");
+      return res.status(404).json({ status: false, message: "Session Plan Group not found" });
     }
     const existing = existingResult.data;
+    console.log("STEP 2: Existing group fetched:", existing);
 
-    // STEP 3: Parse levels JSON safely
-    let parsedLevels = {};
-    if (formData.levels) {
+    // STEP 3: Parse levels
+    let parsedLevels = existing.levels || {};
+    if (levels) parsedLevels = typeof levels === "string" ? JSON.parse(levels) : levels;
+    console.log("STEP 3: Parsed levels:", parsedLevels);
+
+    // STEP 4: Helper to save files if new file provided
+    const saveFileIfExists = async (file, type, oldUrl = null, level = null) => {
+      if (!file) return oldUrl || null; // No new file, return old URL
+
+      const path = require('path');
+      const fs = require('fs').promises;
+
+      const uniqueId = Date.now() + "_" + Math.floor(Math.random() * 1e9);
+      const ext = path.extname(file.originalname || "file");
+      const localPath = path.join(
+        process.cwd(), "uploads", "temp", "admin", `${adminId}`, "session-plan-group", `${id}`, type, level || '', uniqueId + ext
+      );
+
+      console.log(`STEP 4: Saving file locally at:`, localPath);
+      await fs.mkdir(path.dirname(localPath), { recursive: true });
+      await saveFile(file, localPath); // assume saveFile is your helper to save locally
+
+      const uploadedUrl = level
+        ? `https://webstepdev.com/demo/syncoUploads/temp/admin/${adminId}/session-plan-group/${id}/recording/${level}/${uniqueId + ext}`
+        : `https://webstepdev.com/demo/syncoUploads/temp/admin/${adminId}/session-plan-group/${id}/${type}/${uniqueId + ext}`;
+
       try {
-        parsedLevels = typeof formData.levels === "string"
-          ? JSON.parse(formData.levels)
-          : formData.levels;
-      } catch {
-        return res.status(400).json({ status: false, message: "Invalid JSON format for levels" });
-      }
-
-      const levelError = validateLevels(parsedLevels);
-      if (levelError)
-        return res.status(400).json({ status: false, message: levelError });
-    }
-
-    // STEP 4: Handle banner & video uploads
-    const baseUploadDir = path.join(process.cwd(), "uploads", "temp", "admin", `${adminId}`, "session-plan-group");
-
-    const saveAndUploadFile = async (file, type, oldPath) => {
-      if (!file) return oldPath || null;
-
-      const uniqueId = Math.floor(Math.random() * 1e9);
-      const ext = path.extname(file.originalname).toLowerCase();
-      const fileName = `${Date.now()}_${uniqueId}${ext}`;
-      const localPath = path.join(baseUploadDir, type, fileName);
-
-      await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
-      await saveFile(file, localPath);
-      if (DEBUG) console.log(`💾 Saved ${type} locally at:`, localPath);
-
-      let uploadedPath = null;
-      try {
-        uploadedPath = await uploadToFTP(localPath, fileName);
-        if (DEBUG) console.log(`☁️ Uploaded ${type} to FTP:`, uploadedPath);
-
-        if (oldPath) await deleteFile(oldPath); // remove old file if replaced
+        await uploadToFTP(localPath, uniqueId + ext); // upload to FTP
+        console.log(`STEP 4: Uploaded ${type}/${level || ''} to FTP:`, uploadedUrl);
       } catch (err) {
-        console.error(`❌ Failed to upload ${type}:`, err.message);
-        uploadedPath = oldPath || null;
+        console.error(`STEP 4: Failed to upload ${type}/${level || ''}`, err);
       } finally {
-        await fs.promises.unlink(localPath).catch(() => {});
+        await fs.unlink(localPath).catch(() => {});
       }
 
-      return uploadedPath;
+      return uploadedUrl;
     };
 
-    // Accept both "banner"/"video" and "banner_file"/"video_file"
-    const bannerFile = files.banner?.[0] || files.banner_file?.[0] || null;
-    const videoFile = files.video?.[0] || files.video_file?.[0] || null;
+    // STEP 5: Update banner and video
+    const bannerFile = files.banner?.[0] || files['0']?.[0];
+    const videoFile = files.video?.[0] || files['1']?.[0];
 
-    const banner = await saveAndUploadFile(bannerFile, "banner", existing.banner);
-    const video = await saveAndUploadFile(videoFile, "video", existing.video);
+    const banner = await saveFileIfExists(bannerFile, "banner", existing.banner);
+    const video = await saveFileIfExists(videoFile, "video", existing.video);
 
-    // STEP 5: Merge levels instead of replacing them all
-    let mergedLevels = existing.levels || {};
-    if (Object.keys(parsedLevels).length) {
-      mergedLevels = { ...existing.levels };
-      for (const [level, sessions] of Object.entries(parsedLevels)) {
-        mergedLevels[level] = sessions; // overwrite only provided level
-      }
-    }
+    console.log("STEP 5: Banner URL after update:", banner);
+    console.log("STEP 5: Video URL after update:", video);
 
-    // STEP 6: Attach recordings (top-level only)
+    // STEP 6: Update recordings
     const recordingFields = {};
     for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
-      const fieldName = `${level}_recording`;
-      const fileArr = files[fieldName];
-      if (fileArr && fileArr[0]) {
-        try {
-          const uploadedRecording = await saveAndUploadFile(
-            fileArr[0],
-            path.join("recording", level),
-            existing[`${level}_recording`]
-          );
-          recordingFields[`${level}_recording`] = uploadedRecording;
-          if (DEBUG) console.log(`🎙️ Updated recording for ${level}:`, uploadedRecording);
-        } catch (err) {
-          console.error(`❌ Error updating recording for ${level}:`, err.message);
-        }
-      } else {
-        recordingFields[`${level}_recording`] = existing[`${level}_recording`] || null;
-      }
+      const fileArr = files[level + "_recording"] || files[level + "_recording_file"] || files[level];
+      recordingFields[level + "_recording"] = fileArr?.[0]
+        ? await saveFileIfExists(fileArr[0], "recording", existing[level + "_recording"], level)
+        : existing[level + "_recording"] || null;
+
+      console.log(`STEP 6: recordingFields[${level}_recording] =`, recordingFields[level + "_recording"]);
     }
 
     // STEP 7: Prepare update payload
     const updatePayload = {
-      groupName: formData.groupName?.trim() || existing.groupName,
-      levels: mergedLevels,
-      player: formData.player || existing.player,
+      groupName: groupName?.trim() || existing.groupName,
+      levels: parsedLevels,
+      player: player || existing.player,
       banner,
       video,
-      ...recordingFields,
+      ...recordingFields
     };
+    console.log("STEP 7: updatePayload =", updatePayload);
 
     // STEP 8: Update DB
     const updateResult = await SessionPlanGroupService.updateSessionPlanGroup(id, updatePayload, adminId);
     if (!updateResult.status) {
-      return res.status(500).json({
-        status: false,
-        message: updateResult.message || "Update failed.",
-      });
+      console.log("STEP 8: DB update failed");
+      return res.status(500).json({ status: false, message: "Update failed." });
     }
     const updated = updateResult.data;
 
-    // STEP 9: Add sessionExercises inside levels
-    let cleanLevels = typeof updated.levels === "string" ? JSON.parse(updated.levels) : updated.levels || {};
-    const allIds = [];
-    Object.values(cleanLevels).forEach((arr) =>
-      arr.forEach((e) => e.sessionExerciseId?.forEach((id) => allIds.push(id)))
-    );
-
-    const exerciseMap = {};
-    if (allIds.length) {
-      const uniqueIds = [...new Set(allIds)];
-      const exercises = await SessionExercise.findAll({ where: { id: uniqueIds }, raw: true });
-      exercises.forEach((ex) => (exerciseMap[ex.id] = ex));
-    }
-
-    for (const level in cleanLevels) {
-      cleanLevels[level] = cleanLevels[level].map((entry) => ({
-        ...entry,
-        sessionExercises: (entry.sessionExerciseId || []).map((id) => exerciseMap[id]).filter(Boolean),
-      }));
-    }
-
-    // STEP 10: Build response
+    // STEP 9: Prepare response
     const responseData = {
       id: updated.id,
       groupName: updated.groupName,
       player: updated.player,
-      sortOrder: updated.sortOrder || 0,
-      status: updated.status || "active",
-      createdAt: updated.createdAt,
-      updatedAt: updated.updatedAt,
       banner: updated.banner,
       video: updated.video,
-      levels: cleanLevels,
+      levels: typeof updated.levels === "string" ? JSON.parse(updated.levels) : updated.levels,
       beginner_recording: updated.beginner_recording,
       intermediate_recording: updated.intermediate_recording,
       advanced_recording: updated.advanced_recording,
       pro_recording: updated.pro_recording,
+      createdAt: updated.createdAt,
+      updatedAt: updated.updatedAt
     };
 
-    if (DEBUG) console.log("✅ Update successful:", responseData);
+    console.log("STEP 9: Final responseData =", responseData);
+    return res.status(200).json({ status: true, message: "Session Plan Group updated successfully.", data: responseData });
 
-    await logActivity(req, PANEL, MODULE, "update", { oneLineMessage: `Updated Session Plan Group ID: ${id}` }, true);
-    await createNotification(
-      req,
-      "Session Plan Group Updated",
-      `Session Plan Group '${updated.groupName}' was updated by ${req?.admin?.firstName || "Admin"}.`,
-      "System"
-    );
-
-    return res.status(200).json({
-      status: true,
-      message: "Session Plan Group updated successfully.",
-      data: responseData,
-    });
   } catch (error) {
-    console.error("❌ Update error:", error);
-    await logActivity(req, PANEL, MODULE, "update", { oneLineMessage: error.message }, false);
-
-    return res.status(500).json({
-      status: false,
-      message: "Failed to update Session Plan Group. Please try again later.",
-    });
+    console.error("STEP 10: Update error:", error);
+    return res.status(500).json({ status: false, message: "Failed to update Session Plan Group." });
   }
 };
+
 
 exports.deleteSessionPlanGroup = async (req, res) => {
   const { id } = req.params;

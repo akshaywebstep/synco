@@ -129,49 +129,45 @@ exports.cancelClassSession = async (req, res) => {
   }
 };
 
-// ✅ GET all cancelled session details
-// exports.getAllCancelledSessions = async (req, res) => {
-//   if (DEBUG) {
-//     console.log("📥 Received request to get all cancelled sessions");
-//   }
+// ✅ Get a single cancelled session by ID
+exports.getCancelledSessionById = async (req, res) => {
+  if (DEBUG) console.log("📥 Received request to get cancelled session by ID");
 
-//   try {
-//     // Step 1: Call service
-//     const result = await CancelClassService.getAllCancelledSessions();
+  try {
+    const { id } = req.params;
+    const result = await CancelClassService.getCancelledSessionById(id);
 
-//     // Step 2: Handle failure
-//     if (!result.status) {
-//       if (DEBUG) console.log("⚠️ Service failed:", result.message);
-//       await logActivity(req, PANEL, MODULE, "view", result, false);
-//       return res.status(404).json({ status: false, message: result.message });
-//     }
+    if (!result.status) {
+      if (DEBUG) console.log("⚠️ Service failed:", result.message);
+      await logActivity(req, PANEL, MODULE, "view", result, false);
+      return res.status(404).json({ status: false, message: result.message });
+    }
 
-//     // Step 3: Log success
-//     await logActivity(
-//       req,
-//       PANEL,
-//       MODULE,
-//       "view",
-//       { oneLineMessage: "Fetched all cancelled sessions" },
-//       true
-//     );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "view",
+      { oneLineMessage: `Fetched cancelled session ID: ${id}` },
+      true
+    );
 
-//     // Step 4: Send response
-//     return res.status(200).json({
-//       status: true,
-//       message: "Fetched all cancelled sessions successfully.",
-//       data: result.data,
-//     });
-//   } catch (error) {
-//     console.error("❌ Error fetching all cancelled sessions:", error);
-//     await logActivity(
-//       req,
-//       PANEL,
-//       MODULE,
-//       "view",
-//       { oneLineMessage: error.message },
-//       false
-//     );
-//     return res.status(500).json({ status: false, message: "Server error." });
-//   }
-// };
+    return res.status(200).json({
+      status: true,
+      message: "Fetched cancelled session successfully.",
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching cancelled session:", error);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "view",
+      { oneLineMessage: error.message },
+      false
+    );
+    return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
+

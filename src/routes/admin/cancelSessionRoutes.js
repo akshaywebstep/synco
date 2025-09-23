@@ -5,7 +5,7 @@ const permissionMiddleware = require("../../middleware/admin/permission");
 
 const {
   cancelClassSession,
-  // getAllCancelledSessions,
+  getCancelledSessionById,
 } = require("../../controllers/admin/classSchedule/cancelSessionController");
 
 // ✅ Cancel a session for a specific class
@@ -16,7 +16,12 @@ router.post(
   cancelClassSession
 );
 
-// ✅ Get all cancelled sessions for a specific class
-// router.get("/", authMiddleware, getAllCancelledSessions);
+// Get a cancelled session by ID
+router.get(
+  "/:id",
+  authMiddleware,
+  permissionMiddleware("cancel-session", "view-listing"),
+  getCancelledSessionById
+);
 
 module.exports = router;

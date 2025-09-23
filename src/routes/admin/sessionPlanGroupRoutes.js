@@ -20,19 +20,6 @@ const {
 } = require("../../controllers/admin/sessionPlan/sessionPlanGroupController");
 
 // ✅ Create Session Plan Group
-// router.post(
-//   "/",
-//   authMiddleware,
-//   upload.fields([
-//     { name: "video", maxCount: 1 },
-//     { name: "banner", maxCount: 1 },
-//     { name: "video_file", maxCount: 1 }, // ✅ add
-//     { name: "banner_file", maxCount: 1 }, // ✅ add
-//   ]),
-//   permissionMiddleware("session-plan-group", "create"),
-//   createSessionPlanGroup
-// );
-
 router.post(
   "/",
   authMiddleware,
@@ -61,12 +48,6 @@ router.get(
 router.put(
   "/:id",
   authMiddleware,
-  // upload.fields([
-  //   { name: "video", maxCount: 1 },
-  //   { name: "banner", maxCount: 1 },
-  //   { name: "video_file", maxCount: 1 }, // ✅ add
-  //   { name: "banner_file", maxCount: 1 }, // ✅ add
-  // ]),
   upload.any(), // ✅ accept banner, video, AND dynamic recording_* fields
   permissionMiddleware("session-plan-group", "update"),
   updateSessionPlanGroup
