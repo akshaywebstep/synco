@@ -619,33 +619,6 @@ exports.updateSessionPlanGroup = async (req, res) => {
       }
     }
 
-    // // STEP 6: Attach recordings to mergedLevels
-    // for (const [level, sessions] of Object.entries(mergedLevels)) {
-    //   for (let i = 0; i < sessions.length; i++) {
-    //     const fieldName = `recording_${level}_${i}`;
-    //     const fileArr = files[fieldName];
-    //     if (fileArr && fileArr[0]) {
-    //       try {
-    //         const uploadedRecording = await saveAndUploadFile(
-    //           fileArr[0],
-    //           path.join("recording", level),
-    //           sessions[i].recording // old recording path if exists
-    //         );
-    //         sessions[i].recording = uploadedRecording;
-    //         if (DEBUG)
-    //           console.log(
-    //             `🎙️ Updated recording for ${fieldName}:`,
-    //             uploadedRecording
-    //           );
-    //       } catch (err) {
-    //         console.error(
-    //           `❌ Error updating recording ${fieldName}:`,
-    //           err.message
-    //         );
-    //       }
-    //     }
-    //   }
-    // }
     // STEP 6: Attach recordings (top-level only, not inside levels)
     const recordingFields = {};
 
