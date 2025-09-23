@@ -144,7 +144,7 @@ exports.createSessionPlanGroup = async (req, res) => {
       } catch (err) {
         console.error(`❌ Failed to upload ${type}:`, err.message);
       } finally {
-        await fs.promises.unlink(localPath).catch(() => {});
+        await fs.promises.unlink(localPath).catch(() => { });
       }
 
       return uploadedPath;
@@ -162,7 +162,42 @@ exports.createSessionPlanGroup = async (req, res) => {
     if (DEBUG) console.log("📌 Video URL:", video);
 
     // Attach recordings into each level/session. Expect frontend keys: recording_<level>_<index>
+    // const attachRecordingsToLevels = async (levelsObj) => {
+    //   for (const [level, sessions] of Object.entries(levelsObj)) {
+    //     const fieldName = `recording_${level}`;
+    //     const fileArr = filesMap[fieldName];
+
+    //     let uploadedRecording = null;
+    //     if (fileArr && fileArr[0]) {
+    //       try {
+    //         uploadedRecording = await saveAndUploadFile(
+    //           fileArr[0],
+    //           path.join("recording", level)
+    //         );
+    //         if (DEBUG)
+    //           console.log(
+    //             `🎙️ Attached recording for ${level}:`,
+    //             uploadedRecording
+    //           );
+    //       } catch (err) {
+    //         console.error(
+    //           `❌ Error saving recording for ${level}:`,
+    //           err.message
+    //         );
+    //       }
+    //     }
+
+    //     // apply same recording to all sessions in this level
+    //     sessions.forEach((session) => {
+    //       session.recording = uploadedRecording;
+    //     });
+    //   }
+
+    //   return levelsObj;
+    // };
     const attachRecordingsToLevels = async (levelsObj) => {
+      const recordingFields = {}; // will hold beginner_recording, etc.
+
       for (const [level, sessions] of Object.entries(levelsObj)) {
         const fieldName = `recording_${level}`;
         const fileArr = filesMap[fieldName];
@@ -175,28 +210,22 @@ exports.createSessionPlanGroup = async (req, res) => {
               path.join("recording", level)
             );
             if (DEBUG)
-              console.log(
-                `🎙️ Attached recording for ${level}:`,
-                uploadedRecording
-              );
+              console.log(`🎙️ Attached recording for ${level}:`, uploadedRecording);
           } catch (err) {
-            console.error(
-              `❌ Error saving recording for ${level}:`,
-              err.message
-            );
+            console.error(`❌ Error saving recording for ${level}:`, err.message);
           }
         }
 
-        // apply same recording to all sessions in this level
-        sessions.forEach((session) => {
-          session.recording = uploadedRecording;
-        });
+        // ✅ Save into Sequelize top-level columns only
+        recordingFields[`${level}_recording`] = uploadedRecording;
       }
 
-      return levelsObj;
+      return { levelsObj, recordingFields };
     };
 
-    const levelsWithRecordings = await attachRecordingsToLevels(parsedLevels);
+    // const levelsWithRecordings = await attachRecordingsToLevels(parsedLevels);
+    const { levelsObj: levelsWithRecordings, recordingFields } =
+      await attachRecordingsToLevels(parsedLevels);
 
     // Build DB payload
     const payload = {
@@ -206,6 +235,7 @@ exports.createSessionPlanGroup = async (req, res) => {
       player,
       banner,
       video,
+      ...recordingFields,
     };
 
     if (DEBUG) console.log("📌 DB payload:", payload);
@@ -243,7 +273,7 @@ exports.createSessionPlanGroup = async (req, res) => {
         skillOfTheDay: session.skillOfTheDay,
         description: session.description,
         sessionExerciseId: session.sessionExerciseId || [],
-        recording: session.recording || null, // ✅ included
+        // recording: session.recording || null, // ✅ included
       }));
     }
 
@@ -257,6 +287,10 @@ exports.createSessionPlanGroup = async (req, res) => {
       updatedAt: result.data.updatedAt,
       banner,
       video,
+      beginner_recording: result.data.beginner_recording,
+      intermediate_recording: result.data.intermediate_recording,
+      advanced_recording: result.data.advanced_recording,
+      pro_recording: result.data.pro_recording,
       levels: responseLevels,
     };
 
@@ -274,8 +308,7 @@ exports.createSessionPlanGroup = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Group Created",
-      `Session Plan Group '${groupName}' was created by ${
-        req?.admin?.firstName || "Admin"
+      `Session Plan Group '${groupName}' was created by ${req?.admin?.firstName || "Admin"
       }.`,
       "System"
     );
@@ -552,7 +585,7 @@ exports.updateSessionPlanGroup = async (req, res) => {
         console.error(`❌ Failed to upload ${type}:`, err.message);
         uploadedPath = oldPath || null;
       } finally {
-        await fs.promises.unlink(localPath).catch(() => {});
+        await fs.promises.unlink(localPath).catch(() => { });
       }
 
       return uploadedPath;
@@ -562,19 +595,19 @@ exports.updateSessionPlanGroup = async (req, res) => {
     const banner =
       files.banner?.[0] || files.banner_file?.[0]
         ? await saveAndUploadFile(
-            files.banner?.[0] || files.banner_file?.[0],
-            "banner",
-            existing.banner
-          )
+          files.banner?.[0] || files.banner_file?.[0],
+          "banner",
+          existing.banner
+        )
         : existing.banner || null;
 
     const video =
       files.video?.[0] || files.video_file?.[0]
         ? await saveAndUploadFile(
-            files.video?.[0] || files.video_file?.[0],
-            "video",
-            existing.video
-          )
+          files.video?.[0] || files.video_file?.[0],
+          "video",
+          existing.video
+        )
         : existing.video || null;
 
     // STEP 5: Merge levels instead of replacing them all
@@ -588,31 +621,56 @@ exports.updateSessionPlanGroup = async (req, res) => {
       }
     }
 
-    // STEP 6: Attach recordings to mergedLevels
-    for (const [level, sessions] of Object.entries(mergedLevels)) {
-      for (let i = 0; i < sessions.length; i++) {
-        const fieldName = `recording_${level}_${i}`;
-        const fileArr = files[fieldName];
-        if (fileArr && fileArr[0]) {
-          try {
-            const uploadedRecording = await saveAndUploadFile(
-              fileArr[0],
-              path.join("recording", level),
-              sessions[i].recording // old recording path if exists
-            );
-            sessions[i].recording = uploadedRecording;
-            if (DEBUG)
-              console.log(
-                `🎙️ Updated recording for ${fieldName}:`,
-                uploadedRecording
-              );
-          } catch (err) {
-            console.error(
-              `❌ Error updating recording ${fieldName}:`,
-              err.message
-            );
-          }
+    // // STEP 6: Attach recordings to mergedLevels
+    // for (const [level, sessions] of Object.entries(mergedLevels)) {
+    //   for (let i = 0; i < sessions.length; i++) {
+    //     const fieldName = `recording_${level}_${i}`;
+    //     const fileArr = files[fieldName];
+    //     if (fileArr && fileArr[0]) {
+    //       try {
+    //         const uploadedRecording = await saveAndUploadFile(
+    //           fileArr[0],
+    //           path.join("recording", level),
+    //           sessions[i].recording // old recording path if exists
+    //         );
+    //         sessions[i].recording = uploadedRecording;
+    //         if (DEBUG)
+    //           console.log(
+    //             `🎙️ Updated recording for ${fieldName}:`,
+    //             uploadedRecording
+    //           );
+    //       } catch (err) {
+    //         console.error(
+    //           `❌ Error updating recording ${fieldName}:`,
+    //           err.message
+    //         );
+    //       }
+    //     }
+    //   }
+    // }
+    // STEP 6: Attach recordings (top-level only, not inside levels)
+    const recordingFields = {};
+
+    for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
+      const fieldName = `recording_${level}`;
+      const fileArr = files[fieldName];
+
+      if (fileArr && fileArr[0]) {
+        try {
+          const uploadedRecording = await saveAndUploadFile(
+            fileArr[0],
+            path.join("recording", level),
+            existing[`${level}_recording`] // replace old top-level recording if exists
+          );
+          recordingFields[`${level}_recording`] = uploadedRecording;
+          if (DEBUG)
+            console.log(`🎙️ Updated recording for ${level}:`, uploadedRecording);
+        } catch (err) {
+          console.error(`❌ Error updating recording for ${level}:`, err.message);
         }
+      } else {
+        // keep old value if not replaced
+        recordingFields[`${level}_recording`] = existing[`${level}_recording`] || null;
       }
     }
 
@@ -622,6 +680,7 @@ exports.updateSessionPlanGroup = async (req, res) => {
       player: formData.player || existing.player,
       banner,
       video,
+      ...recordingFields
     };
 
     // STEP 7: Update DB
@@ -679,6 +738,10 @@ exports.updateSessionPlanGroup = async (req, res) => {
       banner: updated.banner,
       video: updated.video,
       levels: cleanLevels,
+      beginner_recording: updated.beginner_recording,
+      intermediate_recording: updated.intermediate_recording,
+      advanced_recording: updated.advanced_recording,
+      pro_recording: updated.pro_recording,
     };
 
     if (DEBUG) console.log("✅ Update successful:", responseData);
@@ -694,8 +757,7 @@ exports.updateSessionPlanGroup = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Group Updated",
-      `Session Plan Group '${updated.groupName}' was updated by ${
-        req?.admin?.firstName || "Admin"
+      `Session Plan Group '${updated.groupName}' was updated by ${req?.admin?.firstName || "Admin"
       }.`,
       "System"
     );
@@ -857,8 +919,7 @@ exports.deleteSessionPlanGroupLevel = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Level Deleted",
-      `Level '${levelKey}' from Session Plan Group ID ${id} was deleted by ${
-        req?.admin?.firstName || "Admin"
+      `Level '${levelKey}' from Session Plan Group ID ${id} was deleted by ${req?.admin?.firstName || "Admin"
       }.`,
       "System"
     );

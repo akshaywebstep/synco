@@ -23,6 +23,18 @@ const SessionPlanGroup = sequelize.define(
     video: {
       type: DataTypes.STRING,
     },
+    beginner_recording: {
+      type: DataTypes.STRING,
+    },
+    advanced_recording: {
+      type: DataTypes.STRING,
+    },
+    pro_recording: {
+      type: DataTypes.STRING,
+    }, 
+    intermediate_recording: {
+      type: DataTypes.STRING,
+    },
     levels: {
       type: DataTypes.JSON,
       allowNull: false,
@@ -32,11 +44,6 @@ const SessionPlanGroup = sequelize.define(
       allowNull: false,
       defaultValue: 0,
     },
-    // status: {
-    //   type: DataTypes.ENUM("pending", "cancelled", "completed"),
-    //   allowNull: false,
-    //   defaultValue: "pending",
-    // },
     createdBy: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
