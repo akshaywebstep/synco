@@ -169,10 +169,10 @@ TermGroup.associate = (models) => {
 //   foreignKey: "paymentPlanId",
 //   as: "paymentPlan",
 // });
-// Venue.belongsTo(models.PaymentPlan, {
-//   foreignKey: "paymentGroupId",
-//   as: "paymentGroup",
-// });
+Venue.belongsTo(models.PaymentPlan, {
+  foreignKey: "paymentGroupId",
+  as: "paymentGroup",
+});
 
 // 🧩 Booking <-> Student/Parent/Emergency
 Booking.hasMany(BookingStudentMeta, {

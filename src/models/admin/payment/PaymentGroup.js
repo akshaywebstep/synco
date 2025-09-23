@@ -5,6 +5,12 @@ const { sequelize } = require("../../../config/db");
 const PaymentGroup = sequelize.define(
   "PaymentGroup",
   {
+    id: {
+  type: DataTypes.INTEGER.UNSIGNED,
+  autoIncrement: true,
+  primaryKey: true,
+},
+
     name: {
       type: DataTypes.STRING,
       allowNull: false,

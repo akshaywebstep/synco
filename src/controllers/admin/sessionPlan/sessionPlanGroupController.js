@@ -662,7 +662,7 @@ exports.updateSessionPlanGroup = async (req, res) => {
       } catch (err) {
         console.error(`STEP 4: Failed to upload ${type}/${level || ''}`, err);
       } finally {
-        await fs.unlink(localPath).catch(() => { });
+        await fs.unlink(localPath).catch(() => {});
       }
 
       return uploadedUrl;
