@@ -701,6 +701,11 @@ exports.updateBooking = async (req, res) => {
   const studentsPayload = req.body?.students || [];
   const adminId = req.admin?.id;
 
+  // ✅ Security check
+  if (!adminId) {
+    return res.status(401).json({ status: false, message: "Unauthorized" });
+  }
+
   if (!bookingId) {
     return res.status(400).json({
       status: false,
@@ -727,7 +732,6 @@ exports.updateBooking = async (req, res) => {
       { message: `Updated student, parent, and emergency data for booking ID: ${bookingId}` },
       true
     );
-    console.log("✅ Step 3: Activity logged");
 
     // Create notification
     await createNotification(
@@ -736,12 +740,12 @@ exports.updateBooking = async (req, res) => {
       `Student, parent, and emergency data updated for booking ID: ${bookingId}.`,
       "System"
     );
-    console.log("✅ Step 4: Notification created");
 
     return res.status(200).json({
       status: true,
       message: "Student, parent, and emergency contact data updated successfully",
     });
+
   } catch (error) {
     if (!t.finished) await t.rollback();
     console.error("❌ updateBooking Error:", error.message);

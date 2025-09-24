@@ -2098,6 +2098,91 @@ exports.getFailedPaymentsByBookingId = async (bookingId) => {
   return parsedPayments;
 };
 
+exports.updateBookingWithStudents = async (bookingId, studentsPayload, transaction) => {
+  // Fetch booking with associations
+  const booking = await Booking.findOne({
+    where: { id: bookingId },
+    include: [
+      {
+        model: BookingStudentMeta,
+        as: "students",
+        include: [
+          { model: BookingParentMeta, as: "parents" },
+          { model: BookingEmergencyMeta, as: "emergencyContacts" },
+        ],
+      },
+    ],
+    transaction,
+  });
+
+  if (!booking) throw new Error("Booking not found.");
+
+  for (const student of studentsPayload) {
+    let studentRecord;
+
+    // 🔹 Update or create student
+    if (student.id) {
+      studentRecord = booking.students.find((s) => s.id === student.id);
+      if (!studentRecord) continue;
+
+      ["studentFirstName", "studentLastName", "dateOfBirth", "age", "gender", "medicalInformation"]
+        .forEach(field => {
+          if (student[field] !== undefined) studentRecord[field] = student[field];
+        });
+      await studentRecord.save({ transaction });
+    } else {
+      studentRecord = await BookingStudentMeta.create(
+        { bookingId, ...student },
+        { transaction }
+      );
+    }
+
+    // 🔹 Parents
+    if (Array.isArray(student.parents)) {
+      for (const parent of student.parents) {
+        if (parent.id) {
+          const parentRecord = studentRecord.parents?.find(p => p.id === parent.id);
+          if (parentRecord) {
+            ["parentFirstName", "parentLastName", "parentEmail", "parentPhoneNumber", "relationToChild", "howDidYouHear"]
+              .forEach(field => {
+                if (parent[field] !== undefined) parentRecord[field] = parent[field];
+              });
+            await parentRecord.save({ transaction });
+          }
+        } else {
+          await BookingParentMeta.create(
+            { bookingStudentMetaId: studentRecord.id, ...parent },
+            { transaction }
+          );
+        }
+      }
+    }
+
+    // 🔹 Emergency contacts
+    if (Array.isArray(student.emergencyContacts)) {
+      for (const emergency of student.emergencyContacts) {
+        if (emergency.id) {
+          const emergencyRecord = studentRecord.emergencyContacts?.find(e => e.id === emergency.id);
+          if (emergencyRecord) {
+            ["emergencyFirstName", "emergencyLastName", "emergencyPhoneNumber", "emergencyRelation"]
+              .forEach(field => {
+                if (emergency[field] !== undefined) emergencyRecord[field] = emergency[field];
+              });
+            await emergencyRecord.save({ transaction });
+          }
+        } else {
+          await BookingEmergencyMeta.create(
+            { bookingStudentMetaId: studentRecord.id, ...emergency },
+            { transaction }
+          );
+        }
+      }
+    }
+  }
+
+  return booking;
+};
+
 // exports.updateBooking = async (data, options) => {
 //   console.log("🚀 Start updateBooking service");
 //   const transaction = await sequelize.transaction();
@@ -2254,129 +2339,129 @@ exports.getFailedPaymentsByBookingId = async (bookingId) => {
 //   }
 // };
 
-exports.updateBookingWithStudents = async (bookingId, studentsPayload, transaction) => {
-  // Fetch booking with associations
-  const booking = await Booking.findOne({
-    where: { id: bookingId },
-    include: [
-      {
-        model: BookingStudentMeta,
-        as: "students",
-        include: [
-          { model: BookingParentMeta, as: "parents" },
-          { model: BookingEmergencyMeta, as: "emergencyContacts" },
-        ],
-      },
-    ],
-    transaction,
-  });
+// exports.updateBookingWithStudents = async (bookingId, studentsPayload, transaction) => {
+//   // Fetch booking with associations
+//   const booking = await Booking.findOne({
+//     where: { id: bookingId },
+//     include: [
+//       {
+//         model: BookingStudentMeta,
+//         as: "students",
+//         include: [
+//           { model: BookingParentMeta, as: "parents" },
+//           { model: BookingEmergencyMeta, as: "emergencyContacts" },
+//         ],
+//       },
+//     ],
+//     transaction,
+//   });
 
-  if (!booking) throw new Error("Booking not found.");
+//   if (!booking) throw new Error("Booking not found.");
 
-  for (const student of studentsPayload) {
-    let studentRecord;
+//   for (const student of studentsPayload) {
+//     let studentRecord;
 
-    if (student.id) {
-      // 🔹 Update existing student
-      studentRecord = booking.students.find((s) => s.id === student.id);
-      if (!studentRecord) continue;
+//     if (student.id) {
+//       // 🔹 Update existing student
+//       studentRecord = booking.students.find((s) => s.id === student.id);
+//       if (!studentRecord) continue;
 
-      const studentFields = [
-        "studentFirstName",
-        "studentLastName",
-        "dateOfBirth",
-        "age",
-        "gender",
-        "medicalInformation",
-      ];
-      studentFields.forEach((field) => {
-        if (student[field] !== undefined) studentRecord[field] = student[field];
-      });
-      await studentRecord.save({ transaction });
-    } else {
-      // 🔹 Create new student
-      studentRecord = await BookingStudentMeta.create(
-        {
-          bookingId,
-          studentFirstName: student.studentFirstName,
-          studentLastName: student.studentLastName,
-          dateOfBirth: student.dateOfBirth,
-          age: student.age,
-          gender: student.gender,
-          medicalInformation: student.medicalInformation,
-        },
-        { transaction }
-      );
-    }
+//       const studentFields = [
+//         "studentFirstName",
+//         "studentLastName",
+//         "dateOfBirth",
+//         "age",
+//         "gender",
+//         "medicalInformation",
+//       ];
+//       studentFields.forEach((field) => {
+//         if (student[field] !== undefined) studentRecord[field] = student[field];
+//       });
+//       await studentRecord.save({ transaction });
+//     } else {
+//       // 🔹 Create new student
+//       studentRecord = await BookingStudentMeta.create(
+//         {
+//           bookingId,
+//           studentFirstName: student.studentFirstName,
+//           studentLastName: student.studentLastName,
+//           dateOfBirth: student.dateOfBirth,
+//           age: student.age,
+//           gender: student.gender,
+//           medicalInformation: student.medicalInformation,
+//         },
+//         { transaction }
+//       );
+//     }
 
-    // 🔹 Parents
-    if (Array.isArray(student.parents)) {
-      for (const parent of student.parents) {
-        if (parent.id) {
-          const parentRecord = studentRecord.parents?.find((p) => p.id === parent.id);
-          if (parentRecord) {
-            const parentFields = [
-              "parentFirstName",
-              "parentLastName",
-              "parentEmail",
-              "parentPhoneNumber",
-              "relationToChild",
-              "howDidYouHear",
-            ];
-            parentFields.forEach((field) => {
-              if (parent[field] !== undefined) parentRecord[field] = parent[field];
-            });
-            await parentRecord.save({ transaction });
-          }
-        } else {
-          await BookingParentMeta.create(
-            {
-              bookingStudentMetaId: studentRecord.id,
-              parentFirstName: parent.parentFirstName,
-              parentLastName: parent.parentLastName,
-              parentEmail: parent.parentEmail,
-              parentPhoneNumber: parent.parentPhoneNumber,
-              relationToChild: parent.relationToChild,
-              howDidYouHear: parent.howDidYouHear,
-            },
-            { transaction }
-          );
-        }
-      }
-    }
+//     // 🔹 Parents
+//     if (Array.isArray(student.parents)) {
+//       for (const parent of student.parents) {
+//         if (parent.id) {
+//           const parentRecord = studentRecord.parents?.find((p) => p.id === parent.id);
+//           if (parentRecord) {
+//             const parentFields = [
+//               "parentFirstName",
+//               "parentLastName",
+//               "parentEmail",
+//               "parentPhoneNumber",
+//               "relationToChild",
+//               "howDidYouHear",
+//             ];
+//             parentFields.forEach((field) => {
+//               if (parent[field] !== undefined) parentRecord[field] = parent[field];
+//             });
+//             await parentRecord.save({ transaction });
+//           }
+//         } else {
+//           await BookingParentMeta.create(
+//             {
+//               bookingStudentMetaId: studentRecord.id,
+//               parentFirstName: parent.parentFirstName,
+//               parentLastName: parent.parentLastName,
+//               parentEmail: parent.parentEmail,
+//               parentPhoneNumber: parent.parentPhoneNumber,
+//               relationToChild: parent.relationToChild,
+//               howDidYouHear: parent.howDidYouHear,
+//             },
+//             { transaction }
+//           );
+//         }
+//       }
+//     }
 
-    // 🔹 Emergency Contacts
-    if (Array.isArray(student.emergencyContacts)) {
-      for (const emergency of student.emergencyContacts) {
-        if (emergency.id) {
-          const emergencyRecord = studentRecord.emergencyContacts?.find((e) => e.id === emergency.id);
-          if (emergencyRecord) {
-            const emergencyFields = [
-              "emergencyFirstName",
-              "emergencyLastName",
-              "emergencyPhoneNumber",
-              "emergencyRelation",
-            ];
-            emergencyFields.forEach((field) => {
-              if (emergency[field] !== undefined) emergencyRecord[field] = emergency[field];
-            });
-            await emergencyRecord.save({ transaction });
-          }
-        } else {
-          await BookingEmergencyMeta.create(
-            {
-              bookingStudentMetaId: studentRecord.id,
-              emergencyFirstName: emergency.emergencyFirstName,
-              emergencyLastName: emergency.emergencyLastName,
-              emergencyPhoneNumber: emergency.emergencyPhoneNumber,
-              emergencyRelation: emergency.emergencyRelation,
-            },
-            { transaction }
-          );
-        }
-      }
-    }
-  }
+//     // 🔹 Emergency Contacts
+//     if (Array.isArray(student.emergencyContacts)) {
+//       for (const emergency of student.emergencyContacts) {
+//         if (emergency.id) {
+//           const emergencyRecord = studentRecord.emergencyContacts?.find((e) => e.id === emergency.id);
+//           if (emergencyRecord) {
+//             const emergencyFields = [
+//               "emergencyFirstName",
+//               "emergencyLastName",
+//               "emergencyPhoneNumber",
+//               "emergencyRelation",
+//             ];
+//             emergencyFields.forEach((field) => {
+//               if (emergency[field] !== undefined) emergencyRecord[field] = emergency[field];
+//             });
+//             await emergencyRecord.save({ transaction });
+//           }
+//         } else {
+//           await BookingEmergencyMeta.create(
+//             {
+//               bookingStudentMetaId: studentRecord.id,
+//               emergencyFirstName: emergency.emergencyFirstName,
+//               emergencyLastName: emergency.emergencyLastName,
+//               emergencyPhoneNumber: emergency.emergencyPhoneNumber,
+//               emergencyRelation: emergency.emergencyRelation,
+//             },
+//             { transaction }
+//           );
+//         }
+//       }
+//     }
+//   }
 
-  return booking;
-};
+//   return booking;
+// };
