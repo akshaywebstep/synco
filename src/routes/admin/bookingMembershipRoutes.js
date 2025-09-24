@@ -127,7 +127,6 @@ router.put(
 // cancel membership booking----------------------------------------------------------------------------
 const {
   createCancelBooking,
-  getCancelBookings,
   sendCancelBookingEmail,
   // createNoMembership,
 } = require("../../controllers/admin/booking/cancelMembershipBookingController");
