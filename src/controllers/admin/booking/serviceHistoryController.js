@@ -46,7 +46,7 @@ exports.updateBookingStudents = async (req, res) => {
 
     // 🔹 Transaction
     const t = await sequelize.transaction();
-    const result = await BookingTrialService.updateBookingWithStudents(bookingId, studentsPayload, t);
+    const result = await BookingTrialService.updateBookingStudents(bookingId, studentsPayload, t);
 
     if (!result.status) {
       await t.rollback();
