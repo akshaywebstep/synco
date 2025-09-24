@@ -620,147 +620,155 @@ exports.updateSessionPlanGroup = async (req, res) => {
   console.log("STEP 1: Received request", { id, groupName, levels, player, files: Object.keys(files) });
 
   try {
-  // STEP 2: Fetch existing group
-  const existingResult = await SessionPlanGroupService.getSessionPlanGroupById(id, adminId);
-  if (!existingResult.status || !existingResult.data) {
-    console.log("STEP 2: Session Plan Group not found");
-    return res.status(404).json({ status: false, message: "Session Plan Group not found" });
-  }
-  const existing = existingResult.data;
-  console.log("STEP 2: Existing group fetched:", existing);
+    // STEP 2: Fetch existing group
+    const existingResult = await SessionPlanGroupService.getSessionPlanGroupById(id, adminId);
+    if (!existingResult.status || !existingResult.data) {
+      console.log("STEP 2: Session Plan Group not found");
+      return res.status(404).json({ status: false, message: "Session Plan Group not found" });
+    }
+    const existing = existingResult.data;
+    console.log("STEP 2: Existing group fetched:", existing);
 
-  // STEP 3: Parse levels
-  let parsedLevels = existing.levels || {};
-  if (levels) parsedLevels = typeof levels === "string" ? JSON.parse(levels) : levels;
-  console.log("STEP 3: Parsed levels:", parsedLevels);
+    // STEP 3: Parse levels
+    let parsedLevels = existing.levels || {};
+    if (levels) {
+      parsedLevels = typeof levels === "string" ? JSON.parse(levels) : levels;
 
-  // STEP 4: Helper to save files if new file provided (returns FTP URL)
-  const saveFileIfExists = async (file, type, oldUrl = null, level = null) => {
-    if (!file) return oldUrl || null;
+      // Merge with existing levels, replacing only provided keys
+      parsedLevels = {
+        ...existing.levels,   // keep existing levels
+        ...parsedLevels       // overwrite with new levels
+      };
+    }
+    console.log("STEP 3: Parsed levels:", parsedLevels);
 
-    const path = require("path");
-    const fs = require("fs").promises;
+    // STEP 4: Helper to save files if new file provided (returns FTP URL)
+    const saveFileIfExists = async (file, type, oldUrl = null, level = null) => {
+      if (!file) return oldUrl || null;
 
-    const uniqueId = Date.now() + "_" + Math.floor(Math.random() * 1e9);
-    const ext = path.extname(file.originalname || "file");
-    const fileName = uniqueId + ext;
+      const path = require("path");
+      const fs = require("fs").promises;
 
-    const localPath = path.join(
-      process.cwd(),
-      "uploads",
-      "temp",
-      "admin",
-      `${adminId}`,
-      "session-plan-group",
-      `${id}`,
-      type,
-      level || "",
-      fileName
+      const uniqueId = Date.now() + "_" + Math.floor(Math.random() * 1e9);
+      const ext = path.extname(file.originalname || "file");
+      const fileName = uniqueId + ext;
+
+      const localPath = path.join(
+        process.cwd(),
+        "uploads",
+        "temp",
+        "admin",
+        `${adminId}`,
+        "session-plan-group",
+        `${id}`,
+        type,
+        level || "",
+        fileName
+      );
+
+      console.log(`STEP 4: Saving file locally at:`, localPath);
+      await fs.mkdir(path.dirname(localPath), { recursive: true });
+      await saveFile(file, localPath);
+
+      let uploadedUrl = null;
+      try {
+        uploadedUrl = await uploadToFTP(localPath, fileName); // returns public URL
+        console.log(`STEP 4: Uploaded ${type}/${level || ""} to FTP:`, uploadedUrl);
+      } catch (err) {
+        console.error(`STEP 4: Failed to upload ${type}/${level || ""}`, err);
+      } finally {
+        await fs.unlink(localPath).catch(() => { });
+      }
+
+      return uploadedUrl || oldUrl;
+    };
+
+    // STEP 5: Flatten files and detect
+    const allFiles = Object.values(files).flat();
+    console.log("STEP 5: All uploaded files:", allFiles.map(f => f.fieldname || f.originalname));
+
+    const bannerFile = allFiles.find(
+      f =>
+        f.fieldname?.toLowerCase().includes("banner") ||
+        f.originalname?.toLowerCase().includes("banner")
     );
 
-    console.log(`STEP 4: Saving file locally at:`, localPath);
-    await fs.mkdir(path.dirname(localPath), { recursive: true });
-    await saveFile(file, localPath);
+    const videoFile = allFiles.find(
+      f =>
+        f.fieldname?.toLowerCase().includes("video") ||
+        f.originalname?.toLowerCase().includes("video")
+    );
 
-    let uploadedUrl = null;
-    try {
-      uploadedUrl = await uploadToFTP(localPath, fileName); // returns public URL
-      console.log(`STEP 4: Uploaded ${type}/${level || ""} to FTP:`, uploadedUrl);
-    } catch (err) {
-      console.error(`STEP 4: Failed to upload ${type}/${level || ""}`, err);
-    } finally {
-      await fs.unlink(localPath).catch(() => {});
+    const banner = await saveFileIfExists(bannerFile, "banner", existing.banner);
+    const video = await saveFileIfExists(videoFile, "video", existing.video);
+
+    console.log("STEP 5: Banner URL after update:", banner);
+    console.log("STEP 5: Video URL after update:", video);
+
+    // STEP 6: Update recordings
+    const recordingFields = {};
+    for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
+      const fileArr =
+        files[`${level}_recording`] ||
+        files[`${level}_recording_file`] ||
+        files[level] ||
+        allFiles.filter(f => f.originalname?.toLowerCase().includes(level)) ||
+        [];
+
+      recordingFields[`${level}_recording`] = fileArr?.[0]
+        ? await saveFileIfExists(fileArr[0], "recording", existing[`${level}_recording`], level)
+        : existing[`${level}_recording`] || null;
+
+      console.log(`STEP 6: recordingFields[${level}_recording] =`, recordingFields[`${level}_recording`]);
     }
 
-    return uploadedUrl || oldUrl;
-  };
+    // STEP 7: Prepare update payload
+    const updatePayload = {
+      groupName: groupName?.trim() || existing.groupName,
+      levels: parsedLevels,
+      player: player || existing.player,
+      banner,
+      video,
+      ...recordingFields,
+    };
 
-  // STEP 5: Flatten files and detect
-  const allFiles = Object.values(files).flat();
-  console.log("STEP 5: All uploaded files:", allFiles.map(f => f.fieldname || f.originalname));
+    console.log("STEP 7: updatePayload =", updatePayload);
 
-  const bannerFile = allFiles.find(
-    f =>
-      f.fieldname?.toLowerCase().includes("banner") ||
-      f.originalname?.toLowerCase().includes("banner")
-  );
+    // STEP 8: Update DB
+    const updateResult = await SessionPlanGroupService.updateSessionPlanGroup(id, updatePayload, adminId);
+    if (!updateResult.status) {
+      console.log("STEP 8: DB update failed");
+      return res.status(500).json({ status: false, message: "Update failed." });
+    }
+    const updated = updateResult.data;
 
-  const videoFile = allFiles.find(
-    f =>
-      f.fieldname?.toLowerCase().includes("video") ||
-      f.originalname?.toLowerCase().includes("video")
-  );
+    // STEP 9: Prepare response
+    const responseData = {
+      id: updated.id,
+      groupName: updated.groupName,
+      player: updated.player,
+      banner: updated.banner,
+      video: updated.video,
+      levels: typeof updated.levels === "string" ? JSON.parse(updated.levels) : updated.levels,
+      beginner_recording: updated.beginner_recording,
+      intermediate_recording: updated.intermediate_recording,
+      advanced_recording: updated.advanced_recording,
+      pro_recording: updated.pro_recording,
+      createdAt: updated.createdAt,
+      updatedAt: updated.updatedAt,
+    };
 
-  const banner = await saveFileIfExists(bannerFile, "banner", existing.banner);
-  const video = await saveFileIfExists(videoFile, "video", existing.video);
+    console.log("STEP 9: Final responseData =", responseData);
+    return res.status(200).json({
+      status: true,
+      message: "Session Plan Group updated successfully.",
+      data: responseData,
+    });
 
-  console.log("STEP 5: Banner URL after update:", banner);
-  console.log("STEP 5: Video URL after update:", video);
-
-  // STEP 6: Update recordings
-  const recordingFields = {};
-  for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
-    const fileArr =
-      files[`${level}_recording`] ||
-      files[`${level}_recording_file`] ||
-      files[level] ||
-      allFiles.filter(f => f.originalname?.toLowerCase().includes(level)) ||
-      [];
-
-    recordingFields[`${level}_recording`] = fileArr?.[0]
-      ? await saveFileIfExists(fileArr[0], "recording", existing[`${level}_recording`], level)
-      : existing[`${level}_recording`] || null;
-
-    console.log(`STEP 6: recordingFields[${level}_recording] =`, recordingFields[`${level}_recording`]);
+  } catch (error) {
+    console.error("STEP 10: Update error:", error);
+    return res.status(500).json({ status: false, message: "Failed to update Session Plan Group." });
   }
-
-  // STEP 7: Prepare update payload
-  const updatePayload = {
-    groupName: groupName?.trim() || existing.groupName,
-    levels: parsedLevels,
-    player: player || existing.player,
-    banner,
-    video,
-    ...recordingFields,
-  };
-
-  console.log("STEP 7: updatePayload =", updatePayload);
-
-  // STEP 8: Update DB
-  const updateResult = await SessionPlanGroupService.updateSessionPlanGroup(id, updatePayload, adminId);
-  if (!updateResult.status) {
-    console.log("STEP 8: DB update failed");
-    return res.status(500).json({ status: false, message: "Update failed." });
-  }
-  const updated = updateResult.data;
-
-  // STEP 9: Prepare response
-  const responseData = {
-    id: updated.id,
-    groupName: updated.groupName,
-    player: updated.player,
-    banner: updated.banner,
-    video: updated.video,
-    levels: typeof updated.levels === "string" ? JSON.parse(updated.levels) : updated.levels,
-    beginner_recording: updated.beginner_recording,
-    intermediate_recording: updated.intermediate_recording,
-    advanced_recording: updated.advanced_recording,
-    pro_recording: updated.pro_recording,
-    createdAt: updated.createdAt,
-    updatedAt: updated.updatedAt,
-  };
-
-  console.log("STEP 9: Final responseData =", responseData);
-  return res.status(200).json({
-    status: true,
-    message: "Session Plan Group updated successfully.",
-    data: responseData,
-  });
-
-} catch (error) {
-  console.error("STEP 10: Update error:", error);
-  return res.status(500).json({ status: false, message: "Failed to update Session Plan Group." });
-}
 
 };
 

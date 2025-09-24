@@ -55,6 +55,7 @@ const {
   // getSelectedBookFreeTrials,
   getAccountProfile,
   updateBooking,
+  updateBookingStudents,
 } = require("../../controllers/admin/booking/serviceHistoryController");
 
 // router.get("/selected/:id", authMiddleware, getSelectedBookFreeTrials);
@@ -69,6 +70,12 @@ router.put(
   authMiddleware,
   permissionMiddleware("book-membership", "update"),
   updateBooking
+);
+router.put(
+  "/service-history/update-booking/information/:bookingId",
+  authMiddleware,
+  permissionMiddleware("book-membership", "update"),
+  updateBookingStudents
 );
 
 // rebooking routes--------------------------------------------------------------------------------------

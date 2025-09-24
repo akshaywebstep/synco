@@ -1,13 +1,145 @@
 const { validateFormData } = require("../../../utils/validateFormData");
+// const {BookingTrialService, sequelize}  = require("../../../services/admin/booking/serviceHistory");
 const BookingTrialService = require("../../../services/admin/booking/serviceHistory");
+const { sequelize, Booking, BookingStudentMeta,
+  BookingParentMeta,
+  BookingEmergencyMeta, } = require("../../../models"); // direct import
+
 // const Admin = require("../../../services/admin/Admin");
 const { logActivity } = require("../../../utils/admin/activityLogger");
 const emailModel = require("../../../services/email");
 const sendEmail = require("../../../utils/email/sendEmail");
+const {
+  createNotification,
+} = require("../../../utils/admin/notificationHelper");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "service_history";
+exports.updateBookingStudents = async (req, res) => {
+  console.log("🔹 Step 0: Controller entered");
+
+  // Extract bookingId from URL param
+  const bookingId = req.params?.bookingId;
+  console.log("req.params:", req.params);
+  console.log("Booking ID resolved:", bookingId);
+
+  // Extract payloads
+  const studentsPayload = req.body?.students || [];
+  const adminId = req.admin?.id;
+
+  if (!bookingId) {
+    console.error("❌ Booking ID missing.");
+    return res.status(400).json({
+      status: false,
+      message: "Booking ID is required in URL (params.bookingId).",
+    });
+  }
+
+  const t = await sequelize.transaction();
+
+  try {
+    console.log("🔹 Step 1: Fetching booking with students, parents, emergency contacts");
+
+    // Fetch booking
+    const booking = await Booking.findOne({
+      where: { id: bookingId },
+      include: [
+        {
+          model: BookingStudentMeta,
+          as: "students",
+          include: [
+            { model: BookingParentMeta, as: "parents" },
+            { model: BookingEmergencyMeta, as: "emergencyContacts" },
+          ],
+        },
+      ],
+      transaction: t,
+    });
+
+    if (!booking) throw new Error("Booking not found");
+
+    console.log("🔹 Step 2: Updating students, parents, emergency contacts");
+
+    for (const student of studentsPayload) {
+      if (!student.id) continue;
+
+      const studentRecord = booking.students.find((s) => s.id === student.id);
+      if (!studentRecord) continue;
+
+      // Update student fields
+      ["studentFirstName", "studentLastName", "dateOfBirth", "age", "gender", "medicalInformation"].forEach(
+        (field) => {
+          if (student[field] !== undefined) studentRecord[field] = student[field];
+        }
+      );
+      await studentRecord.save({ transaction: t });
+
+      // Update parents
+      if (Array.isArray(student.parents)) {
+        for (const parent of student.parents) {
+          if (!parent.id) continue;
+          const parentRecord = studentRecord.parents.find((p) => p.id === parent.id);
+          if (parentRecord) {
+            ["parentFirstName", "parentLastName", "parentEmail", "parentPhoneNumber", "relationToChild", "howDidYouHear"].forEach(
+              (field) => {
+                if (parent[field] !== undefined) parentRecord[field] = parent[field];
+              }
+            );
+            await parentRecord.save({ transaction: t });
+          }
+        }
+      }
+
+      // Update emergency contacts
+      if (Array.isArray(student.emergencyContacts)) {
+        for (const emergency of student.emergencyContacts) {
+          if (!emergency.id) continue;
+          const emergencyRecord = studentRecord.emergencyContacts.find((e) => e.id === emergency.id);
+          if (emergencyRecord) {
+            ["emergencyFirstName", "emergencyLastName", "emergencyPhoneNumber", "emergencyRelation"].forEach(
+              (field) => {
+                if (emergency[field] !== undefined) emergencyRecord[field] = emergency[field];
+              }
+            );
+            await emergencyRecord.save({ transaction: t });
+          }
+        }
+      }
+    }
+
+    await t.commit();
+    console.log("✅ Step 3: Transaction committed successfully");
+
+    // Optional: Log activity & notification
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "update",
+      { message: `Updated student, parent, and emergency data for booking ID: ${bookingId}` },
+      true
+    );
+    console.log("✅ Step 4: Activity logged");
+
+    await createNotification(
+      req,
+      "Booking Updated",
+      `Student, parent, and emergency data updated for booking ID: ${bookingId}.`,
+      "System"
+    );
+    console.log("✅ Step 5: Notification created");
+
+    return res.status(200).json({
+      status: true,
+      message: "Student, parent, and emergency contact data updated successfully",
+    });
+  } catch (error) {
+    if (!t.finished) await t.rollback(); // only rollback if still active
+    console.error("❌ updateBookingStudents Error:", error.message);
+    return res.status(500).json({ status: false, message: error.message });
+  }
+};
 
 exports.getAccountProfile = async (req, res) => {
   const { id } = req.params;
@@ -134,8 +266,7 @@ exports.updateBooking = async (req, res) => {
             .replace(/{{className}}/g, classSchedule?.className || "N/A")
             .replace(
               /{{classTime}}/g,
-              `${classSchedule?.startTime || ""} - ${
-                classSchedule?.endTime || ""
+              `${classSchedule?.startTime || ""} - ${classSchedule?.endTime || ""
               }`
             )
             .replace(/{{startDate}}/g, booking.startDate || "")

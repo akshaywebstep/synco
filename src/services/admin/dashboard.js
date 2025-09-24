@@ -136,32 +136,63 @@ exports.getDashboardStats = async (
       },
     });
 
-    // --- Return dashboard data (always include thisWeek & lastMonth blocks)
+    // Fetch widgets
+    const widgets = await AdminDashboardWidget.findAll({
+      where: { adminId },
+      order: [["order", "ASC"]],
+    });
+
+    // Prepare full dashboard data
+    const fullDashboardData = {
+      totalStudents: {
+        count: totalStudents,
+        thisWeek: { conversion: `${totalStudents}%` },
+        lastMonth: { conversion: `${totalStudents}%` },
+      },
+      trialsBooked: {
+        count: trialsBookedCount,
+        thisWeek: { conversion: `${trialsBookedCount}%` },
+        lastMonth: { conversion: `${trialsBookedCount}%` },
+      },
+      classCapacity: {
+        count: totalCapacity,
+        thisWeek: { conversion: `${avgCapacity.toFixed(2)}%` },
+        lastMonth: { conversion: `${avgCapacity.toFixed(2)}%` },
+      },
+      cancellations: {
+        count: cancellationsCount,
+        thisWeek: { conversion: `${cancellationsCount}%` },
+        lastMonth: { conversion: `${cancellationsCount}%` },
+      },
+    };
+
+    // Build dashboard data
+    let dashboardData = {};
+
+    // If widgets exist, add them in their order
+    if (widgets.length > 0) {
+      widgets.forEach(widget => {
+        const key = widget.key;
+        if (fullDashboardData[key]) {
+          dashboardData[key] = fullDashboardData[key];
+        }
+      });
+      // Add any missing blocks that were not in widgets
+      Object.keys(fullDashboardData).forEach(key => {
+        if (!dashboardData[key]) {
+          dashboardData[key] = fullDashboardData[key];
+        }
+      });
+    } else {
+      // No widgets → return all blocks in default order
+      dashboardData = fullDashboardData;
+    }
+
+    // Return final response
     return {
       status: true,
       message: "Dashboard stats fetched successfully.",
-      data: {
-        totalStudents: {
-          count: totalStudents,
-          thisWeek: { conversion: `${totalStudents}%` },
-          lastMonth: { conversion: `${totalStudents}%` },
-        },
-        trialsBooked: {
-          count: trialsBookedCount,
-          thisWeek: { conversion: `${trialsBookedCount}%` },
-          lastMonth: { conversion: `${trialsBookedCount}%` },
-        },
-        classCapacity: {
-          count: totalCapacity,
-          thisWeek: { conversion: `${avgCapacity.toFixed(2)}%` },
-          lastMonth: { conversion: `${avgCapacity.toFixed(2)}%` },
-        },
-        cancellations: {
-          count: cancellationsCount,
-          thisWeek: { conversion: `${cancellationsCount}%` },
-          lastMonth: { conversion: `${cancellationsCount}%` },
-        },
-      },
+      data: dashboardData,
     };
   } catch (error) {
     console.error("❌ Error in getDashboardStats:", error);
