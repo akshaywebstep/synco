@@ -695,7 +695,7 @@ exports.getBookingsById = async (req, res) => {
 // };
 
 exports.updateBooking = async (req, res) => {
-  console.log("🔹 Step 0: Controller entered");
+  if (DEBUG) console.log("🔹 Step 0: Controller entered");
 
   const bookingId = req.params?.bookingId;
   const studentsPayload = req.body?.students || [];
@@ -703,10 +703,12 @@ exports.updateBooking = async (req, res) => {
 
   // ✅ Security check
   if (!adminId) {
+    if (DEBUG) console.warn("❌ Unauthorized access attempt");
     return res.status(401).json({ status: false, message: "Unauthorized" });
   }
 
   if (!bookingId) {
+    if (DEBUG) console.warn("❌ Booking ID missing in URL");
     return res.status(400).json({
       status: false,
       message: "Booking ID is required in URL (params.bookingId).",
@@ -716,14 +718,20 @@ exports.updateBooking = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
-    console.log("🔹 Step 1: Calling service to update booking + students");
+    if (DEBUG) console.log("🔹 Step 1: Calling service to update booking + students");
 
-    await bookingService.updateBookingWithStudents(bookingId, studentsPayload, t);
+    // Call service
+    const updateResult = await bookingService.updateBookingWithStudents(
+      bookingId,
+      studentsPayload,
+      t
+    );
 
     await t.commit();
-    console.log("✅ Step 2: Transaction committed successfully");
+    if (DEBUG) console.log("✅ Step 2: Transaction committed successfully");
 
     // Log activity
+    if (DEBUG) console.log("🔹 Step 3: Logging activity");
     await logActivity(
       req,
       "admin",
@@ -734,6 +742,7 @@ exports.updateBooking = async (req, res) => {
     );
 
     // Create notification
+    if (DEBUG) console.log("🔹 Step 4: Creating notification");
     await createNotification(
       req,
       "Booking Updated",
@@ -741,15 +750,21 @@ exports.updateBooking = async (req, res) => {
       "System"
     );
 
+    if (DEBUG) console.log("✅ Step 5: Controller finished successfully");
+
     return res.status(200).json({
-      status: true,
-      message: "Student, parent, and emergency contact data updated successfully",
+      status: updateResult.status,
+      message: updateResult.message,
+      data: updateResult.data || null,
     });
 
   } catch (error) {
     if (!t.finished) await t.rollback();
-    console.error("❌ updateBooking Error:", error.message);
-    return res.status(500).json({ status: false, message: error.message });
+    if (DEBUG) console.error("❌ updateBooking Error:", error.message);
+    return res.status(500).json({
+      status: false,
+      message: error.message || "Failed to update booking",
+    });
   }
 };
 

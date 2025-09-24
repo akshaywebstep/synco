@@ -1,6 +1,7 @@
 const { validateFormData } = require("../../../utils/validateFormData");
 const BookingTrialService = require("../../../services/admin/booking/waitingList");
 const { logActivity } = require("../../../utils/admin/activityLogger");
+const { sequelize } = require("../../../models");
 
 const {
   Venue,
@@ -443,22 +444,42 @@ exports.getAccountProfile = async (req, res) => {
 };
 
 exports.updateWaitinglistBooking = async (req, res) => {
+  const DEBUG = process.env.DEBUG === "true";
+
   try {
-    console.log("🔹 Controller entered: updateBookingStudents");
+    if (DEBUG) console.log("🔹 Controller entered: updateWaitinglistBooking");
 
     const bookingId = req.params?.bookingId;
     const studentsPayload = req.body?.students || [];
     const adminId = req.admin?.id;
 
-    if (!bookingId) {
-      return res.status(400).json({
-        status: false,
-        message: "Booking ID is required in URL (params.bookingId).",
-      });
+    // ✅ Security check
+    if (!adminId) return res.status(401).json({ status: false, message: "Unauthorized" });
+
+    // ✅ Validate bookingId
+    if (!bookingId) return res.status(400).json({ status: false, message: "Booking ID is required in URL" });
+
+    // ✅ Validate payload
+    if (!Array.isArray(studentsPayload) || studentsPayload.length === 0) {
+      return res.status(400).json({ status: false, message: "Students array is required and cannot be empty" });
     }
 
-    // 🔹 Delegate logic to service
-    await BookingTrialService.updateBookingStudents(bookingId, studentsPayload);
+    studentsPayload.forEach(student => {
+      if (!student.id) throw new Error("Each student must have an ID");
+      if (!Array.isArray(student.parents)) student.parents = [];
+      if (!Array.isArray(student.emergencyContacts)) student.emergencyContacts = [];
+    });
+
+    const t = await sequelize.transaction();
+    const result = await BookingTrialService.updateBookingStudents(bookingId, studentsPayload, t);
+
+    if (!result.status) {
+      await t.rollback();
+      return res.status(400).json(result);
+    }
+
+    await t.commit();
+    if (DEBUG) console.log("✅ Transaction committed");
 
     // 🔹 Log activity
     await logActivity(
@@ -478,12 +499,12 @@ exports.updateWaitinglistBooking = async (req, res) => {
       "System"
     );
 
-    return res.status(200).json({
-      status: true,
-      message: "Student, parent, and emergency contact data updated successfully",
-    });
+    if (DEBUG) console.log("✅ Controller finished successfully");
+
+    return res.status(200).json(result);
+
   } catch (error) {
-    console.error("❌ Controller updateBookingStudents Error:", error.message);
+    if (DEBUG) console.error("❌ Controller updateWaitinglistBooking Error:", error.message);
     return res.status(500).json({ status: false, message: error.message });
   }
 };
