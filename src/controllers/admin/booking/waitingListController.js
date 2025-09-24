@@ -442,6 +442,52 @@ exports.getAccountProfile = async (req, res) => {
   }
 };
 
+exports.updateWaitinglistBooking = async (req, res) => {
+  try {
+    console.log("🔹 Controller entered: updateBookingStudents");
+
+    const bookingId = req.params?.bookingId;
+    const studentsPayload = req.body?.students || [];
+    const adminId = req.admin?.id;
+
+    if (!bookingId) {
+      return res.status(400).json({
+        status: false,
+        message: "Booking ID is required in URL (params.bookingId).",
+      });
+    }
+
+    // 🔹 Delegate logic to service
+    await BookingTrialService.updateBookingStudents(bookingId, studentsPayload);
+
+    // 🔹 Log activity
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "update",
+      { message: `Updated student, parent, and emergency data for booking ID: ${bookingId}` },
+      true
+    );
+
+    // 🔹 Send notification
+    await createNotification(
+      req,
+      "Booking Updated",
+      `Student, parent, and emergency data updated for booking ID: ${bookingId}.`,
+      "System"
+    );
+
+    return res.status(200).json({
+      status: true,
+      message: "Student, parent, and emergency contact data updated successfully",
+    });
+  } catch (error) {
+    console.error("❌ Controller updateBookingStudents Error:", error.message);
+    return res.status(500).json({ status: false, message: error.message });
+  }
+};
+
 exports.removeWaitingList = async (req, res) => {
   try {
     const { bookingId, removedReason, removedNotes } = req.body;

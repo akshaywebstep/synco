@@ -629,6 +629,101 @@ exports.getBookingById = async (id, adminId) => {
   }
 };
 
+exports.updateBookingStudents = async (bookingId, studentsPayload) => {
+  const t = await sequelize.transaction();
+
+  try {
+    // 🔹 Step 1: Fetch booking
+    const booking = await Booking.findOne({
+      where: { id: bookingId },
+      include: [
+        {
+          model: BookingStudentMeta,
+          as: "students",
+          include: [
+            { model: BookingParentMeta, as: "parents" },
+            { model: BookingEmergencyMeta, as: "emergencyContacts" },
+          ],
+        },
+      ],
+      transaction: t,
+    });
+
+    if (!booking) throw new Error("Booking not found.");
+
+    // 🔹 Step 2: Update students, parents, and emergency contacts
+    for (const student of studentsPayload) {
+      if (!student.id) continue;
+
+      const studentRecord = booking.students.find((s) => s.id === student.id);
+      if (!studentRecord) continue;
+
+      // Update student fields
+      const studentFields = [
+        "studentFirstName",
+        "studentLastName",
+        "dateOfBirth",
+        "age",
+        "gender",
+        "medicalInformation",
+      ];
+      studentFields.forEach((field) => {
+        if (student[field] !== undefined) studentRecord[field] = student[field];
+      });
+      await studentRecord.save({ transaction: t });
+
+      // Update parents
+      if (Array.isArray(student.parents)) {
+        for (const parent of student.parents) {
+          if (!parent.id) continue;
+          const parentRecord = studentRecord.parents.find((p) => p.id === parent.id);
+          if (parentRecord) {
+            const parentFields = [
+              "parentFirstName",
+              "parentLastName",
+              "parentEmail",
+              "parentPhoneNumber",
+              "relationToChild",
+              "howDidYouHear",
+            ];
+            parentFields.forEach((field) => {
+              if (parent[field] !== undefined) parentRecord[field] = parent[field];
+            });
+            await parentRecord.save({ transaction: t });
+          }
+        }
+      }
+
+      // Update emergency contacts
+      if (Array.isArray(student.emergencyContacts)) {
+        for (const emergency of student.emergencyContacts) {
+          if (!emergency.id) continue;
+          const emergencyRecord = studentRecord.emergencyContacts.find((e) => e.id === emergency.id);
+          if (emergencyRecord) {
+            const emergencyFields = [
+              "emergencyFirstName",
+              "emergencyLastName",
+              "emergencyPhoneNumber",
+              "emergencyRelation",
+            ];
+            emergencyFields.forEach((field) => {
+              if (emergency[field] !== undefined) emergencyRecord[field] = emergency[field];
+            });
+            await emergencyRecord.save({ transaction: t });
+          }
+        }
+      }
+    }
+
+    await t.commit();
+    return true;
+  } catch (error) {
+    await t.rollback();
+    console.error("❌ Service updateBookingStudents Error:", error.message);
+    throw error;
+  }
+};
+
 exports.sendAllEmailToParents = async ({ bookingId }) => {
   try {
     // 1️⃣ Fetch main booking
