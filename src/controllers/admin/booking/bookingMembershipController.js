@@ -7,8 +7,15 @@ const {
   Venue,
   ClassSchedule,
   BookingParentMeta,
+  BookingStudentMeta,
   Booking,
+  BookingEmergencyMeta,
 } = require("../../../models");
+const bookingService = require("../../../services/admin/booking/bookingMembership");
+
+// const { sequelize, Booking, BookingStudentMeta,
+//   BookingParentMeta,
+//   BookingEmergencyMeta, } = require("../../../models"); 
 const emailModel = require("../../../services/email");
 const sendEmail = require("../../../utils/email/sendEmail");
 const {
@@ -617,6 +624,128 @@ exports.getBookingsById = async (req, res) => {
       status: false,
       message: "Server error",
     });
+  }
+};
+
+// exports.updateBooking = async (req, res) => {
+//   const { bookingId } = req.params;
+//   const formData = req.body;
+
+//   console.log("🚀 Received bookingId:", bookingId);
+//   console.log("🚀 Form data:", formData);
+
+//   try {
+//     // Step 0: Fetch existing booking
+//     const bookingRes = await BookingMembershipService.getBookingsById(bookingId);
+//     if (!bookingRes.status) {
+//       console.error("❌ Booking not found:", bookingRes.message);
+//       return res.status(404).json({ status: false, message: bookingRes.message });
+//     }
+//     const existingBooking = bookingRes.data;
+//     console.log("✅ Existing booking:", existingBooking);
+
+//     // Step 2: Validate form
+//     const { isValid, error } = validateFormData(formData, {
+//       requiredFields: [],
+//     });
+//     if (!isValid) {
+//       console.error("❌ Form validation failed:", error);
+//       await logActivity(req, "PANEL", "BOOKING", "update", error, false);
+//       return res.status(400).json({ status: false, ...error });
+//     }
+
+//     if (!Array.isArray(formData.students) || formData.students.length === 0) {
+//       return res.status(400).json({ status: false, message: "At least one student is required." });
+//     }
+
+//     formData.bookingId = bookingId;
+
+//     // Step 3: Update booking using service
+//     const result = await BookingMembershipService.updateBooking(formData, {
+//       adminId: req.admin?.id || null,
+//     });
+
+//     if (!result.status) {
+//       console.error("❌ Booking update failed:", result.message);
+//       await logActivity(req, "PANEL", "BOOKING", "update", result, false);
+//       return res.status(500).json({ status: false, message: result.message });
+//     }
+
+//     // Step 4: Prepare response
+//     const responseData = {
+//       booking: bookingId,
+//       students: formData.students,
+//       parents: formData.parents || [],
+//       emergency: formData.emergency || null,
+//     };
+
+//     console.log("✅ Booking updated successfully:", responseData);
+//     await logActivity(req, "PANEL", "BOOKING", "update", result, true);
+
+//     return res.status(200).json({
+//       status: true,
+//       message: "Booking updated successfully. Confirmation email sent.",
+//       data: responseData,
+//     });
+//   } catch (error) {
+//     console.error("❌ Server error:", error);
+//     await logActivity(req, "PANEL", "BOOKING", "update", { error: error.message }, false);
+//     return res.status(500).json({ status: false, message: "Server error." });
+//   }
+// };
+
+exports.updateBooking = async (req, res) => {
+  console.log("🔹 Step 0: Controller entered");
+
+  const bookingId = req.params?.bookingId;
+  const studentsPayload = req.body?.students || [];
+  const adminId = req.admin?.id;
+
+  if (!bookingId) {
+    return res.status(400).json({
+      status: false,
+      message: "Booking ID is required in URL (params.bookingId).",
+    });
+  }
+
+  const t = await sequelize.transaction();
+
+  try {
+    console.log("🔹 Step 1: Calling service to update booking + students");
+
+    await bookingService.updateBookingWithStudents(bookingId, studentsPayload, t);
+
+    await t.commit();
+    console.log("✅ Step 2: Transaction committed successfully");
+
+    // Log activity
+    await logActivity(
+      req,
+      "admin",
+      "book-membership",
+      "update",
+      { message: `Updated student, parent, and emergency data for booking ID: ${bookingId}` },
+      true
+    );
+    console.log("✅ Step 3: Activity logged");
+
+    // Create notification
+    await createNotification(
+      req,
+      "Booking Updated",
+      `Student, parent, and emergency data updated for booking ID: ${bookingId}.`,
+      "System"
+    );
+    console.log("✅ Step 4: Notification created");
+
+    return res.status(200).json({
+      status: true,
+      message: "Student, parent, and emergency contact data updated successfully",
+    });
+  } catch (error) {
+    if (!t.finished) await t.rollback();
+    console.error("❌ updateBooking Error:", error.message);
+    return res.status(500).json({ status: false, message: error.message });
   }
 };
 

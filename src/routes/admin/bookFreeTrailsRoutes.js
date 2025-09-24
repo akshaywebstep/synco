@@ -74,7 +74,7 @@ router.put(
 router.put(
   "/service-history/update-booking/information/:bookingId",
   authMiddleware,
-  permissionMiddleware("book-membership", "update"),
+  permissionMiddleware("book-free-trial", "update"),
   updateBookingStudents
 );
 
