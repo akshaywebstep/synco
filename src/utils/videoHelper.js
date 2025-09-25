@@ -1,6 +1,8 @@
+// videoHelper.js
 const ffmpeg = require("fluent-ffmpeg");
 const ffmpegInstaller = require("@ffmpeg-installer/ffmpeg");
 const ffprobeInstaller = require("@ffprobe-installer/ffprobe");
+const { spawn } = require("child_process");
 const axios = require("axios");
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
@@ -30,24 +32,48 @@ const getVideoDurationInSeconds = (filePath) => {
 };
 
 /**
- * Get duration (in seconds) directly from a remote URL
- * without downloading full file
+ * Get duration (in seconds) from a remote video
+ * Streams only the first few MB to ffprobe (avoids crashes on live servers)
  */
 const getRemoteVideoDuration = async (videoUrl) => {
-  return new Promise((resolve) => {
-    if (!videoUrl) return resolve(0);
-
+  return new Promise(async (resolve) => {
     try {
-      ffmpeg.ffprobe(videoUrl, (err, metadata) => {
-        if (err) {
-          if (DEBUG) console.error("ffprobe remote error:", err.message || err);
-          return resolve(0);
-        }
-        const duration = metadata?.format?.duration || 0;
+      // Fetch only the first 5 MB of the file (enough for metadata)
+      const response = await axios.get(videoUrl, {
+        responseType: "stream",
+        headers: { Range: "bytes=0-5000000" },
+      });
+
+      const ffprobe = spawn(ffprobeInstaller.path, [
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        "pipe:0", // read from stdin
+      ]);
+
+      let output = "";
+      ffprobe.stdout.on("data", (data) => {
+        output += data.toString();
+      });
+
+      ffprobe.on("close", () => {
+        const duration = parseFloat(output) || 0;
+        if (DEBUG) console.log("Remote video duration:", duration);
         resolve(duration);
       });
+
+      ffprobe.on("error", (err) => {
+        if (DEBUG) console.error("ffprobe stream error:", err);
+        resolve(0);
+      });
+
+      // Pipe partial stream into ffprobe
+      response.data.pipe(ffprobe.stdin);
     } catch (error) {
-      if (DEBUG) console.error("Unexpected error:", error);
+      if (DEBUG) console.error("Axios stream error:", error.message || error);
       resolve(0);
     }
   });
