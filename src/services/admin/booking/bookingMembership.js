@@ -1684,6 +1684,7 @@ exports.getBookingsById = async (bookingId) => {
     // ✅ Parse booking as before
     const students =
       booking.students?.map((s) => ({
+        id: s.id, // <-- DB id
         studentFirstName: s.studentFirstName,
         studentLastName: s.studentLastName,
         dateOfBirth: s.dateOfBirth,
@@ -1696,6 +1697,7 @@ exports.getBookingsById = async (bookingId) => {
       booking.students?.flatMap(
         (s) =>
           s.parents?.map((p) => ({
+            id: p.id, // <-- DB id
             parentFirstName: p.parentFirstName,
             parentLastName: p.parentLastName,
             parentEmail: p.parentEmail,
@@ -1709,6 +1711,7 @@ exports.getBookingsById = async (bookingId) => {
       booking.students?.flatMap(
         (s) =>
           s.emergencyContacts?.map((e) => ({
+            id: e.id, // <-- DB id
             emergencyFirstName: e.emergencyFirstName,
             emergencyLastName: e.emergencyLastName,
             emergencyPhoneNumber: e.emergencyPhoneNumber,

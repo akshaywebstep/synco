@@ -437,6 +437,8 @@ exports.getBookingById = async (id, adminId) => {
     // Extract students
     const students =
       booking.students?.map((s) => ({
+        id: s.id, // <-- include DB id
+        studentId: s.studentId,
         studentFirstName: s.studentFirstName,
         studentLastName: s.studentLastName,
         dateOfBirth: s.dateOfBirth,
@@ -448,6 +450,8 @@ exports.getBookingById = async (id, adminId) => {
     // Extract parents from first student
     const parents =
       booking.students?.[0]?.parents?.map((p) => ({
+        id: p.id, // <-- include DB id
+        parentId: p.parentId,
         parentFirstName: p.parentFirstName,
         parentLastName: p.parentLastName,
         parentEmail: p.parentEmail,
@@ -459,6 +463,8 @@ exports.getBookingById = async (id, adminId) => {
     // Extract emergency contacts from first student
     const emergency =
       booking.students?.[0]?.emergencyContacts?.map((e) => ({
+        id: e.id, // <-- include DB id
+        emergencyId: e.emergencyId,
         emergencyFirstName: e.emergencyFirstName,
         emergencyLastName: e.emergencyLastName,
         emergencyPhoneNumber: e.emergencyPhoneNumber,
@@ -628,9 +634,8 @@ exports.updateBooking = async (payload, adminId, id) => {
             pan: null,
             billing_requests: {
               payment_request: {
-                description: `${venue?.name || "Venue"} - ${
-                  classSchedule?.className || "Class"
-                }`,
+                description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+                  }`,
                 amount: Math.round(price * 100),
                 scheme: "faster_payments",
                 currency: "GBP",
@@ -674,9 +679,8 @@ exports.updateBooking = async (payload, adminId, id) => {
               currency: "GBP",
               amount: price,
               merchantRef,
-              description: `${venue?.name || "Venue"} - ${
-                classSchedule?.className || "Class"
-              }`,
+              description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+                }`,
               commerceType: "ECOM",
             },
             paymentMethod: {
@@ -732,9 +736,8 @@ exports.updateBooking = async (payload, adminId, id) => {
             currency: "GBP",
             merchantRef:
               paymentType === "rrn" ? payload.payment.referenceId : merchantRef,
-            description: `${venue?.name || "Venue"} - ${
-              classSchedule?.className || "Class"
-            }`,
+            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+              }`,
             commerceType: "ECOM",
             gatewayResponse,
             transactionMeta: { status: paymentStatus },

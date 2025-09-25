@@ -565,6 +565,7 @@ exports.getBookingById = async (id, adminId) => {
     // Extract students
     const students =
       booking.students?.map((s) => ({
+        id: s.id, // <-- DB id
         studentFirstName: s.studentFirstName,
         studentLastName: s.studentLastName,
         dateOfBirth: s.dateOfBirth,
@@ -576,6 +577,7 @@ exports.getBookingById = async (id, adminId) => {
     // Extract parents from first student
     const parents =
       booking.students?.[0]?.parents?.map((p) => ({
+        id: p.id, // <-- DB id
         parentFirstName: p.parentFirstName,
         parentLastName: p.parentLastName,
         parentEmail: p.parentEmail,
@@ -587,6 +589,7 @@ exports.getBookingById = async (id, adminId) => {
     // Extract emergency contacts from first student
     const emergency =
       booking.students?.[0]?.emergencyContacts?.map((e) => ({
+        id: e.id, // <-- DB id
         emergencyFirstName: e.emergencyFirstName,
         emergencyLastName: e.emergencyLastName,
         emergencyPhoneNumber: e.emergencyPhoneNumber,
