@@ -1,27 +1,36 @@
-const { getVideoDurationInSeconds: getDuration } = require("get-video-duration");
+const ffmpeg = require("fluent-ffmpeg");
+const ffprobeStatic = require("ffprobe-static");
+
 const DEBUG = true;
 
-/**
- * Get the duration of a video from its URL or local file in seconds
- * @param {string} videoUrl - The video URL (MP4, etc.)
- * @returns {Promise<number>} Duration in seconds
- */
-const getVideoDurationInSeconds = async (videoUrl) => {
-  if (!videoUrl) return 0;
+// Set ffprobe path
+ffmpeg.setFfprobePath(ffprobeStatic.path);
 
-  try {
+/**
+ * Get video duration in seconds from a URL or local file
+ * @param {string} videoUrl
+ * @returns {Promise<number>}
+ */
+const getVideoDurationInSeconds = (videoUrl) => {
+  return new Promise((resolve) => {
+    if (!videoUrl) return resolve(0);
+
     if (DEBUG) console.log("Fetching duration for video:", videoUrl);
-    const duration = await getDuration(videoUrl); // Works for remote and local files
-    if (DEBUG) console.log(`Duration for ${videoUrl}: ${duration} seconds`);
-    return duration || 0;
-  } catch (err) {
-    if (DEBUG) console.error("Error getting video duration:", err);
-    return 0;
-  }
+
+    ffmpeg.ffprobe(videoUrl, (err, metadata) => {
+      if (err) {
+        if (DEBUG) console.error("Error getting video duration:", err);
+        return resolve(0);
+      }
+      const duration = metadata.format.duration || 0;
+      if (DEBUG) console.log(`Duration for ${videoUrl}: ${duration} seconds`);
+      resolve(duration);
+    });
+  });
 };
 
 /**
- * Convert seconds to HH:MM:SS format
+ * Convert seconds to HH:MM:SS
  */
 const formatDuration = (totalSeconds) => {
   const hours = Math.floor(totalSeconds / 3600);
@@ -30,8 +39,4 @@ const formatDuration = (totalSeconds) => {
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 };
 
-module.exports = {
-  getVideoDurationInSeconds,
-  formatDuration,
-  DEBUG,
-};
+module.exports = { getVideoDurationInSeconds, formatDuration, DEBUG };
