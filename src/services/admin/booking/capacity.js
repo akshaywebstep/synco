@@ -143,37 +143,65 @@ exports.getAllBookings = async (adminId, filters = {}) => {
     });
 
     // --- CALCULATE STATS ---
-    let venues = Object.values(venueMap).map((venue) => {
+    venues = Object.values(venueMap).map((venue) => {
       let totalCapacity = 0;
       let totalBooked = 0;
       let memberCount = 0;
       let freeTrialCount = 0;
 
-      venue.classes.forEach((cls) => {
-        totalCapacity += cls.capacity || 0;
-        totalBooked += cls.bookings.length;
+      // --- Add stats for each class ---
+      venue.classes = venue.classes.map((cls) => {
+        let clsTotalBooked = cls.bookings.length;
+        let clsMembers = 0;
+        let clsFreeTrials = 0;
+
         cls.bookings.forEach((booking) => {
-          if (booking.bookingType === "paid")
-            memberCount += booking.students.length;
-          if (booking.bookingType === "free")
-            freeTrialCount += booking.students.length;
+          if (booking.bookingType === "paid") clsMembers += booking.students.length;
+          if (booking.bookingType === "free") clsFreeTrials += booking.students.length;
         });
+
+        // const clsStats = {
+        //   totalCapacity: cls.capacity || 0,
+        //   totalBooked: clsTotalBooked,
+        //   availableSpaces: (cls.capacity || 0) - clsTotalBooked,
+        //   members: clsMembers,
+        //   freeTrials: clsFreeTrials,
+        //   occupancyRate: cls.capacity
+        //     ? Math.round((clsTotalBooked / cls.capacity) * 100)
+        //     : 0,
+        // };
+        const clsStats = {
+  totalCapacity: cls.capacity || 0,
+  totalBooked: clsTotalBooked,
+  availableSpaces: Math.max((cls.capacity || 0) - clsTotalBooked, 0),
+  members: clsMembers,
+  freeTrials: clsFreeTrials,
+  occupancyRate: cls.capacity
+    ? Math.round((clsTotalBooked / cls.capacity) * 100)
+    : 0,
+};
+
+        totalCapacity += clsStats.totalCapacity;
+        totalBooked += clsStats.totalBooked;
+        memberCount += clsStats.members;
+        freeTrialCount += clsStats.freeTrials;
+
+        return { ...cls, stats: clsStats };
       });
 
-      return {
-        ...venue,
-        stats: {
-          totalCapacity,
-          totalBooked,
-          availableSpaces: totalCapacity - totalBooked,
-          members: memberCount,
-          freeTrials: freeTrialCount,
-          occupancyRate:
-            totalCapacity > 0
-              ? Math.round((totalBooked / totalCapacity) * 100)
-              : 0,
-        },
-      };
+      return venue;
+
+      // return {
+      //   ...venue,
+      //   stats: {
+      //     totalCapacity,
+      //     totalBooked,
+      //     availableSpaces: totalCapacity - totalBooked,
+      //     members: memberCount,
+      //     freeTrials: freeTrialCount,
+      //     occupancyRate: totalCapacity > 0 ? Math.round((totalBooked / totalCapacity) * 100) : 0,
+      //   },
+      // };
     });
 
     // ✅ Remove venues with no classes
@@ -227,25 +255,39 @@ exports.getAllBookings = async (adminId, filters = {}) => {
     }
 
     // --- GLOBAL STATS ---
-    const globalStats = venues.reduce(
-      (acc, v) => {
-        acc.totalCapacity += v.stats.totalCapacity;
-        acc.totalBooked += v.stats.totalBooked;
-        acc.members += v.stats.members;
-        acc.freeTrials += v.stats.freeTrials;
-        return acc;
-      },
-      { totalCapacity: 0, totalBooked: 0, members: 0, freeTrials: 0 }
-    );
+    // const globalStats = venues.reduce(
+    //   (acc, v) => {
+    //     acc.totalCapacity += v.stats.totalCapacity;
+    //     acc.totalBooked += v.stats.totalBooked;
+    //     acc.members += v.stats.members;
+    //     acc.freeTrials += v.stats.freeTrials;
+    //     return acc;
+    //   },
+    //   { totalCapacity: 0, totalBooked: 0, members: 0, freeTrials: 0 }
+    // );
 
-    globalStats.availableSpaces =
-      globalStats.totalCapacity - globalStats.totalBooked;
-    globalStats.occupancyRate =
-      globalStats.totalCapacity > 0
-        ? Math.round(
-            (globalStats.totalBooked / globalStats.totalCapacity) * 100
-          )
-        : 0;
+    // globalStats.availableSpaces =
+    //   globalStats.totalCapacity - globalStats.totalBooked;
+    // globalStats.occupancyRate =
+    //   globalStats.totalCapacity > 0
+    //     ? Math.round(
+    //       (globalStats.totalBooked / globalStats.totalCapacity) * 100
+    //     )
+    //     : 0;
+    const globalStats = venues.reduce((acc, venue) => {
+  venue.classes.forEach((cls) => {
+    acc.totalCapacity += cls.stats.totalCapacity;
+    acc.totalBooked += cls.stats.totalBooked;
+    acc.members += cls.stats.members;
+    acc.freeTrials += cls.stats.freeTrials;
+  });
+  return acc;
+}, { totalCapacity: 0, totalBooked: 0, members: 0, freeTrials: 0 });
+
+globalStats.availableSpaces = globalStats.totalCapacity - globalStats.totalBooked;
+globalStats.occupancyRate = globalStats.totalCapacity
+  ? Math.round((globalStats.totalBooked / globalStats.totalCapacity) * 100)
+  : 0;
 
     return {
       status: true,

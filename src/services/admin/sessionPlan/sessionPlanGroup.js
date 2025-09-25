@@ -199,6 +199,7 @@ exports.getSessionPlanGroupVideoStream = async (id, createdBy, filename) => {
     return { status: false, message: error.message };
   }
 };
+
 exports.updateSessionPlanGroup = async (id, updatePayload, createdBy) => {
   try {
     const sessionGroup = await SessionPlanGroup.findOne({

@@ -266,15 +266,28 @@ exports.createAdmin = async (req, res) => {
             }))
           : [];
 
+      // const mailData = {
+      //   // recipient: [{ name, email }],
+      //   recipient: [{ firstName, lastName, email }],
+      //   cc: mapRecipients(emailConfig.cc),
+      //   bcc: mapRecipients(emailConfig.bcc),
+      //   subject: emailSubject,
+      //   htmlBody,
+      //   attachments: [],
+      // };
       const mailData = {
-        // recipient: [{ name, email }],
-        recipient: [{ firstName, lastName, email }],
-        cc: mapRecipients(emailConfig.cc),
-        bcc: mapRecipients(emailConfig.bcc),
-        subject: emailSubject,
-        htmlBody,
-        attachments: [],
-      };
+  recipient: [
+    {
+      name: `${firstName || ""} ${lastName || ""}`.trim(), // full name
+      email: email, // actual email
+    },
+  ],
+  cc: mapRecipients(emailConfig.cc),
+  bcc: mapRecipients(emailConfig.bcc),
+  subject: emailSubject,
+  htmlBody,
+  attachments: [],
+};
 
       const emailResult = await sendEmail(emailConfig, mailData);
 

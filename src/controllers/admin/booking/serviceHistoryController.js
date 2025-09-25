@@ -16,102 +16,47 @@ const {
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "service_history";
+// Controller
 exports.updateBookingStudents = async (req, res) => {
-  console.log("🔹 Step 0: Controller entered");
-
-  // Extract bookingId from URL param
-  const bookingId = req.params?.bookingId;
-  console.log("req.params:", req.params);
-  console.log("Booking ID resolved:", bookingId);
-
-  // Extract payloads
-  const studentsPayload = req.body?.students || [];
-  const adminId = req.admin?.id;
-
-  if (!bookingId) {
-    console.error("❌ Booking ID missing.");
-    return res.status(400).json({
-      status: false,
-      message: "Booking ID is required in URL (params.bookingId).",
-    });
-  }
-
-  const t = await sequelize.transaction();
+  // const DEBUG = process.env.DEBUG === "true";
 
   try {
-    console.log("🔹 Step 1: Fetching booking with students, parents, emergency contacts");
+    if (DEBUG) console.log("🔹 Controller entered: updateBookingStudents");
 
-    // Fetch booking
-    const booking = await Booking.findOne({
-      where: { id: bookingId },
-      include: [
-        {
-          model: BookingStudentMeta,
-          as: "students",
-          include: [
-            { model: BookingParentMeta, as: "parents" },
-            { model: BookingEmergencyMeta, as: "emergencyContacts" },
-          ],
-        },
-      ],
-      transaction: t,
+    const bookingId = req.params?.bookingId;
+    const studentsPayload = req.body?.students || [];
+    const adminId = req.admin?.id;
+
+    // ✅ Security check
+    if (!adminId) return res.status(401).json({ status: false, message: "Unauthorized" });
+
+    // ✅ Validate bookingId
+    if (!bookingId) return res.status(400).json({ status: false, message: "Booking ID is required in URL" });
+
+    // ✅ Validate payload
+    if (!Array.isArray(studentsPayload) || studentsPayload.length === 0) {
+      return res.status(400).json({ status: false, message: "Students array is required and cannot be empty" });
+    }
+
+    studentsPayload.forEach(student => {
+      if (!student.id) throw new Error("Each student must have an ID");
+      if (!Array.isArray(student.parents)) student.parents = [];
+      if (!Array.isArray(student.emergencyContacts)) student.emergencyContacts = [];
     });
 
-    if (!booking) throw new Error("Booking not found");
+    // 🔹 Transaction
+    const t = await sequelize.transaction();
+    const result = await BookingTrialService.updateBookingStudents(bookingId, studentsPayload, t);
 
-    console.log("🔹 Step 2: Updating students, parents, emergency contacts");
-
-    for (const student of studentsPayload) {
-      if (!student.id) continue;
-
-      const studentRecord = booking.students.find((s) => s.id === student.id);
-      if (!studentRecord) continue;
-
-      // Update student fields
-      ["studentFirstName", "studentLastName", "dateOfBirth", "age", "gender", "medicalInformation"].forEach(
-        (field) => {
-          if (student[field] !== undefined) studentRecord[field] = student[field];
-        }
-      );
-      await studentRecord.save({ transaction: t });
-
-      // Update parents
-      if (Array.isArray(student.parents)) {
-        for (const parent of student.parents) {
-          if (!parent.id) continue;
-          const parentRecord = studentRecord.parents.find((p) => p.id === parent.id);
-          if (parentRecord) {
-            ["parentFirstName", "parentLastName", "parentEmail", "parentPhoneNumber", "relationToChild", "howDidYouHear"].forEach(
-              (field) => {
-                if (parent[field] !== undefined) parentRecord[field] = parent[field];
-              }
-            );
-            await parentRecord.save({ transaction: t });
-          }
-        }
-      }
-
-      // Update emergency contacts
-      if (Array.isArray(student.emergencyContacts)) {
-        for (const emergency of student.emergencyContacts) {
-          if (!emergency.id) continue;
-          const emergencyRecord = studentRecord.emergencyContacts.find((e) => e.id === emergency.id);
-          if (emergencyRecord) {
-            ["emergencyFirstName", "emergencyLastName", "emergencyPhoneNumber", "emergencyRelation"].forEach(
-              (field) => {
-                if (emergency[field] !== undefined) emergencyRecord[field] = emergency[field];
-              }
-            );
-            await emergencyRecord.save({ transaction: t });
-          }
-        }
-      }
+    if (!result.status) {
+      await t.rollback();
+      return res.status(400).json(result);
     }
 
     await t.commit();
-    console.log("✅ Step 3: Transaction committed successfully");
+    if (DEBUG) console.log("✅ Transaction committed");
 
-    // Optional: Log activity & notification
+    // 🔹 Log activity
     await logActivity(
       req,
       PANEL,
@@ -120,23 +65,21 @@ exports.updateBookingStudents = async (req, res) => {
       { message: `Updated student, parent, and emergency data for booking ID: ${bookingId}` },
       true
     );
-    console.log("✅ Step 4: Activity logged");
 
+    // 🔹 Send notification
     await createNotification(
       req,
       "Booking Updated",
       `Student, parent, and emergency data updated for booking ID: ${bookingId}.`,
       "System"
     );
-    console.log("✅ Step 5: Notification created");
 
-    return res.status(200).json({
-      status: true,
-      message: "Student, parent, and emergency contact data updated successfully",
-    });
+    if (DEBUG) console.log("✅ Controller finished successfully");
+
+    return res.status(200).json(result);
+
   } catch (error) {
-    if (!t.finished) await t.rollback(); // only rollback if still active
-    console.error("❌ updateBookingStudents Error:", error.message);
+    if (DEBUG) console.error("❌ Controller updateBookingStudents Error:", error.message);
     return res.status(500).json({ status: false, message: error.message });
   }
 };

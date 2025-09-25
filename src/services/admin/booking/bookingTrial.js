@@ -12,8 +12,6 @@ const {
 const { Op } = require("sequelize");
 const bcrypt = require("bcrypt");
 
-const DEBUG = process.env.DEBUG === "true";
-
 const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
 
@@ -31,76 +29,11 @@ exports.createBooking = async (data, options) => {
 
   try {
     const adminId = options?.adminId;
-    const source = options?.source;
     const leadId = options?.leadId || null;
     // const adminFirstName = options?.adminFirstName || "Unknown"; // still available for logs if needed
 
-    if (DEBUG) {
-      console.log("🔍 [DEBUG] Extracted adminId:", adminId);
-      console.log("🔍 [DEBUG] Extracted source:", source);
-      console.log("🔍 [DEBUG] Extracted leadId:", leadId);
-    }
-
-    if (source !== 'open' && !adminId) {
+    if (!adminId) {
       throw new Error("Admin ID is required for bookedBy");
-    }
-
-    let bookedByAdminId = adminId || null;
-
-    if (data.parents?.length > 0) {
-      if (DEBUG) console.log("🔍 [DEBUG] Source is 'open'. Processing first parent...");
-
-      const firstParent = data.parents[0];
-      const email = firstParent.parentEmail?.trim()?.toLowerCase();
-
-      if (DEBUG) console.log("🔍 [DEBUG] Extracted parent email:", email);
-
-      if (!email) throw new Error("Parent email is required for open booking");
-
-      const plainPassword = "Synco123";
-      const hashedPassword = await bcrypt.hash(plainPassword, 10);
-
-      if (DEBUG) console.log("🔍 [DEBUG] Generated hashed password for parent account");
-
-      const [admin, created] = await Admin.findOrCreate({
-        where: { email },
-        defaults: {
-          firstName: firstParent.parentFirstName || "Parent",
-          lastName: firstParent.parentLastName || "",
-          phoneNumber: firstParent.parentPhoneNumber || "",
-          email,
-          password: hashedPassword,
-          roleId: 9, // parent role
-          status: "active",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        transaction: t,
-      });
-
-      if (DEBUG) {
-        console.log("🔍 [DEBUG] Admin account lookup completed.");
-        console.log("🔍 [DEBUG] Was new admin created?:", created);
-        console.log("🔍 [DEBUG] Admin record:", admin.toJSON ? admin.toJSON() : admin);
-      }
-
-      if (!created) {
-        if (DEBUG) console.log("🔍 [DEBUG] Updating existing admin record with parent details");
-
-        await admin.update(
-          {
-            firstName: firstParent.parentFirstName,
-            lastName: firstParent.parentLastName,
-            phoneNumber: firstParent.parentPhoneNumber || "",
-          },
-          { transaction: t }
-        );
-      }
-
-      if (source === 'open') {
-        bookedByAdminId = admin.id;
-        if (DEBUG) console.log("🔍 [DEBUG] bookedByAdminId set to:", bookedByAdminId);
-      }
     }
 
     // Step 1: Create Booking
@@ -115,7 +48,7 @@ exports.createBooking = async (data, options) => {
         className: data.className,
         classTime: data.classTime,
         status: data.status || "pending",
-        bookedBy: source === 'open' ? bookedByAdminId : adminId,
+        bookedBy: adminId,
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -178,6 +111,39 @@ exports.createBooking = async (data, options) => {
           },
           { transaction: t }
         );
+
+        // ✅ Only create Admin account for the first parent
+        if (index === 0) {
+          const plainPassword = "Synco123";
+          const hashedPassword = await bcrypt.hash(plainPassword, 10);
+
+          const [admin, created] = await Admin.findOrCreate({
+            where: { email },
+            defaults: {
+              firstName: parent.parentFirstName || "Parent",
+              lastName: parent.parentLastName || "",
+              phoneNumber: parent.parentPhoneNumber || "",
+              email,
+              password: hashedPassword,
+              roleId: 9, // parent role
+              status: "active",
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+            transaction: t,
+          });
+
+          if (!created) {
+            await admin.update(
+              {
+                firstName: parent.parentFirstName,
+                lastName: parent.parentLastName,
+                phoneNumber: parent.parentPhoneNumber || "",
+              },
+              { transaction: t }
+            );
+          }
+        }
       }
     }
 
@@ -367,7 +333,7 @@ exports.getAllBookings = async (adminId, filters = {}) => {
           if (typeof venue.paymentPlanId === "string") {
             try {
               paymentPlanIds = JSON.parse(venue.paymentPlanId);
-            } catch { }
+            } catch {}
           } else if (Array.isArray(venue.paymentPlanId)) {
             paymentPlanIds = venue.paymentPlanId;
           }
@@ -394,12 +360,12 @@ exports.getAllBookings = async (adminId, filters = {}) => {
           venue: booking.classSchedule?.venue || null, // ✅ include venue per trial
           ...(booking.bookedByAdmin
             ? {
-              [booking.bookedByAdmin.role?.name === "Admin"
-                ? "bookedByAdmin"
-                : booking.bookedByAdmin.role?.name === "Agent"
+                [booking.bookedByAdmin.role?.name === "Admin"
+                  ? "bookedByAdmin"
+                  : booking.bookedByAdmin.role?.name === "Agent"
                   ? "bookedByAgent"
                   : "bookedByOther"]: booking.bookedByAdmin,
-            }
+              }
             : { bookedBy: null }),
         };
       })
