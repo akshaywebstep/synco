@@ -191,6 +191,7 @@ exports.createBooking = async (req, res) => {
   try {
     if (DEBUG) console.log("🚀 Creating booking...");
     const result = await BookingTrialService.createBooking(formData, {
+      source: req.source,
       adminId: req.admin?.id,
       adminFirstName: req.admin?.firstName || "Unknown",
     });
@@ -681,8 +682,7 @@ exports.convertToMembership = async (req, res) => {
               .replace(/{{studentLastName}}/g, student.studentLastName || "")
               .replace(
                 /{{studentName}}/g,
-                `${student.studentFirstName || ""} ${
-                  student.studentLastName || ""
+                `${student.studentFirstName || ""} ${student.studentLastName || ""
                 }`
               )
               .replace(/{{venueName}}/g, venueName)

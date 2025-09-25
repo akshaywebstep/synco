@@ -64,11 +64,30 @@ const getVideoDurationInSeconds = async (videoUrl) => {
 /**
  * Convert seconds to HH:MM:SS
  */
+// const formatDuration = (totalSeconds) => {
+//   const hours = Math.floor(totalSeconds / 3600);
+//   const minutes = Math.floor((totalSeconds % 3600) / 60);
+//   const seconds = Math.floor(totalSeconds % 60);
+//   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+// };
+/**
+ * Convert seconds to human readable format
+ * Example: 18 -> "18 seconds", 125 -> "2 minutes 5 seconds", 3661 -> "1 hour 1 minute 1 second"
+ */
 const formatDuration = (totalSeconds) => {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = Math.floor(totalSeconds % 60);
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+
+  let parts = [];
+
+  if (hours > 0) parts.push(`${hours} hour${hours !== 1 ? "s" : ""}`);
+  if (minutes > 0) parts.push(`${minutes} minute${minutes !== 1 ? "s" : ""}`);
+  if (seconds > 0 || parts.length === 0) {
+    parts.push(`${seconds} second${seconds !== 1 ? "s" : ""}`);
+  }
+
+  return parts.join(" ");
 };
 
 module.exports = { getVideoDurationInSeconds, formatDuration, DEBUG };

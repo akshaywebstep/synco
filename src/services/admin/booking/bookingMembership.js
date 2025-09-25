@@ -38,7 +38,87 @@ function generateBookingId(length = 12) {
 exports.createBooking = async (data, options) => {
   const t = await sequelize.transaction();
   try {
-    const bookedBy = options?.adminId || null;
+    const adminId = options?.adminId || null;
+    const source = options?.source || null;
+
+    if (DEBUG) {
+      console.log("🔍 [DEBUG] Extracted adminId:", adminId);
+      console.log("🔍 [DEBUG] Extracted source:", source);
+    }
+
+    if (source !== 'open' && !adminId) {
+      throw new Error("Admin ID is required for bookedBy");
+    }
+
+    let bookedByAdminId = adminId || null;
+
+    if (data.parents?.length > 0) {
+      if (DEBUG) console.log("🔍 [DEBUG] Source is 'open'. Processing first parent...");
+
+      const firstParent = data.parents[0];
+      const email = firstParent.parentEmail?.trim()?.toLowerCase();
+
+      if (DEBUG) console.log("🔍 [DEBUG] Extracted parent email:", email);
+
+      if (!email) throw new Error("Parent email is required for open booking");
+
+      // 🔍 Check duplicate email in Admin table
+      const existingAdmin = await Admin.findOne({
+        where: { email },
+        transaction: t,
+      });
+
+      if (existingAdmin) {
+        throw new Error(
+          `Parent with email ${email} already exists as an admin.`
+        );
+      }
+
+      const plainPassword = "Synco123";
+      const hashedPassword = await bcrypt.hash(plainPassword, 10);
+
+      if (DEBUG) console.log("🔍 [DEBUG] Generated hashed password for parent account");
+
+      const [admin, created] = await Admin.findOrCreate({
+        where: { email },
+        defaults: {
+          firstName: firstParent.parentFirstName || "Parent",
+          lastName: firstParent.parentLastName || "",
+          phoneNumber: firstParent.parentPhoneNumber || "",
+          email,
+          password: hashedPassword,
+          roleId: 9, // parent role
+          status: "active",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        transaction: t,
+      });
+
+      if (DEBUG) {
+        console.log("🔍 [DEBUG] Admin account lookup completed.");
+        console.log("🔍 [DEBUG] Was new admin created?:", created);
+        console.log("🔍 [DEBUG] Admin record:", admin.toJSON ? admin.toJSON() : admin);
+      }
+
+      if (!created) {
+        if (DEBUG) console.log("🔍 [DEBUG] Updating existing admin record with parent details");
+
+        await admin.update(
+          {
+            firstName: firstParent.parentFirstName,
+            lastName: firstParent.parentLastName,
+            phoneNumber: firstParent.parentPhoneNumber || "",
+          },
+          { transaction: t }
+        );
+      }
+
+      if (source === 'open') {
+        bookedByAdminId = admin.id;
+        if (DEBUG) console.log("🔍 [DEBUG] bookedByAdminId set to:", bookedByAdminId);
+      }
+    }
 
     // 🔹 Step 1: Create Booking
     const booking = await Booking.create(
@@ -52,7 +132,7 @@ exports.createBooking = async (data, options) => {
         bookingType: data.paymentPlanId ? "paid" : "free",
         paymentPlanId: data.paymentPlanId || null,
         status: data.status || "active",
-        bookedBy,
+        bookedBy: source === 'open' ? bookedByAdminId : adminId,
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -87,24 +167,6 @@ exports.createBooking = async (data, options) => {
         const email = parent.parentEmail?.trim()?.toLowerCase();
         if (!email) throw new Error("Parent email is required.");
 
-        // Check for existing parent in BookingParentMeta for this student
-        const existingParent = await BookingParentMeta.findOne({
-          where: { studentId: firstStudent.id, parentEmail: email },
-          transaction: t,
-        });
-
-        // Check for existing email in Admin table
-        const existingAdmin = await Admin.findOne({
-          where: { email },
-          transaction: t,
-        });
-
-        if (existingParent || existingAdmin) {
-          throw new Error(
-            `Parent with email ${email} already exists in the system.`
-          );
-        }
-
         // If no duplicates, create parent
         await BookingParentMeta.create(
           {
@@ -115,22 +177,6 @@ exports.createBooking = async (data, options) => {
             parentPhoneNumber: parent.parentPhoneNumber,
             relationToChild: parent.relationToChild,
             howDidYouHear: parent.howDidYouHear,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          },
-          { transaction: t }
-        );
-
-        // Create admin entry
-        await Admin.create(
-          {
-            firstName: parent.parentFirstName || "Parent",
-            lastName: parent.parentLastName || "",
-            phoneNumber: parent.parentPhoneNumber || "",
-            email,
-            password: await bcrypt.hash("Synco123", 10),
-            roleId: 9,
-            status: "active",
             createdAt: new Date(),
             updatedAt: new Date(),
           },
@@ -223,16 +269,15 @@ exports.createBooking = async (data, options) => {
           if (!createCustomerRes.status) {
             throw new Error(
               createCustomerRes.message ||
-                "Failed to create goCardless customer."
+              "Failed to create goCardless customer."
             );
           }
 
           // Step 3: Prepare payload for billing request
           const billingRequestPayload = {
             customerId: createCustomerRes.customer.id,
-            description: `${venue?.name || "Venue"} - ${
-              classSchedule?.className || "Class"
-            }`,
+            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+              }`,
             amount: price,
             scheme: "faster_payments",
             currency: "GBP",
@@ -262,7 +307,7 @@ exports.createBooking = async (data, options) => {
             await removeCustomer(createCustomerRes.customer.id);
             throw new Error(
               createBillingRequestRes.message ||
-                "Failed to create billing request."
+              "Failed to create billing request."
             );
           }
 
@@ -283,9 +328,8 @@ exports.createBooking = async (data, options) => {
               currency: "GBP",
               amount: price,
               merchantRef,
-              description: `${venue?.name || "Venue"} - ${
-                classSchedule?.className || "Class"
-              }`,
+              description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+                }`,
               commerceType: "ECOM",
             },
             paymentMethod: {
@@ -353,8 +397,7 @@ exports.createBooking = async (data, options) => {
               gatewayResponse?.transaction?.merchantRef || merchantRef,
             description:
               gatewayResponse?.transaction?.description ||
-              `${venue?.name || "Venue"} - ${
-                classSchedule?.className || "Class"
+              `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
               }`,
             commerceType: "ECOM",
             gatewayResponse,
@@ -614,29 +657,29 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
 
         const paymentData = payment
           ? {
-              id: payment.id,
-              bookingId: payment.bookingId,
-              firstName: payment.firstName,
-              lastName: payment.lastName,
-              email: payment.email,
-              billingAddress: payment.billingAddress,
-              cardHolderName: payment.cardHolderName,
-              cv2: payment.cv2,
-              expiryDate: payment.expiryDate,
-              paymentType: payment.paymentType,
-              pan: payment.pan,
-              paymentStatus: payment.paymentStatus,
-              referenceId: payment.referenceId,
-              currency: payment.currency,
-              merchantRef: payment.merchantRef,
-              description: payment.description,
-              commerceType: payment.commerceType,
-              createdAt: payment.createdAt,
-              updatedAt: payment.updatedAt,
-              gatewayResponse: parsedGatewayResponse,
-              transactionMeta: parsedTransactionMeta,
-              totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
-            }
+            id: payment.id,
+            bookingId: payment.bookingId,
+            firstName: payment.firstName,
+            lastName: payment.lastName,
+            email: payment.email,
+            billingAddress: payment.billingAddress,
+            cardHolderName: payment.cardHolderName,
+            cv2: payment.cv2,
+            expiryDate: payment.expiryDate,
+            paymentType: payment.paymentType,
+            pan: payment.pan,
+            paymentStatus: payment.paymentStatus,
+            referenceId: payment.referenceId,
+            currency: payment.currency,
+            merchantRef: payment.merchantRef,
+            description: payment.description,
+            commerceType: payment.commerceType,
+            createdAt: payment.createdAt,
+            updatedAt: payment.updatedAt,
+            gatewayResponse: parsedGatewayResponse,
+            transactionMeta: parsedTransactionMeta,
+            totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
+          }
           : null;
 
         const { venue: _venue, ...bookingData } = booking.dataValues;
@@ -764,7 +807,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
           return (
             acc +
             ((plan.price + (plan.joiningFee || 0)) / plan.duration) *
-              studentsCount
+            studentsCount
           );
         }
         return acc;
@@ -984,29 +1027,29 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
       // Combine all payment info into a fully structured object
       const paymentData = payment
         ? {
-            id: payment.id,
-            bookingId: payment.bookingId,
-            firstName: payment.firstName,
-            lastName: payment.lastName,
-            email: payment.email,
-            billingAddress: payment.billingAddress,
-            cardHolderName: payment.cardHolderName,
-            cv2: payment.cv2,
-            expiryDate: payment.expiryDate,
-            paymentType: payment.paymentType,
-            pan: payment.pan,
-            paymentStatus: payment.paymentStatus,
-            referenceId: payment.referenceId,
-            currency: payment.currency,
-            merchantRef: payment.merchantRef,
-            description: payment.description,
-            commerceType: payment.commerceType,
-            createdAt: payment.createdAt,
-            updatedAt: payment.updatedAt,
-            gatewayResponse: parsedGatewayResponse, // fully parsed JSON
-            transactionMeta: parsedTransactionMeta, // fully parsed JSON
-            totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
-          }
+          id: payment.id,
+          bookingId: payment.bookingId,
+          firstName: payment.firstName,
+          lastName: payment.lastName,
+          email: payment.email,
+          billingAddress: payment.billingAddress,
+          cardHolderName: payment.cardHolderName,
+          cv2: payment.cv2,
+          expiryDate: payment.expiryDate,
+          paymentType: payment.paymentType,
+          pan: payment.pan,
+          paymentStatus: payment.paymentStatus,
+          referenceId: payment.referenceId,
+          currency: payment.currency,
+          merchantRef: payment.merchantRef,
+          description: payment.description,
+          commerceType: payment.commerceType,
+          createdAt: payment.createdAt,
+          updatedAt: payment.updatedAt,
+          gatewayResponse: parsedGatewayResponse, // fully parsed JSON
+          transactionMeta: parsedTransactionMeta, // fully parsed JSON
+          totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
+        }
         : null;
 
       return {
@@ -1021,12 +1064,12 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
 
         bookedBy: booking.admin
           ? {
-              id: booking.admin.id,
-              firstName: booking.admin.firstName,
-              lastName: booking.admin.lastName,
-              email: booking.admin.email,
-              role: booking.admin.role,
-            }
+            id: booking.admin.id,
+            firstName: booking.admin.firstName,
+            lastName: booking.admin.lastName,
+            email: booking.admin.email,
+            role: booking.admin.role,
+          }
           : null,
 
         // totalStudents: students.length,
@@ -1036,12 +1079,12 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
 
         paymentPlanData: plan
           ? {
-              id: plan.id,
-              title: plan.title,
-              price: plan.price,
-              joiningFee: plan.joiningFee,
-              duration: plan.duration,
-            }
+            id: plan.id,
+            title: plan.title,
+            price: plan.price,
+            joiningFee: plan.joiningFee,
+            duration: plan.duration,
+          }
           : null,
 
         payment: paymentData,
@@ -1590,11 +1633,11 @@ exports.getWaitingList = async () => {
 
       const emergency = emergencyContactRaw
         ? {
-            emergencyFirstName: emergencyContactRaw.emergencyFirstName,
-            emergencyLastName: emergencyContactRaw.emergencyLastName,
-            emergencyPhoneNumber: emergencyContactRaw.emergencyPhoneNumber,
-            emergencyRelation: emergencyContactRaw.emergencyRelation,
-          }
+          emergencyFirstName: emergencyContactRaw.emergencyFirstName,
+          emergencyLastName: emergencyContactRaw.emergencyLastName,
+          emergencyPhoneNumber: emergencyContactRaw.emergencyPhoneNumber,
+          emergencyRelation: emergencyContactRaw.emergencyRelation,
+        }
         : null;
 
       return {
@@ -1760,13 +1803,13 @@ exports.getBookingsById = async (bookingId) => {
 
       paymentData: payment
         ? {
-            firstName: payment.firstName,
-            lastName: payment.lastName,
-            email: payment.email,
-            billingAddress: payment.billingAddress,
-            paymentStatus: payment.paymentStatus,
-            totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
-          }
+          firstName: payment.firstName,
+          lastName: payment.lastName,
+          email: payment.email,
+          billingAddress: payment.billingAddress,
+          paymentStatus: payment.paymentStatus,
+          totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
+        }
         : null,
 
       bookedByAdmin: booking.bookedByAdmin || null,
@@ -1856,9 +1899,8 @@ exports.retryBookingPayment = async (bookingId, newData) => {
             payment_request: {
               amount: Math.round(price * 100), // in pence
               currency: "GBP",
-              description: `Booking retry for ${venue?.name || "Venue"} - ${
-                classSchedule?.className || "Class"
-              }`,
+              description: `Booking retry for ${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+                }`,
               metadata: {
                 bookingId: String(booking.id), // must be string
                 retry: "true", // must be string
@@ -1930,9 +1972,8 @@ exports.retryBookingPayment = async (bookingId, newData) => {
             currency: "GBP",
             amount: price,
             merchantRef,
-            description: `${venue?.name || "Venue"} - ${
-              classSchedule?.className || "Class"
-            }`,
+            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+              }`,
             commerceType: "ECOM",
           },
           paymentMethod: { card: { pan, expiryDate, cardHolderName, cv2 } },
@@ -2016,9 +2057,8 @@ exports.retryBookingPayment = async (bookingId, newData) => {
           newData.payment.firstName || firstParent.parentFirstName || "Parent",
         lastName: newData.payment.lastName || firstParent.parentLastName || "",
         merchantRef,
-        description: `${venue?.name || "Venue"} - ${
-          classSchedule?.className || "Class"
-        }`,
+        description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+          }`,
         commerceType: "ECOM",
         email: newData.payment.email || firstParent.parentEmail || "",
         billingAddress: newData.payment.billingAddress || "",

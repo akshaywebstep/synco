@@ -83,6 +83,7 @@ exports.createBooking = async (req, res) => {
 
     // 🔹 Step 1: Create Booking + Students + Parents (Service)
     const result = await BookingMembershipService.createBooking(formData, {
+      source: req.source,
       adminId: req.admin?.id || null,
     });
     if (!result.status) {
