@@ -160,16 +160,26 @@ exports.getAllBookings = async (adminId, filters = {}) => {
           if (booking.bookingType === "free") clsFreeTrials += booking.students.length;
         });
 
+        // const clsStats = {
+        //   totalCapacity: cls.capacity || 0,
+        //   totalBooked: clsTotalBooked,
+        //   availableSpaces: (cls.capacity || 0) - clsTotalBooked,
+        //   members: clsMembers,
+        //   freeTrials: clsFreeTrials,
+        //   occupancyRate: cls.capacity
+        //     ? Math.round((clsTotalBooked / cls.capacity) * 100)
+        //     : 0,
+        // };
         const clsStats = {
-          totalCapacity: cls.capacity || 0,
-          totalBooked: clsTotalBooked,
-          availableSpaces: (cls.capacity || 0) - clsTotalBooked,
-          members: clsMembers,
-          freeTrials: clsFreeTrials,
-          occupancyRate: cls.capacity
-            ? Math.round((clsTotalBooked / cls.capacity) * 100)
-            : 0,
-        };
+  totalCapacity: cls.capacity || 0,
+  totalBooked: clsTotalBooked,
+  availableSpaces: Math.max((cls.capacity || 0) - clsTotalBooked, 0),
+  members: clsMembers,
+  freeTrials: clsFreeTrials,
+  occupancyRate: cls.capacity
+    ? Math.round((clsTotalBooked / cls.capacity) * 100)
+    : 0,
+};
 
         totalCapacity += clsStats.totalCapacity;
         totalBooked += clsStats.totalBooked;
