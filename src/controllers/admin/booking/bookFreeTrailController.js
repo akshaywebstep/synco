@@ -192,6 +192,7 @@ exports.createBooking = async (req, res) => {
     const leadId = req.params.leadId || null;
 
     const result = await BookingTrialService.createBooking(formData, {
+      source: req.source,
       adminId: req.admin?.id, // <-- pass adminId here
       adminFirstName: req.admin?.firstName || "Unknown",
       leadId,

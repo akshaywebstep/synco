@@ -1,4 +1,5 @@
 const {
+  sequelize,
   Booking,
   BookingStudentMeta,
   BookingParentMeta,
@@ -10,10 +11,10 @@ const {
   CancelBooking,
   BookingPayment,
 } = require("../../../models");
-const { sequelize } = require("../../../models");
-
 const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
+
+const DEBUG = process.env.DEBUG === "true";
 
 const bcrypt = require("bcrypt");
 const { Op } = require("sequelize");
@@ -32,9 +33,10 @@ exports.createBooking = async (data, options) => {
   const t = await sequelize.transaction();
 
   try {
-    // ✅ Extract admin info
     const adminId = options?.adminId;
-    if (!adminId) {
+    const source = options?.source;
+
+    if (source !== 'open' && !adminId) {
       throw new Error("Admin ID is required for bookedBy");
     }
 
@@ -42,6 +44,7 @@ exports.createBooking = async (data, options) => {
     const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, {
       transaction: t,
     });
+
     if (!classSchedule) {
       throw new Error("Invalid class schedule selected.");
     }
@@ -59,6 +62,74 @@ exports.createBooking = async (data, options) => {
       );
     }
 
+    if (data.parents?.length > 0) {
+      if (DEBUG) console.log("🔍 [DEBUG] Source is 'open'. Processing first parent...");
+
+      const firstParent = data.parents[0];
+      const email = firstParent.parentEmail?.trim()?.toLowerCase();
+
+      if (DEBUG) console.log("🔍 [DEBUG] Extracted parent email:", email);
+
+      if (!email) throw new Error("Parent email is required for open booking");
+
+      // 🔍 Check duplicate email in Admin table
+      const existingAdmin = await Admin.findOne({
+        where: { email },
+        transaction: t,
+      });
+
+      if (existingAdmin) {
+        throw new Error(
+          `Parent with email ${email} already exists as an admin.`
+        );
+      }
+
+      const plainPassword = "Synco123";
+      const hashedPassword = await bcrypt.hash(plainPassword, 10);
+
+      if (DEBUG) console.log("🔍 [DEBUG] Generated hashed password for parent account");
+
+      const [admin, created] = await Admin.findOrCreate({
+        where: { email },
+        defaults: {
+          firstName: firstParent.parentFirstName || "Parent",
+          lastName: firstParent.parentLastName || "",
+          phoneNumber: firstParent.parentPhoneNumber || "",
+          email,
+          password: hashedPassword,
+          roleId: 9, // parent role
+          status: "active",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        transaction: t,
+      });
+
+      if (DEBUG) {
+        console.log("🔍 [DEBUG] Admin account lookup completed.");
+        console.log("🔍 [DEBUG] Was new admin created?:", created);
+        console.log("🔍 [DEBUG] Admin record:", admin.toJSON ? admin.toJSON() : admin);
+      }
+
+      if (!created) {
+        if (DEBUG) console.log("🔍 [DEBUG] Updating existing admin record with parent details");
+
+        await admin.update(
+          {
+            firstName: firstParent.parentFirstName,
+            lastName: firstParent.parentLastName,
+            phoneNumber: firstParent.parentPhoneNumber || "",
+          },
+          { transaction: t }
+        );
+      }
+
+      if (source === 'open') {
+        bookedByAdminId = admin.id;
+        if (DEBUG) console.log("🔍 [DEBUG] bookedByAdminId set to:", bookedByAdminId);
+      }
+    }
+
     // Step 1: Create Booking
     const booking = await Booking.create(
       {
@@ -71,13 +142,13 @@ exports.createBooking = async (data, options) => {
           bookingStatus === "waiting list"
             ? "waiting list"
             : data.paymentPlanId
-            ? "paid"
-            : "free",
+              ? "paid"
+              : "free",
         className: data.className,
         classTime: data.classTime,
         // keyInformation: data.keyInformation,
         status: bookingStatus,
-        bookedBy: adminId,
+        bookedBy: source === 'open' ? bookedByAdminId : adminId,
         intrest: data.intrest,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -129,18 +200,6 @@ exports.createBooking = async (data, options) => {
           );
         }
 
-        // 🔍 Check duplicate email in Admin table
-        const existingAdmin = await Admin.findOne({
-          where: { email },
-          transaction: t,
-        });
-
-        if (existingAdmin) {
-          throw new Error(
-            `Parent with email ${email} already exists as an admin.`
-          );
-        }
-
         // ✅ Create BookingParentMeta
         await BookingParentMeta.create(
           {
@@ -151,24 +210,6 @@ exports.createBooking = async (data, options) => {
             parentPhoneNumber: parent.parentPhoneNumber,
             relationToChild: parent.relationToChild,
             howDidYouHear: parent.howDidYouHear,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          },
-          { transaction: t }
-        );
-
-        // ✅ Create Parent as Admin (new user)
-        const plainPassword = "Synco123";
-        const hashedPassword = await bcrypt.hash(plainPassword, 10);
-        await Admin.create(
-          {
-            firstName: parent.parentFirstName || "Parent",
-            lastName: parent.parentLastName || "",
-            phoneNumber: parent.parentPhoneNumber || "",
-            email,
-            password: hashedPassword,
-            roleId: 9,
-            status: "active",
             createdAt: new Date(),
             updatedAt: new Date(),
           },
@@ -407,23 +448,23 @@ exports.getWaitingList = async (filters = {}) => {
     const avgInterest =
       allInterests.length > 0
         ? (
-            allInterests.reduce((a, b) => a + b, 0) / allInterests.length
-          ).toFixed(2)
+          allInterests.reduce((a, b) => a + b, 0) / allInterests.length
+        ).toFixed(2)
         : 0;
 
     // Avg. days waiting (currentDate - createdAt)
     const avgDaysWaiting =
       parsedBookings.length > 0
         ? (
-            parsedBookings.reduce((sum, b) => {
-              const created = new Date(b.createdAt);
-              const now = new Date();
-              const diffDays = Math.floor(
-                (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)
-              );
-              return sum + diffDays;
-            }, 0) / parsedBookings.length
-          ).toFixed(0)
+          parsedBookings.reduce((sum, b) => {
+            const created = new Date(b.createdAt);
+            const now = new Date();
+            const diffDays = Math.floor(
+              (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)
+            );
+            return sum + diffDays;
+          }, 0) / parsedBookings.length
+        ).toFixed(0)
         : 0;
 
     // Top Referrer (admin with most bookings)
@@ -565,7 +606,6 @@ exports.getBookingById = async (id, adminId) => {
     // Extract students
     const students =
       booking.students?.map((s) => ({
-        id: s.id, // <-- DB id
         studentFirstName: s.studentFirstName,
         studentLastName: s.studentLastName,
         dateOfBirth: s.dateOfBirth,
@@ -577,7 +617,6 @@ exports.getBookingById = async (id, adminId) => {
     // Extract parents from first student
     const parents =
       booking.students?.[0]?.parents?.map((p) => ({
-        id: p.id, // <-- DB id
         parentFirstName: p.parentFirstName,
         parentLastName: p.parentLastName,
         parentEmail: p.parentEmail,
@@ -589,7 +628,6 @@ exports.getBookingById = async (id, adminId) => {
     // Extract emergency contacts from first student
     const emergency =
       booking.students?.[0]?.emergencyContacts?.map((e) => ({
-        id: e.id, // <-- DB id
         emergencyFirstName: e.emergencyFirstName,
         emergencyLastName: e.emergencyLastName,
         emergencyPhoneNumber: e.emergencyPhoneNumber,
@@ -629,138 +667,6 @@ exports.getBookingById = async (id, adminId) => {
     };
   } catch (error) {
     console.error("❌ getBookingById Error:", error.message);
-    return { status: false, message: error.message };
-  }
-};
-
-exports.updateBookingStudents = async (bookingId, studentsPayload, transaction) => {
-  const t = transaction || await sequelize.transaction();
-  let isNewTransaction = !transaction;
-
-  try {
-    // 🔹 Fetch booking with associations
-    const booking = await Booking.findOne({
-      where: { id: bookingId },
-      include: [
-        {
-          model: BookingStudentMeta,
-          as: "students",
-          include: [
-            { model: BookingParentMeta, as: "parents", required: false },
-            { model: BookingEmergencyMeta, as: "emergencyContacts", required: false },
-          ],
-          required: false,
-        },
-      ],
-      transaction: t,
-    });
-
-    if (!booking) {
-      if (isNewTransaction) await t.rollback();
-      return { status: false, message: "Booking not found" };
-    }
-
-    // 🔹 Update or create students, parents, emergency contacts
-    for (const student of studentsPayload) {
-      let studentRecord;
-
-      if (student.id) {
-        // Update existing student
-        studentRecord = booking.students.find(s => s.id === student.id);
-        if (!studentRecord) continue;
-
-        ["studentFirstName","studentLastName","dateOfBirth","age","gender","medicalInformation"]
-          .forEach(field => { if (student[field] !== undefined) studentRecord[field] = student[field]; });
-
-        await studentRecord.save({ transaction: t });
-      } else {
-        // Create new student
-        studentRecord = await BookingStudentMeta.create({ bookingId, ...student }, { transaction: t });
-      }
-
-      // Parents
-      if (Array.isArray(student.parents)) {
-        for (const parent of student.parents) {
-          if (parent.id) {
-            const parentRecord = studentRecord.parents?.find(p => p.id === parent.id);
-            if (parentRecord) {
-              ["parentFirstName","parentLastName","parentEmail","parentPhoneNumber","relationToChild","howDidYouHear"]
-                .forEach(field => { if (parent[field] !== undefined) parentRecord[field] = parent[field]; });
-              await parentRecord.save({ transaction: t });
-            }
-          } else {
-            await BookingParentMeta.create({ bookingStudentMetaId: studentRecord.id, ...parent }, { transaction: t });
-          }
-        }
-      }
-
-      // Emergency Contacts
-      if (Array.isArray(student.emergencyContacts)) {
-        for (const emergency of student.emergencyContacts) {
-          if (emergency.id) {
-            const emergencyRecord = studentRecord.emergencyContacts?.find(e => e.id === emergency.id);
-            if (emergencyRecord) {
-              ["emergencyFirstName","emergencyLastName","emergencyPhoneNumber","emergencyRelation"]
-                .forEach(field => { if (emergency[field] !== undefined) emergencyRecord[field] = emergency[field]; });
-              await emergencyRecord.save({ transaction: t });
-            }
-          } else {
-            await BookingEmergencyMeta.create({ bookingStudentMetaId: studentRecord.id, ...emergency }, { transaction: t });
-          }
-        }
-      }
-    }
-
-    if (isNewTransaction) await t.commit();
-
-    // 🔹 Prepare structured response
-    const students = booking.students?.map(s => ({
-      studentId: s.id,
-      studentFirstName: s.studentFirstName,
-      studentLastName: s.studentLastName,
-      dateOfBirth: s.dateOfBirth,
-      age: s.age,
-      gender: s.gender,
-      medicalInformation: s.medicalInformation,
-    })) || [];
-
-    const parents = booking.students?.flatMap(s =>
-      s.parents?.map(p => ({
-        parentId: p.id,
-        parentFirstName: p.parentFirstName,
-        parentLastName: p.parentLastName,
-        parentEmail: p.parentEmail,
-        parentPhoneNumber: p.parentPhoneNumber,
-        relationToChild: p.relationToChild,
-        howDidYouHear: p.howDidYouHear,
-      })) || []
-    ) || [];
-
-    const emergencyContacts = booking.students?.flatMap(s =>
-      s.emergencyContacts?.map(e => ({
-        emergencyId: e.id,
-        emergencyFirstName: e.emergencyFirstName,
-        emergencyLastName: e.emergencyLastName,
-        emergencyPhoneNumber: e.emergencyPhoneNumber,
-        emergencyRelation: e.emergencyRelation,
-      })) || []
-    ) || [];
-
-    return {
-      status: true,
-      message: "Booking updated successfully",
-      data: {
-        bookingId: booking.id,
-        status: booking.status,
-        students,
-        parents,
-        emergencyContacts,
-      },
-    };
-
-  } catch (error) {
-    if (isNewTransaction) await t.rollback();
-    console.error("❌ Service updateBookingStudents Error:", error.message);
     return { status: false, message: error.message };
   }
 };
@@ -1114,9 +1020,8 @@ exports.convertToMembership = async (data, options) => {
             pan: null,
             billing_requests: {
               payment_request: {
-                description: `${venue?.name || "Venue"} - ${
-                  classSchedule?.className || "Class"
-                }`,
+                description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+                  }`,
                 amount: amountInPence,
                 scheme: "faster_payments",
                 currency: "GBP",
@@ -1161,9 +1066,8 @@ exports.convertToMembership = async (data, options) => {
               currency: "GBP",
               amount: price,
               merchantRef,
-              description: `${venue?.name || "Venue"} - ${
-                classSchedule?.className || "Class"
-              }`,
+              description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+                }`,
               commerceType: "ECOM",
             },
             paymentMethod: {
@@ -1226,8 +1130,7 @@ exports.convertToMembership = async (data, options) => {
               gatewayResponse?.transaction?.merchantRef || merchantRef,
             description:
               gatewayResponse?.transaction?.description ||
-              `${venue?.name || "Venue"} - ${
-                classSchedule?.className || "Class"
+              `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
               }`,
             commerceType: "ECOM",
             gatewayResponse,

@@ -10,7 +10,6 @@ const {
   sendEmail,
   removeWaitingList,
   convertToMembership,
-  updateWaitinglistBooking,
 } = require("../../controllers/admin/booking/waitingListController");
 
 router.post(
@@ -31,14 +30,6 @@ router.get(
   permissionMiddleware("waiting-list", "view-listing"),
   getAccountProfile
 );
-
-router.put(
-  "/service-history/update/:bookingId",
-  authMiddleware,
-  permissionMiddleware("waiting-list", "update"),
-  updateWaitinglistBooking
-);
-
 router.post(
   "/send-email",
   authMiddleware,

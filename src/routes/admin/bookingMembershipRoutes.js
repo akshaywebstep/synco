@@ -15,7 +15,6 @@ const {
   getBookingsById,
   retryBookingPayment,
   listFailedPayments,
-  updateBooking,
 } = require("../../controllers/admin/booking/bookingMembershipController");
 
 // ✅ Create a new free trial booking
@@ -81,13 +80,6 @@ router.put(
   authMiddleware,
   permissionMiddleware("retry-payment", "update"),
   retryBookingPayment
-);
-
-router.put(
-  "/:bookingId",
-  authMiddleware,
-  permissionMiddleware("book-membership", "update"),
-  updateBooking
 );
 
 router.get(

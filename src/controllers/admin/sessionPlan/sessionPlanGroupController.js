@@ -2,7 +2,7 @@ const { validateFormData } = require("../../../utils/validateFormData");
 const SessionPlanGroupService = require("../../../services/admin/sessionPlan/sessionPlanGroup");
 const SessionExerciseService = require("../../../services/admin/sessionPlan/sessionExercise");
 const { logActivity } = require("../../../utils/admin/activityLogger");
-const { getVideoDurationInSeconds } = require("../../../utils/videoHelper");
+// const { getVideoDurationInSeconds } = require("../../../utils/videoHelper");
 const uploadToFTP = require("../../../utils/uploadToFTP");
 const {
   createNotification,
@@ -15,6 +15,68 @@ const fs = require("fs");
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "session-plan-group";
+
+const { getVideoDurationInSeconds, formatDuration } = require("../../../utils/videoHelper");
+
+exports.getSessionPlanGroupDetails = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const createdBy = req.admin?.id || req.user?.id;
+
+    if (DEBUG)
+      console.log("Fetching session plan group id:", id, "user:", createdBy);
+
+    const result = await SessionPlanGroupService.getSessionPlanGroupById(
+      id,
+      createdBy
+    );
+
+    if (!result.status) {
+      if (DEBUG) console.warn("Session plan group not found:", id);
+      return res.status(404).json({ status: false, message: result.message });
+    }
+
+    const group = result.data;
+    let parsedLevels = {};
+
+    try {
+      parsedLevels =
+        typeof group.levels === "string"
+          ? JSON.parse(group.levels)
+          : group.levels || {};
+    } catch (err) {
+      if (DEBUG) console.error("Failed to parse levels:", err);
+      parsedLevels = {};
+    }
+
+    const sessionExercises = await SessionExercise.findAll({
+      where: { createdBy },
+    });
+    const exerciseMap = sessionExercises.reduce((acc, ex) => {
+      acc[ex.id] = ex;
+      return acc;
+    }, {});
+
+    // ✅ Only change: calculate main group video duration using videoHelper
+    let totalVideoTime = await getVideoDurationInSeconds(group.video);
+    const formattedTime = formatDuration(totalVideoTime);
+
+    if (DEBUG) console.log("Total video time:", formattedTime);
+
+    return res.status(200).json({
+      status: true,
+      message: "Fetched session plan group with exercises.",
+      data: {
+        ...group,
+        levels: parsedLevels,
+        totalVideoTime: formattedTime,
+      },
+    });
+  } catch (error) {
+    if (DEBUG) console.error("Error in getSessionPlanGroupDetails:", error);
+    return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
 
 // ✅ Validate Levels (stop on first missing field)
 const validateLevels = (levels) => {
@@ -249,89 +311,76 @@ exports.getAllSessionPlanGroups = async (req, res) => {
   }
 };
 
-exports.getSessionPlanGroupDetails = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const createdBy = req.admin?.id || req.user?.id;
+// exports.getSessionPlanGroupDetails = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const createdBy = req.admin?.id || req.user?.id;
 
-    if (DEBUG)
-      console.log("Fetching session plan group id:", id, "user:", createdBy);
+//     if (DEBUG)
+//       console.log("Fetching session plan group id:", id, "user:", createdBy);
 
-    const result = await SessionPlanGroupService.getSessionPlanGroupById(
-      id,
-      createdBy
-    );
+//     const result = await SessionPlanGroupService.getSessionPlanGroupById(
+//       id,
+//       createdBy
+//     );
 
-    if (!result.status) {
-      if (DEBUG) console.warn("Session plan group not found:", id);
-      return res.status(404).json({ status: false, message: result.message });
-    }
+//     if (!result.status) {
+//       if (DEBUG) console.warn("Session plan group not found:", id);
+//       return res.status(404).json({ status: false, message: result.message });
+//     }
 
-    const group = result.data;
-    let parsedLevels = {};
+//     const group = result.data;
+//     let parsedLevels = {};
 
-    try {
-      parsedLevels =
-        typeof group.levels === "string"
-          ? JSON.parse(group.levels)
-          : group.levels || {};
-    } catch (err) {
-      if (DEBUG) console.error("Failed to parse levels:", err);
-      parsedLevels = {};
-    }
+//     try {
+//       parsedLevels =
+//         typeof group.levels === "string"
+//           ? JSON.parse(group.levels)
+//           : group.levels || {};
+//     } catch (err) {
+//       if (DEBUG) console.error("Failed to parse levels:", err);
+//       parsedLevels = {};
+//     }
 
-    const sessionExercises = await SessionExercise.findAll({
-      where: { createdBy },
-    });
-    const exerciseMap = sessionExercises.reduce((acc, ex) => {
-      acc[ex.id] = ex;
-      return acc;
-    }, {});
+//     const sessionExercises = await SessionExercise.findAll({
+//       where: { createdBy },
+//     });
+//     const exerciseMap = sessionExercises.reduce((acc, ex) => {
+//       acc[ex.id] = ex;
+//       return acc;
+//     }, {});
 
-    // Add main group video duration
-     let totalVideoTime = 0;
+//     // ✅ Only change: calculate main group video duration using videoHelper
+//     let totalVideoTime = await getVideoDurationInSeconds(group.video);
+//     const formattedTime = formatDuration(totalVideoTime);
 
-    // Only calculate the main group video duration
-    totalVideoTime += await getVideoDurationInSeconds(group.video);
+//     if (DEBUG) console.log("Total video time:", formattedTime);
 
-    // Break down time
-    const hours = Math.floor(totalVideoTime / 3600);
-    const minutes = Math.floor((totalVideoTime % 3600) / 60);
-    const seconds = Math.floor(totalVideoTime % 60);
-
-    // Format HH:MM:SS
-    const formattedTime = `${String(hours).padStart(2, "0")}:${String(
-      minutes
-    ).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-
-    if (DEBUG) console.log("Total video time:", formattedTime);
-
-    return res.status(200).json({
-      status: true,
-      message: "Fetched session plan group with exercises.",
-      data: {
-        ...group,                // already JSON
-    totalVideoTime: formattedTime, // add here
-      },
-    });
-  } catch (error) {
-    if (DEBUG) console.error("Error in getSessionPlanGroupDetails:", error);
-    return res.status(500).json({ status: false, message: "Server error." });
-  }
-};
+//     return res.status(200).json({
+//       status: true,
+//       message: "Fetched session plan group with exercises.",
+//       data: {
+//         ...group,
+//         levels: parsedLevels,
+//         totalVideoTime: formattedTime,
+//       },
+//     });
+//   } catch (error) {
+//     if (DEBUG) console.error("Error in getSessionPlanGroupDetails:", error);
+//     return res.status(500).json({ status: false, message: "Server error." });
+//   }
+// };
 
 exports.downloadSessionPlanGroupVideo = async (req, res) => {
   try {
     const { id } = req.params;
     const filename = req.query.filename;
-    const videolinkrandom = req.query.videolinkrandom; 
     const createdBy = req.admin?.id || req.user?.id;
 
     const result = await SessionPlanGroupService.getSessionPlanGroupVideoStream(
       id,
       createdBy,
-      filename,
-      videolinkrandom,
+      filename
     );
 
     if (!result.status) {
