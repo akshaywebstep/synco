@@ -324,12 +324,14 @@ exports.downloadSessionPlanGroupVideo = async (req, res) => {
   try {
     const { id } = req.params;
     const filename = req.query.filename;
+    const videolinkrandom = req.query.videolinkrandom; 
     const createdBy = req.admin?.id || req.user?.id;
 
     const result = await SessionPlanGroupService.getSessionPlanGroupVideoStream(
       id,
       createdBy,
-      filename
+      filename,
+      videolinkrandom,
     );
 
     if (!result.status) {
