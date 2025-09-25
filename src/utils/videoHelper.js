@@ -1,3 +1,8 @@
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+const http = require("http");
+const https = require("https");
 const ffmpeg = require("fluent-ffmpeg");
 const ffprobeStatic = require("ffprobe-static");
 
@@ -7,26 +12,53 @@ const DEBUG = true;
 ffmpeg.setFfprobePath(ffprobeStatic.path);
 
 /**
- * Get video duration in seconds from a URL or local file
- * @param {string} videoUrl
- * @returns {Promise<number>}
+ * Download a remote video URL to a temporary file
  */
-const getVideoDurationInSeconds = (videoUrl) => {
-  return new Promise((resolve) => {
-    if (!videoUrl) return resolve(0);
+const downloadVideo = (videoUrl, tempFilePath) => {
+  return new Promise((resolve, reject) => {
+    const client = videoUrl.startsWith("https") ? https : http;
+    const file = fs.createWriteStream(tempFilePath);
 
-    if (DEBUG) console.log("Fetching duration for video:", videoUrl);
-
-    ffmpeg.ffprobe(videoUrl, (err, metadata) => {
-      if (err) {
-        if (DEBUG) console.error("Error getting video duration:", err);
-        return resolve(0);
-      }
-      const duration = metadata.format.duration || 0;
-      if (DEBUG) console.log(`Duration for ${videoUrl}: ${duration} seconds`);
-      resolve(duration);
+    client.get(videoUrl, (res) => {
+      res.pipe(file);
+      file.on("finish", () => file.close(resolve));
+    }).on("error", (err) => {
+      fs.unlink(tempFilePath, () => {}); // delete temp file on error
+      reject(err);
     });
   });
+};
+
+/**
+ * Get video duration safely (downloads remote file first)
+ */
+const getVideoDurationInSeconds = async (videoUrl) => {
+  if (!videoUrl) return 0;
+
+  const tempFile = path.join(os.tmpdir(), `${Date.now()}.mp4`);
+
+  try {
+    if (DEBUG) console.log("Downloading video to temp file:", tempFile);
+    await downloadVideo(videoUrl, tempFile);
+
+    return await new Promise((resolve) => {
+      ffmpeg.ffprobe(tempFile, (err, metadata) => {
+        fs.unlink(tempFile, () => {}); // clean up temp file
+
+        if (err) {
+          if (DEBUG) console.error("ffprobe error:", err);
+          return resolve(0);
+        }
+
+        const duration = metadata.format.duration || 0;
+        if (DEBUG) console.log(`Duration for ${videoUrl}: ${duration} seconds`);
+        resolve(duration);
+      });
+    });
+  } catch (err) {
+    if (DEBUG) console.error("Download or ffprobe error:", err);
+    return 0;
+  }
 };
 
 /**
