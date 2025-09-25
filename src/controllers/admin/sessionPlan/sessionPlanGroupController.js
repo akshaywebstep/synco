@@ -289,15 +289,17 @@ exports.getSessionPlanGroupDetails = async (req, res) => {
     }, {});
 
     // Add main group video duration
-    let totalVideoTime = 0;
+     let totalVideoTime = 0;
 
     // Only calculate the main group video duration
     totalVideoTime += await getVideoDurationInSeconds(group.video);
 
-    // Convert seconds to HH:MM:SS
+    // Break down time
     const hours = Math.floor(totalVideoTime / 3600);
     const minutes = Math.floor((totalVideoTime % 3600) / 60);
     const seconds = Math.floor(totalVideoTime % 60);
+
+    // Format HH:MM:SS
     const formattedTime = `${String(hours).padStart(2, "0")}:${String(
       minutes
     ).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
