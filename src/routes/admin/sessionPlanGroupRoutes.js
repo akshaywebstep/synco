@@ -17,7 +17,15 @@ const {
   deleteSessionPlanGroup,
   deleteSessionPlanGroupLevel,
   reorderSessionPlanGroups,
+  downloadSessionPlanGroupVideo,
 } = require("../../controllers/admin/sessionPlan/sessionPlanGroupController");
+
+router.get(
+  "/:id/download-video", // example route: /session-plan-group/:id/download-video
+  authMiddleware,
+  permissionMiddleware("session-plan-group", "view-listing"),
+  downloadSessionPlanGroupVideo
+);
 
 // ✅ Create Session Plan Group
 router.post(
