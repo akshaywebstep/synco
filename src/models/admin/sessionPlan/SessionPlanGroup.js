@@ -35,6 +35,11 @@ const SessionPlanGroup = sequelize.define(
     intermediate_recording: {
       type: DataTypes.STRING,
     },
+    totalVideoTime: {                  
+      type: DataTypes.STRING,
+      allowNull: true,
+      defaultValue: "00:00:00",
+    },
     levels: {
       type: DataTypes.JSON,
       allowNull: false,
