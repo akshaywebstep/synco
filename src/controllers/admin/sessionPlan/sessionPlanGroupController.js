@@ -308,9 +308,8 @@ exports.getSessionPlanGroupDetails = async (req, res) => {
       status: true,
       message: "Fetched session plan group with exercises.",
       data: {
-        ...group,
-        levels: parsedLevels,
-        totalVideoTime: formattedTime,
+        ...group,                // already JSON
+    totalVideoTime: formattedTime, // add here
       },
     });
   } catch (error) {
