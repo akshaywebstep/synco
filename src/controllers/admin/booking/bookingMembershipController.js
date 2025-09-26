@@ -21,6 +21,7 @@ const sendEmail = require("../../../utils/email/sendEmail");
 const {
   createNotification,
 } = require("../../../utils/admin/notificationHelper");
+const PaymentPlan = require("../../../services/admin/payment/paymentPlan");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -29,7 +30,7 @@ const MODULE = "book-paid-trial";
 // Controller: Create Booking (Paid )
 exports.createBooking = async (req, res) => {
   const formData = req.body;
-
+  let paymentPlan;
   try {
     // ✅ Check class
     const classData = await ClassSchedule.findByPk(formData.classScheduleId);
@@ -65,6 +66,18 @@ exports.createBooking = async (req, res) => {
     formData.venueId = classData.venueId;
     // 🔹 Attach payment gateway response so the service can save it
     if (formData.paymentPlanId) {
+
+      const planCheck = await PaymentPlan.getPlanById(planId, createdBy); // ✅ add createdBy here
+      if (!planCheck.status) {
+        skipped.push({ planId, reason: "Plan does not exist" });
+        if (DEBUG) console.log(`⛔ Skipped plan ID ${planId}: Not found`);
+        return res
+          .status(400)
+          .json({ status: false, message: planCheck.message });
+      }
+
+      paymentPlan = planCheck.data;
+
       let incomingGatewayResponse =
         formData.paymentResponse || formData.gatewayResponse || null;
 
@@ -98,74 +111,104 @@ exports.createBooking = async (req, res) => {
     const venue = await Venue.findByPk(classData.venueId);
     const venueName = venue?.venueName || venue?.name || "N/A";
 
-    // 🔹 Step 3: Fetch email template (book-paid-trial)
-    const {
-      status: configStatus,
-      emailConfig,
-      htmlTemplate,
-      subject,
-    } = await emailModel.getEmailConfig(PANEL, "book-paid-trial"); // matches your DB entry
+    let paymentPlanType;
 
-    if (configStatus && htmlTemplate) {
-      // ✅ Loop through all students
-      for (const sId of studentIds) {
-        const parentMetas = await BookingParentMeta.findAll({
-          where: { studentId: sId },
-        });
-        if (!parentMetas.length) continue;
+    if (paymentPlan.interval.toLowerCase() === "month") {
+      if (parseInt(paymentPlan.duration, 10) === 1) {
+        paymentPlanType = '1-month';
+      } else if (parseInt(paymentPlan.duration, 10) === 6) {
+        paymentPlanType = '6-month';
+      } else if (parseInt(paymentPlan.duration, 10) === 12) {
+        paymentPlanType = '12-month';
+      }
+    } else if (paymentPlan.interval.toLowerCase() === "quarter") {
+      if (parseInt(paymentPlan.duration, 10) === 1) {
+        paymentPlanType = '1-quarter';
+      } else if (parseInt(paymentPlan.duration, 10) === 6) {
+        paymentPlanType = '6-quarter';
+      } else if (parseInt(paymentPlan.duration, 10) === 12) {
+        paymentPlanType = '12-quarter';
+      }
+    } else if (paymentPlan.interval.toLowerCase() === "year") {
+      if (parseInt(paymentPlan.duration, 10) === 1) {
+        paymentPlanType = '1-year';
+      } else if (parseInt(paymentPlan.duration, 10) === 6) {
+        paymentPlanType = '6-year';
+      } else if (parseInt(paymentPlan.duration, 10) === 12) {
+        paymentPlanType = '12-year';
+      }
+    }
 
-        // Loop over parents and send emails
-        for (const p of parentMetas) {
-          try {
-            const student =
-              result.data.students?.find((st) => st.id === sId) || {};
-            let htmlBody = htmlTemplate
-              .replace(
-                /{{parentName}}/g,
-                `${p.parentFirstName} ${p.parentLastName}`
-              )
-              .replace(/{{studentFirstName}}/g, student.studentFirstName || "")
-              .replace(/{{studentLastName}}/g, student.studentLastName || "")
-              .replace(
-                /{{studentName}}/g,
-                `${student.studentFirstName || ""} ${student.studentLastName || ""
-                }`
-              )
-              .replace(/{{venueName}}/g, venueName)
-              .replace(/{{className}}/g, classData.className || "N/A")
-              .replace(
-                /{{classTime}}/g,
-                `${classData.startTime} - ${classData.endTime}`
-              )
-              .replace(/{{startDate}}/g, booking?.startDate || "")
-              .replace(/{{parentEmail}}/g, p.parentEmail || "")
-              .replace(/{{parentPassword}}/g, "Synco123") // ✅ this is correct
-              .replace(/{{appName}}/g, "Synco")
-              .replace(/{{year}}/g, new Date().getFullYear().toString())
-              .replace(
-                /{{logoUrl}}/g,
-                "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
-              )
-              .replace(
-                /{{kidsPlaying}}/g,
-                "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
+    if (paymentPlanType) {
+      // 🔹 Step 3: Fetch email template (book-paid-trial)
+      const {
+        status: configStatus,
+        emailConfig,
+        htmlTemplate,
+        subject,
+      } = await emailModel.getEmailConfig(PANEL, "book-paid-trial"); // matches your DB entry
+
+      if (configStatus && htmlTemplate) {
+        // ✅ Loop through all students
+        for (const sId of studentIds) {
+          const parentMetas = await BookingParentMeta.findAll({
+            where: { studentId: sId },
+          });
+          if (!parentMetas.length) continue;
+
+          // Loop over parents and send emails
+          for (const p of parentMetas) {
+            try {
+              const student =
+                result.data.students?.find((st) => st.id === sId) || {};
+              let htmlBody = htmlTemplate
+                .replace(
+                  /{{parentName}}/g,
+                  `${p.parentFirstName} ${p.parentLastName}`
+                )
+                .replace(/{{studentFirstName}}/g, student.studentFirstName || "")
+                .replace(/{{studentLastName}}/g, student.studentLastName || "")
+                .replace(
+                  /{{studentName}}/g,
+                  `${student.studentFirstName || ""} ${student.studentLastName || ""
+                  }`
+                )
+                .replace(/{{venueName}}/g, venueName)
+                .replace(/{{className}}/g, classData.className || "N/A")
+                .replace(
+                  /{{classTime}}/g,
+                  `${classData.startTime} - ${classData.endTime}`
+                )
+                .replace(/{{startDate}}/g, booking?.startDate || "")
+                .replace(/{{parentEmail}}/g, p.parentEmail || "")
+                .replace(/{{parentPassword}}/g, "Synco123") // ✅ this is correct
+                .replace(/{{appName}}/g, "Synco")
+                .replace(/{{year}}/g, new Date().getFullYear().toString())
+                .replace(
+                  /{{logoUrl}}/g,
+                  "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
+                )
+                .replace(
+                  /{{kidsPlaying}}/g,
+                  "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
+                );
+
+              await sendEmail(emailConfig, {
+                recipient: [
+                  {
+                    name: `${p.parentFirstName} ${p.parentLastName}`,
+                    email: p.parentEmail,
+                  },
+                ],
+                subject,
+                htmlBody,
+              });
+            } catch (err) {
+              console.error(
+                `❌ Failed to send email to ${p.parentEmail}:`,
+                err.message
               );
-
-            await sendEmail(emailConfig, {
-              recipient: [
-                {
-                  name: `${p.parentFirstName} ${p.parentLastName}`,
-                  email: p.parentEmail,
-                },
-              ],
-              subject,
-              htmlBody,
-            });
-          } catch (err) {
-            console.error(
-              `❌ Failed to send email to ${p.parentEmail}:`,
-              err.message
-            );
+            }
           }
         }
       }

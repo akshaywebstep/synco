@@ -10,7 +10,7 @@ const {
   SessionExercise,
 } = require("../../../models");
 
-const { Op } = require("sequelize");
+const { Op, Sequelize } = require("sequelize");
 
 const parseSessionPlanGroupLevels = async (spg) => {
   if (!spg?.levels) return spg;
@@ -89,32 +89,64 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
   return earthRadiusMiles * c;
 }
 
-exports.getAllVenuesWithClasses = async ({ userLat, userLng }) => {
+exports.getAllVenuesWithClasses = async ({ userLatitude, userLongitude, searchRadiusMiles }) => {
   try {
-    const currentLat = userLat ?? 51.5;
-    const currentLng = userLng ?? -0.1;
+    let venues;
 
-    const venues = await Venue.findAll({
-      where: {},
-      include: [
-        {
-          model: ClassSchedule,
-          as: "classSchedules",
-          required: false,
+    const hasCoordinates =
+      typeof userLatitude === "number" && typeof userLongitude === "number";
+
+    if (hasCoordinates) {
+      // Corrected Haversine formula for MySQL/MariaDB using backticks
+      const distanceFormula = Sequelize.literal(`
+        3959 * acos(
+          cos(radians(${userLatitude}))
+          * cos(radians(\`latitude\`))
+          * cos(radians(\`longitude\`) - radians(${userLongitude}))
+          + sin(radians(${userLatitude}))
+          * sin(radians(\`latitude\`))
+        )
+      `);
+
+      const whereCondition =
+        typeof searchRadiusMiles === "number" && searchRadiusMiles > 0
+          ? Sequelize.where(distanceFormula, { [Op.lte]: searchRadiusMiles })
+          : {}; // no range filter
+
+      venues = await Venue.findAll({
+        attributes: {
+          include: [[distanceFormula, "distanceMiles"]],
         },
-      ],
-      order: [["id", "ASC"]],
-    });
-
-    if (!venues || venues.length === 0) {
-      return { status: true, data: [] };
+        where: whereCondition,
+        include: [
+          {
+            model: ClassSchedule,
+            as: "classSchedules",
+            required: false,
+          },
+        ],
+        order: [[Sequelize.col("distanceMiles"), "ASC"]],
+      });
+    } else {
+      venues = await Venue.findAll({
+        include: [
+          {
+            model: ClassSchedule,
+            as: "classSchedules",
+            required: false,
+          },
+        ],
+        order: [["id", "ASC"]],
+      });
     }
 
+    if (!venues || venues.length === 0) return { status: true, data: [] };
+
+    // ==============================
+    // Format venues (same as before)
+    // ==============================
     const formattedVenues = await Promise.all(
       venues.map(async (venue) => {
-        // =====================
-        // Parse paymentGroupId → single integer
-        // =====================
         const paymentGroups =
           venue.paymentGroupId != null
             ? await PaymentGroup.findAll({
@@ -140,9 +172,6 @@ exports.getAllVenuesWithClasses = async ({ userLat, userLng }) => {
               })
             : [];
 
-        // =====================
-        // Parse termGroupId → array
-        // =====================
         let termGroupIds = [];
         if (typeof venue.termGroupId === "string") {
           try {
@@ -154,12 +183,10 @@ exports.getAllVenuesWithClasses = async ({ userLat, userLng }) => {
           termGroupIds = venue.termGroupId;
         }
 
-        // Fetch termGroups
         const termGroups = termGroupIds.length
           ? await TermGroup.findAll({ where: { id: termGroupIds } })
           : [];
 
-        // Fetch terms
         const terms = termGroupIds.length
           ? await Term.findAll({
               where: { termGroupId: { [Op.in]: termGroupIds } },
@@ -193,12 +220,10 @@ exports.getAllVenuesWithClasses = async ({ userLat, userLng }) => {
               : t.sessionsMap || [],
         }));
 
-        // Map class schedules by day
         const venueClasses = (venue.classSchedules || []).reduce((acc, cls) => {
           const day = cls.day;
           if (!day) return acc;
           if (!acc[day]) acc[day] = [];
-
           acc[day].push({
             classId: cls.id,
             className: cls.className,
@@ -206,16 +231,15 @@ exports.getAllVenuesWithClasses = async ({ userLat, userLng }) => {
             capacity: cls.capacity,
             allowFreeTrial: !!cls.allowFreeTrial,
           });
-
           return acc;
         }, {});
 
         const venueLat = parseFloat(venue.latitude);
         const venueLng = parseFloat(venue.longitude);
         const distanceMiles =
-          !isNaN(venueLat) && !isNaN(venueLng)
+          hasCoordinates && !isNaN(venueLat) && !isNaN(venueLng)
             ? parseFloat(
-                calculateDistance(currentLat, currentLng, venueLat, venueLng).toFixed(1)
+                calculateDistance(userLatitude, userLongitude, venueLat, venueLng).toFixed(1)
               )
             : null;
 
@@ -257,10 +281,7 @@ exports.getAllVenuesWithClasses = async ({ userLat, userLng }) => {
               PaymentGroupHasPlan: plan.PaymentGroupHasPlan || null,
             })),
           })),
-          termGroups: termGroups.map((group) => ({
-            id: group.id,
-            name: group.name,
-          })),
+          termGroups: termGroups.map((group) => ({ id: group.id, name: group.name })),
           terms: parsedTerms,
         };
       })

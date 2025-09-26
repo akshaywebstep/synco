@@ -687,13 +687,21 @@ exports.sendAllEmailToParents = async ({ bookingId }) => {
             /{{studentName}}/g,
             `${student.studentFirstName} ${student.studentLastName}`
           )
-          .replace(/{{status}}/g, booking.status) // make sure booking.status exists
+          .replace(/{{status}}/g, booking.status) 
           .replace(/{{venueName}}/g, venueName)
           .replace(/{{className}}/g, className)
           .replace(/{{classTime}}/g, classTime)
           .replace(/{{trialDate}}/g, trialDate)
           .replace(/{{additionalNoteSection}}/g, noteHtml)
           .replace(/{{appName}}/g, "Synco")
+          .replace(
+                  /{{logoUrl}}/g,
+                  "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
+                )
+                .replace(
+                  /{{kidsPlaying}}/g,
+                  "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
+                )
           .replace(/{{year}}/g, new Date().getFullYear());
 
         const recipient = [

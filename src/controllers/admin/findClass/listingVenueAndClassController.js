@@ -21,31 +21,26 @@ const parseBoolean = (value) => {
 // ✅ ALL VENUES CONTROLLER
 exports.findAClassListing = async (req, res) => {
   try {
-    const { lat, lng, day, onlyAvailable, search } = req.query;
+    const { lat, lng, range } = req.query;
 
-    const userLat = lat ? parseFloat(lat) : null;
-    const userLng = lng ? parseFloat(lng) : null;
-    const parsedOnlyAvailable =
-      onlyAvailable === "true" || onlyAvailable === true;
+    // Safely parse coordinates and range
+    const userLatitude = lat ? parseFloat(lat) : null;
+    const userLongitude = lng ? parseFloat(lng) : null;
+    const searchRadiusMiles = range ? parseFloat(range) : null;
 
     if (DEBUG) {
-      console.log("📥 Fetching ALL venue listings");
+      console.log("📥 Fetching venue listings with classes");
       console.log("➡ Filters:", {
-        day,
-        onlyAvailable: parsedOnlyAvailable,
-        userLat,
-        userLng,
-        search,
+        userLatitude,
+        userLongitude,
+        searchRadiusMiles,
       });
     }
 
     const result = await getAllVenuesWithClasses({
-      userLat,
-      userLng,
-      day,
-      onlyAvailable: parsedOnlyAvailable,
-      search,
-      userId: req.admin?.id, // ✅ Corrected here
+      userLatitude,
+      userLongitude,
+      searchRadiusMiles,
     });
 
     if (!result.status) {
