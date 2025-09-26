@@ -808,7 +808,7 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, transaction) 
 
 exports.sendAllEmailToParents = async ({ bookingId }) => {
   try {
-    // 1️⃣ Fetch main booking
+    // 1️⃣ Fetch booking
     const booking = await Booking.findByPk(bookingId);
     if (!booking) {
       return { status: false, message: "Booking not found" };
@@ -818,7 +818,6 @@ exports.sendAllEmailToParents = async ({ bookingId }) => {
     const studentMetas = await BookingStudentMeta.findAll({
       where: { bookingTrialId: bookingId },
     });
-
     if (!studentMetas.length) {
       return { status: false, message: "No students found for this booking" };
     }
@@ -826,16 +825,15 @@ exports.sendAllEmailToParents = async ({ bookingId }) => {
     // 3️⃣ Venue & Class info
     const venue = await Venue.findByPk(booking.venueId);
     const classSchedule = await ClassSchedule.findByPk(booking.classScheduleId);
-
     const venueName = venue?.venueName || venue?.name || "Unknown Venue";
     const className = classSchedule?.className || "Unknown Class";
-    const classTime =
-      classSchedule?.classTime || classSchedule?.startTime || "TBA";
-    const trialDate = booking.trialDate;
+    const classTime = classSchedule?.classTime || classSchedule?.startTime || "TBA";
+    const trialDate = booking.trialDate || booking.startDate;
     const additionalNote = booking.additionalNote || "";
+    const status = booking.status || "active ";
 
     // 4️⃣ Email template
-    const emailConfigResult = await getEmailConfig("admin", "booking-status");
+    const emailConfigResult = await getEmailConfig("admin", "waiting-listing-sendEmail");
     if (!emailConfigResult.status) {
       return { status: false, message: "Email config missing" };
     }
@@ -843,57 +841,64 @@ exports.sendAllEmailToParents = async ({ bookingId }) => {
     const { emailConfig, htmlTemplate, subject } = emailConfigResult;
     let sentTo = [];
 
-    // 5️⃣ Loop over students
-    for (const student of studentMetas) {
-      // Get all parents for this student
-      const parents = await BookingParentMeta.findAll({
-        where: { studentId: student.id },
-      });
+    // 5️⃣ Get unique parents for all students
+    const allParents = await BookingParentMeta.findAll({
+      where: { studentId: studentMetas.map(s => s.id) },
+    });
+    const parentsMap = {};
+    for (const parent of allParents) {
+      if (parent?.parentEmail) {
+        parentsMap[parent.parentEmail] = parent;
+      }
+    }
 
-      if (!parents.length) continue;
+    // 6️⃣ Build students list and table HTML
+    const studentsList = studentMetas.map(s => `${s.studentFirstName} ${s.studentLastName}`).join(", ");
+    const studentsTableRows = studentMetas.map(s => `
+      <tr>
+        <td style="padding:8px;">${s.studentFirstName} ${s.studentLastName}</td>
+        <td style="padding:8px;">${s.className || className}</td>
+        <td style="padding:8px;">${s.classTime || classTime}</td>
+        <td style="padding:8px;">${trialDate}</td>
+      </tr>
+    `).join("");
+
+    // 7️⃣ Send email to each parent
+    for (const parentEmail in parentsMap) {
+      const parent = parentsMap[parentEmail];
 
       let noteHtml = "";
-      if (additionalNote && additionalNote.trim() !== "") {
+      if (additionalNote.trim() !== "") {
         noteHtml = `<p><strong>Additional Note:</strong> ${additionalNote}</p>`;
       }
 
-      // 6️⃣ Send email to each parent
-      for (const parent of parents) {
-        if (!parent?.parentEmail) continue;
+      let finalHtml = htmlTemplate
+        .replace(/{{parentName}}/g, parent.parentFirstName)
+        .replace(/{{status}}/g, status)
+        .replace(/{{studentsList}}/g, studentsList)
+        .replace(/{{studentsTableRows}}/g, studentsTableRows)
+        .replace(/{{venueName}}/g, venueName)
+        .replace(/{{className}}/g, className)
+        .replace(/{{classTime}}/g, classTime)
+        .replace(/{{trialDate}}/g, trialDate)
+        .replace(/{{additionalNoteSection}}/g, noteHtml)
+        .replace(/{{appName}}/g, "Synco")
+        .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
+        .replace(/{{year}}/g, new Date().getFullYear());
 
-        let finalHtml = htmlTemplate
-          .replace(/{{parentName}}/g, parent.parentFirstName)
-          .replace(/{{studentFirstName}}/g, student.studentFirstName)
-          .replace(/{{studentLastName}}/g, student.studentLastName)
-          .replace(
-            /{{studentName}}/g,
-            `${student.studentFirstName} ${student.studentLastName}`
-          )
-          .replace(/{{status}}/g, booking.status) // make sure booking.status exists
-          .replace(/{{venueName}}/g, venueName)
-          .replace(/{{className}}/g, className)
-          .replace(/{{classTime}}/g, classTime)
-          .replace(/{{trialDate}}/g, trialDate)
-          .replace(/{{additionalNoteSection}}/g, noteHtml)
-          .replace(/{{appName}}/g, "Synco")
-          .replace(/{{year}}/g, new Date().getFullYear());
+      const recipient = [{
+        name: `${parent.parentFirstName} ${parent.parentLastName}`,
+        email: parent.parentEmail,
+      }];
 
-        const recipient = [
-          {
-            name: `${parent.parentFirstName} ${parent.parentLastName}`,
-            email: parent.parentEmail,
-          },
-        ];
+      const sendResult = await sendEmail(emailConfig, {
+        recipient,
+        subject,
+        htmlBody: finalHtml,
+      });
 
-        const sendResult = await sendEmail(emailConfig, {
-          recipient,
-          subject,
-          htmlBody: finalHtml,
-        });
-
-        if (sendResult.status) {
-          sentTo.push(parent.parentEmail);
-        }
+      if (sendResult.status) {
+        sentTo.push(parent.parentEmail);
       }
     }
 

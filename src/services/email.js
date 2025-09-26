@@ -69,7 +69,8 @@ exports.getEmailConfig = async (module, action, status = true) => {
     }
 
     const config = {
-      host: emailConfig.smtp_host,
+      // host: emailConfig.smtp_host,
+       host: emailConfig.smtp_host?.trim(),
       port: emailConfig.smtp_port,
       secure: emailConfig.smtp_secure,
       username: emailConfig.smtp_username,
