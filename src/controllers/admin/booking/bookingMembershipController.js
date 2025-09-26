@@ -74,7 +74,7 @@ exports.createBooking = async (req, res) => {
       ) {
         try {
           incomingGatewayResponse = JSON.parse(incomingGatewayResponse);
-        } catch (_) {}
+        } catch (_) { }
       }
 
       formData.paymentResponse = incomingGatewayResponse || null;
@@ -128,8 +128,7 @@ exports.createBooking = async (req, res) => {
               .replace(/{{studentLastName}}/g, student.studentLastName || "")
               .replace(
                 /{{studentName}}/g,
-                `${student.studentFirstName || ""} ${
-                  student.studentLastName || ""
+                `${student.studentFirstName || ""} ${student.studentLastName || ""
                 }`
               )
               .replace(/{{venueName}}/g, venueName)
@@ -142,7 +141,15 @@ exports.createBooking = async (req, res) => {
               .replace(/{{parentEmail}}/g, p.parentEmail || "")
               .replace(/{{parentPassword}}/g, "Synco123") // ✅ this is correct
               .replace(/{{appName}}/g, "Synco")
-              .replace(/{{year}}/g, new Date().getFullYear().toString());
+              .replace(/{{year}}/g, new Date().getFullYear().toString())
+              .replace(
+                /{{logoUrl}}/g,
+                "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
+              )
+              .replace(
+                /{{kidsPlaying}}/g,
+                "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
+              );
 
             await sendEmail(emailConfig, {
               recipient: [

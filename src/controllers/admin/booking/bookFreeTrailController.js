@@ -241,13 +241,17 @@ exports.createBooking = async (req, res) => {
             "{{className}}": classData?.className || "N/A",
             "{{trialDate}}": booking?.trialDate || "",
             "{{classTime}}": classData?.startTime || "",
+            "{{logoUrl}}": "https://webstepdev.com/demo/syncoUploads/syncoLogo.png",
+            "{{kidsPlaying}}": "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png",
             "{{appName}}": "Synco",
             "{{year}}": new Date().getFullYear().toString(),
           };
 
           let finalHtml = htmlTemplate;
           for (const [key, val] of Object.entries(variables)) {
-            finalHtml = finalHtml.replace(new RegExp(key, "g"), val);
+            const safeKey = key.replace(/[{}]/g, "").trim(); // remove braces and spaces
+            const regex = new RegExp(`{{\\s*${safeKey}\\s*}}`, "g"); // match {{ parentName }} or {{parentName}}
+            finalHtml = finalHtml.replace(regex, val);
           }
 
           await sendEmail(emailConfig, {

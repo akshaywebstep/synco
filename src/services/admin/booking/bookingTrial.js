@@ -9,6 +9,8 @@ const {
   PaymentPlan,
   Admin,
 } = require("../../../models");
+const DEBUG = process.env.DEBUG === "true";
+
 const { Op } = require("sequelize");
 const bcrypt = require("bcrypt");
 

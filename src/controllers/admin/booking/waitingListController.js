@@ -239,6 +239,8 @@ exports.createBooking = async (req, res) => {
             "{{classTime}}": classData?.startTime || "",
             "{{appName}}": "Synco",
             "{{year}}": new Date().getFullYear().toString(),
+            "{{logoUrl}}": "https://webstepdev.com/demo/syncoUploads/syncoLogo.png",
+            "{{kidsPlaying}}": "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png",
           };
 
           let finalHtml = htmlTemplate;
