@@ -25,6 +25,7 @@ function generateBookingId(length = 12) {
   }
   return result;
 }
+const DEBUG = process.env.DEBUG === "true";
 
 exports.createBooking = async (data, options) => {
   const t = await sequelize.transaction();
