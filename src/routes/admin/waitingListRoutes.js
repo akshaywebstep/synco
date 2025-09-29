@@ -60,4 +60,22 @@ router.put(
   convertToMembership
 );
 
+const {
+  addCommentForWaitingList,
+  listCommentsForWaitingList,
+} = require("../../controllers/admin/booking/commentController");
+
+router.post(
+  "/comment/create",
+  authMiddleware,
+  permissionMiddleware("comment", "create"),
+  addCommentForWaitingList
+);
+router.get(
+  "/comment/list",
+  authMiddleware,
+  permissionMiddleware("comment", "view-listing"),
+  listCommentsForWaitingList
+);
+
 module.exports = router;

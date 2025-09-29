@@ -103,6 +103,17 @@ router.use("/account-information", require("./accountInformationRoutes"));
 // Lead Mouldule Base Route
 router.use("/lead", require("./leadRoutes"));
 
+const {
+  listComments,
+} = require("../../controllers/admin/booking/commentController");
+
+router.get(
+  "/comment/allComment",
+  authMiddleware,
+  permissionMiddleware("comment", "view-listing"),
+  listComments
+);
+
 // Base: /api/admin/admin
 router.post(
   "/",

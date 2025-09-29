@@ -162,4 +162,22 @@ router.post(
   sendNoMembershipTrialEmail
 );
 
+const {
+  addCommentForFreeTrial,
+  listCommentsForFreeTrial,
+} = require("../../controllers/admin/booking/commentController");
+
+router.post(
+  "/comment/create",
+  authMiddleware,
+  permissionMiddleware("comment", "create"),
+  addCommentForFreeTrial
+);
+router.get(
+  "/comment/list",
+  authMiddleware,
+  permissionMiddleware("comment", "view-listing"),
+  listCommentsForFreeTrial
+);
+
 module.exports = router;

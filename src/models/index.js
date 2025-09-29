@@ -63,6 +63,7 @@ const models = {
   // WaitingList: require("./admin/booking/WaitingList"),
   FreezeBooking: require("./admin/booking/FreezeBooking"),
   KeyInformation: require("./admin/booking/KeyInformation"),
+  Comment: require("./admin/booking/Comment"),
 
   // Book MemberShip
   BookingPayment: require("./admin/booking/BookingPayment"),
@@ -71,6 +72,7 @@ const models = {
   Feedback: require("./admin/accountInformations/Feedback"),
   AdminDashboardWidget: require("./admin/adminDashboard/adminDashboardWidget"),
   Lead: require("./admin/lead/Leads"),
+
 };
 
 // =================== Apply Model-Level Associations =================== //
@@ -117,6 +119,7 @@ const {
   RebookingTrial,
   CancelBooking,
   BookingPayment,
+  Comment,
   AdminDashboardWidget,
   // WaitingList,
   FreezeBooking,
@@ -274,6 +277,13 @@ Lead.belongsTo(Admin, {
   foreignKey: "assignedAgentId",
   as: "assignedAgent",
 });
+
+// ✅ Associate Comment → Admin
+Comment.belongsTo(models.Admin, {
+    foreignKey: "commentBy",  // column stays the same
+    as: "bookedByAdmin",      // alias must be different from column
+});
+
 // ====================== 📦 Module Exports ====================== //
 module.exports = {
   sequelize,
@@ -321,6 +331,7 @@ module.exports = {
   CancelBooking,
 
   BookingPayment,
+  Comment,
   AdminDashboardWidget,
   // WaitingList,
   FreezeBooking,

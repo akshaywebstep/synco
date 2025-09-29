@@ -153,4 +153,22 @@ router.post(
   sendCancelBookingEmail
 );
 
+const {
+  addCommentForMembership,
+  listCommentsForMembership,
+} = require("../../controllers/admin/booking/commentController");
+
+router.post(
+  "/comment/create",
+  authMiddleware,
+  permissionMiddleware("comment", "create"),
+  addCommentForMembership
+);
+router.get(
+  "/comment/list",
+  authMiddleware,
+  permissionMiddleware("comment", "view-listing"),
+  listCommentsForMembership
+);
+
 module.exports = router;
