@@ -866,27 +866,36 @@ exports.updateVenue = async (id, data) => {
     // Update venue
     // =====================
 
-    // 1. Only transform termGroupId if it was sent in request
-    if (data.termGroupId !== undefined) {
+    // Handle termGroupId update
+    if ("termGroupId" in data) {
       if (typeof data.termGroupId === "string") {
         data.termGroupId = data.termGroupId
           .split(",")
           .map((id) => parseInt(id.trim()))
           .filter((id) => !isNaN(id));
       }
+
       if (Array.isArray(data.termGroupId)) {
         data.termGroupId = JSON.stringify(data.termGroupId);
       }
+    } else {
+      // not provided → delete so it won’t overwrite
+      delete data.termGroupId;
     }
 
-    // 2. Only transform paymentGroupId if it was sent
-    if (data.paymentGroupId !== undefined) {
+    // Handle paymentGroupId update
+    if ("paymentGroupId" in data) {
       if (typeof data.paymentGroupId === "string") {
-        data.paymentGroupId = parseInt(data.paymentGroupId.trim());
+        const parsed = parseInt(data.paymentGroupId.trim());
+        if (!isNaN(parsed)) {
+          data.paymentGroupId = parsed;
+        } else {
+          throw new Error("Invalid paymentGroupId");
+        }
       }
-      if (data.paymentGroupId && isNaN(data.paymentGroupId)) {
-        throw new Error("Invalid paymentGroupId");
-      }
+    } else {
+      // not provided → delete so it won’t overwrite
+      delete data.paymentGroupId;
     }
 
     // 3. Re-geocode only if address/area changed AND was provided

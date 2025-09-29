@@ -11,21 +11,21 @@ const {
 } = require("../../controllers/admin/booking/cancelBookingController");
 
 router.post(
-  "/book/free-trials/cancel-freeTrial",
+  "/",
   authMiddleware,
   permissionMiddleware("cancel-free-trial", "create"),
   createCancelBooking
 );
 
 router.get(
-  "/book/free-trials/",
+  "/",
   authMiddleware,
   permissionMiddleware("cancel-free-trial", "view-listing"),
   getCancelBookings
 );
 
 router.post(
-  "/book/free-trials/send-email",
+  "/send-email",
   authMiddleware,
   permissionMiddleware("cancel-free-trial", "view-listing"),
   sendCancelBookingEmail
