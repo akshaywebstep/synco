@@ -139,7 +139,7 @@ exports.updateVenue = async (req, res) => {
   if (DEBUG) console.log("🛠️ Updating Venue ID:", id, formData);
 
   const validation = validateFormData(formData, {
-    requiredFields: ["area", "name", "address", "facility","termGroupId","paymentGroupId"],
+    // requiredFields: ["area", "name", "address", "facility"],
     enumValidations: {
       facility: ["Indoor", "Outdoor"],
     },
