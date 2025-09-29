@@ -14,6 +14,13 @@ const axios = require("axios");
 const bcrypt = require("bcrypt");
 const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
+const {
+  createCustomer,
+  removeCustomer,
+} = require("../../../utils/payment/pay360/customer");
+const {
+  createBillingRequest,
+} = require("../../../utils/payment/pay360/payment");
 
 exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
   if (!adminId) throw new Error("Unauthorized");
