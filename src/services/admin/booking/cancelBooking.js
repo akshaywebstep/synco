@@ -16,7 +16,7 @@ exports.createCancelBooking = async ({
   additionalNote,
 }) => {
   try {
-    const bookingType = "free_trial"; // fixed for free trial
+    const bookingType = "free"; // fixed for free trial
 
     // ✅ Validate booking exists
     const booking = await Booking.findByPk(bookingId);
@@ -62,7 +62,7 @@ exports.createCancelBooking = async ({
 exports.getCancelBookings = async () => {
   try {
     const cancellations = await CancelBooking.findAll({
-      where: { bookingType: "free_trial" }, // only free trials
+      where: { bookingType: "free" }, // only free trials
       include: [
         {
           model: Booking,

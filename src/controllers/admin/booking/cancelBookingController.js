@@ -33,7 +33,7 @@ exports.createCancelBooking = async (req, res) => {
     // Call service specifically for free trial cancellation
     const result = await CancelBookingService.createCancelBooking({
       bookingId: payload.bookingId,
-      bookingType: "free_trial", // fixed for free trial
+      bookingType: "free", // fixed for free trial
       cancelReason: payload.cancelReason || null,
       additionalNote: payload.additionalNote || null,
       cancelDate: payload.cancelDate,
@@ -143,7 +143,7 @@ exports.sendCancelBookingEmail = async (req, res) => {
       await logActivity(
         req,
         "admin",
-        "cancel_free_trial",
+        "cancel_free",
         "send",
         result,
         false
@@ -158,7 +158,7 @@ exports.sendCancelBookingEmail = async (req, res) => {
     await logActivity(
       req,
       "admin",
-      "cancel_free_trial",
+      "cancel_free",
       "send",
       { message: `Cancel Free Trial email sent for bookingId ${bookingId}` },
       true
@@ -174,7 +174,7 @@ exports.sendCancelBookingEmail = async (req, res) => {
     await logActivity(
       req,
       "admin",
-      "cancel_free_trial",
+      "cancel_free",
       "send",
       { error: error.message },
       false

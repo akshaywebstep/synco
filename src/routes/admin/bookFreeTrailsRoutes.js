@@ -108,33 +108,33 @@ router.post(
 );
 
 // cancel free trials ------------------------------------------------------------------------------------
-const {
-  createCancelBooking,
-  getCancelBookings,
-  sendCancelBookingEmail,
-  // createNoMembership,
-} = require("../../controllers/admin/booking/cancelBookingController");
+// const {
+//   createCancelBooking,
+//   getCancelBookings,
+//   sendCancelBookingEmail,
+//   // createNoMembership,
+// } = require("../../controllers/admin/booking/cancelBookingController");
 
-router.post(
-  "/cancel-freeTrial",
-  authMiddleware,
-  permissionMiddleware("cancel-free-trial", "create"),
-  createCancelBooking
-);
+// router.post(
+//   "/cancel-freeTrial",
+//   authMiddleware,
+//   permissionMiddleware("cancel-free-trial", "create"),
+//   createCancelBooking
+// );
 
-router.get(
-  "/cancel-freeTrial",
-  authMiddleware,
-  permissionMiddleware("cancel-free-trial", "view-listing"),
-  getCancelBookings
-);
+// router.get(
+//   "/cancel-freeTrial",
+//   authMiddleware,
+//   permissionMiddleware("cancel-free-trial", "view-listing"),
+//   getCancelBookings
+// );
 
-router.post(
-  "/cancel-freeTrial/send-email",
-  authMiddleware,
-  permissionMiddleware("cancel-free-trial", "view-listing"),
-  sendCancelBookingEmail
-);
+// router.post(
+//   "/cancel-freeTrial/send-email",
+//   authMiddleware,
+//   permissionMiddleware("cancel-free-trial", "view-listing"),
+//   sendCancelBookingEmail
+// );
 
 // no membership selected --------------------------------------------------------------------------------
 const {

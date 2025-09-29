@@ -64,7 +64,7 @@ router.use("/dashboard", require("./dashboardRoutes"));
 router.use("/book/free-trials", require("./bookFreeTrailsRoutes"));
 // router.use("/service-history", require("./serviceHistoryRoutes"));
 // router.use("/reebooking", require("./reebookFreeTrialRoutes"));
-// router.use("/cancel-freeTrial", require("./cancelBookingRoutes"));
+router.use("/", require("./cancelBookingRoutes"));
 // router.use("/no-membership", require("./noMembershipTrialRoutes"));
 router.use("/key-information", require("./keyInformationRoutes"));
 
