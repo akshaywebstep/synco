@@ -863,32 +863,37 @@ exports.updateVenue = async (id, data) => {
     }
 
     // =====================
-    // Parse termGroupId → array
+    // Update venue
     // =====================
-    if (typeof data.termGroupId === "string") {
-      data.termGroupId = data.termGroupId
-        .split(",")
-        .map((id) => parseInt(id.trim()))
-        .filter((id) => !isNaN(id));
-    }
-    if (Array.isArray(data.termGroupId)) {
-      data.termGroupId = JSON.stringify(data.termGroupId);
+
+    // 1. Only transform termGroupId if it was sent in request
+    if (data.termGroupId !== undefined) {
+      if (typeof data.termGroupId === "string") {
+        data.termGroupId = data.termGroupId
+          .split(",")
+          .map((id) => parseInt(id.trim()))
+          .filter((id) => !isNaN(id));
+      }
+      if (Array.isArray(data.termGroupId)) {
+        data.termGroupId = JSON.stringify(data.termGroupId);
+      }
     }
 
-    // =====================
-    // Parse paymentGroupId → single integer
-    // =====================
-    if (typeof data.paymentGroupId === "string") {
-      data.paymentGroupId = parseInt(data.paymentGroupId.trim());
-    }
-    if (data.paymentGroupId && isNaN(data.paymentGroupId)) {
-      throw new Error("Invalid paymentGroupId");
+    // 2. Only transform paymentGroupId if it was sent
+    if (data.paymentGroupId !== undefined) {
+      if (typeof data.paymentGroupId === "string") {
+        data.paymentGroupId = parseInt(data.paymentGroupId.trim());
+      }
+      if (data.paymentGroupId && isNaN(data.paymentGroupId)) {
+        throw new Error("Invalid paymentGroupId");
+      }
     }
 
-    // =====================
-    // Re-geocode if address or area changed
-    // =====================
-    if (data.address || data.area) {
+    // 3. Re-geocode only if address/area changed AND was provided
+    if (
+      (data.address && data.address !== venue.address) ||
+      (data.area && data.area !== venue.area)
+    ) {
       const coords = await geocodeAddress(
         data.address || venue.address,
         data.area || venue.area
@@ -900,9 +905,14 @@ exports.updateVenue = async (id, data) => {
       }
     }
 
-    // =====================
-    // Update venue
-    // =====================
+    // 4. Clean undefined values so they don’t overwrite DB fields
+    Object.keys(data).forEach((key) => {
+      if (data[key] === undefined) {
+        delete data[key];
+      }
+    });
+
+    // 5. Update only the provided fields
     await venue.update(data);
 
     const updatedVenue = await Venue.findByPk(id);
