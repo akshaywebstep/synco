@@ -21,6 +21,7 @@ const {
 const {
   createBillingRequest,
 } = require("../../../utils/payment/pay360/payment");
+const DEBUG = process.env.DEBUG === "true";
 
 exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
   if (!adminId) throw new Error("Unauthorized");
@@ -703,25 +704,33 @@ exports.updateBooking = async (payload, adminId, id) => {
         if (!paymentPlan) throw new Error("Invalid payment plan selected.");
         const price = paymentPlan.price || 0;
 
-        const venue = await Venue.findByPk(booking.venueId, { transaction: t });
-        const classSchedule = await ClassSchedule.findByPk(
-          booking.classScheduleId,
-          { transaction: t }
-        );
+        // Fetch venue & classSchedule info
+        const venue = await Venue.findByPk(payload.venueId, { transaction: t });
+        const classSchedule = await ClassSchedule.findByPk(payload.classScheduleId, {
+          transaction: t,
+        });
 
         const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
         let gatewayResponse = null;
-        let goCardlessCustomer, goCardlessBankAccount, goCardlessBillingRequest;
+        const amountInPence = Math.round(price * 100);
+
+        let goCardlessCustomer;
+        let goCardlessBankAccount;
+        let goCardlessBillingRequest;
 
         if (paymentType === "rrn") {
-          // ✅ Use GoCardless like in createBooking
+          // Step 1: Prepare payload for customer creation
           const customerPayload = {
-            email: payload.payment.email || payload.parents?.[0]?.parentEmail,
+            email: payload.payment.email || payload.students?.[0]?.parents?.[0]?.parentEmail || "",
             given_name: payload.payment.firstName || "",
             family_name: payload.payment.lastName || "",
-            crm_id: `CUSTID-${Date.now()}-${Math.floor(
-              1000 + Math.random() * 9000
-            )}`,
+            address_line1: payload.payment.addressLine1 || "",
+            address_line2: payload.payment.addressLine2 || "",
+            city: payload.payment.city || "",
+            postal_code: payload.payment.postalCode || "",
+            country_code: payload.payment.countryCode || "",
+            region: payload.payment.region || "",
+            crm_id: `CUSTID-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
             account_holder_name: payload.payment.account_holder_name || "",
             account_number: payload.payment.account_number || "",
             branch_code: payload.payment.branch_code || "",
@@ -730,46 +739,46 @@ exports.updateBooking = async (payload, adminId, id) => {
             iban: payload.payment.iban || "",
           };
 
+          if (DEBUG) console.log("🛠 Generated payload:", customerPayload);
+
+          // Step 2: Create customer + bank account
           const createCustomerRes = await createCustomer(customerPayload);
           if (!createCustomerRes.status) {
             throw new Error(
-              createCustomerRes.message || "Failed to create GoCardless customer"
+              createCustomerRes.message || "Failed to create goCardless customer."
             );
           }
 
+          // Step 3: Prepare payload for billing request
           const billingRequestPayload = {
             customerId: createCustomerRes.customer.id,
-            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-              }`,
+            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"}`,
             amount: price,
             scheme: "faster_payments",
             currency: "GBP",
-            reference: `TRX-${Date.now()}-${Math.floor(
-              1000 + Math.random() * 9000
-            )}`,
-            mandateReference: `MD-${Date.now()}-${Math.floor(
-              1000 + Math.random() * 9000
-            )}`,
-            metadata: { crm_id: customerPayload.crm_id },
+            reference: `TRX-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+            mandateReference: `MD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+            metadata: {
+              crm_id: customerPayload.crm_id,
+            },
             fallbackEnabled: true,
           };
 
-          const createBillingRequestRes = await createBillingRequest(
-            billingRequestPayload
-          );
+          if (DEBUG)
+            console.log("🛠 Generated billing request payload:", billingRequestPayload);
+
+          // Step 4: Create billing request
+          const createBillingRequestRes = await createBillingRequest(billingRequestPayload);
           if (!createBillingRequestRes.status) {
             await removeCustomer(createCustomerRes.customer.id);
             throw new Error(
-              createBillingRequestRes.message ||
-              "Failed to create billing request"
+              createBillingRequestRes.message || "Failed to create billing request."
             );
           }
 
           goCardlessCustomer = createCustomerRes.customer;
           goCardlessBankAccount = createCustomerRes.bankAccount;
           goCardlessBillingRequest = createBillingRequestRes.billingRequest;
-          gatewayResponse = createBillingRequestRes.billingRequest;
-          paymentStatusFromGateway = "paid";
         } else if (paymentType === "card") {
           // ✅ Pay360 card payment (same as createBooking)
           if (
@@ -851,7 +860,7 @@ exports.updateBooking = async (payload, adminId, id) => {
               status:
                 gatewayResponse?.transaction?.status ||
                 gatewayResponse?.billing_requests?.status ||
-                "unknown",
+                "pending",
             },
             goCardlessCustomer,
             goCardlessBankAccount,
