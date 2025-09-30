@@ -187,8 +187,7 @@ exports.createVenue = async (data) => {
     if (!Array.isArray(data.termGroupId) || data.termGroupId.length === 0) {
       throw new Error("Invalid termGroupId");
     }
-    // Store as JSON string if your DB column is string type
-    data.termGroupId = JSON.stringify(data.termGroupId);
+    data.termGroupId = JSON.stringify(data.termGroupId); // store as JSON string
 
     // ✅ paymentGroupId → single integer
     if (typeof data.paymentGroupId === "string") {
@@ -214,21 +213,278 @@ exports.createVenue = async (data) => {
     // ✅ Create venue
     const venue = await Venue.create(data);
 
-    // ✅ Optional: enrich with PaymentGroups and their plans (single id now)
-    let paymentGroups = [];
-    if (venue.paymentGroupId) {
-      paymentGroups = await PaymentGroup.findAll({
-        where: { id: venue.paymentGroupId },
+    // Refetch to enrich
+    const createdVenue = await Venue.findByPk(venue.id);
+
+    // =====================
+    // Payment Group (single) + nested PaymentPlans
+    // =====================
+    let paymentGroup = null;
+    if (createdVenue.paymentGroupId) {
+      paymentGroup = await PaymentGroup.findByPk(createdVenue.paymentGroupId, {
         include: [{ model: PaymentPlan, as: "paymentPlans" }],
       });
     }
+    createdVenue.dataValues.paymentGroup = paymentGroup;
 
-    venue.dataValues.paymentGroups = paymentGroups;
+    // =====================
+    // Term Groups → fetch TermGroup + Terms + sessions
+    // =====================
+    let termGroupIds = [];
+    if (typeof createdVenue.termGroupId === "string") {
+      try {
+        termGroupIds = JSON.parse(createdVenue.termGroupId);
+      } catch {
+        termGroupIds = [];
+      }
+    }
 
-    return { status: true, data: venue };
+    if (termGroupIds.length > 0) {
+      const termGroups = await TermGroup.findAll({
+        where: { id: termGroupIds },
+        include: [
+          {
+            model: Term,
+            as: "terms",
+            attributes: [
+              "id",
+              "termGroupId",
+              "termName",
+              "startDate",
+              "endDate",
+              "exclusionDates",
+              "totalSessions",
+              "sessionsMap",
+            ],
+          },
+        ],
+      });
+
+      for (const termGroup of termGroups) {
+        for (const term of termGroup.terms || []) {
+          // Parse exclusionDates
+          if (typeof term.exclusionDates === "string") {
+            try {
+              term.dataValues.exclusionDates = JSON.parse(term.exclusionDates);
+            } catch {
+              term.dataValues.exclusionDates = [];
+            }
+          }
+
+          // Parse & enrich sessionsMap
+          let parsedSessionsMap = [];
+          if (typeof term.sessionsMap === "string") {
+            try {
+              parsedSessionsMap = JSON.parse(term.sessionsMap);
+            } catch {
+              parsedSessionsMap = [];
+            }
+          } else {
+            parsedSessionsMap = term.sessionsMap || [];
+          }
+
+          for (const entry of parsedSessionsMap) {
+            if (!entry.sessionPlanId) continue;
+
+            const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
+              attributes: [
+                "id",
+                "groupName",
+                "levels",
+                "video",
+                "banner",
+                "player",
+              ],
+            });
+
+            if (spg) {
+              await parseSessionPlanGroupLevels(spg);
+              entry.sessionPlan = spg;
+            } else {
+              entry.sessionPlan = null;
+            }
+          }
+
+          term.dataValues.sessionsMap = parsedSessionsMap;
+        }
+      }
+
+      createdVenue.dataValues.termGroups = termGroups;
+    } else {
+      createdVenue.dataValues.termGroups = [];
+    }
+
+    return { status: true, data: createdVenue };
   } catch (error) {
     console.error("❌ Venue create error:", error.message);
     return { status: false, message: error.message };
+  }
+};
+// =====================
+exports.updateVenue = async (id, data) => {
+  try {
+    const venue = await Venue.findByPk(id);
+    if (!venue) {
+      return { status: false, message: "Venue not found." };
+    }
+
+    // ✅ Handle termGroupId (multiple)
+    if ("termGroupId" in data) {
+      if (typeof data.termGroupId === "string") {
+        data.termGroupId = data.termGroupId
+          .split(",")
+          .map((id) => parseInt(id.trim()))
+          .filter((id) => !isNaN(id));
+      }
+
+      if (Array.isArray(data.termGroupId)) {
+        data.termGroupId = JSON.stringify(data.termGroupId);
+      }
+    } else {
+      delete data.termGroupId;
+    }
+
+    // ✅ Handle paymentGroupId (single)
+    if ("paymentGroupId" in data) {
+      if (typeof data.paymentGroupId === "string") {
+        const parsed = parseInt(data.paymentGroupId.trim());
+        if (!isNaN(parsed)) {
+          data.paymentGroupId = parsed;
+        } else {
+          throw new Error("Invalid paymentGroupId");
+        }
+      }
+    } else {
+      delete data.paymentGroupId;
+    }
+
+    // ✅ Re-geocode if address/area changed
+    if (
+      (data.address && data.address !== venue.address) ||
+      (data.area && data.area !== venue.area)
+    ) {
+      const coords = await geocodeAddress(
+        data.address || venue.address,
+        data.area || venue.area
+      );
+      if (coords) {
+        data.latitude = coords.latitude;
+        data.longitude = coords.longitude;
+        data.postal_code = coords.postal_code;
+      }
+    }
+
+    // ✅ Clean undefined values
+    Object.keys(data).forEach((key) => {
+      if (data[key] === undefined) {
+        delete data[key];
+      }
+    });
+
+    // ✅ Update
+    await venue.update(data);
+    const updatedVenue = await Venue.findByPk(id);
+
+    // ✅ Payment Group
+    let paymentGroup = null;
+    if (updatedVenue.paymentGroupId) {
+      paymentGroup = await PaymentGroup.findByPk(updatedVenue.paymentGroupId, {
+        include: [{ model: PaymentPlan, as: "paymentPlans" }],
+      });
+    }
+    updatedVenue.dataValues.paymentGroup = paymentGroup;
+
+    // ✅ Term Groups (same as create)
+    let termGroupIds = [];
+    if (typeof updatedVenue.termGroupId === "string") {
+      try {
+        termGroupIds = JSON.parse(updatedVenue.termGroupId);
+      } catch {
+        termGroupIds = [];
+      }
+    }
+
+    if (termGroupIds.length > 0) {
+      const termGroups = await TermGroup.findAll({
+        where: { id: termGroupIds },
+        include: [
+          {
+            model: Term,
+            as: "terms",
+            attributes: [
+              "id",
+              "termGroupId",
+              "termName",
+              "startDate",
+              "endDate",
+              "exclusionDates",
+              "totalSessions",
+              "sessionsMap",
+            ],
+          },
+        ],
+      });
+
+      for (const termGroup of termGroups) {
+        for (const term of termGroup.terms || []) {
+          if (typeof term.exclusionDates === "string") {
+            try {
+              term.dataValues.exclusionDates = JSON.parse(term.exclusionDates);
+            } catch {
+              term.dataValues.exclusionDates = [];
+            }
+          }
+
+          let parsedSessionsMap = [];
+          if (typeof term.sessionsMap === "string") {
+            try {
+              parsedSessionsMap = JSON.parse(term.sessionsMap);
+            } catch {
+              parsedSessionsMap = [];
+            }
+          } else {
+            parsedSessionsMap = term.sessionsMap || [];
+          }
+
+          for (const entry of parsedSessionsMap) {
+            if (!entry.sessionPlanId) continue;
+
+            const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
+              attributes: [
+                "id",
+                "groupName",
+                "levels",
+                "video",
+                "banner",
+                "player",
+              ],
+            });
+
+            if (spg) {
+              await parseSessionPlanGroupLevels(spg);
+              entry.sessionPlan = spg;
+            } else {
+              entry.sessionPlan = null;
+            }
+          }
+
+          term.dataValues.sessionsMap = parsedSessionsMap;
+        }
+      }
+
+      updatedVenue.dataValues.termGroups = termGroups;
+    } else {
+      updatedVenue.dataValues.termGroups = [];
+    }
+
+    return {
+      status: true,
+      message: "Venue updated successfully.",
+      data: updatedVenue,
+    };
+  } catch (error) {
+    console.error("❌ updateVenue Error:", error.message);
+    return { status: false, message: "Update failed. " + error.message };
   }
 };
 
@@ -852,194 +1108,6 @@ exports.getVenueById = async (id, createdBy) => {
       status: false,
       message: "Failed to fetch venue.",
     };
-  }
-};
-
-exports.updateVenue = async (id, data) => {
-  try {
-    const venue = await Venue.findByPk(id);
-    if (!venue) {
-      return { status: false, message: "Venue not found." };
-    }
-
-    // =====================
-    // Handle termGroupId (multiple)
-    // =====================
-    if ("termGroupId" in data) {
-      if (typeof data.termGroupId === "string") {
-        data.termGroupId = data.termGroupId
-          .split(",")
-          .map((id) => parseInt(id.trim()))
-          .filter((id) => !isNaN(id));
-      }
-
-      if (Array.isArray(data.termGroupId)) {
-        data.termGroupId = JSON.stringify(data.termGroupId);
-      }
-    } else {
-      delete data.termGroupId;
-    }
-
-    // =====================
-    // Handle paymentGroupId (single)
-    // =====================
-    if ("paymentGroupId" in data) {
-      if (typeof data.paymentGroupId === "string") {
-        const parsed = parseInt(data.paymentGroupId.trim());
-        if (!isNaN(parsed)) {
-          data.paymentGroupId = parsed;
-        } else {
-          throw new Error("Invalid paymentGroupId");
-        }
-      }
-    } else {
-      delete data.paymentGroupId;
-    }
-
-    // =====================
-    // Re-geocode if address/area changed
-    // =====================
-    if (
-      (data.address && data.address !== venue.address) ||
-      (data.area && data.area !== venue.area)
-    ) {
-      const coords = await geocodeAddress(
-        data.address || venue.address,
-        data.area || venue.area
-      );
-      if (coords) {
-        data.latitude = coords.latitude;
-        data.longitude = coords.longitude;
-        data.postal_code = coords.postal_code;
-      }
-    }
-
-    // =====================
-    // Clean undefined values
-    // =====================
-    Object.keys(data).forEach((key) => {
-      if (data[key] === undefined) {
-        delete data[key];
-      }
-    });
-
-    // =====================
-    // Update only provided fields
-    // =====================
-    await venue.update(data);
-
-    // Fetch updated venue
-    const updatedVenue = await Venue.findByPk(id);
-
-    // =====================
-    // Payment Group (single) + nested PaymentPlans
-    // =====================
-    let paymentGroup = null;
-    if (updatedVenue.paymentGroupId) {
-      paymentGroup = await PaymentGroup.findByPk(updatedVenue.paymentGroupId, {
-        include: [{ model: PaymentPlan, as: "paymentPlans" }],
-      });
-    }
-    updatedVenue.dataValues.paymentGroup = paymentGroup;
-
-    // =====================
-    // Term Groups → fetch TermGroup + Terms + sessions
-    // =====================
-    let termGroupIds = [];
-    if (typeof updatedVenue.termGroupId === "string") {
-      try {
-        termGroupIds = JSON.parse(updatedVenue.termGroupId);
-      } catch {
-        termGroupIds = [];
-      }
-    }
-
-    if (termGroupIds.length > 0) {
-      const termGroups = await TermGroup.findAll({
-        where: { id: termGroupIds },
-        include: [
-          {
-            model: Term,
-            as: "terms",
-            attributes: [
-              "id",
-              "termGroupId",
-              "termName",
-              "startDate",
-              "endDate",
-              "exclusionDates",
-              "totalSessions",
-              "sessionsMap",
-            ],
-          },
-        ],
-      });
-
-      for (const termGroup of termGroups) {
-        for (const term of termGroup.terms || []) {
-          // Parse exclusionDates
-          if (typeof term.exclusionDates === "string") {
-            try {
-              term.dataValues.exclusionDates = JSON.parse(term.exclusionDates);
-            } catch {
-              term.dataValues.exclusionDates = [];
-            }
-          }
-
-          // Parse & enrich sessionsMap
-          let parsedSessionsMap = [];
-          if (typeof term.sessionsMap === "string") {
-            try {
-              parsedSessionsMap = JSON.parse(term.sessionsMap);
-            } catch {
-              parsedSessionsMap = [];
-            }
-          } else {
-            parsedSessionsMap = term.sessionsMap || [];
-          }
-
-          for (const entry of parsedSessionsMap) {
-            if (!entry.sessionPlanId) continue;
-
-            const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
-              attributes: [
-                "id",
-                "groupName",
-                "levels",
-                "video",
-                "banner",
-                "player",
-              ],
-            });
-
-            if (spg) {
-              await parseSessionPlanGroupLevels(spg);
-              entry.sessionPlan = spg;
-            } else {
-              entry.sessionPlan = null;
-            }
-          }
-
-          term.dataValues.sessionsMap = parsedSessionsMap;
-        }
-      }
-
-      updatedVenue.dataValues.termGroups = termGroups;
-    } else {
-      updatedVenue.dataValues.termGroups = [];
-    }
-
-    // =====================
-    // Final response
-    // =====================
-    return {
-      status: true,
-      message: "Venue updated successfully.",
-      data: updatedVenue,
-    };
-  } catch (error) {
-    console.error("❌ updateVenue Error:", error.message);
-    return { status: false, message: "Update failed. " + error.message };
   }
 };
 
