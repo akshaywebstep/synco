@@ -1,0 +1,56 @@
+<div style="font-family: Arial, sans-serif; background-color: #f8f9fa; padding: 30px; color: #333;">
+  <table style="max-width: 600px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+    <tr>
+      <td style="background: #2c3e50; padding: 20px; text-align: center; color: #fff;">
+        <h1 style="margin: 0; font-size: 22px; letter-spacing: 0.5px;">🎉 Free Trial Booking Confirmed</h1>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 25px;">
+        <h2 style="color:#2c3e50; font-size: 20px; margin-bottom: 10px;">Hi {{parentName}},</h2>
+        <p style="font-size: 15px; line-height: 1.6;">
+          We’re excited to let you know that your <strong>free trial booking</strong> has been confirmed successfully!
+        </p>
+        
+        <div style="background: #f1f4f8; padding: 15px; border-left: 4px solid #3498db; margin: 20px 0;">
+          <p style="margin: 0; font-size: 15px; line-height: 1.6;">
+            <strong>📍 Venue:</strong> {{venueName}} <br>
+            <strong>📅 Date:</strong> {{trialDate}} <br>
+            <strong>⏰ Time:</strong> {{classTime}} <br>
+            <strong>🎓 Class:</strong> {{className}} <br>
+            <strong>👩‍🎓 Student:</strong> {{studentFirstName}} {{studentLastName}}
+          </p>
+        </div>
+
+        <!-- 🔐 Login Info Section -->
+        <div style="background: #eaf6ff; padding: 15px; border-left: 4px solid #2980b9; margin: 20px 0;">
+          <p style="margin: 0; font-size: 15px; line-height: 1.6;">
+            <strong>👤 Your Login Credentials:</strong><br>
+            <strong>Email:</strong> {{parentEmail}}<br>
+            <strong>Password:</strong> {{parentPassword}}
+          </p>
+        </div>
+
+        <p style="font-size: 15px; line-height: 1.6;">
+          ✅ Please arrive <strong>10 minutes early</strong>.<br>
+          ✅ Bring a water bottle & comfortable sports shoes.<br>
+          ✅ Our team will guide you upon arrival.
+        </p>
+
+        <p style="font-size: 15px; line-height: 1.6; margin-top: 20px;">
+          We’re looking forward to welcoming you!  
+        </p>
+
+        <p style="margin-top: 25px; font-size: 15px;">
+          Best regards, <br>
+          <strong>{{appName}} Team</strong>
+        </p>
+      </td>
+    </tr>
+    <tr>
+      <td style="background: #f1f4f8; padding: 15px; text-align: center; font-size: 13px; color: #666;">
+        &copy; {{year}} {{appName}}. All rights reserved.
+      </td>
+    </tr>
+  </table>
+</div>
