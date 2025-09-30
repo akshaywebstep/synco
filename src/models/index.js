@@ -268,6 +268,7 @@ ClassSchedule.hasMany(Feedback, {
   as: "feedbacks",
   foreignKey: "classScheduleId",
 });
+
 Feedback.belongsTo(ClassSchedule, {
   as: "classSchedule",
   foreignKey: "classScheduleId",
@@ -278,10 +279,22 @@ Lead.belongsTo(Admin, {
   as: "assignedAgent",
 });
 
+// Lead.js
+Lead.hasMany(models.Booking, {
+  foreignKey: "leadId",
+  as: "bookings",
+});
+
+// Booking.js
+Booking.belongsTo(models.Lead, {
+  foreignKey: "leadId",
+  as: "lead",
+});
+
 // ✅ Associate Comment → Admin
 Comment.belongsTo(models.Admin, {
-    foreignKey: "commentBy",  // column stays the same
-    as: "bookedByAdmin",      // alias must be different from column
+  foreignKey: "commentBy",
+  as: "bookedByAdmin",
 });
 
 // ====================== 📦 Module Exports ====================== //

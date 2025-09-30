@@ -81,15 +81,18 @@ exports.getAllLeads = async (req, res) => {
   try {
     if (DEBUG) console.log("📥 Fetching all leads");
 
+    // Extract filters from query parameters
     const filters = {
       name: req.query.name || null,
-      venueName: req.query.venueName || null, // ✅ filter by venue
+      venueName: req.query.venueName || null,
       fromDate: req.query.fromDate || null,
       toDate: req.query.toDate || null,
       status: req.query.status || null,
+      studentFirstName: req.query.studentFirstName || null,
+      studentLastName: req.query.studentLastName || null,
     };
 
-    // Service call
+    // Fetch leads from service
     const result = await LeadService.getAllLeads(filters);
 
     if (!result.status) {
@@ -97,9 +100,10 @@ exports.getAllLeads = async (req, res) => {
 
       await logActivity(req, PANEL, MODULE, "read", result, false);
 
-      return res
-        .status(400) // better for "failed" instead of 500 unless it's server error
-        .json({ status: false, message: result.message });
+      return res.status(400).json({
+        status: false,
+        message: result.message,
+      });
     }
 
     if (DEBUG) console.log(`✅ Retrieved ${result.data?.length || 0} leads`);
@@ -113,14 +117,23 @@ exports.getAllLeads = async (req, res) => {
       true
     );
 
-    // ✅ Send final response
+    // Only include leads with valid bookingData and nearestVenues
+    const formattedData = (result.data || [])
+      .map((lead) => {
+        const bookingData = (lead.bookingData || []).filter((b) => b.venue);
+        if (!bookingData.length || !(lead.nearestVenues?.length > 0)) return null;
+        return { ...lead, bookingData };
+      })
+      .filter(Boolean);
+
     return res.status(200).json({
       status: true,
       message: "Leads with nearest venues retrieved",
-      data: result.data || [],
+      data: formattedData,
       allVenues: result.allVenues || [],
       analytics: result.analytics || {},
     });
+
   } catch (error) {
     console.error("❌ getAllLeads Error:", error);
 
@@ -133,8 +146,10 @@ exports.getAllLeads = async (req, res) => {
       false
     );
 
-    return res
-      .status(500)
-      .json({ status: false, message: "Server error.", error: error.message });
+    return res.status(500).json({
+      status: false,
+      message: "Server error.",
+      error: error.message,
+    });
   }
 };

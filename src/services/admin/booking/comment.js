@@ -61,7 +61,7 @@ exports.listCommentsForFreeTrial = async ({ commentType = "free" }) => {
                 {
                     model: Admin,
                     as: "bookedByAdmin",
-                    attributes: ["id", "firstName", "lastName", "email", "roleId", "status"],
+                    attributes: ["id", "firstName", "lastName", "email", "roleId", "status","profile"],
                     required: false,
                 },
             ],
@@ -142,7 +142,7 @@ exports.listCommentsForMembership = async ({ commentType = "paid" }) => {
                 {
                     model: Admin,
                     as: "bookedByAdmin",
-                    attributes: ["id", "firstName", "lastName", "email", "roleId", "status"],
+                    attributes: ["id", "firstName", "lastName", "email", "roleId", "status","profile"],
                     required: false,
                 },
             ],
@@ -223,7 +223,7 @@ exports.listCommentsForWaitingList = async ({ commentType = "waiting list" }) =>
                 {
                     model: Admin,
                     as: "bookedByAdmin",
-                    attributes: ["id", "firstName", "lastName", "email", "roleId", "status"],
+                    attributes: ["id", "firstName", "lastName", "email", "roleId", "status","profile"],
                     required: false,
                 },
             ],
@@ -260,7 +260,7 @@ exports.listComments = async ({ commentType }) => {
                 {
                     model: Admin,
                     as: "bookedByAdmin",
-                    attributes: ["id", "firstName", "lastName", "email", "roleId", "status"],
+                    attributes: ["id", "firstName", "lastName", "email", "roleId", "status","profile"],
                     required: false,
                 },
             ],
