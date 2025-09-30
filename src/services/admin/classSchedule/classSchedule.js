@@ -7,7 +7,7 @@ const {
   SessionExercise,
   PaymentPlan,
   ClassScheduleTermMap,
-PaymentGroup,
+  PaymentGroup,
 
 } = require("../../../models");
 
@@ -331,92 +331,132 @@ exports.getAllClasses = async (adminId) => {
         venue.dataValues.termGroups = termGroups;
 
         for (const termGroup of termGroups) {
-          if (termGroup?.terms?.length) {
-            for (const term of termGroup.terms) {
-              // Parse exclusionDates
-              if (typeof term.exclusionDates === "string") {
-                try {
-                  term.dataValues.exclusionDates = JSON.parse(term.exclusionDates);
-                } catch {
-                  term.dataValues.exclusionDates = [];
-                }
+          for (const term of termGroup.terms || []) {
+            // Parse exclusionDates
+            if (typeof term.exclusionDates === "string") {
+              try {
+                term.dataValues.exclusionDates = JSON.parse(term.exclusionDates);
+              } catch {
+                term.dataValues.exclusionDates = [];
               }
+            }
 
-              // Parse sessionsMap
-              let parsedSessionsMap = [];
-              if (typeof term.sessionsMap === "string") {
-                try {
-                  parsedSessionsMap = JSON.parse(term.sessionsMap);
-                } catch {
-                  parsedSessionsMap = [];
-                }
-              } else {
-                parsedSessionsMap = term.sessionsMap || [];
+            // Parse and enrich sessionsMap
+            let parsedSessionsMap = [];
+            if (typeof term.sessionsMap === "string") {
+              try {
+                parsedSessionsMap = JSON.parse(term.sessionsMap);
+              } catch {
+                parsedSessionsMap = [];
               }
+            } else {
+              parsedSessionsMap = term.sessionsMap || [];
+            }
 
-              // Enrich sessionsMap
-              for (let i = 0; i < parsedSessionsMap.length; i++) {
-                const entry = parsedSessionsMap[i];
-                if (!entry.sessionPlanId) continue;
+            for (let i = 0; i < parsedSessionsMap.length; i++) {
+              const entry = parsedSessionsMap[i];
+              if (!entry.sessionPlanId) continue;
 
-                const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
-                  attributes: [
-                    "id",
-                    "groupName",
-                    "levels",
-                    "video",
-                    "banner",
-                    "player",
-                  ],
+              const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
+                attributes: [
+                  "id",
+                  "groupName",
+                  "levels",
+                  "video",
+                  "banner",
+                  "player",
+                  "createdBy",
+                  "createdAt",
+                ],
+              });
+
+              if (spg) {
+                // Parse levels safely
+                let levels = {};
+                try {
+                  levels = typeof spg.levels === "string" ? JSON.parse(spg.levels) : spg.levels || {};
+                } catch {
+                  levels = {};
+                }
+
+                // Fetch all exercises for this creator
+                const allExercises = await SessionExercise.findAll({
+                  where: { createdBy: spg.createdBy },
                 });
 
-                if (spg) {
-                  // Parse levels JSON
-                  let levels = spg.levels;
-                  if (typeof levels === "string") {
-                    try {
-                      levels = JSON.parse(levels);
-                    } catch {
-                      levels = {};
+                const exerciseMap = allExercises.reduce((acc, ex) => {
+                  acc[ex.id] = ex;
+                  return acc;
+                }, {});
+
+                // Enrich each level item with sessionExercises
+                for (const levelKey of Object.keys(levels)) {
+                  for (const item of levels[levelKey]) {
+                    if (Array.isArray(item.sessionExerciseId)) {
+                      item.sessionExercises = item.sessionExerciseId
+                        .map((exId) => exerciseMap[exId])
+                        .filter(Boolean)
+                        .map((ex) => ({
+                          id: ex.id,
+                          title: ex.title,
+                          description: ex.description,
+                          duration: ex.duration,
+                        }));
+                    } else {
+                      item.sessionExercises = [];
                     }
                   }
-
-                  // Expand sessionExercises for each level
-                  for (const lvl of ["beginner", "intermediate", "advanced"]) {
-                    if (!levels[lvl]) continue;
-                    for (const obj of levels[lvl]) {
-                      const ids = obj.sessionExerciseId || [];
-                      const exercises = ids.length
-                        ? await SessionExercise.findAll({ where: { id: ids } })
-                        : [];
-                      obj.sessionExercises = exercises;
-                    }
-                  }
-
-                  spg.levels = levels;
-                  entry.sessionPlan = spg;
-                } else {
-                  entry.sessionPlan = null;
                 }
 
-                // Attach mapping for this specific sessionPlan
+                // Calculate how long ago the video was uploaded
+                let videoUploadedAgo = null;
+                if (spg.video) {
+                  const now = new Date();
+                  const created = new Date(spg.createdAt);
+                  const diffMs = now - created;
+                  const diffSeconds = Math.floor(diffMs / 1000);
+                  const diffMinutes = Math.floor(diffSeconds / 60);
+                  const diffHours = Math.floor(diffMinutes / 60);
+                  const diffDays = Math.floor(diffHours / 24);
+
+                  if (diffDays > 0) videoUploadedAgo = `${diffDays} day(s) ago`;
+                  else if (diffHours > 0) videoUploadedAgo = `${diffHours} hour(s) ago`;
+                  else if (diffMinutes > 0) videoUploadedAgo = `${diffMinutes} minute(s) ago`;
+                  else videoUploadedAgo = `${diffSeconds} second(s) ago`;
+                }
+
+                // 🔹 Fetch mapping for this sessionPlan
                 const mapping = await ClassScheduleTermMap.findOne({
                   where: {
                     classScheduleId: cls.id,
                     termId: term.id,
                     sessionPlanId: entry.sessionPlanId,
                   },
+                  raw: true, // ensures plain object instead of Sequelize instance
                 });
 
-                entry.classScheduleTermMaps = mapping || null;
+                // Assign enriched sessionPlan, flattening mapping fields
+                entry.sessionPlan = {
+                  id: spg.id,
+                  groupName: spg.groupName,
+                  levels,
+                  video: spg.video,
+                  banner: spg.banner,
+                  player: spg.player,
+                  videoUploadedAgo,
+                  ...(mapping || {}), // ⬅️ spread mapping fields directly into sessionPlan
+                };
+              } else {
+                entry.sessionPlan = null;
               }
-
-              term.dataValues.sessionsMap = parsedSessionsMap;
             }
+
+            term.dataValues.sessionsMap = parsedSessionsMap;
           }
         }
-      } else {
-        venue.dataValues.termGroups = [];
+
+        venue.dataValues.termGroups = termGroups;
+
       }
     }
 
