@@ -863,10 +863,8 @@ exports.updateVenue = async (id, data) => {
     }
 
     // =====================
-    // Update venue
+    // Handle termGroupId (multiple)
     // =====================
-
-    // Handle termGroupId update
     if ("termGroupId" in data) {
       if (typeof data.termGroupId === "string") {
         data.termGroupId = data.termGroupId
@@ -879,11 +877,12 @@ exports.updateVenue = async (id, data) => {
         data.termGroupId = JSON.stringify(data.termGroupId);
       }
     } else {
-      // not provided → delete so it won’t overwrite
       delete data.termGroupId;
     }
 
-    // Handle paymentGroupId update
+    // =====================
+    // Handle paymentGroupId (single)
+    // =====================
     if ("paymentGroupId" in data) {
       if (typeof data.paymentGroupId === "string") {
         const parsed = parseInt(data.paymentGroupId.trim());
@@ -894,11 +893,12 @@ exports.updateVenue = async (id, data) => {
         }
       }
     } else {
-      // not provided → delete so it won’t overwrite
       delete data.paymentGroupId;
     }
 
-    // 3. Re-geocode only if address/area changed AND was provided
+    // =====================
+    // Re-geocode if address/area changed
+    // =====================
     if (
       (data.address && data.address !== venue.address) ||
       (data.area && data.area !== venue.area)
@@ -914,32 +914,36 @@ exports.updateVenue = async (id, data) => {
       }
     }
 
-    // 4. Clean undefined values so they don’t overwrite DB fields
+    // =====================
+    // Clean undefined values
+    // =====================
     Object.keys(data).forEach((key) => {
       if (data[key] === undefined) {
         delete data[key];
       }
     });
 
-    // 5. Update only the provided fields
+    // =====================
+    // Update only provided fields
+    // =====================
     await venue.update(data);
 
+    // Fetch updated venue
     const updatedVenue = await Venue.findByPk(id);
 
     // =====================
-    // Payment Groups (single ID) & nested PaymentPlans
+    // Payment Group (single) + nested PaymentPlans
     // =====================
-    let paymentGroups = [];
+    let paymentGroup = null;
     if (updatedVenue.paymentGroupId) {
-      paymentGroups = await PaymentGroup.findAll({
-        where: { id: updatedVenue.paymentGroupId },
+      paymentGroup = await PaymentGroup.findByPk(updatedVenue.paymentGroupId, {
         include: [{ model: PaymentPlan, as: "paymentPlans" }],
       });
     }
-    updatedVenue.dataValues.paymentGroups = paymentGroups;
+    updatedVenue.dataValues.paymentGroup = paymentGroup;
 
     // =====================
-    // Term Groups → fetch full TermGroup + Terms + sessions
+    // Term Groups → fetch TermGroup + Terms + sessions
     // =====================
     let termGroupIds = [];
     if (typeof updatedVenue.termGroupId === "string") {
@@ -982,7 +986,7 @@ exports.updateVenue = async (id, data) => {
             }
           }
 
-          // Parse and enrich sessionsMap
+          // Parse & enrich sessionsMap
           let parsedSessionsMap = [];
           if (typeof term.sessionsMap === "string") {
             try {
@@ -998,7 +1002,14 @@ exports.updateVenue = async (id, data) => {
             if (!entry.sessionPlanId) continue;
 
             const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
-              attributes: ["id", "groupName", "levels", "video", "banner", "player"],
+              attributes: [
+                "id",
+                "groupName",
+                "levels",
+                "video",
+                "banner",
+                "player",
+              ],
             });
 
             if (spg) {
@@ -1018,6 +1029,9 @@ exports.updateVenue = async (id, data) => {
       updatedVenue.dataValues.termGroups = [];
     }
 
+    // =====================
+    // Final response
+    // =====================
     return {
       status: true,
       message: "Venue updated successfully.",
