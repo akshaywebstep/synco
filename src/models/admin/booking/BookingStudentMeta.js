@@ -18,6 +18,11 @@ const BookingStudentMeta = sequelize.define(
       },
       onDelete: "CASCADE",
     },
+     attendance: {
+      type: DataTypes.ENUM("attended", "not attended"),
+      allowNull: false,
+      defaultValue: "not attended",
+    },
     studentFirstName: DataTypes.STRING,
     studentLastName: DataTypes.STRING,
     dateOfBirth: DataTypes.DATEONLY,

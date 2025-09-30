@@ -42,4 +42,22 @@ router.delete(
   deleteClassSchedule
 );
 
+const {
+  getAttendanceRegister,
+  updateAttendanceStatus,
+} = require("../../controllers/admin/classSchedule/viewClassRegisterController");
+
+router.get(
+  "/view-class-register/:classScheduleId",
+  authMiddleware,
+  permissionMiddleware("class-schedule", "view-listing"),
+  getAttendanceRegister
+)
+
+router.patch(
+  "/attendance/:studentId",
+  authMiddleware,
+  permissionMiddleware("class-schedule", "update"),
+  updateAttendanceStatus);
+
 module.exports = router;
