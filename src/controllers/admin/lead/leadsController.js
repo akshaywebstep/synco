@@ -76,7 +76,7 @@ exports.createLead = async (req, res) => {
   }
 };
 
-// ✅ Controller: Get All Leads
+// 
 exports.getAllLeads = async (req, res) => {
   try {
     if (DEBUG) console.log("📥 Fetching all leads");
