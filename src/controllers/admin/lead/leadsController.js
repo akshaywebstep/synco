@@ -90,6 +90,7 @@ exports.getAllLeads = async (req, res) => {
       status: req.query.status || null,
       studentFirstName: req.query.studentFirstName || null,
       studentLastName: req.query.studentLastName || null,
+      studentName: req.query.studentName || null,
     };
 
     // Fetch leads from service
@@ -130,7 +131,7 @@ exports.getAllLeads = async (req, res) => {
       status: true,
       message: "Leads with nearest venues retrieved",
       data: formattedData,
-      allVenues: result.allVenues || [],
+      // allVenues: result.allVenues || [],
       analytics: result.analytics || {},
     });
 

@@ -80,212 +80,9 @@ exports.createLead = async (payload) => {
 };
 
 // GET All Leads with nearestVenues and allVenues
-// exports.getAllLeads = async (filters = {}) => {
-//   try {
-//     // Fetch all leads (unfiltered)
-//     const allLeads = await Lead.findAll({
-//       order: [["createdAt", "DESC"]],
-//       include: [
-//         {
-//           model: Admin,
-//           as: "assignedAgent",
-//           attributes: ["id", "firstName", "lastName", "email", "roleId"],
-//         },
-//       ],
-//     });
-
-//     // Compute analytics always on ALL leads
-//     const analytics = {
-//       totalLeads: {
-//         count: allLeads.length,
-//         conversion: allLeads.length ? "100%" : "0%",
-//       },
-//       newLeads: {
-//         count: allLeads.filter((l) => l.status === "new").length,
-//         conversion: allLeads.length
-//           ? `${(
-//               (allLeads.filter((l) => l.status === "new").length /
-//                 allLeads.length) *
-//               100
-//             ).toFixed(2)}%`
-//           : "0%",
-//       },
-//       leadsToTrials: {
-//         count: allLeads.filter((l) => l.status === "trial").length,
-//         conversion: allLeads.length
-//           ? `${(
-//               (allLeads.filter((l) => l.status === "trial").length /
-//                 allLeads.length) *
-//               100
-//             ).toFixed(2)}%`
-//           : "0%",
-//       },
-//       leadsToSales: {
-//         count: allLeads.filter((l) => l.status === "sale").length,
-//         conversion: allLeads.length
-//           ? `${(
-//               (allLeads.filter((l) => l.status === "sale").length /
-//                 allLeads.length) *
-//               100
-//             ).toFixed(2)}%`
-//           : "0%",
-//       },
-//     };
-
-//     // ✅ Apply fromDate / toDate filter if provided
-//     let filteredLeads = allLeads;
-//     // ✅ Apply fromDate / toDate filter if provided
-//     if (filters.fromDate || filters.toDate) {
-//       const fromDate = filters.fromDate ? new Date(filters.fromDate) : null;
-//       let toDate = filters.toDate ? new Date(filters.toDate) : null;
-
-//       // ⏩ Fix: extend to end of day
-//       if (toDate) {
-//         toDate.setHours(23, 59, 59, 999);
-//       }
-
-//       filteredLeads = filteredLeads.filter((lead) => {
-//         const createdAt = new Date(lead.createdAt);
-//         return (
-//           (!fromDate || createdAt >= fromDate) &&
-//           (!toDate || createdAt <= toDate)
-//         );
-//       });
-
-//       if (filteredLeads.length === 0) {
-//         return {
-//           status: true,
-//           message: "No leads found in the selected date range",
-//           data: [],
-//           allVenues: [],
-//           analytics,
-//         };
-//       }
-//     }
-//     // Filter by name
-//     if (filters.name) {
-//       const nameParts = filters.name.trim().split(" ");
-//       filteredLeads = filteredLeads.filter(
-//         (l) =>
-//           l.firstName.toLowerCase().includes(nameParts[0].toLowerCase()) ||
-//           l.lastName
-//             .toLowerCase()
-//             .includes((nameParts[1] || nameParts[0]).toLowerCase())
-//       );
-//     }
-
-//     // ✅ Filter by status (new, trial, sale, others)
-//     if (filters.status) {
-//       filteredLeads = filteredLeads.filter(
-//         (lead) => lead.status === filters.status
-//       );
-
-//       if (!filteredLeads.length) {
-//         return {
-//           status: true,
-//           message: `No leads found for status "${filters.status}"`,
-//           data: [],
-//           allVenues: [],
-//           analytics,
-//         };
-//       }
-//     }
-
-//     // Filter by name
-//     if (filters.name) {
-//       const nameParts = filters.name.trim().split(" ");
-//       filteredLeads = filteredLeads.filter(
-//         (l) =>
-//           l.firstName.toLowerCase().includes(nameParts[0].toLowerCase()) ||
-//           l.lastName
-//             .toLowerCase()
-//             .includes((nameParts[1] || nameParts[0]).toLowerCase())
-//       );
-//     }
-
-//     // Fetch all venues
-//     let allVenuesList = await Venue.findAll();
-
-//     // Filter venues by name
-//     if (filters.venueName) {
-//       const nameLower = filters.venueName.toLowerCase();
-//       allVenuesList = allVenuesList.filter((v) =>
-//         v.name.toLowerCase().includes(nameLower)
-//       );
-
-//       if (!allVenuesList.length) {
-//         return {
-//           status: true,
-//           message: "No leads found for this venue filter",
-//           data: [],
-//           allVenues: [],
-//           analytics,
-//         };
-//       }
-//     }
-
-//     const allVenues = allVenuesList.map((v) => ({ ...v.dataValues }));
-
-//     // Attach nearestVenues
-//     const leadsWithNearestVenues = await Promise.all(
-//       filteredLeads.map(async (lead) => {
-//         let nearestVenues = [];
-//         if (lead.postcode && allVenuesList.length > 0) {
-//           const coords = await getCoordinatesFromPostcode(lead.postcode);
-//           if (coords) {
-//             // Calculate distances
-//             nearestVenues = await Promise.all(
-//               allVenuesList
-//                 .map((v) => ({
-//                   ...v.dataValues,
-//                   distance: calculateDistance(
-//                     coords.latitude,
-//                     coords.longitude,
-//                     v.latitude,
-//                     v.longitude
-//                   ),
-//                 }))
-//                 .sort((a, b) => a.distance - b.distance)
-//                 .slice(0, 5)
-//                 .map(async (venue) => {
-//                   // 🔑 Fetch class schedules for each venue
-//                   const classSchedules = await ClassSchedule.findAll({
-//                     where: { venueId: venue.id },
-//                   });
-
-//                   return {
-//                     ...venue,
-//                     classSchedules: classSchedules.map((cs) => cs.dataValues),
-//                   };
-//                 })
-//             );
-//           }
-//         }
-//         return { ...lead.dataValues, nearestVenues };
-//       })
-//     );
-
-//     // If venue filter applied, remove leads with no nearestVenues
-//     const filteredByVenues = filters.venueName
-//       ? leadsWithNearestVenues.filter((l) => l.nearestVenues.length > 0)
-//       : leadsWithNearestVenues;
-
-//     return {
-//       status: true,
-//       message: "Leads with nearest venues retrieved",
-//       data: filteredByVenues,
-//       allVenues,
-//       analytics,
-//     };
-//   } catch (error) {
-//     console.error("❌ getAllLeads Error:", error.message);
-//     return { status: false, message: error.message };
-//   }
-// };
 
 // exports.getAllLeads = async (filters = {}) => {
 //   try {
-//     // Fetch all leads with related data
 //     const allLeads = await Lead.findAll({
 //       order: [["createdAt", "DESC"]],
 //       include: [
@@ -341,7 +138,6 @@ exports.createLead = async (payload) => {
 //       ],
 //     });
 
-//     // Analytics
 //     const analytics = {
 //       totalLeads: { count: allLeads.length, conversion: allLeads.length ? "100%" : "0%" },
 //       newLeads: {
@@ -364,9 +160,8 @@ exports.createLead = async (payload) => {
 //       },
 //     };
 
-//     // Filter leads by name, date, or status if provided
+//     // Filters
 //     let filteredLeads = allLeads;
-
 //     if (filters.fromDate || filters.toDate) {
 //       const fromDate = filters.fromDate ? new Date(filters.fromDate) : null;
 //       const toDate = filters.toDate ? new Date(filters.toDate) : null;
@@ -377,19 +172,16 @@ exports.createLead = async (payload) => {
 //         return (!fromDate || createdAt >= fromDate) && (!toDate || createdAt <= toDate);
 //       });
 //     }
-
 //     if (filters.name) {
 //       const nameLower = filters.name.toLowerCase();
-//       filteredLeads = filteredLeads.filter(
-//         (l) => `${l.firstName} ${l.lastName}`.toLowerCase().includes(nameLower)
+//       filteredLeads = filteredLeads.filter((l) =>
+//         `${l.firstName} ${l.lastName}`.toLowerCase().includes(nameLower)
 //       );
 //     }
-
 //     if (filters.status) {
 //       filteredLeads = filteredLeads.filter((l) => l.status === filters.status);
 //     }
 
-//     // Get all venues
 //     let allVenuesList = await Venue.findAll();
 //     if (filters.venueName) {
 //       const nameLower = filters.venueName.toLowerCase();
@@ -400,7 +192,6 @@ exports.createLead = async (payload) => {
 //     // Format each lead
 //     const formattedLeads = await Promise.all(
 //       filteredLeads.map(async (lead) => {
-//         // Format bookingData
 //         const bookingData = (lead.bookings || []).map((booking) => {
 //           const students = (booking.students || []).map((s) => ({
 //             studentFirstName: s.studentFirstName,
@@ -435,7 +226,9 @@ exports.createLead = async (payload) => {
 //           return { ...bookingWithoutStudents, students, parents, emergencyContacts };
 //         });
 
-//         // Calculate nearest venues
+//         const { bookings, ...leadWithoutBookings } = lead.dataValues;
+
+//         // Nearest venues
 //         let nearestVenues = [];
 //         if (lead.postcode && allVenuesList.length > 0) {
 //           const coords = await getCoordinatesFromPostcode(lead.postcode);
@@ -457,17 +250,20 @@ exports.createLead = async (payload) => {
 //         }
 
 //         return {
-//           ...lead.dataValues,
+//           ...leadWithoutBookings,
 //           bookingData,
 //           nearestVenues,
 //         };
 //       })
 //     );
 
+//     // ✅ Return formatted leads
+//     const leadsWithNearestVenue = formattedLeads.filter((lead) => lead.nearestVenues.length > 0);
+
 //     return {
 //       status: true,
 //       message: "Leads with nearest venues retrieved",
-//       data: formattedLeads,
+//       data: leadsWithNearestVenue,
 //       allVenues,
 //       analytics,
 //     };
@@ -568,20 +364,65 @@ exports.getAllLeads = async (filters = {}) => {
       });
     }
     if (filters.name) {
-      const nameLower = filters.name.toLowerCase();
-      filteredLeads = filteredLeads.filter((l) =>
-        `${l.firstName} ${l.lastName}`.toLowerCase().includes(nameLower)
-      );
+      const nameLower = filters.name.toLowerCase().trim();
+
+      filteredLeads = filteredLeads.filter((l) => {
+        const firstName = (l.firstName || "").toLowerCase();
+        const lastName = (l.lastName || "").toLowerCase();
+        const fullName = `${firstName} ${lastName}`.trim();
+
+        return (
+          firstName.includes(nameLower) ||
+          lastName.includes(nameLower) ||
+          fullName.includes(nameLower)
+        );
+      });
     }
+
     if (filters.status) {
       filteredLeads = filteredLeads.filter((l) => l.status === filters.status);
     }
 
     let allVenuesList = await Venue.findAll();
+    // ✅ Venue filter
     if (filters.venueName) {
       const nameLower = filters.venueName.toLowerCase();
-      allVenuesList = allVenuesList.filter((v) => v.name.toLowerCase().includes(nameLower));
+
+      filteredLeads = filteredLeads.filter((lead) => {
+        // Keep only bookings that match venue
+        lead.bookings = (lead.bookings || []).filter((booking) =>
+          booking.venue?.name?.toLowerCase().includes(nameLower)
+        );
+        return lead.bookings.length > 0;
+      });
     }
+
+    // ✅ Student filter
+    if (filters.studentName) {
+      const studentLower = filters.studentName.toLowerCase();
+
+      filteredLeads = filteredLeads.filter((lead) => {
+        // Keep only bookings where at least one student matches
+        lead.bookings = (lead.bookings || []).filter((booking) =>
+          (booking.students || []).some((student) => {
+            const fullName = `${student.studentFirstName || ""} ${student.studentLastName || ""}`.toLowerCase();
+            return fullName.includes(studentLower);
+          })
+        );
+
+        // Also trim students inside each booking to only those matching
+        lead.bookings = lead.bookings.map((booking) => ({
+          ...booking,
+          students: (booking.students || []).filter((student) => {
+            const fullName = `${student.studentFirstName || ""} ${student.studentLastName || ""}`.toLowerCase();
+            return fullName.includes(studentLower);
+          }),
+        }));
+
+        return lead.bookings.length > 0;
+      });
+    }
+
     const allVenues = allVenuesList.map((v) => ({ ...v.dataValues }));
 
     // Format each lead
@@ -621,6 +462,8 @@ exports.getAllLeads = async (filters = {}) => {
           return { ...bookingWithoutStudents, students, parents, emergencyContacts };
         });
 
+        const { bookings, ...leadWithoutBookings } = lead.dataValues;
+
         // Nearest venues
         let nearestVenues = [];
         if (lead.postcode && allVenuesList.length > 0) {
@@ -643,21 +486,21 @@ exports.getAllLeads = async (filters = {}) => {
         }
 
         return {
-          ...lead.dataValues,
+          ...leadWithoutBookings,
           bookingData,
           nearestVenues,
         };
       })
     );
 
-    // Only leads with nearest venues
+    // ✅ Return formatted leads
     const leadsWithNearestVenue = formattedLeads.filter((lead) => lead.nearestVenues.length > 0);
 
     return {
       status: true,
       message: "Leads with nearest venues retrieved",
       data: leadsWithNearestVenue,
-      allVenues,
+      // allVenues,
       analytics,
     };
   } catch (error) {
