@@ -25,6 +25,14 @@ router.post(
   permissionMiddleware("book-membership", "create"),
   createBooking
 );
+
+router.post(
+  "/:leadId",
+  authMiddleware,
+  permissionMiddleware("book-membership", "create"),
+  createBooking
+);
+
 router.get(
   "/",
   authMiddleware,

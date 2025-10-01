@@ -55,9 +55,11 @@ async function sendEmail(config, mailData) {
         user: username,
         pass: password,
       },
-       tls: {
-    rejectUnauthorized: false, // ✅ this fixes self-signed certificate error
-  },
+      tls: {
+        rejectUnauthorized: false, // ✅ this fixes self-signed certificate error
+        connectionTimeout: 10000, // 10s timeout
+        greetingTimeout: 5000,    // 5s timeout for SMTP greeting
+      },
     });
 
     // const mailOptions = {

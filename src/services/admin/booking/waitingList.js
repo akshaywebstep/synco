@@ -35,6 +35,13 @@ exports.createBooking = async (data, options) => {
   try {
     const adminId = options?.adminId;
     const source = options?.source;
+    const leadId = options?.leadId || null;
+
+     if (DEBUG) {
+      console.log("🔍 [DEBUG] Extracted adminId:", adminId);
+      console.log("🔍 [DEBUG] Extracted source:", source);
+      console.log("🔍 [DEBUG] Extracted leadId:", leadId);
+    }
 
     if (source !== 'open' && !adminId) {
       throw new Error("Admin ID is required for bookedBy");
@@ -135,6 +142,7 @@ exports.createBooking = async (data, options) => {
       {
         venueId: data.venueId,
         bookingId: generateBookingId(12),
+        leadId,
         totalStudents: data.totalStudents,
         startDate: data.startDate,
         classScheduleId: data.classScheduleId,

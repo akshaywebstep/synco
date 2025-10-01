@@ -184,7 +184,7 @@ exports.createAdmin = async (req, res) => {
       } catch (err) {
         console.error("❌ Failed to upload profile image:", err.message);
       } finally {
-        await fs.promises.unlink(localPath).catch(() => {});
+        await fs.promises.unlink(localPath).catch(() => { });
       }
     }
 
@@ -197,9 +197,8 @@ exports.createAdmin = async (req, res) => {
       }
     }
     // ✅ Log activity & notification
-    const successMessage = `${roleName} '${firstName}' created successfully by Super Admin: ${
-      req.admin?.firstName || "System"
-    }`;
+    const successMessage = `${roleName} '${firstName}' created successfully by Super Admin: ${req.admin?.firstName || "System"
+      }`;
     await logActivity(req, PANEL, MODULE, "create", createResult, true);
     await createNotification(
       req,
@@ -239,9 +238,9 @@ exports.createAdmin = async (req, res) => {
       const replacePlaceholders = (text) =>
         typeof text === "string"
           ? Object.entries(replacements).reduce(
-              (result, [key, val]) => result.replace(new RegExp(key, "g"), val),
-              text
-            )
+            (result, [key, val]) => result.replace(new RegExp(key, "g"), val),
+            text
+          )
           : text;
 
       const emailSubject = replacePlaceholders(
@@ -250,7 +249,7 @@ exports.createAdmin = async (req, res) => {
 
       const htmlBody = replacePlaceholders(
         htmlTemplate?.trim() ||
-          `<p>Hello {{firstName}},</p>
+        `<p>Hello {{firstName}},</p>
            <p>Your admin account for <strong>{{appName}}</strong> has been created successfully.</p>
            <p>If you’d like to reset your password, use the secure link below:</p>
            <p><a href="{{resetLink}}" target="_blank">{{resetLink}}</a></p>
@@ -261,9 +260,9 @@ exports.createAdmin = async (req, res) => {
       const mapRecipients = (list) =>
         Array.isArray(list)
           ? list.map(({ name, email }) => ({
-              name: replacePlaceholders(name),
-              email: replacePlaceholders(email),
-            }))
+            name: replacePlaceholders(name),
+            email: replacePlaceholders(email),
+          }))
           : [];
 
       // const mailData = {
@@ -276,20 +275,20 @@ exports.createAdmin = async (req, res) => {
       //   attachments: [],
       // };
       const mailData = {
-  recipient: [
-    {
-      name: `${firstName || ""} ${lastName || ""}`.trim(), // full name
-      email: email, // actual email
-    },
-  ],
-  cc: mapRecipients(emailConfig.cc),
-  bcc: mapRecipients(emailConfig.bcc),
-  subject: emailSubject,
-  htmlBody,
-  attachments: [],
-};
+        recipient: [
+          {
+            name: `${firstName || ""} ${lastName || ""}`.trim(), // full name
+            email: email, // actual email
+          },
+        ],
+        cc: mapRecipients(emailConfig.cc),
+        bcc: mapRecipients(emailConfig.bcc),
+        subject: emailSubject,
+        htmlBody,
+        attachments: [],
+      };
 
-      const emailResult = await sendEmail(emailConfig, mailData);
+      const emailResult = sendEmail(emailConfig, mailData);
 
       if (!emailResult.status) {
         console.error(
@@ -305,7 +304,8 @@ exports.createAdmin = async (req, res) => {
     }
 
     // ✅ Final response with emailSent flag
-    return res.status(201).json({
+    // return res.status(201).json({
+    res.status(201).json({
       status: true,
       message: "Admin created successfully",
       data: {
@@ -542,7 +542,7 @@ exports.updateAdmin = async (req, res) => {
           message: "Failed to upload profile image. Please try again.",
         });
       } finally {
-        await fs.promises.unlink(localPath).catch(() => {});
+        await fs.promises.unlink(localPath).catch(() => { });
       }
     }
 
@@ -587,8 +587,7 @@ exports.updateAdmin = async (req, res) => {
     await createNotification(
       req,
       "Admin Updated",
-      `Admin '${formData.firstName}' was updated by ${
-        req?.admin?.firstName || "System"
+      `Admin '${formData.firstName}' was updated by ${req?.admin?.firstName || "System"
       }.`,
       "System"
     );

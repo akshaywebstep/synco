@@ -40,10 +40,12 @@ exports.createBooking = async (data, options) => {
   try {
     const adminId = options?.adminId || null;
     const source = options?.source || null;
+    const leadId = options?.leadId || null;
 
     if (DEBUG) {
       console.log("🔍 [DEBUG] Extracted adminId:", adminId);
       console.log("🔍 [DEBUG] Extracted source:", source);
+      console.log("🔍 [DEBUG] Extracted source:", leadId);
     }
 
     if (source !== 'open' && !adminId) {
@@ -125,6 +127,7 @@ exports.createBooking = async (data, options) => {
       {
         venueId: data.venueId,
         bookingId: generateBookingId(12),
+        leadId,
         totalStudents: data.totalStudents,
         classScheduleId: data.classScheduleId,
         startDate: data.startDate || null,
