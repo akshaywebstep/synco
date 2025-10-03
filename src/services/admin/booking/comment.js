@@ -1,56 +1,42 @@
 const debug = require("debug")("service:comments");
 const { sequelize, Comment, Admin } = require("../../../models");
 
-exports.addCommentForFreeTrial = async ({
-    commentBy = null,
-    comment,
-    commentType = "free", // default as per model
-}) => {
-    const t = await sequelize.transaction();
+exports.addCommentForFreeTrial = async ({ commentBy = null, comment, commentType = "free" }) => {
+    const transaction = await sequelize.transaction();
     try {
-        debug("🔍 Starting addComment service...");
+        if (DEBUG) debug("🔍 Starting addCommentForFreeTrial service...");
 
-        // 🔹 1. (Optional) Validate Admin/User who made the comment
         let admin = null;
+
+        // Validate admin if provided
         if (commentBy) {
-            admin = await Admin.findByPk(commentBy, { transaction: t });
+            admin = await Admin.findByPk(commentBy, { transaction });
             if (!admin) {
-                await t.rollback();
-                debug("❌ Admin not found:", commentBy);
-                return { status: false, message: "❌ Admin not found." };
+                await transaction.rollback();
+                if (DEBUG) debug("❌ Admin not found:", commentBy);
+                return { status: false, message: "Admin not found." };
             }
-            debug("✅ Admin validated:", admin.id);
+            if (DEBUG) debug("✅ Admin validated:", admin.id);
         }
 
-        // 🔹 2. Create comment record
-        const newComment = await Comment.create(
-            {
-                commentBy,
-                comment,
-                commentType,
-            },
-            { transaction: t }
-        );
-        debug("✅ Comment created:", newComment.id);
+        // Create comment
+        const newComment = await Comment.create({ commentBy, comment, commentType }, { transaction });
+        if (DEBUG) debug("✅ Comment created:", newComment.id);
 
-        await t.commit();
-        debug("🎉 Transaction committed successfully");
+        await transaction.commit();
+        if (DEBUG) debug("🎉 Transaction committed successfully");
 
         return {
             status: true,
-            message: "✅ Comment added successfully.",
-            data: {
-                comment: newComment,
-                admin,
-            },
+            message: "Comment added successfully.",
+            data: { comment: newComment, admin },
         };
     } catch (error) {
-        await t.rollback();
-        debug("❌ addComment Error:", error);
+        await transaction.rollback();
+        if (DEBUG) debug("❌ addCommentForFreeTrial Error:", error);
         return { status: false, message: error.message };
     }
 };
-
 exports.listCommentsForFreeTrial = async ({ commentType = "free" }) => {
     try {
         debug("🔍 Starting listComments service...");
@@ -61,7 +47,7 @@ exports.listCommentsForFreeTrial = async ({ commentType = "free" }) => {
                 {
                     model: Admin,
                     as: "bookedByAdmin",
-                    attributes: ["id", "firstName", "lastName", "email", "roleId", "status","profile"],
+                    attributes: ["id", "firstName", "lastName", "email", "roleId", "status", "profile"],
                     required: false,
                 },
             ],
@@ -142,7 +128,7 @@ exports.listCommentsForMembership = async ({ commentType = "paid" }) => {
                 {
                     model: Admin,
                     as: "bookedByAdmin",
-                    attributes: ["id", "firstName", "lastName", "email", "roleId", "status","profile"],
+                    attributes: ["id", "firstName", "lastName", "email", "roleId", "status", "profile"],
                     required: false,
                 },
             ],
@@ -223,7 +209,7 @@ exports.listCommentsForWaitingList = async ({ commentType = "waiting list" }) =>
                 {
                     model: Admin,
                     as: "bookedByAdmin",
-                    attributes: ["id", "firstName", "lastName", "email", "roleId", "status","profile"],
+                    attributes: ["id", "firstName", "lastName", "email", "roleId", "status", "profile"],
                     required: false,
                 },
             ],
@@ -260,7 +246,7 @@ exports.listComments = async ({ commentType }) => {
                 {
                     model: Admin,
                     as: "bookedByAdmin",
-                    attributes: ["id", "firstName", "lastName", "email", "roleId", "status","profile"],
+                    attributes: ["id", "firstName", "lastName", "email", "roleId", "status", "profile"],
                     required: false,
                 },
             ],
