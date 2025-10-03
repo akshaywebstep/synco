@@ -866,7 +866,6 @@ exports.changeAdminStatus = async (req, res) => {
 };
 
 // ✅ Delete a admin
-// ✅ Delete an admin (DB cascades handle everything)
 exports.deleteAdmin = async (req, res) => {
   try {
     const { id } = req.params;

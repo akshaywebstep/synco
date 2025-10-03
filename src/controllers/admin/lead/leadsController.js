@@ -60,7 +60,7 @@ exports.addCommentForLead = async (req, res) => {
         await createNotification(
             req,
             "New Comment",
-            `${createdBy} added a comment (type: ${payload.commentType || "lead"}).`,
+            `${createdBy} added a comment for lead.`,
             "Admins"
         );
         if (DEBUG) console.log("🔔 Notification created for admins");

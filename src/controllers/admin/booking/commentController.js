@@ -58,7 +58,7 @@ exports.addCommentForFreeTrial = async (req, res) => {
         await createNotification(
             req,
             "New Comment",
-            `${createdBy} added a comment (type: ${payload.commentType || "free"}).`,
+            `${createdBy} added a comment for book a free trial.`,
             "Admins"
         );
         if (DEBUG) console.log("🔔 Notification created for admins");
@@ -160,7 +160,7 @@ exports.addCommentForMembership = async (req, res) => {
         await createNotification(
             req,
             "New Comment",
-            `${createdBy} added a comment (type: ${payload.commentType || "paid"}).`,
+            `${createdBy} added a comment for book a membership"}).`,
             "Admins"
         );
         if (DEBUG) console.log("🔔 Notification created for admins");
@@ -262,7 +262,7 @@ exports.addCommentForWaitingList = async (req, res) => {
         await createNotification(
             req,
             "New Comment",
-            `${createdBy} added a comment (type: ${payload.commentType || "waiting list"}).`,
+            `${createdBy} added a comment for waiting list}).`,
             "Admins"
         );
         if (DEBUG) console.log("🔔 Notification created for admins");
@@ -317,7 +317,7 @@ exports.listCommentsForWaitingList = async (req, res) => {
 
 exports.listComments = async (req, res) => {
     try {
-        const commentType = req.query.commentType; // undefined if not provided
+        const commentType = req.query.commentType; 
 
         const result = await CommentService.listComments({ commentType });
 
