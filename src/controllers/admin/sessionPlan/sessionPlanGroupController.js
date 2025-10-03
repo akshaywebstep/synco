@@ -3,7 +3,7 @@ const SessionPlanGroupService = require("../../../services/admin/sessionPlan/ses
 const SessionExerciseService = require("../../../services/admin/sessionPlan/sessionExercise");
 const { logActivity } = require("../../../utils/admin/activityLogger");
 // const { getVideoDurationInSeconds } = require("../../../utils/videoHelper");
-const uploadToFTP = require("../../../utils/uploadToFTP");
+const { downloadFromFTP, uploadToFTP } = require("../../../utils/uploadToFTP");
 const {
   createNotification,
 } = require("../../../utils/admin/notificationHelper");
@@ -11,12 +11,256 @@ const { SessionExercise } = require("../../../models");
 const path = require("path");
 const { saveFile, deleteFile } = require("../../../utils/fileHandler");
 const fs = require("fs");
+const os = require("os");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "session-plan-group";
 
-const { getVideoDurationInSeconds, formatDuration } = require("../../../utils/videoHelper");
+const saveFileAsNew = async (oldUrl, createdBy, newGroupId, typeFolder) => {
+  if (!oldUrl) return null;
+
+  const fileName = path.basename(oldUrl);
+  const localTempPath = path.join(os.tmpdir(), fileName);
+
+  // Download old file
+  console.log("⬇️ Downloading old file:", oldUrl);
+  await downloadFromFTP(oldUrl, localTempPath);
+
+  // Remote folder path
+  const remoteDir = path.posix.join(
+    "temp",
+    "admin",
+    `${createdBy}`,
+    "session-plan-group",
+    `${newGroupId}`,
+    typeFolder
+  );
+
+  // Ensure local temp folder exists
+  await fs.promises.mkdir(path.dirname(localTempPath), { recursive: true });
+
+  // New unique file name
+  const uniqueId = Math.floor(Math.random() * 1e9);
+  const ext = path.extname(fileName);
+  const newFileName = `${Date.now()}_${uniqueId}${ext}`;
+  const remoteFilePath = path.posix.join(remoteDir, newFileName);
+
+  try {
+    // Upload file (remote directories are auto-created in uploadToFTP)
+    const publicUrl = await uploadToFTP(localTempPath, remoteFilePath);
+
+    return publicUrl;
+  } catch (err) {
+    console.error("❌ FTP upload failed:", err);
+    return null;
+  } finally {
+    // Cleanup local temp file
+    await fs.promises.unlink(localTempPath).catch(() => { });
+  }
+};
+
+exports.duplicateSessionPlanGroup = async (req, res) => {
+  try {
+    const { id } = req.params; // old group ID
+    const createdBy = req.admin?.id || req.user?.id;
+    if (!createdBy) return res.status(403).json({ status: false, message: "Unauthorized request" });
+
+    // Duplicate DB row without handling files yet
+    const result = await SessionPlanGroupService.duplicateSessionPlanGroup(id, createdBy);
+    if (!result.status) return res.status(404).json({ status: false, message: result.message });
+
+    const group = result.data; // new group DB row
+    const newGroupId = group.id;
+
+    // STEP 1: Save banner & video as new files (like create function)
+    const banner = await saveFileAsNew(group.banner, createdBy, newGroupId, "banner");
+    const video = await saveFileAsNew(group.video, createdBy, newGroupId, "video");
+
+    // STEP 2: Save recordings as new files
+    const uploadFields = {};
+    for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
+      uploadFields[`${level}_upload`] = await saveFileAsNew(
+        group[`${level}_upload`],
+        createdBy,
+        newGroupId,
+        path.posix.join("upload", level)
+      );
+    }
+
+    // STEP 3: Update DB row with new file URLs
+    await SessionPlanGroupService.updateSessionPlanGroup(newGroupId, { banner, video, ...uploadFields }, createdBy);
+
+    // STEP 4: Build response
+    const responseData = {
+      id: group.id,
+      groupName: group.groupName,
+      player: group.player,
+      sortOrder: group.sortOrder || 0,
+      createdAt: group.createdAt,
+      updatedAt: group.updatedAt,
+      banner,
+      video,
+      beginner_upload: uploadFields.beginner_upload,
+      intermediate_upload: uploadFields.intermediate_upload,
+      advanced_upload: uploadFields.advanced_upload,
+      pro_upload: uploadFields.pro_upload,
+      levels: group.levels,
+    };
+
+    return res.status(201).json({
+      status: true,
+      message: "Session Plan Group duplicated successfully.",
+      data: responseData,
+    });
+
+  } catch (error) {
+    if (DEBUG) console.error("Error in duplicateSessionPlanGroup:", error);
+    return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
+
+exports.createSessionPlanGroup = async (req, res) => {
+  try {
+    const formData = req.body;
+    const DEBUG = true;
+    const createdBy = req.admin?.id || req.user?.id;
+
+    // Normalize req.files
+    let filesMap = {};
+    if (Array.isArray(req.files)) {
+      filesMap = req.files.reduce((acc, f) => {
+        acc[f.fieldname] = acc[f.fieldname] || [];
+        acc[f.fieldname].push(f);
+        return acc;
+      }, {});
+    } else {
+      filesMap = req.files || {};
+    }
+
+    if (!createdBy) return res.status(403).json({ status: false, message: "Unauthorized request" });
+
+    const { groupName, levels, player } = formData;
+
+    // Validate required fields
+    const validation = validateFormData(formData, {
+      requiredFields: ["groupName", "player", "levels"],
+    });
+
+    if (!validation.isValid) {
+      const firstErrorMsg = Object.values(validation.error)[0];
+      return res.status(400).json({ status: false, message: firstErrorMsg });
+    }
+
+    // Parse levels JSON
+    let parsedLevels;
+    try {
+      parsedLevels = typeof levels === "string" ? JSON.parse(levels) : levels;
+    } catch {
+      return res.status(400).json({ status: false, message: "Invalid JSON for levels" });
+    }
+
+    // Validate levels
+    const levelError = validateLevels(parsedLevels);
+    if (levelError) return res.status(400).json({ status: false, message: levelError });
+
+    // STEP 1: Create DB row without banner/video first
+    const payloadWithoutFiles = { groupName, levels: parsedLevels, player, createdBy };
+    const result = await SessionPlanGroupService.createSessionPlanGroup(payloadWithoutFiles);
+
+    if (!result.status) return res.status(400).json({ status: false, message: result.message || "Failed to create session plan group." });
+
+    const sessionPlanId = result.data.id; // ✅ DB-generated ID
+    const baseUploadDir = path.join(
+      process.cwd(),
+      "uploads",
+      "temp",
+      "admin",
+      `${createdBy}`,
+      "session-plan-group",
+      `${sessionPlanId}`
+    );
+
+    // Helper to save & upload files
+    const saveAndUploadFile = async (file, type) => {
+      const uniqueId = Math.floor(Math.random() * 1e9);
+      const ext = path.extname(file.originalname).toLowerCase();
+      const fileName = `${Date.now()}_${uniqueId}${ext}`;
+
+      // Local path
+      const localPath = path.join(baseUploadDir, type, fileName);
+      await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
+
+      if (file.buffer) {
+        await fs.promises.writeFile(localPath, file.buffer);
+      } else {
+        await saveFile(file, localPath);
+      }
+
+      // FTP path should include the same folder structure as localPath relative to baseUploadDir
+      const relativeFtpPath = path.relative(path.join(process.cwd(), "uploads"), localPath).replace(/\\/g, "/");
+      // This will give: temp/admin/2/session-plan-group/46/banner/filename.ext
+
+      let uploadedPath = null;
+      try {
+        uploadedPath = await uploadToFTP(localPath, relativeFtpPath); // <-- pass full relative path
+      } catch (err) {
+        console.error(`Failed to upload ${type}:`, err.message);
+      } finally {
+        await fs.promises.unlink(localPath).catch(() => { });
+      }
+
+      return uploadedPath;
+    };
+
+    // STEP 2: Upload banner & video
+    const banner = filesMap.banner?.[0] ? await saveAndUploadFile(filesMap.banner[0], "banner") : null;
+    const video = filesMap.video?.[0] ? await saveAndUploadFile(filesMap.video[0], "video") : null;
+
+    // STEP 3: Upload recordings with proper path
+    const attachUploadToLevels = async (levelsObj) => {
+      const uploadFields = {};
+      for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
+        const fileArr = filesMap[`${level}_upload`];
+        let uploadedUpload = null;
+        if (fileArr && fileArr[0]) {
+          uploadedUpload = await saveAndUploadFile(fileArr[0], path.join("upload", level));
+        }
+        uploadFields[`${level}_upload`] = uploadedUpload;
+      }
+      return { levelsObj, uploadFields };
+    };
+
+    const { levelsObj: levelsWithUploads, uploadFields } = await attachUploadToLevels(parsedLevels);
+
+    // STEP 4: Update DB row with banner, video, and recordings
+    const updatePayload = { banner, video, ...uploadFields };
+    await SessionPlanGroupService.updateSessionPlanGroup(sessionPlanId, updatePayload, createdBy);
+
+    // STEP 5: Build response
+    const responseData = {
+      id: sessionPlanId,
+      groupName: result.data.groupName,
+      player: result.data.player,
+      sortOrder: result.data.sortOrder || 0,
+      createdAt: result.data.createdAt,
+      updatedAt: result.data.updatedAt,
+      banner,
+      video,
+      beginner_upload: updatePayload.beginner_upload,
+      intermediate_upload: updatePayload.intermediate_upload,
+      advanced_upload: updatePayload.advanced_upload,
+      pro_upload: updatePayload.pro_upload,
+      levels: levelsWithUploads,
+    };
+
+    return res.status(201).json({ status: true, message: "Session Plan Group created successfully.", data: responseData });
+
+  } catch (error) {
+    console.error("Server error in createSessionPlanGroup:", error);
+    return res.status(500).json({ status: false, message: "Server error occurred while creating the session plan group." });
+  }
+};
 
 exports.getSessionPlanGroupDetails = async (req, res) => {
   try {
@@ -90,6 +334,47 @@ exports.getSessionPlanGroupDetails = async (req, res) => {
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };
+
+// exports.duplicateSessionPlanGroup = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const createdBy = req.admin?.id || req.user?.id;
+
+//     if (DEBUG) console.log("Duplicating session plan group:", id);
+
+//     // Call service
+//     const result = await SessionPlanGroupService.duplicateSessionPlanGroup(id, createdBy);
+
+//     if (!result.status) return res.status(404).json({ status: false, message: result.message });
+
+//     // Build response exactly like createSessionPlanGroup
+//     const group = result.data;
+//     const responseData = {
+//       id: group.id,
+//       groupName: group.groupName,
+//       player: group.player,
+//       sortOrder: group.sortOrder || 0,
+//       createdAt: group.createdAt,
+//       updatedAt: group.updatedAt,
+//       banner: group.banner,
+//       video: group.video,
+//       beginner_recording: group.beginner_recording,
+//       intermediate_recording: group.intermediate_recording,
+//       advanced_recording: group.advanced_recording,
+//       pro_recording: group.pro_recording,
+//       levels: group.levels, // ✅ full object/array preserved
+//     };
+
+//     return res.status(201).json({
+//       status: true,
+//       message: "Session Plan Group duplicated successfully.",
+//       data: responseData,
+//     });
+//   } catch (error) {
+//     if (DEBUG) console.error("Error in duplicateSessionPlanGroup:", error);
+//     return res.status(500).json({ status: false, message: "Server error." });
+//   }
+// };
 
 // exports.getSessionPlanGroupDetails = async (req, res) => {
 //   try {
@@ -178,142 +463,6 @@ const validateLevels = (levels) => {
   }
 
   return null; // ✅ no errors
-};
-
-exports.createSessionPlanGroup = async (req, res) => {
-  try {
-    const formData = req.body;
-    const DEBUG = true;
-    const createdBy = req.admin?.id || req.user?.id;
-
-    // Normalize req.files
-    let filesMap = {};
-    if (Array.isArray(req.files)) {
-      filesMap = req.files.reduce((acc, f) => {
-        acc[f.fieldname] = acc[f.fieldname] || [];
-        acc[f.fieldname].push(f);
-        return acc;
-      }, {});
-    } else {
-      filesMap = req.files || {};
-    }
-
-    if (!createdBy) return res.status(403).json({ status: false, message: "Unauthorized request" });
-
-    const { groupName, levels, player } = formData;
-
-    // Validate required fields
-    const validation = validateFormData(formData, {
-      requiredFields: ["groupName", "player", "levels"],
-    });
-
-    if (!validation.isValid) {
-      const firstErrorMsg = Object.values(validation.error)[0];
-      return res.status(400).json({ status: false, message: firstErrorMsg });
-    }
-
-    // Parse levels JSON
-    let parsedLevels;
-    try {
-      parsedLevels = typeof levels === "string" ? JSON.parse(levels) : levels;
-    } catch {
-      return res.status(400).json({ status: false, message: "Invalid JSON for levels" });
-    }
-
-    // Validate levels
-    const levelError = validateLevels(parsedLevels);
-    if (levelError) return res.status(400).json({ status: false, message: levelError });
-
-    // STEP 1: Create DB row without banner/video first
-    const payloadWithoutFiles = { groupName, levels: parsedLevels, player, createdBy };
-    const result = await SessionPlanGroupService.createSessionPlanGroup(payloadWithoutFiles);
-
-    if (!result.status) return res.status(400).json({ status: false, message: result.message || "Failed to create session plan group." });
-
-    const sessionPlanId = result.data.id; // ✅ DB-generated ID
-    const baseUploadDir = path.join(
-      process.cwd(),
-      "uploads",
-      "temp",
-      "admin",
-      `${createdBy}`,
-      "session-plan-group",
-      `${sessionPlanId}`
-    );
-
-    // Helper to save & upload files
-    const saveAndUploadFile = async (file, type) => {
-      const uniqueId = Math.floor(Math.random() * 1e9);
-      const ext = path.extname(file.originalname).toLowerCase();
-      const fileName = `${Date.now()}_${uniqueId}${ext}`;
-      const localPath = path.join(baseUploadDir, type, fileName);
-
-      await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
-      if (file.buffer) {
-        await fs.promises.writeFile(localPath, file.buffer);
-      } else {
-        await saveFile(file, localPath);
-      }
-
-      let uploadedPath = null;
-      try {
-        uploadedPath = await uploadToFTP(localPath, fileName);
-      } catch (err) {
-        console.error(`Failed to upload ${type}:`, err.message);
-      } finally {
-        await fs.promises.unlink(localPath).catch(() => { });
-      }
-      return uploadedPath;
-    };
-
-    // STEP 2: Upload banner & video
-    const banner = filesMap.banner?.[0] ? await saveAndUploadFile(filesMap.banner[0], "banner") : null;
-    const video = filesMap.video?.[0] ? await saveAndUploadFile(filesMap.video[0], "video") : null;
-
-    // STEP 3: Upload recordings with proper path
-    const attachRecordingsToLevels = async (levelsObj) => {
-      const recordingFields = {};
-      for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
-        const fileArr = filesMap[`${level}_recording`];
-        let uploadedRecording = null;
-        if (fileArr && fileArr[0]) {
-          // Save recordings under "recording/<level>/" folder
-          uploadedRecording = await saveAndUploadFile(fileArr[0], path.join("recording", level));
-        }
-        recordingFields[`${level}_recording`] = uploadedRecording;
-      }
-      return { levelsObj, recordingFields };
-    };
-
-    const { levelsObj: levelsWithRecordings, recordingFields } = await attachRecordingsToLevels(parsedLevels);
-
-    // STEP 4: Update DB row with banner, video, and recordings
-    const updatePayload = { banner, video, ...recordingFields };
-    await SessionPlanGroupService.updateSessionPlanGroup(sessionPlanId, updatePayload, createdBy);
-
-    // STEP 5: Build response
-    const responseData = {
-      id: sessionPlanId,
-      groupName: result.data.groupName,
-      player: result.data.player,
-      sortOrder: result.data.sortOrder || 0,
-      createdAt: result.data.createdAt,
-      updatedAt: result.data.updatedAt,
-      banner,
-      video,
-      beginner_recording: updatePayload.beginner_recording,
-      intermediate_recording: updatePayload.intermediate_recording,
-      advanced_recording: updatePayload.advanced_recording,
-      pro_recording: updatePayload.pro_recording,
-      levels: levelsWithRecordings,
-    };
-
-    return res.status(201).json({ status: true, message: "Session Plan Group created successfully.", data: responseData });
-
-  } catch (error) {
-    console.error("Server error in createSessionPlanGroup:", error);
-    return res.status(500).json({ status: false, message: "Server error occurred while creating the session plan group." });
-  }
 };
 
 exports.getAllSessionPlanGroups = async (req, res) => {
@@ -460,6 +609,7 @@ exports.updateSessionPlanGroup = async (req, res) => {
       const ext = path.extname(file.originalname || "file");
       const fileName = uniqueId + ext;
 
+      // Local path
       const localPath = path.join(
         process.cwd(),
         "uploads",
@@ -479,7 +629,12 @@ exports.updateSessionPlanGroup = async (req, res) => {
 
       let uploadedUrl = null;
       try {
-        uploadedUrl = await uploadToFTP(localPath, fileName); // returns public URL
+        // Preserve folder structure for FTP
+        const relativeFtpPath = path
+          .relative(path.join(process.cwd(), "uploads"), localPath)
+          .replace(/\\/g, "/"); // convert Windows \ to /
+
+        uploadedUrl = await uploadToFTP(localPath, relativeFtpPath); // returns public URL with full path
         console.log(`STEP 4: Uploaded ${type}/${level || ""} to FTP:`, uploadedUrl);
       } catch (err) {
         console.error(`STEP 4: Failed to upload ${type}/${level || ""}`, err);
@@ -513,20 +668,20 @@ exports.updateSessionPlanGroup = async (req, res) => {
     console.log("STEP 5: Video URL after update:", video);
 
     // STEP 6: Update recordings
-    const recordingFields = {};
+    const uploadFields = {};
     for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
       const fileArr =
-        files[`${level}_recording`] ||
-        files[`${level}_recording_file`] ||
+        files[`${level}_upload`] ||
+        files[`${level}_upload_file`] ||
         files[level] ||
         allFiles.filter(f => f.originalname?.toLowerCase().includes(level)) ||
         [];
 
-      recordingFields[`${level}_recording`] = fileArr?.[0]
-        ? await saveFileIfExists(fileArr[0], "recording", existing[`${level}_recording`], level)
-        : existing[`${level}_recording`] || null;
+      uploadFields[`${level}_upload`] = fileArr?.[0]
+        ? await saveFileIfExists(fileArr[0], "upload", existing[`${level}_upload`], level)
+        : existing[`${level}_upload`] || null;
 
-      console.log(`STEP 6: recordingFields[${level}_recording] =`, recordingFields[`${level}_recording`]);
+      console.log(`STEP 6: uploadFields[${level}_upload] =`, uploadFields[`${level}_upload`]);
     }
 
     // STEP 7: Prepare update payload
@@ -536,7 +691,7 @@ exports.updateSessionPlanGroup = async (req, res) => {
       player: player || existing.player,
       banner,
       video,
-      ...recordingFields,
+      ...uploadFields,
     };
 
     console.log("STEP 7: updatePayload =", updatePayload);
@@ -557,10 +712,10 @@ exports.updateSessionPlanGroup = async (req, res) => {
       banner: updated.banner,
       video: updated.video,
       levels: typeof updated.levels === "string" ? JSON.parse(updated.levels) : updated.levels,
-      beginner_recording: updated.beginner_recording,
-      intermediate_recording: updated.intermediate_recording,
-      advanced_recording: updated.advanced_recording,
-      pro_recording: updated.pro_recording,
+      beginner_upload: updated.beginner_upload,
+      intermediate_upload: updated.intermediate_upload,
+      advanced_upload: updated.advanced_upload,
+      pro_upload: updated.pro_upload,
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt,
     };

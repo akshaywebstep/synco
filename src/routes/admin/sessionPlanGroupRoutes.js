@@ -18,6 +18,7 @@ const {
   deleteSessionPlanGroupLevel,
   reorderSessionPlanGroups,
   downloadSessionPlanGroupVideo,
+  duplicateSessionPlanGroup,
 } = require("../../controllers/admin/sessionPlan/sessionPlanGroupController");
 
 router.get(
@@ -34,6 +35,14 @@ router.post(
   upload.any(), // ✅ accept banner, video, AND dynamic recording_* fields
   permissionMiddleware("session-plan-group", "create"),
   createSessionPlanGroup
+);
+
+router.post(
+  "/:id/duplicate",
+  authMiddleware,
+  upload.any(), // ✅ accept banner, video, AND dynamic recording_* fields
+  permissionMiddleware("session-plan-group", "create"),
+  duplicateSessionPlanGroup
 );
 // ✅ Get All Session Plan Groups
 

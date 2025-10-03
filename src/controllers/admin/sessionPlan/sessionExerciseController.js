@@ -230,136 +230,137 @@ exports.getAllSessionExercises = async (req, res) => {
   }
 };
 
-// ✅ Update
+// ✅ Update (aligned with createSessionExercise)
 exports.updateSessionExercise = async (req, res) => {
-  const { id } = req.params;
-  const adminId = req.admin?.id;
-  const updates = req.body;
-  const files = req.files || [];
-
-  if (!adminId) {
-    return res.status(403).json({
-      status: false,
-      message: "Admin ID missing or unauthorized",
-    });
-  }
-
-  if (DEBUG)
-    console.log(
-      "📤 Update Exercise Request:",
-      updates,
-      "Files:",
-      files.map((f) => f.originalname)
-    );
-
   try {
-    let savedImagePaths = [];
+    const { id } = req.params;
+    const adminId = req.admin?.id || req.user?.id;
+    const updates = req.body;
+    const files = req.files || [];
 
-    // ✅ STEP 1: Handle uploaded files
-    if (files.length > 0) {
-      for (const file of files) {
-        const ext = path.extname(file.originalname).toLowerCase();
-        const uniqueId = Math.floor(Math.random() * 1e9);
-        const fileName = `${Date.now()}_${uniqueId}${ext}`;
-        const localPath = path.join(
-          process.cwd(),
-          "uploads",
-          "temp",
-          "admin",
-          `${id}`,
-          "sessionExercise",
-          fileName
-        );
+    if (!adminId) {
+      console.error("❌ Unauthorized request: adminId not found");
+      return res.status(403).json({ status: false, message: "Unauthorized request" });
+    }
 
-        await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
+    console.log("🔍 STEP 1: Received update request:", updates);
 
-        if (DEBUG) console.log("💾 Saving local file:", localPath);
-        await saveFile(file, localPath);
+    // Normalize files to a flat array
+    let filesArray = [];
+    if (Array.isArray(files)) {
+      filesArray = files;
+    } else {
+      filesArray = Object.values(files).flat();
+    }
 
-        try {
-          const savedPath = await uploadToFTP(localPath, fileName);
-          if (DEBUG) console.log("✅ Uploaded to FTP:", savedPath);
-          savedImagePaths.push(savedPath);
-        } catch (err) {
-          console.error("❌ FTP upload failed:", err.message);
-        } finally {
-          await fs.promises.unlink(localPath).catch(() => { });
-          if (DEBUG) console.log("🗑️ Deleted local temp file:", localPath);
-        }
+    if (filesArray.length > 0) {
+      console.log("📎 Files uploaded:", filesArray.map(f => f.originalname));
+    }
+
+    // Validate file extensions
+    const allowedExtensions = ["jpg", "jpeg", "png", "webp"];
+    for (const file of filesArray) {
+      const ext = path.extname(file.originalname).toLowerCase().slice(1);
+      if (!allowedExtensions.includes(ext)) {
+        console.error("❌ Invalid file type:", file.originalname);
+        return res.status(400).json({ status: false, message: `Invalid file type: ${file.originalname}` });
       }
     }
 
     // ✅ STEP 2: Fetch existing exercise
-    const existing = await SessionExerciseService.getSessionExerciseById(
-      id,
-      adminId
-    );
-    if (DEBUG) console.log("🔍 Existing Exercise:", existing);
+    console.log("📌 STEP 2: Fetching existing exercise");
+    const existing = await SessionExerciseService.getSessionExerciseById(id, adminId);
 
     if (!existing.status || !existing.data) {
-      if (DEBUG) console.warn("⚠️ Exercise not found for ID:", id);
-      return res
-        .status(404)
-        .json({ status: false, message: "Exercise not found" });
+      console.warn("⚠️ Exercise not found for ID:", id);
+      return res.status(404).json({ status: false, message: "Exercise not found" });
+    }
+    console.log("✅ STEP 2: Found exercise:", existing.data.title);
+
+    // ✅ STEP 3: Upload files (if any)
+    const uploadedUrls = [];
+    if (filesArray.length > 0) {
+      const baseUploadDir = path.join(process.cwd(), "uploads", "temp", "admin", `${adminId}`, "sessionExercise", `${id}`);
+      console.log("📂 STEP 3: Base upload directory:", baseUploadDir);
+
+      for (const file of filesArray) {
+        const uniqueId = Date.now() + "_" + Math.floor(Math.random() * 1e9);
+        const ext = path.extname(file.originalname).toLowerCase();
+        const fileName = `${uniqueId}${ext}`;
+        const localPath = path.join(baseUploadDir, fileName);
+
+        console.log("📌 STEP 3a: Saving local file:", localPath);
+        await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
+        await saveFile(file, localPath);
+
+        try {
+          console.log("⬆️ STEP 3b: Uploading to FTP:", localPath);
+          const publicUrl = await uploadToFTP(localPath, fileName);
+          if (publicUrl) {
+            uploadedUrls.push(publicUrl);
+            console.log("✅ STEP 3c: Uploaded successfully:", publicUrl);
+          } else {
+            console.error("❌ STEP 3c: Upload returned null for", localPath);
+          }
+        } catch (err) {
+          console.error("❌ STEP 3b: FTP upload failed for", localPath, err.message);
+        } finally {
+          await fs.promises.unlink(localPath).catch(() => { });
+          console.log("🗑️ STEP 3d: Local temp file deleted:", localPath);
+        }
+      }
     }
 
-    // ✅ STEP 3: Replace images if new files uploaded, else keep existing
-    if (savedImagePaths.length) {
-      updates.imageUrl = savedImagePaths;
-      if (DEBUG) console.log("🖼️ Replacing images with:", savedImagePaths);
+    // ✅ STEP 4: Decide which images to keep
+    if (uploadedUrls.length) {
+      updates.imageUrl = uploadedUrls;
+      console.log("🖼️ Replacing images with new uploads:", uploadedUrls);
     } else if (updates.imageUrl === null) {
       updates.imageUrl = [];
-      if (DEBUG) console.log("🗑️ Clearing all images");
+      console.log("🗑️ Clearing all images");
     } else {
       updates.imageUrl = Array.isArray(existing.data.imageUrl)
         ? existing.data.imageUrl
         : JSON.parse(existing.data.imageUrl || "[]");
-      if (DEBUG) console.log("🔄 Keeping existing images:", updates.imageUrl);
+      console.log("🔄 Keeping existing images:", updates.imageUrl);
     }
 
     updates.updatedBy = adminId;
 
-    // ✅ STEP 4: Update DB
-    const result = await SessionExerciseService.updateSessionExercise(
-      id,
-      updates,
-      adminId
-    );
-    if (DEBUG) console.log("📝 Update Result:", result);
+    // ✅ STEP 5: Update DB
+    console.log("📌 STEP 5: Updating exercise in DB");
+    const result = await SessionExerciseService.updateSessionExercise(id, updates, adminId);
 
     if (!result.status) {
+      console.error("❌ DB update failed:", result.message);
       await logActivity(req, PANEL, MODULE, "update", result, false);
       return res.status(500).json(result);
     }
 
-    // ✅ STEP 5: Log + Notify
+    console.log("✅ STEP 5: Exercise updated in DB");
+
+    // ✅ STEP 6: Log + Notify
+    console.log("📌 STEP 6: Logging activity and creating notification");
     await logActivity(req, PANEL, MODULE, "update", result, true);
 
     await createNotification(
       req,
       "Session Exercise Updated",
-      `Session Exercise '${updates.title || existing.data.title
-      }' was updated by ${req?.admin?.firstName || "Admin"}.`,
+      `Session Exercise '${updates.title || existing.data.title}' was updated by ${req?.admin?.firstName || "Admin"}.`,
       "System"
     );
+    console.log("✅ STEP 6: Notification created");
 
-    if (DEBUG) console.log("✅ Exercise updated successfully");
-
+    // ✅ STEP 7: Respond
+    console.log("📦 STEP 7: Responding with updated exercise");
     return res.status(200).json({
       status: true,
       message: "Exercise updated successfully",
       data: result.data,
     });
   } catch (error) {
-    console.error("❌ Update error:", error);
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "update",
-      { oneLineMessage: error.message },
-      false
-    );
+    console.error("❌ STEP 0: Update server error:", error);
+    await logActivity(req, PANEL, MODULE, "update", { oneLineMessage: error.message }, false);
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };

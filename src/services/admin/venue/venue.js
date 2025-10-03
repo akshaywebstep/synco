@@ -294,6 +294,10 @@ exports.createVenue = async (data) => {
                 "video",
                 "banner",
                 "player",
+                "beginner_upload",
+                "intermediate_upload",
+                "pro_upload",
+                "advanced_upload",
               ],
             });
 
@@ -457,6 +461,10 @@ exports.updateVenue = async (id, data) => {
                 "video",
                 "banner",
                 "player",
+                "beginner_upload",
+                "intermediate_upload",
+                "pro_upload",
+                "advanced_upload",
               ],
             });
 
@@ -772,7 +780,10 @@ exports.getAllVenues = async (createdBy) => {
                 if (!entry.sessionPlanId) continue;
 
                 const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
-                  attributes: ["id", "groupName", "levels", "video", "banner", "player"],
+                  attributes: ["id", "groupName", "levels", "video", "banner", "player", "beginner_upload",
+                    "intermediate_upload",
+                    "pro_upload",
+                    "advanced_upload",],
                 });
 
                 if (spg) {
@@ -1241,7 +1252,10 @@ exports.getVenueById = async (id, createdBy) => {
             if (!entry.sessionPlanId) continue;
 
             const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
-              attributes: ["id", "groupName", "levels", "video", "banner", "player", "createdBy", "createdAt"],
+              attributes: ["id", "groupName", "levels", "video", "banner", "beginner_upload",
+                "intermediate_upload",
+                "pro_upload",
+                "advanced_upload", "player", "createdBy", "createdAt"],
             });
 
             if (spg) {

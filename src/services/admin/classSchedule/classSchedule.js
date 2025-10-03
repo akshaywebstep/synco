@@ -365,6 +365,10 @@ exports.getAllClasses = async (adminId) => {
                   "video",
                   "banner",
                   "player",
+                  "beginner_upload",
+                  "intermediate_upload",
+                  "pro_upload",
+                  "advanced_upload",
                   "createdBy",
                   "createdAt",
                 ],
@@ -571,7 +575,10 @@ exports.getClassByIdWithFullDetails = async (classId) => {
             if (!entry.sessionPlanId) continue;
 
             const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
-              attributes: ["id", "groupName", "levels", "video", "banner", "player"],
+              attributes: ["id", "groupName", "levels", "video", "banner", "player", "beginner_upload",
+                "intermediate_upload",
+                "pro_upload",
+                "advanced_upload",],
             });
 
             if (spg) {
