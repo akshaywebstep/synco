@@ -1171,18 +1171,36 @@ exports.updateSessionPlanGroup = async (req, res) => {
 
     // STEP 6: Handle uploads + videos for each level
     const uploadFields = {};
+    const uploadedFiles = {};
+    (allFiles || []).forEach(f => {
+      uploadedFiles[f.fieldname] = f; // If multiple files with same fieldname, take the last one
+    });
     for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
       // Upload
-      const uploadArr = files[`${level}_upload`] || [];
-      uploadFields[`${level}_upload`] = uploadArr[0]
-        ? await saveFileIfExists(uploadArr[0], "upload", existing[`${level}_upload`], level)
-        : existing[`${level}_upload`] || null;
+      let uploadFile = uploadedFiles[`${level}_upload`] || null;
+      if (uploadFile) {
+        uploadFields[`${level}_upload`] = await saveFileIfExists(
+          uploadFile,
+          "upload",
+          existing[`${level}_upload`],
+          level
+        );
+      } else {
+        uploadFields[`${level}_upload`] = existing[`${level}_upload`] || null;
+      }
 
       // Video
-      const videoArr = files[`${level}_video`] || [];
-      uploadFields[`${level}_video`] = videoArr[0]
-        ? await saveFileIfExists(videoArr[0], "video", existing[`${level}_video`], level)
-        : existing[`${level}_video`] || null;
+      let videoFile = uploadedFiles[`${level}_video`] || null;
+      if (videoFile) {
+        uploadFields[`${level}_video`] = await saveFileIfExists(
+          videoFile,
+          "video",
+          existing[`${level}_video`],
+          level
+        );
+      } else {
+        uploadFields[`${level}_video`] = existing[`${level}_video`] || null;
+      }
 
       console.log(`STEP 6: uploadFields[${level}_upload] =`, uploadFields[`${level}_upload`]);
       console.log(`STEP 6: uploadFields[${level}_video] =`, uploadFields[`${level}_video`]);
