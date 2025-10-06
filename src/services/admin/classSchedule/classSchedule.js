@@ -318,6 +318,7 @@ exports.getAllClasses = async (adminId) => {
                 "id",
                 "termGroupId",
                 "termName",
+                "day",
                 "startDate",
                 "endDate",
                 "exclusionDates",

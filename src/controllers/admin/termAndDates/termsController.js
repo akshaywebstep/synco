@@ -18,6 +18,7 @@ exports.createTerm = async (req, res) => {
   const {
     termName,
     termGroupId,
+    day,
     startDate,
     endDate,
     totalNumberOfSessions,
@@ -34,6 +35,7 @@ exports.createTerm = async (req, res) => {
     requiredFields: [
       "termName",
       "termGroupId",
+      // "day",
       "startDate",
       "endDate",
       "totalNumberOfSessions",
@@ -57,6 +59,7 @@ exports.createTerm = async (req, res) => {
     const term = await Term.create({
       termName,
       termGroupId,
+      day,
       startDate,
       endDate,
       totalSessions: totalNumberOfSessions,
@@ -157,6 +160,7 @@ exports.updateTerm = async (req, res) => {
   const {
     termGroupId,
     termName,
+    day,
     startDate,
     endDate,
     totalSessions,
@@ -196,6 +200,7 @@ exports.updateTerm = async (req, res) => {
     const updatePayload = {
       termGroupId,
       termName,
+      day,
       startDate,
       endDate,
       totalSessions,

@@ -42,7 +42,7 @@ exports.getAllSessionExercises = async (adminId) => {
   try {
     const exercises = await SessionExercise.findAll({
       where: { createdBy: adminId },
-      order: [["createdAt", "DESC"]],
+      order: [["createdAt", "ASC"]],
     });
 
     return { status: true, data: exercises };

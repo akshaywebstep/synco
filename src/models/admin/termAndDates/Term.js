@@ -14,6 +14,10 @@ const Term = sequelize.define(
       type: DataTypes.STRING,
       allowNull: false,
     },
+    day: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
     startDate: {
       type: DataTypes.DATEONLY,
       allowNull: false,

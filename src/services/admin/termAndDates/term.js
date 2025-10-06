@@ -14,6 +14,7 @@ exports.createTerm = async (payload) => {
     const {
       termName,
       termGroupId,
+      day,
       startDate,
       endDate,
       totalNumberOfSessions,
@@ -75,6 +76,7 @@ exports.createTerm = async (payload) => {
     const term = await Term.create({
       termName,
       termGroupId,
+      day,
       startDate,
       endDate,
       totalSessions: totalNumberOfSessions,
