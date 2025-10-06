@@ -1,5 +1,6 @@
 const debug = require("debug")("service:comments");
 const { sequelize, Comment, Admin } = require("../../../models");
+const DEBUG = process.env.DEBUG === "true";
 
 exports.addCommentForFreeTrial = async ({ commentBy = null, comment, commentType = "free" }) => {
     const transaction = await sequelize.transaction();
