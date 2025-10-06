@@ -1,6 +1,31 @@
 const { SessionExercise } = require("../../../models");
 const { Op } = require("sequelize");
 
+// ✅ Duplicate Session Exercise
+exports.duplicateSessionExercise = async (oldExerciseId, createdBy) => {
+  try {
+    // STEP 1: Fetch old exercise
+    const oldExercise = await SessionExercise.findOne({ where: { id: oldExerciseId } });
+    if (!oldExercise) return { status: false, message: "Original exercise not found" };
+
+    const oldData = oldExercise.get({ plain: true });
+
+    // STEP 2: Create new exercise row (without files yet)
+    const newExercise = await SessionExercise.create({
+      title: oldData.title,
+      duration: oldData.duration,
+      description: oldData.description,
+      imageUrl: [], // files will be handled separately
+      createdBy,
+    });
+
+    return { status: true, data: newExercise.get({ plain: true }) };
+  } catch (error) {
+    console.error("❌ Error duplicating exercise:", error);
+    return { status: false, message: error.message };
+  }
+};
+
 // ✅ Create
 exports.createSessionExercise = async (data) => {
   try {

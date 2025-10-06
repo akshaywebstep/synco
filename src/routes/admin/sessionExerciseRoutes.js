@@ -12,6 +12,7 @@ const {
   getSessionExerciseById,
   updateSessionExercise,
   deleteSessionExercise,
+  duplicateSessionExercise,
 } = require("../../controllers/admin/sessionPlan/sessionExerciseController");
 
 // 🌐 Base Path: /api/admin/session-plan-exercise
@@ -51,6 +52,14 @@ router.delete(
   authMiddleware,
   permissionMiddleware("session-exercise", "delete"),
   deleteSessionExercise
+);
+
+router.post(
+  "/:id/duplicate",
+  authMiddleware,
+  upload.any(), // ✅ accept banner, video, AND dynamic recording_* fields
+  permissionMiddleware("session-exercise", "create"),
+  duplicateSessionExercise
 );
 
 module.exports = router;
