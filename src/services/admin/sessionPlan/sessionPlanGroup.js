@@ -5,6 +5,44 @@ const { Readable } = require("stream");
 const fetch = require("node-fetch");
 
 // Service
+// exports.duplicateSessionPlanGroup = async (id, createdBy) => {
+//   try {
+//     // 1️⃣ Find the original group
+//     const group = await SessionPlanGroup.findOne({ where: { id, createdBy } });
+//     if (!group) return { status: false, message: "Session Plan Group not found" };
+
+//     // 2️⃣ Parse levels if stored as string
+//     let parsedLevels = {};
+//     try {
+//       parsedLevels =
+//         typeof group.levels === "string" ? JSON.parse(group.levels) : group.levels || {};
+//     } catch {
+//       parsedLevels = {};
+//     }
+
+//     // 3️⃣ Clone data
+//     const newGroupData = {
+//       groupName: group.groupName,
+//       banner: group.banner,
+//       video: group.video,
+//       player: group.player,
+//       levels: parsedLevels, // store as object if DB supports JSON
+//       beginner_upload: group.beginner_upload,
+//       intermediate_upload: group.intermediate_upload,
+//       pro_upload: group.pro_upload,
+//       advanced_upload: group.advanced_upload,
+//       createdBy,
+//     };
+//     // 4️⃣ Create the new group
+//     const newGroup = await SessionPlanGroup.create(newGroupData);
+
+//     return { status: true, data: newGroup };
+//   } catch (error) {
+//     console.error("❌ Error duplicating Session Plan Group:", error);
+//     return { status: false, message: error.message };
+//   }
+// };
+
 exports.duplicateSessionPlanGroup = async (id, createdBy) => {
   try {
     // 1️⃣ Find the original group
@@ -20,19 +58,28 @@ exports.duplicateSessionPlanGroup = async (id, createdBy) => {
       parsedLevels = {};
     }
 
-    // 3️⃣ Clone data
+    // 3️⃣ Clone data (✅ include level-wise videos too)
     const newGroupData = {
       groupName: group.groupName,
       banner: group.banner,
-      video: group.video,
       player: group.player,
       levels: parsedLevels, // store as object if DB supports JSON
+
+      // ✅ Level-wise videos
+      beginner_video: group.beginner_video,
+      intermediate_video: group.intermediate_video,
+      advanced_video: group.advanced_video,
+      pro_video: group.pro_video,
+
+      // ✅ Level-wise uploads
       beginner_upload: group.beginner_upload,
       intermediate_upload: group.intermediate_upload,
-      pro_upload: group.pro_upload,
       advanced_upload: group.advanced_upload,
+      pro_upload: group.pro_upload,
+
       createdBy,
     };
+
     // 4️⃣ Create the new group
     const newGroup = await SessionPlanGroup.create(newGroupData);
 
@@ -68,7 +115,11 @@ exports.getAllSessionPlanGroups = async ({
         "groupName",
         "sortOrder",
         "banner",
-        "video",
+        // "video",
+        "beginner_video",
+        "intermediate_video",
+        "pro_video",
+        "advanced_video",
         "player",
         "levels",
         "beginner_upload",
@@ -131,10 +182,14 @@ exports.getSessionPlanGroupById = async (id, createdBy) => {
         "id",
         "groupName",
         "banner",
-        "video",
+        // "video",
+        "beginner_video",
+        "intermediate_video",
+        "pro_video",
+        "advanced_video",
         "player",
         "levels",
-         "beginner_upload",
+        "beginner_upload",
         "intermediate_upload",
         "pro_upload",
         "advanced_upload",

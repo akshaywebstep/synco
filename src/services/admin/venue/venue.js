@@ -458,7 +458,10 @@ exports.updateVenue = async (id, data) => {
                 "id",
                 "groupName",
                 "levels",
-                "video",
+                "beginner_video",
+                "intermediate_video",
+                "pro_video",
+                "advanced_video",
                 "banner",
                 "player",
                 "beginner_upload",
@@ -780,7 +783,10 @@ exports.getAllVenues = async (createdBy) => {
                 if (!entry.sessionPlanId) continue;
 
                 const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
-                  attributes: ["id", "groupName", "levels", "video", "banner", "player", "beginner_upload",
+                  attributes: ["id", "groupName", "levels", "beginner_video",
+                    "intermediate_video",
+                    "pro_video",
+                    "advanced_video", "banner", "player", "beginner_upload",
                     "intermediate_upload",
                     "pro_upload",
                     "advanced_upload",],

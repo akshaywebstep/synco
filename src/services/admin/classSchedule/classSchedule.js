@@ -362,13 +362,16 @@ exports.getAllClasses = async (adminId) => {
                   "id",
                   "groupName",
                   "levels",
-                  "video",
+                  "beginner_video",
+                  "intermediate_video",
+                  "advanced_video",
+                  "pro_video",
                   "banner",
                   "player",
                   "beginner_upload",
                   "intermediate_upload",
-                  "pro_upload",
                   "advanced_upload",
+                  "pro_upload",
                   "createdBy",
                   "createdAt",
                 ],
@@ -412,21 +415,29 @@ exports.getAllClasses = async (adminId) => {
                   }
                 }
 
-                // Calculate how long ago the video was uploaded
-                let videoUploadedAgo = null;
-                if (spg.video) {
+                // ✅ Calculate how long ago videos were uploaded (per level)
+                const getElapsedTime = (createdAt) => {
                   const now = new Date();
-                  const created = new Date(spg.createdAt);
+                  const created = new Date(createdAt);
                   const diffMs = now - created;
                   const diffSeconds = Math.floor(diffMs / 1000);
                   const diffMinutes = Math.floor(diffSeconds / 60);
                   const diffHours = Math.floor(diffMinutes / 60);
                   const diffDays = Math.floor(diffHours / 24);
 
-                  if (diffDays > 0) videoUploadedAgo = `${diffDays} day(s) ago`;
-                  else if (diffHours > 0) videoUploadedAgo = `${diffHours} hour(s) ago`;
-                  else if (diffMinutes > 0) videoUploadedAgo = `${diffMinutes} minute(s) ago`;
-                  else videoUploadedAgo = `${diffSeconds} second(s) ago`;
+                  if (diffDays > 0) return `${diffDays} day(s) ago`;
+                  if (diffHours > 0) return `${diffHours} hour(s) ago`;
+                  if (diffMinutes > 0) return `${diffMinutes} minute(s) ago`;
+                  return `${diffSeconds} second(s) ago`;
+                };
+
+                const videoUploadedAgo = {};
+                for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
+                  if (spg[`${level}_video`]) {
+                    videoUploadedAgo[`${level}_video`] = getElapsedTime(spg.createdAt);
+                  } else {
+                    videoUploadedAgo[`${level}_video`] = null;
+                  }
                 }
 
                 // 🔹 Fetch mapping for this sessionPlan
@@ -436,7 +447,7 @@ exports.getAllClasses = async (adminId) => {
                     termId: term.id,
                     sessionPlanId: entry.sessionPlanId,
                   },
-                  raw: true, // ensures plain object instead of Sequelize instance
+                  raw: true,
                 });
 
                 // Assign enriched sessionPlan, flattening mapping fields
@@ -444,17 +455,19 @@ exports.getAllClasses = async (adminId) => {
                   id: spg.id,
                   groupName: spg.groupName,
                   levels,
-                  video: spg.video,
+                  beginner_video: spg.beginner_video,
+                  intermediate_video: spg.intermediate_video,
+                  advanced_video: spg.advanced_video,
+                  pro_video: spg.pro_video,
                   banner: spg.banner,
                   player: spg.player,
-                  videoUploadedAgo,
-                  ...(mapping || {}), // ⬅️ spread mapping fields directly into sessionPlan
+                  videoUploadedAgo, // ✅ level-wise video upload times
+                  ...(mapping || {}),
                 };
               } else {
                 entry.sessionPlan = null;
               }
             }
-
             term.dataValues.sessionsMap = parsedSessionsMap;
           }
         }
@@ -575,7 +588,10 @@ exports.getClassByIdWithFullDetails = async (classId) => {
             if (!entry.sessionPlanId) continue;
 
             const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
-              attributes: ["id", "groupName", "levels", "video", "banner", "player", "beginner_upload",
+              attributes: ["id", "groupName", "levels", "beginner_video",
+                "intermediate_video",
+                "advanced_video",
+                "pro_video", "banner", "player", "beginner_upload",
                 "intermediate_upload",
                 "pro_upload",
                 "advanced_upload",],
