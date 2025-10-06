@@ -1,12 +1,9 @@
 const bcrypt = require("bcrypt");
 const path = require("path");
 const fs = require("fs");
-// const ftp = require("basic-ftp");
-// const Client = ftp.Client;
-// const { Readable } = require("stream");
 
 const { createToken } = require("../../utils/jwt");
-const uploadToFTP = require("../../utils/uploadToFTP");
+const {uploadToFTP} = require("../../utils/uploadToFTP");
 const { generatePasswordHint } = require("../../utils/auth");
 const sendEmail = require("../../utils/email/sendEmail");
 
