@@ -238,7 +238,7 @@ exports.createVenue = async (data) => {
         termGroupIds = [];
       }
     }
-// 
+    // 
     if (termGroupIds.length > 0) {
       const termGroups = await TermGroup.findAll({
         where: { id: termGroupIds },
@@ -1265,7 +1265,10 @@ exports.getVenueById = async (id, createdBy) => {
             if (!entry.sessionPlanId) continue;
 
             const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
-              attributes: ["id", "groupName", "levels", "video", "banner", "beginner_upload",
+              attributes: ["id", "groupName", "levels", "beginner_video",
+                "intermediate_video",
+                "advanced_video",
+                "pro_video", "banner", "beginner_upload",
                 "intermediate_upload",
                 "pro_upload",
                 "advanced_upload", "player", "createdBy", "createdAt"],
