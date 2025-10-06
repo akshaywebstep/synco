@@ -238,7 +238,7 @@ exports.createVenue = async (data) => {
         termGroupIds = [];
       }
     }
-
+// 
     if (termGroupIds.length > 0) {
       const termGroups = await TermGroup.findAll({
         where: { id: termGroupIds },
