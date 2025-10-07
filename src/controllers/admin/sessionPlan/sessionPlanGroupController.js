@@ -4,12 +4,15 @@ const SessionExerciseService = require("../../../services/admin/sessionPlan/sess
 const { logActivity } = require("../../../utils/admin/activityLogger");
 // const { getVideoDurationInSeconds } = require("../../../utils/videoHelper");
 const { downloadFromFTP, uploadToFTP } = require("../../../utils/uploadToFTP");
+
+const { getVideoDurationInSeconds, formatDuration, } = require("../../../utils/videoHelper"); 
 const {
   createNotification,
 } = require("../../../utils/admin/notificationHelper");
 const { SessionExercise } = require("../../../models");
 const path = require("path");
 const { saveFile, deleteFile } = require("../../../utils/fileHandler");
+
 const fs = require("fs");
 const os = require("os");
 
@@ -736,6 +739,88 @@ const validateLevels = (levels) => {
   return null; // ✅ no errors
 };
 
+// exports.getSessionPlanGroupDetails = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const createdBy = req.admin?.id || req.user?.id;
+
+//     if (DEBUG)
+//       console.log("Fetching session plan group id:", id, "user:", createdBy);
+
+//     const result = await SessionPlanGroupService.getSessionPlanGroupById(
+//       id,
+//       createdBy
+//     );
+
+//     if (!result.status) {
+//       if (DEBUG) console.warn("Session plan group not found:", id);
+//       return res.status(404).json({ status: false, message: result.message });
+//     }
+
+//     const group = result.data;
+//     let parsedLevels = {};
+
+//     try {
+//       parsedLevels =
+//         typeof group.levels === "string"
+//           ? JSON.parse(group.levels)
+//           : group.levels || {};
+//     } catch (err) {
+//       if (DEBUG) console.error("Failed to parse levels:", err);
+//       parsedLevels = {};
+//     }
+
+//     const sessionExercises = await SessionExercise.findAll({
+//       where: { createdBy },
+//     });
+//     const exerciseMap = sessionExercises.reduce((acc, ex) => {
+//       acc[ex.id] = ex;
+//       return acc;
+//     }, {});
+
+//     // ✅ Helper to calculate elapsed time
+//     const getElapsedTime = (createdAt) => {
+//       const now = new Date();
+//       const created = new Date(createdAt);
+//       const diffMs = now - created;
+//       const diffSeconds = Math.floor(diffMs / 1000);
+//       const diffMinutes = Math.floor(diffSeconds / 60);
+//       const diffHours = Math.floor(diffMinutes / 60);
+//       const diffDays = Math.floor(diffHours / 24);
+
+//       if (diffDays > 0) return `${diffDays} day(s) ago`;
+//       if (diffHours > 0) return `${diffHours} hour(s) ago`;
+//       if (diffMinutes > 0) return `${diffMinutes} minute(s) ago`;
+//       return `${diffSeconds} second(s) ago`;
+//     };
+
+//     // ✅ Calculate elapsed times for level videos
+//     const videoUploadedAgo = {};
+//     for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
+//       if (group[`${level}_video`]) {
+//         videoUploadedAgo[`${level}_video`] = getElapsedTime(group.createdAt);
+//       } else {
+//         videoUploadedAgo[`${level}_video`] = null;
+//       }
+//     }
+
+//     if (DEBUG) console.log("Video uploadedAgo map:", videoUploadedAgo);
+
+//     return res.status(200).json({
+//       status: true,
+//       message: "Fetched session plan group with exercises.",
+//       data: {
+//         ...group,
+//         levels: parsedLevels,
+//         videoUploadedAgo, // ✅ Now level-wise map
+//       },
+//     });
+//   } catch (error) {
+//     if (DEBUG) console.error("Error in getSessionPlanGroupDetails:", error);
+//     return res.status(500).json({ status: false, message: "Server error." });
+//   }
+// };
+
 exports.getSessionPlanGroupDetails = async (req, res) => {
   try {
     const { id } = req.params;
@@ -744,10 +829,7 @@ exports.getSessionPlanGroupDetails = async (req, res) => {
     if (DEBUG)
       console.log("Fetching session plan group id:", id, "user:", createdBy);
 
-    const result = await SessionPlanGroupService.getSessionPlanGroupById(
-      id,
-      createdBy
-    );
+    const result = await SessionPlanGroupService.getSessionPlanGroupById(id, createdBy);
 
     if (!result.status) {
       if (DEBUG) console.warn("Session plan group not found:", id);
@@ -767,9 +849,7 @@ exports.getSessionPlanGroupDetails = async (req, res) => {
       parsedLevels = {};
     }
 
-    const sessionExercises = await SessionExercise.findAll({
-      where: { createdBy },
-    });
+    const sessionExercises = await SessionExercise.findAll({ where: { createdBy } });
     const exerciseMap = sessionExercises.reduce((acc, ex) => {
       acc[ex.id] = ex;
       return acc;
@@ -791,25 +871,36 @@ exports.getSessionPlanGroupDetails = async (req, res) => {
       return `${diffSeconds} second(s) ago`;
     };
 
-    // ✅ Calculate elapsed times for level videos
-    const videoUploadedAgo = {};
-    for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
-      if (group[`${level}_video`]) {
-        videoUploadedAgo[`${level}_video`] = getElapsedTime(group.createdAt);
-      } else {
-        videoUploadedAgo[`${level}_video`] = null;
-      }
-    }
+    // ✅ Process all levels in parallel (faster)
+    const levels = ["beginner", "intermediate", "advanced", "pro"];
+    const videoInfo = {};
 
-    if (DEBUG) console.log("Video uploadedAgo map:", videoUploadedAgo);
+    await Promise.all(
+      levels.map(async (level) => {
+        const videoUrl = group[`${level}_video`];
+        if (videoUrl) {
+          const durationSec = await getVideoDurationInSeconds(videoUrl);
+          const durationFormatted = formatDuration(durationSec);
+          const uploadedAgo = getElapsedTime(group.createdAt);
+
+          videoInfo[`${level}_video_duration`] = durationFormatted;
+          videoInfo[`${level}_video_uploadedAgo`] = uploadedAgo;
+        } else {
+          videoInfo[`${level}_video_duration`] = null;
+          videoInfo[`${level}_video_uploadedAgo`] = null;
+        }
+      })
+    );
+
+    if (DEBUG) console.log("Video info added to response:", videoInfo);
 
     return res.status(200).json({
       status: true,
-      message: "Fetched session plan group with exercises.",
+      message: "Fetched session plan group with video durations.",
       data: {
         ...group,
         levels: parsedLevels,
-        videoUploadedAgo, // ✅ Now level-wise map
+        ...videoInfo, // ✅ durations & uploadedAgo are flattened
       },
     });
   } catch (error) {
