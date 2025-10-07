@@ -18,7 +18,7 @@ exports.addCommentForLead = async (req, res) => {
 
     // ✅ Validate request body
     const { isValid, error } = validateFormData(payload, {
-        // requiredFields: ["comment"], // comment is required
+        requiredFields: ["comment"], // comment is required
         optionalFields: ["commentType"],
     });
 
