@@ -51,13 +51,13 @@ exports.createCancelBooking = async (req, res) => {
       MODULE,
       "create",
       {
-        message: `Cancelled free trial booking: bookingId ${payload.bookingId}`,
+        message: `Cancelled free trial booking `,
       },
       true
     );
 
     // ✅ Notify admins about the cancellation
-    const cancelledByName = req?.user?.firstName || "An admin";
+    const cancelledByName = req?.admin?.firstName || "An admin";
     await createNotification(
       req,
       "Trial Cancelled",
