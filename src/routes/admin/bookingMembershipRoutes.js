@@ -40,7 +40,7 @@ router.get(
   getAllPaidBookings
 );
 router.post(
-  "/send-email",
+  "/send/email",
   authMiddleware,
   permissionMiddleware("book-membership", "view-listing"),
   sendSelectedMemberEmail
