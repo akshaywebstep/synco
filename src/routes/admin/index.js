@@ -35,6 +35,9 @@ router.use("/payment-group", require("./paymentGroupRoutes"));
 // Discount  Module Base Route
 router.use("/discount", require("./discountRoutes"));
 
+// Weekly Classes Module Base Route
+router.use("/weekly-class", require("./weeklyClasseRoutes"));
+
 // Session Plan Group Base Route
 router.use("/session-plan-group", require("./sessionPlanGroupRoutes"));
 // Session Plan Exercise Base Route
