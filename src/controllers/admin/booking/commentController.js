@@ -18,6 +18,14 @@ exports.addCommentForFreeTrial = async (req, res) => {
     const { isValid, error } = validateFormData(payload, {
         requiredFields: ["comment"], // comment is required
         optionalFields: ["commentType"],
+        customValidators: {
+            comment: (value) => {
+                if (!value || value.trim() === "") {
+                    return "Please enter a comment before submitting.";
+                }
+                return null;
+            },
+        },
     });
 
     if (!isValid) {
@@ -58,7 +66,7 @@ exports.addCommentForFreeTrial = async (req, res) => {
         await createNotification(
             req,
             "New Comment",
-            `${createdBy} added a comment for book a free trial.`,
+            `${createdBy} added a comment for booking a free trial.`,
             "Admins"
         );
         if (DEBUG) console.log("🔔 Notification created for admins");
@@ -120,6 +128,14 @@ exports.addCommentForMembership = async (req, res) => {
     const { isValid, error } = validateFormData(payload, {
         requiredFields: ["comment"], // comment is required
         optionalFields: ["commentType"],
+        customValidators: {
+            comment: (value) => {
+                if (!value || value.trim() === "") {
+                    return "Please enter a comment before submitting.";
+                }
+                return null;
+            },
+        },
     });
 
     if (!isValid) {
@@ -160,7 +176,7 @@ exports.addCommentForMembership = async (req, res) => {
         await createNotification(
             req,
             "New Comment",
-            `${createdBy} added a comment for book a membership"}).`,
+            `${createdBy} added a comment for booking a membership.`,
             "Admins"
         );
         if (DEBUG) console.log("🔔 Notification created for admins");
@@ -222,6 +238,14 @@ exports.addCommentForWaitingList = async (req, res) => {
     const { isValid, error } = validateFormData(payload, {
         requiredFields: ["comment"], // comment is required
         optionalFields: ["commentType"],
+        customValidators: {
+            comment: (value) => {
+                if (!value || value.trim() === "") {
+                    return "Please enter a comment before submitting.";
+                }
+                return null;
+            },
+        },
     });
 
     if (!isValid) {
@@ -262,7 +286,7 @@ exports.addCommentForWaitingList = async (req, res) => {
         await createNotification(
             req,
             "New Comment",
-            `${createdBy} added a comment for waiting list}).`,
+            `${createdBy} added a comment for the waiting list.`,
             "Admins"
         );
         if (DEBUG) console.log("🔔 Notification created for admins");
