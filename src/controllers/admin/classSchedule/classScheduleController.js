@@ -1,6 +1,8 @@
 const { validateFormData } = require("../../../utils/validateFormData");
 const ClassScheduleService = require("../../../services/admin/classSchedule/classSchedule");
 const { logActivity } = require("../../../utils/admin/activityLogger");
+const { getVideoDurationInSeconds, formatDuration, } = require("../../../utils/videoHelper"); 
+
 const {
   Venue,
   TermGroup,

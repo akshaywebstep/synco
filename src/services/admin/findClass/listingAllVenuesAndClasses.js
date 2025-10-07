@@ -207,7 +207,7 @@ exports.getAllVenuesWithClasses = async ({ userLatitude, userLongitude, searchRa
         const parsedTerms = terms.map((t) => ({
           id: t.id,
           name: t.termName,
-          day: t,day,
+          day: t.day,
           startDate: t.startDate,
           endDate: t.endDate,
           termGroupId: t.termGroupId,
