@@ -470,9 +470,9 @@ exports.getAllClasses = async (adminId) => {
                       termGroupId: mapping.termGroupId,
                       termId: mapping.termId,
                       sessionPlanId: mapping.sessionPlanId,
-                      mappingStatus: mapping.status,
-                      mappingCreatedAt: mapping.createdAt,
-                      mappingUpdatedAt: mapping.updatedAt,
+                      status: mapping.status,
+                      createdAt: mapping.createdAt,
+                      updatedAt: mapping.updatedAt,
                     }
                     : {}),
                 };
