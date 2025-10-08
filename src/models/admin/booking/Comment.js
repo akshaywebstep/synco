@@ -32,7 +32,7 @@ const Comment = sequelize.define(
 
         // ✅ Comment type (ENUM)
         commentType: {
-            type: DataTypes.ENUM("free", "paid", "waiting list"),
+            type: DataTypes.ENUM("free", "paid", "waiting list","lead"),
             allowNull: false,
             defaultValue: "free",
             comment: "Type of comment (free, paid, waiting list)",

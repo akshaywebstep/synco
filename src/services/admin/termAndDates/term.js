@@ -14,6 +14,7 @@ exports.createTerm = async (payload) => {
     const {
       termName,
       termGroupId,
+      day,
       startDate,
       endDate,
       totalNumberOfSessions,
@@ -75,6 +76,7 @@ exports.createTerm = async (payload) => {
     const term = await Term.create({
       termName,
       termGroupId,
+      day,
       startDate,
       endDate,
       totalSessions: totalNumberOfSessions,
@@ -176,7 +178,10 @@ exports.getAllTerms = async (adminId) => {
     // Fetch Session Plan Groups
     const sessionPlanGroups = await SessionPlanGroup.findAll({
       where: { id: { [Op.in]: [...new Set(allSessionPlanIds)] } },
-      attributes: ["id", "groupName", "levels", "video", "banner", "player"],
+      attributes: ["id", "groupName", "levels", "beginner_video",
+        "intermediate_video",
+        "pro_video",
+        "advanced_video", "banner", "player"],
       raw: true,
     });
 
@@ -231,10 +236,10 @@ exports.getAllTerms = async (adminId) => {
         exclusionDates: _parsedExclusionDates,
         sessionsMap: Array.isArray(_parsedSessions)
           ? _parsedSessions.map((s) => ({
-              sessionDate: s.sessionDate,
-              sessionPlanId: s.sessionPlanId,
-              sessionPlan: sessionPlanMap[s.sessionPlanId] || null,
-            }))
+            sessionDate: s.sessionDate,
+            sessionPlanId: s.sessionPlanId,
+            sessionPlan: sessionPlanMap[s.sessionPlanId] || null,
+          }))
           : [], // fallback empty array if not valid
       })
     );
@@ -291,7 +296,10 @@ exports.getTermById = async (id, adminId) => {
     // Fetch session plan groups
     const sessionPlanGroups = await SessionPlanGroup.findAll({
       where: { id: { [Op.in]: sessionPlanIds } },
-      attributes: ["id", "groupName", "levels", "video", "banner", "player"],
+      attributes: ["id", "groupName", "levels", "beginner_video",
+        "intermediate_video",
+        "pro_video",
+        "advanced_video", "banner", "player"],
       raw: true,
     });
 

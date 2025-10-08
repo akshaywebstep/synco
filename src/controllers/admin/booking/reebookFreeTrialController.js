@@ -11,6 +11,7 @@ const MODULE = "rebooking_trial";
 
 // ✅ Create or update a booking with rebooking info
 exports.createRebookingTrial = async (req, res) => {
+   console.log("📍 createRebookingTrial reached");
   const payload = req.body;
 
   const { isValid, error } = validateFormData(payload, {

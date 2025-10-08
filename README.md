@@ -1,1 +1,1 @@
-# synco-admin
+# synco

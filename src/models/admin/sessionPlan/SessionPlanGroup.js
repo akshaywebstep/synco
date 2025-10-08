@@ -20,19 +20,32 @@ const SessionPlanGroup = sequelize.define(
     banner: {
       type: DataTypes.STRING,
     },
-    video: {
+    // video: {
+    //   type: DataTypes.STRING,
+    // },
+    beginner_video: {
       type: DataTypes.STRING,
     },
-    beginner_recording: {
+    advanced_video: {
       type: DataTypes.STRING,
     },
-    advanced_recording: {
-      type: DataTypes.STRING,
-    },
-    pro_recording: {
+    pro_video: {
       type: DataTypes.STRING,
     }, 
-    intermediate_recording: {
+    intermediate_video: {
+      type: DataTypes.STRING,
+    },
+
+    beginner_upload: {
+      type: DataTypes.STRING,
+    },
+    advanced_upload: {
+      type: DataTypes.STRING,
+    },
+    pro_upload: {
+      type: DataTypes.STRING,
+    }, 
+    intermediate_upload: {
       type: DataTypes.STRING,
     },
     levels: {

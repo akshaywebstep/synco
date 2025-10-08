@@ -64,13 +64,21 @@ exports.createBooking = async (req, res) => {
 
     // ✅ Inject venue
     formData.venueId = classData.venueId;
+    let skipped = [];
     // 🔹 Attach payment gateway response so the service can save it
-    if (formData.paymentPlanId) {
+    // if (formData.paymentPlanId) {
 
-      const planCheck = await PaymentPlan.getPlanById(planId, createdBy); // ✅ add createdBy here
+    //   const planCheck = await PaymentPlan.getPlanById(paymentPlanId, createdBy); // ✅ add createdBy here
+    const paymentPlanId = formData.paymentPlanId; // ✅ define it first
+    if (paymentPlanId) {
+
+      const planCheck = await PaymentPlan.getPlanById(paymentPlanId, req.admin?.id);
       if (!planCheck.status) {
-        skipped.push({ planId, reason: "Plan does not exist" });
-        if (DEBUG) console.log(`⛔ Skipped plan ID ${planId}: Not found`);
+        skipped.push({ paymentPlanId, reason: "Plan does not exist" });
+        if (DEBUG) {
+          console.log(`⛔ Skipped plan ID ${paymentPlanId}: Not found`);
+          console.log("🔍 Fetching payment plan:", paymentPlanId, "createdBy:", req.admin?.id);
+        }
         return res
           .status(400)
           .json({ status: false, message: planCheck.message });
@@ -94,10 +102,12 @@ exports.createBooking = async (req, res) => {
       formData.gatewayResponse = incomingGatewayResponse || null;
     }
 
+    const leadId = req.params.leadId || null;
     // 🔹 Step 1: Create Booking + Students + Parents (Service)
     const result = await BookingMembershipService.createBooking(formData, {
       source: req.source,
       adminId: req.admin?.id || null,
+      leadId,
     });
     if (!result.status) {
       await logActivity(req, PANEL, MODULE, "create", result, false);

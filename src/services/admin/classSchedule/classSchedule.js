@@ -7,7 +7,7 @@ const {
   SessionExercise,
   PaymentPlan,
   ClassScheduleTermMap,
-PaymentGroup,
+  PaymentGroup,
 
 } = require("../../../models");
 
@@ -318,6 +318,7 @@ exports.getAllClasses = async (adminId) => {
                 "id",
                 "termGroupId",
                 "termName",
+                "day",
                 "startDate",
                 "endDate",
                 "exclusionDates",
@@ -331,92 +332,149 @@ exports.getAllClasses = async (adminId) => {
         venue.dataValues.termGroups = termGroups;
 
         for (const termGroup of termGroups) {
-          if (termGroup?.terms?.length) {
-            for (const term of termGroup.terms) {
-              // Parse exclusionDates
-              if (typeof term.exclusionDates === "string") {
-                try {
-                  term.dataValues.exclusionDates = JSON.parse(term.exclusionDates);
-                } catch {
-                  term.dataValues.exclusionDates = [];
-                }
+          for (const term of termGroup.terms || []) {
+            // Parse exclusionDates
+            if (typeof term.exclusionDates === "string") {
+              try {
+                term.dataValues.exclusionDates = JSON.parse(term.exclusionDates);
+              } catch {
+                term.dataValues.exclusionDates = [];
               }
+            }
 
-              // Parse sessionsMap
-              let parsedSessionsMap = [];
-              if (typeof term.sessionsMap === "string") {
-                try {
-                  parsedSessionsMap = JSON.parse(term.sessionsMap);
-                } catch {
-                  parsedSessionsMap = [];
-                }
-              } else {
-                parsedSessionsMap = term.sessionsMap || [];
+            // Parse and enrich sessionsMap
+            let parsedSessionsMap = [];
+            if (typeof term.sessionsMap === "string") {
+              try {
+                parsedSessionsMap = JSON.parse(term.sessionsMap);
+              } catch {
+                parsedSessionsMap = [];
               }
+            } else {
+              parsedSessionsMap = term.sessionsMap || [];
+            }
 
-              // Enrich sessionsMap
-              for (let i = 0; i < parsedSessionsMap.length; i++) {
-                const entry = parsedSessionsMap[i];
-                if (!entry.sessionPlanId) continue;
+            for (let i = 0; i < parsedSessionsMap.length; i++) {
+              const entry = parsedSessionsMap[i];
+              if (!entry.sessionPlanId) continue;
 
-                const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
-                  attributes: [
-                    "id",
-                    "groupName",
-                    "levels",
-                    "video",
-                    "banner",
-                    "player",
-                  ],
+              const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
+                attributes: [
+                  "id",
+                  "groupName",
+                  "levels",
+                  "beginner_video",
+                  "intermediate_video",
+                  "advanced_video",
+                  "pro_video",
+                  "banner",
+                  "player",
+                  "beginner_upload",
+                  "intermediate_upload",
+                  "advanced_upload",
+                  "pro_upload",
+                  "createdBy",
+                  "createdAt",
+                ],
+              });
+
+              if (spg) {
+                // Parse levels safely
+                let levels = {};
+                try {
+                  levels = typeof spg.levels === "string" ? JSON.parse(spg.levels) : spg.levels || {};
+                } catch {
+                  levels = {};
+                }
+
+                // Fetch all exercises for this creator
+                const allExercises = await SessionExercise.findAll({
+                  where: { createdBy: spg.createdBy },
                 });
 
-                if (spg) {
-                  // Parse levels JSON
-                  let levels = spg.levels;
-                  if (typeof levels === "string") {
-                    try {
-                      levels = JSON.parse(levels);
-                    } catch {
-                      levels = {};
+                const exerciseMap = allExercises.reduce((acc, ex) => {
+                  acc[ex.id] = ex;
+                  return acc;
+                }, {});
+
+                // Enrich each level item with sessionExercises
+                for (const levelKey of Object.keys(levels)) {
+                  for (const item of levels[levelKey]) {
+                    if (Array.isArray(item.sessionExerciseId)) {
+                      item.sessionExercises = item.sessionExerciseId
+                        .map((exId) => exerciseMap[exId])
+                        .filter(Boolean)
+                        .map((ex) => ({
+                          id: ex.id,
+                          title: ex.title,
+                          description: ex.description,
+                          duration: ex.duration,
+                        }));
+                    } else {
+                      item.sessionExercises = [];
                     }
                   }
-
-                  // Expand sessionExercises for each level
-                  for (const lvl of ["beginner", "intermediate", "advanced"]) {
-                    if (!levels[lvl]) continue;
-                    for (const obj of levels[lvl]) {
-                      const ids = obj.sessionExerciseId || [];
-                      const exercises = ids.length
-                        ? await SessionExercise.findAll({ where: { id: ids } })
-                        : [];
-                      obj.sessionExercises = exercises;
-                    }
-                  }
-
-                  spg.levels = levels;
-                  entry.sessionPlan = spg;
-                } else {
-                  entry.sessionPlan = null;
                 }
 
-                // Attach mapping for this specific sessionPlan
+                // ✅ Calculate how long ago videos were uploaded (per level)
+                const getElapsedTime = (createdAt) => {
+                  const now = new Date();
+                  const created = new Date(createdAt);
+                  const diffMs = now - created;
+                  const diffSeconds = Math.floor(diffMs / 1000);
+                  const diffMinutes = Math.floor(diffSeconds / 60);
+                  const diffHours = Math.floor(diffMinutes / 60);
+                  const diffDays = Math.floor(diffHours / 24);
+
+                  if (diffDays > 0) return `${diffDays} day(s) ago`;
+                  if (diffHours > 0) return `${diffHours} hour(s) ago`;
+                  if (diffMinutes > 0) return `${diffMinutes} minute(s) ago`;
+                  return `${diffSeconds} second(s) ago`;
+                };
+
+                const videoUploadedAgo = {};
+                for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
+                  if (spg[`${level}_video`]) {
+                    videoUploadedAgo[`${level}_video`] = getElapsedTime(spg.createdAt);
+                  } else {
+                    videoUploadedAgo[`${level}_video`] = null;
+                  }
+                }
+
+                // 🔹 Fetch mapping for this sessionPlan
                 const mapping = await ClassScheduleTermMap.findOne({
                   where: {
                     classScheduleId: cls.id,
                     termId: term.id,
                     sessionPlanId: entry.sessionPlanId,
                   },
+                  raw: true,
                 });
 
-                entry.classScheduleTermMaps = mapping || null;
+                // Assign enriched sessionPlan, flattening mapping fields
+                entry.sessionPlan = {
+                  id: spg.id,
+                  groupName: spg.groupName,
+                  levels,
+                  beginner_video: spg.beginner_video,
+                  intermediate_video: spg.intermediate_video,
+                  advanced_video: spg.advanced_video,
+                  pro_video: spg.pro_video,
+                  banner: spg.banner,
+                  player: spg.player,
+                  videoUploadedAgo, // ✅ level-wise video upload times
+                  ...(mapping || {}),
+                };
+              } else {
+                entry.sessionPlan = null;
               }
-
-              term.dataValues.sessionsMap = parsedSessionsMap;
             }
+            term.dataValues.sessionsMap = parsedSessionsMap;
           }
         }
-      } else {
-        venue.dataValues.termGroups = [];
+
+        venue.dataValues.termGroups = termGroups;
+
       }
     }
 
@@ -531,7 +589,13 @@ exports.getClassByIdWithFullDetails = async (classId) => {
             if (!entry.sessionPlanId) continue;
 
             const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
-              attributes: ["id", "groupName", "levels", "video", "banner", "player"],
+              attributes: ["id", "groupName", "levels", "beginner_video",
+                "intermediate_video",
+                "advanced_video",
+                "pro_video", "banner", "player", "beginner_upload",
+                "intermediate_upload",
+                "pro_upload",
+                "advanced_upload",],
             });
 
             if (spg) {

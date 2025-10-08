@@ -65,16 +65,16 @@ router.use("/dashboard", require("./dashboardRoutes"));
 
 // Book Free Trials Module Base Routes
 router.use("/book/free-trials", require("./bookFreeTrailsRoutes"));
-// router.use("/service-history", require("./serviceHistoryRoutes"));
-// router.use("/reebooking", require("./reebookFreeTrialRoutes"));
+router.use("/service-history", require("./serviceHistoryRoutes"));
+router.use("/reebooking", require("./reebookFreeTrialRoutes"));
 router.use("/cancel-freeTrial", require("./cancelBookingRoutes"));
-// router.use("/no-membership", require("./noMembershipTrialRoutes"));
+router.use("/no-membership", require("./noMembershipTrialRoutes"));
 router.use("/key-information", require("./keyInformationRoutes"));
 
 // Book Membership Modle Base Routes
 router.use("/book-membership", require("./bookingMembershipRoutes"));
-// router.use("/cancel-membership", require("./cancelMembershipBookingRoutes"));
-// router.use("/book-membership", require("./freezeBookingRoutes"));
+router.use("/cancel-membership", require("./cancelMembershipBookingRoutes"));
+router.use("/membership", require("./freezeBookingRoutes"));
 router.use("/credits", require("./creditsRoutes"));
 
 // Waiting List Module Base Routes

@@ -19,6 +19,14 @@ router.post(
   permissionMiddleware("waiting-list", "create"),
   createBooking
 );
+
+router.post(
+  "/:leadId",
+  authMiddleware,
+  permissionMiddleware("waiting-list", "create"),
+  createBooking
+);
+
 router.get(
   "/",
   authMiddleware,

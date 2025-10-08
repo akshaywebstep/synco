@@ -10,25 +10,68 @@ const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
 
 // ✅ Create a cancellation for a free trial booking
-exports.createCancelBooking = async ({
-  bookingId,
-  cancelReason,
-  additionalNote,
-}) => {
+// exports.createCancelBooking = async ({
+//   bookingId,
+//   cancelReason,
+//   additionalNote,
+// }) => {
+//   try {
+//     const bookingType = "free"; // fixed for free trial
+
+//     // ✅ Validate booking exists
+//     const booking = await Booking.findByPk(bookingId);
+//     if (!booking) {
+//       return { status: false, message: "Booking not found." };
+//     }
+
+//     // ❗ Prevent duplicate cancellation for this free trial
+//     const existingCancel = await CancelBooking.findOne({
+//       where: { bookingId, bookingType },
+//     });
+
+//     if (existingCancel) {
+//       return {
+//         status: false,
+//         message: "Cancellation already recorded for this free trial booking.",
+//       };
+//     }
+
+//     // ✅ Record cancellation
+//     const cancelRequest = await CancelBooking.create({
+//       bookingId,
+//       bookingType,
+//       cancelReason: cancelReason || null,
+//       additionalNote: additionalNote || null,
+//     });
+
+//     // ✅ Update booking status to cancelled immediately
+//     await booking.update({ status: "cancelled" });
+
+//     return {
+//       status: true,
+//       message: "Free trial booking cancelled successfully.",
+//       data: { cancelRequest, bookingDetails: booking },
+//     };
+//   } catch (error) {
+//     console.error("❌ createCancelBooking Error:", error);
+//     return { status: false, message: error.message };
+//   }
+// };
+
+exports.createCancelBooking = async ({ bookingId, cancelReason, additionalNote }) => {
   try {
     const bookingType = "free"; // fixed for free trial
 
-    // ✅ Validate booking exists
+    // Validate booking exists
     const booking = await Booking.findByPk(bookingId);
     if (!booking) {
       return { status: false, message: "Booking not found." };
     }
 
-    // ❗ Prevent duplicate cancellation for this free trial
+    // Prevent duplicate cancellation
     const existingCancel = await CancelBooking.findOne({
       where: { bookingId, bookingType },
     });
-
     if (existingCancel) {
       return {
         status: false,
@@ -36,7 +79,7 @@ exports.createCancelBooking = async ({
       };
     }
 
-    // ✅ Record cancellation
+    // Record cancellation
     const cancelRequest = await CancelBooking.create({
       bookingId,
       bookingType,
@@ -44,8 +87,26 @@ exports.createCancelBooking = async ({
       additionalNote: additionalNote || null,
     });
 
-    // ✅ Update booking status to cancelled immediately
+    // Update booking status to cancelled
     await booking.update({ status: "cancelled" });
+
+    // ✅ Update class schedule capacity based on linked students
+    const studentMetaList = await BookingStudentMeta.findAll({
+      where: { bookingTrialId: bookingId },
+    });
+
+    if (studentMetaList.length > 0) {
+      // Assuming booking has a classScheduleId
+      const classSchedule = await ClassSchedule.findByPk(booking.classScheduleId);
+
+      if (classSchedule) {
+        // Increase capacity by the number of students linked to this booking
+        const incrementCapacity = studentMetaList.length;
+        await classSchedule.update({
+          capacity: classSchedule.capacity + incrementCapacity,
+        });
+      }
+    }
 
     return {
       status: true,

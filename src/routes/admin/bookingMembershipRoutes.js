@@ -25,6 +25,14 @@ router.post(
   permissionMiddleware("book-membership", "create"),
   createBooking
 );
+
+router.post(
+  "/:leadId",
+  authMiddleware,
+  permissionMiddleware("book-membership", "create"),
+  createBooking
+);
+
 router.get(
   "/",
   authMiddleware,
@@ -32,7 +40,7 @@ router.get(
   getAllPaidBookings
 );
 router.post(
-  "/send-email",
+  "/send/email",
   authMiddleware,
   permissionMiddleware("book-membership", "view-listing"),
   sendSelectedMemberEmail
@@ -58,11 +66,12 @@ router.get(
 );
 
 router.post(
-  "/transfer-class",
+  "/transfer/class/",
   authMiddleware,
   permissionMiddleware("book-membership", "view-listing"),
   transferClass
 );
+
 router.post(
   "/waiting-list",
   authMiddleware,
@@ -97,61 +106,61 @@ router.get(
   listFailedPayments
 );
 
-const {
-  createFreezeBooking,
-  listFreezeBookings,
-  reactivateBooking,
-  cancelWaitingListSpot,
-} = require("../../controllers/admin/booking/freezeBookingController");
+// const {
+//   createFreezeBooking,
+//   listFreezeBookings,
+//   reactivateBooking,
+//   cancelWaitingListSpot,
+// } = require("../../controllers/admin/booking/freezeBookingController");
 
-// ✅ Cancel a session for a specific class
-router.post(
-  "/freeze",
-  authMiddleware,
-  permissionMiddleware("freeze", "create"),
-  createFreezeBooking
-);
-router.get(
-  "/list",
-  authMiddleware,
-  permissionMiddleware("freeze", "view-listing"),
-  listFreezeBookings
-);
+// // ✅ Cancel a session for a specific class
+// router.post(
+//   "/freeze",
+//   authMiddleware,
+//   permissionMiddleware("freeze", "create"),
+//   createFreezeBooking
+// );
+// router.get(
+//   "/list",
+//   authMiddleware,
+//   permissionMiddleware("freeze", "view-listing"),
+//   listFreezeBookings
+// );
 
-router.post(
-  "/reactivate",
-  authMiddleware,
-  permissionMiddleware("freeze", "view-listing"),
-  reactivateBooking
-);
+// router.post(
+//   "/reactivate",
+//   authMiddleware,
+//   permissionMiddleware("freeze", "view-listing"),
+//   reactivateBooking
+// );
 
-router.put(
-  "/cancel/waiting-list-spot",
-  authMiddleware,
-  permissionMiddleware("freeze", "view-listing"),
-  cancelWaitingListSpot
-);
+// router.put(
+//   "/cancel/waiting-list-spot",
+//   authMiddleware,
+//   permissionMiddleware("freeze", "view-listing"),
+//   cancelWaitingListSpot
+// );
 
 // cancel membership booking----------------------------------------------------------------------------
-const {
-  createCancelBooking,
-  sendCancelBookingEmail,
-  // createNoMembership,
-} = require("../../controllers/admin/booking/cancelMembershipBookingController");
+// const {
+//   createCancelBooking,
+//   sendCancelBookingEmail,
+//   // createNoMembership,
+// } = require("../../controllers/admin/booking/cancelMembershipBookingController");
 
-router.post(
-  "/cancel-membership",
-  authMiddleware,
-  permissionMiddleware("cancel-membership", "create"),
-  createCancelBooking
-);
+// router.post(
+//   "/cancel-membership",
+//   authMiddleware,
+//   permissionMiddleware("cancel-membership", "create"),
+//   createCancelBooking
+// );
 
-router.post(
-  "/cancel-membership/send-email",
-  authMiddleware,
-  permissionMiddleware("cancel-membership", "view-listing"),
-  sendCancelBookingEmail
-);
+// router.post(
+//   "/cancel-membership/send-email",
+//   authMiddleware,
+//   permissionMiddleware("cancel-membership", "view-listing"),
+//   sendCancelBookingEmail
+// );
 
 const {
   addCommentForMembership,

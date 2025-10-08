@@ -238,7 +238,7 @@ exports.createVenue = async (data) => {
         termGroupIds = [];
       }
     }
-
+    // 
     if (termGroupIds.length > 0) {
       const termGroups = await TermGroup.findAll({
         where: { id: termGroupIds },
@@ -250,6 +250,7 @@ exports.createVenue = async (data) => {
               "id",
               "termGroupId",
               "termName",
+              "day",
               "startDate",
               "endDate",
               "exclusionDates",
@@ -291,9 +292,16 @@ exports.createVenue = async (data) => {
                 "id",
                 "groupName",
                 "levels",
-                "video",
+                "beginner_video",
+                "intermediate_video",
+                "advanced_video",
+                "pro_video",
                 "banner",
                 "player",
+                "beginner_upload",
+                "intermediate_upload",
+                "pro_upload",
+                "advanced_upload",
               ],
             });
 
@@ -415,6 +423,7 @@ exports.updateVenue = async (id, data) => {
               "id",
               "termGroupId",
               "termName",
+              "day",
               "startDate",
               "endDate",
               "exclusionDates",
@@ -454,9 +463,16 @@ exports.updateVenue = async (id, data) => {
                 "id",
                 "groupName",
                 "levels",
-                "video",
+                "beginner_video",
+                "intermediate_video",
+                "pro_video",
+                "advanced_video",
                 "banner",
                 "player",
+                "beginner_upload",
+                "intermediate_upload",
+                "pro_upload",
+                "advanced_upload",
               ],
             });
 
@@ -732,6 +748,7 @@ exports.getAllVenues = async (createdBy) => {
                 "id",
                 "termGroupId",
                 "termName",
+                "day",
                 "startDate",
                 "endDate",
                 "exclusionDates",
@@ -772,7 +789,13 @@ exports.getAllVenues = async (createdBy) => {
                 if (!entry.sessionPlanId) continue;
 
                 const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
-                  attributes: ["id", "groupName", "levels", "video", "banner", "player"],
+                  attributes: ["id", "groupName", "levels", "beginner_video",
+                    "intermediate_video",
+                    "pro_video",
+                    "advanced_video", "banner", "player", "beginner_upload",
+                    "intermediate_upload",
+                    "pro_upload",
+                    "advanced_upload",],
                 });
 
                 if (spg) {
@@ -1203,6 +1226,7 @@ exports.getVenueById = async (id, createdBy) => {
               "id",
               "termGroupId",
               "termName",
+              "day",
               "startDate",
               "endDate",
               "exclusionDates",
@@ -1241,7 +1265,13 @@ exports.getVenueById = async (id, createdBy) => {
             if (!entry.sessionPlanId) continue;
 
             const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
-              attributes: ["id", "groupName", "levels", "video", "banner", "player", "createdBy", "createdAt"],
+              attributes: ["id", "groupName", "levels", "beginner_video",
+                "intermediate_video",
+                "advanced_video",
+                "pro_video", "banner", "beginner_upload",
+                "intermediate_upload",
+                "pro_upload",
+                "advanced_upload", "player", "createdBy", "createdAt"],
             });
 
             if (spg) {

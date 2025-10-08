@@ -1,6 +1,6 @@
 // services/admin/search.js
 const { Op } = require("sequelize");
-const { BookingStudentMeta, Booking } = require("../../models");
+const { BookingStudentMeta, Booking,Admin } = require("../../models");
 
 const DEBUG = process.env.DEBUG === "true";
 
@@ -15,6 +15,7 @@ exports.getGlobalSearch = async (adminId, query) => {
       console.log("🟢 getGlobalSearch called with:", { adminId, query });
     }
 
+    // STEP 1: Validate query
     if (!query || query.trim().length < 2) {
       if (DEBUG) console.log("⚠️ Query too short or missing:", query);
       return {
@@ -24,10 +25,10 @@ exports.getGlobalSearch = async (adminId, query) => {
       };
     }
 
-    const likeQuery = { [Op.like]: `%${query}%` };
-
+    const likeQuery = { [Op.like]: `%${query.trim()}%` };
     if (DEBUG) console.log("🔍 likeQuery:", likeQuery);
 
+    // STEP 2: Fetch students
     const students = await BookingStudentMeta.findAll({
       where: {
         [Op.or]: [
@@ -40,14 +41,16 @@ exports.getGlobalSearch = async (adminId, query) => {
           model: Booking,
           as: "booking",
           required: true,
-          attributes: [],
+          attributes: [], // no extra fields from Booking for now
         },
       ],
+      attributes: ["id", "studentFirstName", "studentLastName"],
       limit: 20,
     });
 
     if (DEBUG) console.log("✅ Students fetched:", students.length);
 
+    // STEP 3: Format results
     const results = students.map((s) => ({
       id: s.id,
       firstName: s.studentFirstName,

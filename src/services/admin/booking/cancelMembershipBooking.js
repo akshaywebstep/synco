@@ -13,6 +13,84 @@ const sendEmail = require("../../../utils/email/sendEmail");
 const { Op } = require("sequelize");
 
 // services/BookingMembershipService.js
+// exports.createCancelBooking = async ({
+//   bookingId,
+//   cancelReason,
+//   additionalNote,
+//   cancelDate = null, // null = immediate
+// }) => {
+//   try {
+//     const bookingType = "membership";
+
+//     // 🔹 Validate booking exists
+//     const booking = await Booking.findByPk(bookingId);
+//     if (!booking) return { status: false, message: "Booking not found." };
+
+//     // 🔹 Check existing cancel record
+//     const existingCancel = await CancelBooking.findOne({
+//       where: { bookingId, bookingType },
+//     });
+
+//     // Determine cancellation type
+//     const cancellationType = cancelDate ? "scheduled" : "immediate";
+
+//     if (existingCancel) {
+//       // 🔹 Update only provided fields
+//       await existingCancel.update(
+//         {
+//           cancelReason: cancelReason ?? existingCancel.cancelReason,
+//           additionalNote: additionalNote ?? existingCancel.additionalNote,
+//           cancelDate: cancelDate ?? existingCancel.cancelDate,
+//           cancellationType,
+//         },
+//         { returning: true }
+//       );
+
+//       // 🔹 Update booking status based on cancellation type
+//       if (cancellationType === "immediate") {
+//         await booking.update({ status: "cancelled" });
+//       } else if (cancellationType === "scheduled") {
+//         await booking.update({ status: "request_to_cancel" });
+//       }
+
+//       return {
+//         status: true,
+//         message: "Existing cancellation updated successfully.",
+//         data: { cancelRequest: existingCancel, bookingDetails: booking },
+//       };
+//     }
+
+//     // 🔹 Otherwise, create new cancel record
+//     const cancelRequest = await CancelBooking.create({
+//       bookingId,
+//       bookingType,
+//       cancelReason: cancelReason || null,
+//       additionalNote: additionalNote || null,
+//       cancelDate: cancelDate || null,
+//       cancellationType,
+//     });
+
+//     // 🔹 Update booking status based on cancellation type
+//     if (cancellationType === "immediate") {
+//       await booking.update({ status: "cancelled" });
+//       await booking.reload(); // ✅ ensure updated
+//       console.log("🔄 Booking updated to cancelled:", booking.status);
+//     }
+
+//     return {
+//       status: true,
+//       message:
+//         cancellationType === "immediate"
+//           ? "Membership booking cancelled immediately."
+//           : `Membership booking cancellation scheduled for ${cancelDate}.`,
+//       data: { cancelRequest, bookingDetails: booking },
+//     };
+//   } catch (error) {
+//     console.error("❌ createCancelBooking Error:", error);
+//     return { status: false, message: error.message };
+//   }
+// };
+
 exports.createCancelBooking = async ({
   bookingId,
   cancelReason,
@@ -49,6 +127,21 @@ exports.createCancelBooking = async ({
       // 🔹 Update booking status based on cancellation type
       if (cancellationType === "immediate") {
         await booking.update({ status: "cancelled" });
+
+        // ✅ Update class capacity for immediate cancellations only
+        const studentMetaList = await BookingStudentMeta.findAll({
+          where: { bookingTrialId: bookingId },
+        });
+
+        if (studentMetaList.length > 0 && booking.classScheduleId) {
+          const classSchedule = await ClassSchedule.findByPk(booking.classScheduleId);
+          if (classSchedule) {
+            const incrementCapacity = studentMetaList.length;
+            await classSchedule.update({
+              capacity: classSchedule.capacity + incrementCapacity,
+            });
+          }
+        }
       } else if (cancellationType === "scheduled") {
         await booking.update({ status: "request_to_cancel" });
       }
@@ -73,8 +166,22 @@ exports.createCancelBooking = async ({
     // 🔹 Update booking status based on cancellation type
     if (cancellationType === "immediate") {
       await booking.update({ status: "cancelled" });
-      await booking.reload(); // ✅ ensure updated
-      console.log("🔄 Booking updated to cancelled:", booking.status);
+      await booking.reload();
+
+      // ✅ Update class capacity for immediate cancellations only
+      const studentMetaList = await BookingStudentMeta.findAll({
+        where: { bookingTrialId: bookingId },
+      });
+
+      if (studentMetaList.length > 0 && booking.classScheduleId) {
+        const classSchedule = await ClassSchedule.findByPk(booking.classScheduleId);
+        if (classSchedule) {
+          const incrementCapacity = studentMetaList.length;
+          await classSchedule.update({
+            capacity: classSchedule.capacity + incrementCapacity,
+          });
+        }
+      }
     }
 
     return {
