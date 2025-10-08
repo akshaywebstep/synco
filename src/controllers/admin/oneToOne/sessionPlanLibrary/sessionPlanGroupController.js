@@ -1,6 +1,6 @@
 const { validateFormData } = require("../../../../utils/validateFormData");
-const SessionPlanGroupService = require("../../../../services/admin/sessionPlan/sessionPlanGroup");
-const SessionExerciseService = require("../../../../services/admin/sessionPlan/sessionExercise");
+const SessionPlanGroupService = require("../../../../services/admin/oneToOne/sessionPlanLibrary/sessionPlanGroup");
+const SessionExerciseService = require("../../../../services/admin/oneToOne/sessionPlanLibrary/sessionExercise");
 const { logActivity } = require("../../../../utils/admin/activityLogger");
 // const { getVideoDurationInSeconds } = require("../../../utils/videoHelper");
 const { downloadFromFTP, uploadToFTP } = require("../../../../utils/uploadToFTP");
@@ -85,5 +85,63 @@ exports.getAllSessionPlanGroupStructure = async (req, res) => {
   } catch (error) {
     console.error("❌ Controller Error:", error);
     return res.status(500).json({ status: false, message: "Server error" });
+  }
+};
+
+exports.repinSessionPlanGroup = async (req, res) => {
+  try {
+    const createdBy = req.admin?.id || req.user?.id;
+    const { id } = req.params;
+
+    // 🔸 Validate input
+    if (!id) {
+      return res.status(400).json({
+        status: false,
+        message: "Missing required parameter: id",
+      });
+    }
+
+    if (!createdBy) {
+      return res.status(400).json({
+        status: false,
+        message: "Missing creator information (createdBy).",
+      });
+    }
+
+    // 🔸 Delegate to service
+    const result = await SessionPlanGroupService.repinSessionPlanGroup(id, createdBy);
+
+    // 🔸 Handle response
+    if (!result.status) {
+      await logActivity(req, PANEL, MODULE, "repin", result, false);
+      return res.status(400).json({
+        status: false,
+        message: result.message || "Failed to repin session plan group.",
+      });
+    }
+
+    await logActivity(req, PANEL, MODULE, "repin", result, true);
+
+    return res.status(200).json({
+      status: true,
+      message: result.message || "Group pinned successfully",
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ Controller Error (repinSessionPlanGroup):", error);
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "repin",
+      { message: error.message },
+      false
+    );
+
+    return res.status(500).json({
+      status: false,
+      message: "Server error while repinning session plan group.",
+    });
   }
 };

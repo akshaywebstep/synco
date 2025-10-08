@@ -18,7 +18,10 @@ exports.getAllSessionPlanGroups = async ({
                 "groupName",
                 "sortOrder",
                 "banner",
-                "video",
+                "beginner_video",
+                "intermediate_video",
+                "pro_video",
+                "advanced_video",
                 "player",
                 "levels",
                 "beginner_upload",
@@ -75,22 +78,52 @@ exports.getAllSessionPlanGroups = async ({
 };
 
 exports.repinSessionPlanGroup = async (id, createdBy) => {
-    try {
-        // 1️⃣ Unpin any currently pinned group
-        await SessionPlanGroup.update(
-            { pinned: false },
-            { where: { pinned: true, createdBy } }
-        );
+  const t = await SessionPlanGroup.sequelize.transaction();
 
-        // 2️⃣ Pin the selected group
-        const updatedGroup = await SessionPlanGroup.update(
-            { pinned: true },
-            { where: { id, createdBy }, returning: true, plain: true }
-        );
+  try {
+    // 1️⃣ Ensure the target group exists and belongs to the creator
+    const targetGroup = await SessionPlanGroup.findOne({
+      where: { id, createdBy },
+      transaction: t,
+    });
 
-        return { status: true, message: "Group pinned successfully", data: updatedGroup[1] };
-    } catch (error) {
-        console.error("❌ Error repinning session plan group:", error);
-        return { status: false, message: error.message };
+    if (!targetGroup) {
+      await t.rollback();
+      return {
+        status: false,
+        message: "Group not found or unauthorized.",
+      };
     }
+
+    // 2️⃣ Unpin all other groups for this user
+    await SessionPlanGroup.update(
+      { pinned: false },
+      {
+        where: { createdBy, pinned: true },
+        transaction: t,
+      }
+    );
+
+    // 3️⃣ Pin the selected group
+    await targetGroup.update({ pinned: true }, { transaction: t });
+
+    // 4️⃣ Commit transaction
+    await t.commit();
+
+    // 5️⃣ Return consistent structure
+    return {
+      status: true,
+      message: "Group pinned successfully.",
+      data: targetGroup.toJSON ? targetGroup.toJSON() : targetGroup,
+    };
+  } catch (error) {
+    // Ensure transaction rollback on failure
+    await t.rollback();
+    console.error("❌ Error repinning session plan group:", error);
+
+    return {
+      status: false,
+      message: error.message || "Failed to repin session plan group.",
+    };
+  }
 };
