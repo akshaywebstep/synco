@@ -12,52 +12,94 @@ const {
     Admin,
 } = require("../../models");
 
-// ✅ Helper: sum sales for "paid" bookings
-// Total business revenue (all bookings, paid + unpaid)
+// Helper functions
 function totalRevenueSum(bookings) {
-    return bookings
-        .reduce((sum, b) => sum + Number(b.paymentPlan?.price || 0), 0);
+    return bookings.reduce((sum, b) => sum + Number(b.paymentPlan?.price || 0), 0);
 }
 
-// Revenue from paid bookings
 function totalPaidRevenueSum(bookings) {
-    return bookings
-        .filter(b => b.bookingType === "paid")
-        .reduce((sum, b) => sum + Number(b.paymentPlan?.price || 0), 0);
+    return bookings.filter(b => b.bookingType === "paid").reduce((sum, b) => sum + Number(b.paymentPlan?.price || 0), 0);
 }
 
-// Revenue from unpaid bookings
 function totalUnpaidRevenueSum(bookings) {
-    return bookings
-        .filter(b => b.bookingType !== "paid")
-        .reduce((sum, b) => sum + Number(b.paymentPlan?.price || 0), 0);
+    return bookings.filter(b => b.bookingType !== "paid").reduce((sum, b) => sum + Number(b.paymentPlan?.price || 0), 0);
 }
 
-// ✅ Helper: count paid bookings
 function countPaidBookings(bookings) {
-    return bookings.filter((b) => b.bookingType === "paid").length;
+    return bookings.filter(b => b.bookingType === "paid").length;
 }
 
-// ✅ Helper: calculate percentage difference (for trend)
-function calcPercentageDiff(currentStats, lastStats) {
+function calcPercentageDiff(currentStats, lastStats, isYear = false) {
+    if (!lastStats) {
+        return {
+            percent: 0,
+            color: "gray",
+            message: "No previous data",
+            ...(isYear ? { currentYearStats: currentStats, lastYearStats: null } : { currentMonthStats: currentStats, lastMonthStats: null })
+        };
+    }
+
     const current = currentStats.totalRevenue;
     const last = lastStats.totalRevenue;
 
     if (last === 0 && current === 0) return { percent: 0, color: "gray", message: "No change" };
-    if (last === 0) return { percent: 100, color: "green", message: "Increased by 100%" };
 
     const diff = ((current - last) / last) * 100;
     return {
         percent: Math.abs(diff.toFixed(2)),
         color: diff >= 0 ? "green" : "red",
         message: diff >= 0 ? `Increased by ${Math.abs(diff.toFixed(2))}%` : `Decreased by ${Math.abs(diff.toFixed(2))}%`,
-        currentMonthStats: currentStats,
-        lastMonthStats: lastStats,
+        ...(isYear ? { currentYearStats: currentStats, lastYearStats: lastStats } : { currentMonthStats: currentStats, lastMonthStats: lastStats })
     };
 }
 
-// ✅ Group bookings by month with calculations
-function groupBookingsByMonth(bookings, filter) {
+function convertDurationToMonths(paymentPlan) {
+    if (!paymentPlan) return 0;
+    const interval = (paymentPlan.interval || "").toLowerCase();
+    const duration = Number(paymentPlan.duration || 0);
+    switch (interval) {
+        case "year": return duration * 12;
+        case "quarter": return duration * 3;
+        default: return duration;
+    }
+}
+
+function generateDurationRanges(maxMonths = 24, step = 2) {
+    const ranges = [];
+    for (let start = 1; start <= maxMonths; start += step) {
+        const end = start + step - 1;
+        ranges.push({ label: `${start}-${end} Months`, min: start, max: end, bookings: 0 });
+    }
+    return ranges;
+}
+
+function calculateDurationOfMembership(bookings) {
+    const ranges = generateDurationRanges(24, 2); // generates ranges like 1-2, 3-4, ..., 23-24
+
+    bookings.forEach(b => {
+        const months = convertDurationToMonths(b.paymentPlan);
+        const range = ranges.find(r => months >= r.min && months <= r.max);
+        if (range) {
+            range.bookings += 1;
+            range.students = (range.students || 0) + (b.students?.length || 0);
+        }
+    });
+
+    const result = {};
+    ranges.forEach(r => {
+        if (r.bookings > 0) {
+            result[r.label] = {
+                bookings: r.bookings,
+                students: r.students || 0
+            };
+        }
+    });
+
+    return result;
+}
+
+// Group bookings by Year → Month
+function groupBookingsByYearMonth(bookings, filter) {
     if (!bookings || bookings.length === 0) return {};
 
     bookings.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
@@ -68,20 +110,14 @@ function groupBookingsByMonth(bookings, filter) {
     const grouped = {};
     let current = startDate.clone();
 
-    while (current.isSameOrBefore(endDate, 'month')) {
-        const monthStart = current.clone();
-        const monthEnd = current.clone().endOf("month");
+    while (current.isSameOrBefore(endDate, "month")) {
+        const yearKey = current.format("YYYY");
+        const monthKey = current.format("MM");
 
-        const key = monthStart.format("MM-YYYY");
-
-        // Get bookings for this month
-        const monthBookings = bookings.filter((b) =>
-            moment(b.createdAt).isBetween(monthStart, monthEnd, null, "[]")
-        );
+        const monthBookings = bookings.filter(b => moment(b.createdAt).isBetween(current.clone().startOf("month"), current.clone().endOf("month"), null, "[]"));
 
         const durationOfMembership = calculateDurationOfMembership(monthBookings);
 
-        // Total Sales and Booking Count
         const totalRevenue = totalRevenueSum(monthBookings);
         const totalPaidRevenue = totalPaidRevenueSum(monthBookings);
         const totalUnpaidRevenue = totalUnpaidRevenueSum(monthBookings);
@@ -91,92 +127,87 @@ function groupBookingsByMonth(bookings, filter) {
 
         const totalSales = { totalRevenue, totalPaidRevenue, totalUnpaidRevenue, bookingCount, paidBookingCount, unpaidBookingCount };
 
-        // Agent-wise sales
-        const agents = {};
+        const agents = [];
         const filteredBookings = [];
-        const newStudents = []
-        const enrolledStudents = {
-            byAge: {},
-            byGender: {}
-        };
+        const newStudents = [];
+        const enrolledStudents = { byAge: {}, byGender: {} };
+        const paymentPlansTrend = [];
 
-        const now = moment(); // current date
-        const currentMonth = now.month(); // 0-11
-        const currentYear = now.year();
+        monthBookings.forEach(b => {
+            let valid = true;
 
-        monthBookings.forEach((b) => {
-            let validFilterBooking = true;
+            if (b.paymentPlan) {
+                // Check if this paymentPlan.id already exists in paymentPlansTrend
+                const existingPlan = paymentPlansTrend.find(p => p.id === b.paymentPlan.id);
 
-            // ✅ Student Filter
+                if (!existingPlan) {
+                    // Push new plan
+                    paymentPlansTrend.push({
+                        id: b.paymentPlan.id,
+                        title: b.paymentPlan.title,
+                        price: b.paymentPlan.price,
+                        priceLesson: b.paymentPlan.priceLesson,
+                        interval: b.paymentPlan.interval,
+                        duration: b.paymentPlan.duration,
+                        joiningFee: b.paymentPlan.joiningFee,
+                        students: b.students?.length || 0
+                    });
+                } else {
+                    // Update existing plan's students count
+                    existingPlan.students += b.students?.length || 0;
+                }
+            }
+
+            // Student filter
             if (filter.student?.name?.trim()) {
-                const searchName = filter.student.name.trim().toLowerCase();
-                validFilterBooking = b.students?.some(studentMeta => {
-                    const firstName = studentMeta.studentFirstName?.toLowerCase() || "";
-                    const lastName = studentMeta.studentLastName?.toLowerCase() || "";
-                    return firstName.includes(searchName) || lastName.includes(searchName);
-                }) || false;
+                const search = filter.student.name.trim().toLowerCase();
+                valid = b.students?.some(s => ((s.studentFirstName || "").toLowerCase().includes(search)) || ((s.studentLastName || "").toLowerCase().includes(search))) || false;
             }
 
-            // ✅ Venue Filter
-            if (filter.venue?.name?.trim()) {
-                const searchName = filter.venue.name.trim().toLowerCase();
-                const venueName = b.classSchedule?.venue?.name?.trim().toLowerCase() || "";
-                validFilterBooking = venueName === searchName;
+            // Venue filter
+            if (valid && filter.venue?.name?.trim()) {
+                const search = filter.venue.name.trim().toLowerCase();
+                valid = ((b.classSchedule?.venue?.name || "").toLowerCase() === search);
             }
 
-            // ✅ Payment Plan Filter
-            if (filter.paymentPlan?.interval?.trim() && filter.paymentPlan.duration > 0) {
+            // PaymentPlan filter
+            if (valid && filter.paymentPlan?.interval?.trim() && filter.paymentPlan.duration > 0) {
                 const searchInterval = filter.paymentPlan.interval.trim().toLowerCase();
                 const searchDuration = Number(filter.paymentPlan.duration);
-
-                const interval = b.paymentPlan?.interval?.trim().toLowerCase() || "";
+                const interval = (b.paymentPlan?.interval || "").toLowerCase();
                 const duration = Number(b.paymentPlan?.duration || 0);
-
-                validFilterBooking = interval === searchInterval && duration === searchDuration;
+                valid = interval === searchInterval && duration === searchDuration;
             }
 
-            // ✅ Admin Filter
-            if (filter.admin?.name?.trim()) {
-                const searchName = filter.admin.name.trim().toLowerCase();
-                const firstName = b.bookedByAdmin?.firstName?.trim().toLowerCase() || "";
-                const lastName = b.bookedByAdmin?.lastName?.trim().toLowerCase() || "";
-                validFilterBooking = firstName.includes(searchName) || lastName.includes(searchName);
+            // Admin filter
+            if (valid && filter.admin?.name?.trim()) {
+                const search = filter.admin.name.trim().toLowerCase();
+                const firstName = (b.bookedByAdmin?.firstName || "").toLowerCase();
+                const lastName = (b.bookedByAdmin?.lastName || "").toLowerCase();
+                valid = firstName.includes(search) || lastName.includes(search);
             }
 
-            if (validFilterBooking) filteredBookings.push(b);
+            if (valid) filteredBookings.push(b);
 
-            // New Students
-            b.students.forEach(studentMeta => {
-                const studentCreatedAt = moment(studentMeta.createdAt);
-                if (studentCreatedAt.month() === currentMonth && studentCreatedAt.year() === currentYear) {
-                    newStudents.push(studentMeta);
+            // Students
+            b.students.forEach(s => {
+                const studentCreatedAt = moment(s.createdAt);
+                if (studentCreatedAt.month() === current.month() && studentCreatedAt.year() === current.year()) newStudents.push(s);
+
+                if (s.dateOfBirth) {
+                    const age = moment().diff(moment(s.dateOfBirth), 'years');
+                    enrolledStudents.byAge[age] = (enrolledStudents.byAge[age] || 0) + 1;
                 }
 
-                const birthDate = studentMeta.dateOfBirth; // assume DOB available
-                if (birthDate) {
-                    const age = moment().diff(moment(birthDate), 'years');
-                    if (!enrolledStudents.byAge[age]) enrolledStudents.byAge[age] = 0;
-                    enrolledStudents.byAge[age] += 1;
-                }
-
-                // ✅ Gender
-                const gender = (studentMeta.gender || "other").toLowerCase();
-                if (!enrolledStudents.byGender[gender]) enrolledStudents.byGender[gender] = 0;
-                enrolledStudents.byGender[gender] += 1;
+                const gender = (s.gender || "other").toLowerCase();
+                enrolledStudents.byGender[gender] = (enrolledStudents.byGender[gender] || 0) + 1;
             });
 
-            // ✅ Agent-wise sales
+            // Agents
             const admin = b.bookedByAdmin;
             if (!admin) return;
             const price = Number(b.paymentPlan?.price || 0);
-
-            if (!agents[admin.id]) {
-                agents[admin.id] = {
-                    id: admin.id,
-                    name: `${admin.firstName} ${admin.lastName}`,
-                    totalSales: { totalRevenue: 0, totalPaidRevenue: 0, totalUnpaidRevenue: 0, bookingCount: 0, paidBookingCount: 0, unpaidBookingCount: 0 },
-                };
-            }
+            if (!agents[admin.id]) agents[admin.id] = { id: admin.id, name: `${admin.firstName} ${admin.lastName}`, totalSales: { ...totalSales, totalRevenue: 0, totalPaidRevenue: 0, totalUnpaidRevenue: 0, bookingCount: 0, paidBookingCount: 0, unpaidBookingCount: 0 } };
 
             agents[admin.id].totalSales.bookingCount += 1;
             agents[admin.id].totalSales.totalRevenue += price;
@@ -189,163 +220,93 @@ function groupBookingsByMonth(bookings, filter) {
             }
         });
 
-        // Sort agents by totalRevenue
-        const topAgents = Object.values(agents).sort(
-            (a, b) => b.totalSales.totalRevenue - a.totalSales.totalRevenue
-        );
+        const topAgents = Object.values(agents).sort((a, b) => b.totalSales.totalRevenue - a.totalSales.totalRevenue);
 
-        grouped[key] = {
-            bookings: filteredBookings,
-            totalSales,
-            topAgents,
-            trend: {},
-            newStudents,
-            durationOfMembership,
-            enrolledStudents
-        };
+        if (!grouped[yearKey]) grouped[yearKey] = { monthlyGrouped: {} };
+        grouped[yearKey].monthlyGrouped[monthKey] = { bookings: filteredBookings, totalSales, topAgents, salesTrend: {}, newStudents, durationOfMembership, enrolledStudents, paymentPlansTrend };
 
         current.add(1, "month");
     }
 
-    // Add month-over-month trend
-    const monthKeys = Object.keys(grouped);
-    monthKeys.forEach((key, index) => {
-        if (index === 0) {
-            grouped[key].trend = {
-                percent: 0,
-                color: "gray",
-                message: "No previous month",
-                currentMonthStats: grouped[key].totalSales,
-                lastMonthStats: null
-            };
-        } else {
-            const currentMonthStats = grouped[key].totalSales;
-            const lastMonthStats = grouped[monthKeys[index - 1]].totalSales;
-            grouped[key].trend = calcPercentageDiff(currentMonthStats, lastMonthStats);
-        }
+    // Month-over-month trends
+    Object.keys(grouped).forEach(yearKey => {
+        const months = Object.keys(grouped[yearKey].monthlyGrouped).sort();
+        months.forEach((monthKey, i) => {
+            const monthData = grouped[yearKey].monthlyGrouped[monthKey];
+            if (i === 0) {
+                monthData.salesTrend = calcPercentageDiff(monthData.totalSales, null);
+                monthData.topAgents = monthData.topAgents.map(agent => {
+                    const { totalSales, ...rest } = agent;
+                    return { ...rest, salesTrend: calcPercentageDiff(totalSales, null) };
+                });
+            } else {
+                const lastMonthKey = months[i - 1];
+                const lastMonthData = grouped[yearKey].monthlyGrouped[lastMonthKey];
+                monthData.salesTrend = calcPercentageDiff(monthData.totalSales, lastMonthData.totalSales);
+                monthData.topAgents = monthData.topAgents.map(agent => {
+                    const prev = lastMonthData.topAgents.find(a => a.id === agent.id);
+                    const { totalSales, ...rest } = agent;
+                    return { ...rest, salesTrend: calcPercentageDiff(agent.totalSales, prev ? prev.totalSales : null) };
+                });
+            }
+            delete monthData.totalSales;
+        });
+
+        // Yearly salesTrend
+        const yearTotal = { totalRevenue: 0, totalPaidRevenue: 0, totalUnpaidRevenue: 0, bookingCount: 0, paidBookingCount: 0, unpaidBookingCount: 0 };
+        const lastYearTotal = grouped[String(Number(yearKey) - 1)]?.yearlyTotal || null;
+
+        Object.values(grouped[yearKey].monthlyGrouped).forEach(m => {
+            const monthStats = m.salesTrend.currentMonthStats;
+            yearTotal.totalRevenue += monthStats.totalRevenue;
+            yearTotal.totalPaidRevenue += monthStats.totalPaidRevenue;
+            yearTotal.totalUnpaidRevenue += monthStats.totalUnpaidRevenue;
+            yearTotal.bookingCount += monthStats.bookingCount;
+            yearTotal.paidBookingCount += monthStats.paidBookingCount;
+            yearTotal.unpaidBookingCount += monthStats.unpaidBookingCount;
+        });
+
+        grouped[yearKey].salesTrend = calcPercentageDiff(yearTotal, lastYearTotal, true);
     });
 
     return grouped;
 }
 
-// Helper: Convert payment plan to months
-function convertDurationToMonths(paymentPlan) {
-    if (!paymentPlan) return 0;
-    const interval = (paymentPlan.interval || "").toLowerCase();
-    const duration = Number(paymentPlan.duration || 0);
-
-    switch (interval) {
-        case "year":
-            return duration * 12;
-        case "quarter":
-            return duration * 3; // each quarter = 3 months
-        case "month":
-        default:
-            return duration;
-    }
-}
-
-// Helper: Generate duration ranges dynamically
-function generateDurationRanges(maxMonths = 24, step = 2) {
-    const ranges = [];
-    for (let start = 1; start <= maxMonths; start += step) {
-        const end = start + step - 1;
-        ranges.push({ label: `${start}-${end} Months`, min: start, max: end, bookings: 0 });
-    }
-    return ranges;
-}
-
-// Function to calculate durationOfMembership
-function calculateDurationOfMembership(bookings) {
-    const ranges = generateDurationRanges(24, 2); // ranges up to 24 months with 2-month step
-
-    bookings.forEach(b => {
-        const months = convertDurationToMonths(b.paymentPlan);
-        const range = ranges.find(r => months >= r.min && months <= r.max);
-        if (range) range.bookings += 1;
-    });
-
-    // Convert to object format for sending
-    const result = {};
-    ranges.forEach(r => {
-        if (r.bookings > 0) {
-            result[r.label] = { bookings: r.bookings };
-        }
-    });
-    return result;
-}
-
-
-// ✅ Main Monthly Class Report
+// Main Report
 const getMonthlyClassReport = async (filters) => {
     try {
         const bookings = await Booking.findAll({
             order: [["id", "DESC"]],
             include: [
-                {
-                    model: BookingStudentMeta,
-                    as: "students",
-                    include: [
-                        { model: BookingParentMeta, as: "parents", required: false },
-                        { model: BookingEmergencyMeta, as: "emergencyContacts", required: false },
-                    ],
-                    required: false,
-                },
-                {
-                    model: ClassSchedule,
-                    as: "classSchedule",
-                    required: false,
-                    include: [{ model: Venue, as: "venue", required: false }],
-                },
+                { model: BookingStudentMeta, as: "students", include: [{ model: BookingParentMeta, as: "parents", required: false }, { model: BookingEmergencyMeta, as: "emergencyContacts", required: false }], required: false },
+                { model: ClassSchedule, as: "classSchedule", required: false, include: [{ model: Venue, as: "venue", required: false }] },
                 { model: BookingPayment, as: "payments", required: false },
                 { model: PaymentPlan, as: "paymentPlan", required: false },
-                {
-                    model: Admin,
-                    as: "bookedByAdmin",
-                    attributes: ["id", "firstName", "lastName", "email", "roleId", "status", "profile"],
-                    required: false,
-                },
+                { model: Admin, as: "bookedByAdmin", attributes: ["id", "firstName", "lastName", "email", "roleId", "status", "profile"], required: false },
             ],
         });
 
-        const monthlyGrouped = groupBookingsByMonth(bookings, filters);
+        const yealyGrouped = groupBookingsByYearMonth(bookings, filters);
 
-        // ✅ Calculate overall trend
-        const overallSales = {
-            totalRevenue: 0,
-            totalPaidRevenue: 0,
-            totalUnpaidRevenue: 0,
-            bookingCount: 0,
-            paidBookingCount: 0,
-            unpaidBookingCount: 0,
-        };
-
-        Object.values(monthlyGrouped).forEach(month => {
-            overallSales.totalRevenue += month.totalSales.totalRevenue;
-            overallSales.totalPaidRevenue += month.totalSales.totalPaidRevenue;
-            overallSales.totalUnpaidRevenue += month.totalSales.totalUnpaidRevenue;
-            overallSales.bookingCount += month.totalSales.bookingCount;
-            overallSales.paidBookingCount += month.totalSales.paidBookingCount;
-            overallSales.unpaidBookingCount += month.totalSales.unpaidBookingCount;
+        // Overall Sales
+        const overallSales = { totalRevenue: 0, totalPaidRevenue: 0, totalUnpaidRevenue: 0, bookingCount: 0, paidBookingCount: 0, unpaidBookingCount: 0 };
+        Object.values(yealyGrouped).forEach(year => {
+            Object.values(year.monthlyGrouped).forEach(month => {
+                const s = month.salesTrend.currentMonthStats;
+                overallSales.totalRevenue += s.totalRevenue;
+                overallSales.totalPaidRevenue += s.totalPaidRevenue;
+                overallSales.totalUnpaidRevenue += s.totalUnpaidRevenue;
+                overallSales.bookingCount += s.bookingCount;
+                overallSales.paidBookingCount += s.paidBookingCount;
+                overallSales.unpaidBookingCount += s.unpaidBookingCount;
+            });
         });
 
-        return {
-            status: true,
-            message: "Monthly class report generated successfully.",
-            data: { monthlyGrouped, overallSales },
-        };
+        return { status: true, message: "Monthly class report generated successfully.", data: { yealyGrouped, overallSales } };
     } catch (error) {
-        console.error("❌ Sequelize Error in getMonthlyClassReport:", error);
-        return {
-            status: false,
-            message:
-                error?.parent?.sqlMessage ||
-                error?.message ||
-                "Error occurred while generating monthly class report.",
-        };
+        console.error("❌ Sequelize Error:", error);
+        return { status: false, message: error?.parent?.sqlMessage || error?.message || "Error occurred while generating monthly class report." };
     }
 };
 
-module.exports = {
-    getMonthlyClassReport,
-};
+module.exports = { getMonthlyClassReport };
