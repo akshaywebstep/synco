@@ -87,164 +87,165 @@ exports.updateClass = async (id, data) => {
   }
 };
 
-exports.getAllClasses = async (adminId) => {
-  try {
-    const classes = await ClassSchedule.findAll({
-      where: { createdBy: adminId },
-      order: [["id", "ASC"]],
-      include: [{ model: Venue, as: "venue" }],
-    });
+// exports.getAllClasses = async (adminId) => {
+//   try {
+//     const classes = await ClassSchedule.findAll({
+//       where: { createdBy: adminId },
+//       order: [["id", "ASC"]],
+//       include: [{ model: Venue, as: "venue" }],
+//     });
 
-    for (const cls of classes) {
-      const venue = cls.venue;
+//     for (const cls of classes) {
+//       const venue = cls.venue;
 
-      // ✅ Parse paymentPlanId
-      let paymentPlanIds = [];
-      if (typeof venue.paymentPlanId === "string") {
-        try {
-          paymentPlanIds = JSON.parse(venue.paymentPlanId);
-          venue.dataValues.paymentPlanId = paymentPlanIds;
-        } catch {
-          paymentPlanIds = [];
-          venue.dataValues.paymentPlanId = [];
-        }
-      } else {
-        paymentPlanIds = venue.paymentPlanId || [];
-      }
+//       // ✅ Parse paymentPlanId
+//       let paymentPlanIds = [];
+//       if (typeof venue.paymentPlanId === "string") {
+//         try {
+//           paymentPlanIds = JSON.parse(venue.paymentPlanId);
+//           venue.dataValues.paymentPlanId = paymentPlanIds;
+//         } catch {
+//           paymentPlanIds = [];
+//           venue.dataValues.paymentPlanId = [];
+//         }
+//       } else {
+//         paymentPlanIds = venue.paymentPlanId || [];
+//       }
 
-      // ✅ Attach PaymentPlans
-      venue.dataValues.paymentPlans =
-        paymentPlanIds.length > 0
-          ? await PaymentPlan.findAll({ where: { id: paymentPlanIds } })
-          : [];
+//       // ✅ Attach PaymentPlans
+//       venue.dataValues.paymentPlans =
+//         paymentPlanIds.length > 0
+//           ? await PaymentPlan.findAll({ where: { id: paymentPlanIds } })
+//           : [];
 
-      // ✅ Parse termGroupId
-      let termGroupIds = [];
-      if (typeof venue.termGroupId === "string") {
-        try {
-          termGroupIds = JSON.parse(venue.termGroupId);
-        } catch {
-          termGroupIds = [];
-        }
-      } else if (Array.isArray(venue.termGroupId)) {
-        termGroupIds = venue.termGroupId;
-      }
+//       // ✅ Parse termGroupId
+//       let termGroupIds = [];
+//       if (typeof venue.termGroupId === "string") {
+//         try {
+//           termGroupIds = JSON.parse(venue.termGroupId);
+//         } catch {
+//           termGroupIds = [];
+//         }
+//       } else if (Array.isArray(venue.termGroupId)) {
+//         termGroupIds = venue.termGroupId;
+//       }
 
-      // ✅ Fetch term groups
-      if (termGroupIds.length > 0) {
-        const termGroups = await TermGroup.findAll({
-          where: { id: termGroupIds },
-          include: [
-            {
-              model: Term,
-              as: "terms",
-              attributes: [
-                "id",
-                "termGroupId",
-                "termName",
-                "startDate",
-                "endDate",
-                "exclusionDates",
-                "totalSessions",
-                "sessionsMap",
-              ],
-            },
-          ],
-        });
+//       // ✅ Fetch term groups
+//       if (termGroupIds.length > 0) {
+//         const termGroups = await TermGroup.findAll({
+//           where: { id: termGroupIds },
+//           include: [
+//             {
+//               model: Term,
+//               as: "terms",
+//               attributes: [
+//                 "id",
+//                 "termGroupId",
+//                 "termName",
+//                 "startDate",
+//                 "endDate",
+//                 "exclusionDates",
+//                 "totalSessions",
+//                 "sessionsMap",
+//               ],
+//             },
+//           ],
+//         });
 
-        venue.dataValues.termGroups = termGroups;
+//         venue.dataValues.termGroups = termGroups;
 
-        for (const termGroup of termGroups) {
-          if (termGroup?.terms?.length) {
-            for (const term of termGroup.terms) {
-              // ✅ Parse exclusionDates
-              if (typeof term.exclusionDates === "string") {
-                try {
-                  term.dataValues.exclusionDates = JSON.parse(
-                    term.exclusionDates
-                  );
-                } catch {
-                  term.dataValues.exclusionDates = [];
-                }
-              }
+//         for (const termGroup of termGroups) {
+//           if (termGroup?.terms?.length) {
+//             for (const term of termGroup.terms) {
+//               // ✅ Parse exclusionDates
+//               if (typeof term.exclusionDates === "string") {
+//                 try {
+//                   term.dataValues.exclusionDates = JSON.parse(
+//                     term.exclusionDates
+//                   );
+//                 } catch {
+//                   term.dataValues.exclusionDates = [];
+//                 }
+//               }
 
-              // ✅ Parse sessionsMap
-              let parsedSessionsMap = [];
-              if (typeof term.sessionsMap === "string") {
-                try {
-                  parsedSessionsMap = JSON.parse(term.sessionsMap);
-                  term.dataValues.sessionsMap = parsedSessionsMap;
-                } catch {
-                  parsedSessionsMap = [];
-                  term.dataValues.sessionsMap = [];
-                }
-              } else {
-                parsedSessionsMap = term.sessionsMap || [];
-              }
+//               // ✅ Parse sessionsMap
+//               let parsedSessionsMap = [];
+//               if (typeof term.sessionsMap === "string") {
+//                 try {
+//                   parsedSessionsMap = JSON.parse(term.sessionsMap);
+//                   term.dataValues.sessionsMap = parsedSessionsMap;
+//                 } catch {
+//                   parsedSessionsMap = [];
+//                   term.dataValues.sessionsMap = [];
+//                 }
+//               } else {
+//                 parsedSessionsMap = term.sessionsMap || [];
+//               }
 
-              // ✅ Enrich each sessionMap entry with its sessionPlan
-              for (let i = 0; i < parsedSessionsMap.length; i++) {
-                const entry = parsedSessionsMap[i];
-                if (!entry.sessionPlanId) continue;
+//               // ✅ Enrich each sessionMap entry with its sessionPlan
+//               for (let i = 0; i < parsedSessionsMap.length; i++) {
+//                 const entry = parsedSessionsMap[i];
+//                 if (!entry.sessionPlanId) continue;
 
-                const spg = await SessionPlanGroup.findByPk(
-                  entry.sessionPlanId,
-                  {
-                    attributes: [
-                      "id",
-                      "groupName",
-                      "levels",
-                      "video",
-                      "banner",
-                      "player",
-                    ],
-                  }
-                );
+//                 const spg = await SessionPlanGroup.findByPk(
+//                   entry.sessionPlanId,
+//                   {
+//                     attributes: [
+//                       "id",
+//                       "groupName",
+//                       "levels",
+//                       "video",
+//                       "banner",
+//                       "player",
+//                     ],
+//                   }
+//                 );
 
-                if (spg) {
-                  await parseSessionPlanGroupLevels(spg);
-                  entry.sessionPlan = spg;
-                } else {
-                  entry.sessionPlan = null;
-                }
-              }
+//                 if (spg) {
+//                   await parseSessionPlanGroupLevels(spg);
+//                   entry.sessionPlan = spg;
+//                 } else {
+//                   entry.sessionPlan = null;
+//                 }
+//               }
 
-              term.dataValues.sessionsMap = parsedSessionsMap;
+//               term.dataValues.sessionsMap = parsedSessionsMap;
 
-              // ✅ Attach ClassScheduleTermMap entries for this term
-              const mappings = await ClassScheduleTermMap.findAll({
-                where: {
-                  classScheduleId: cls.id,
-                  termId: term.id,
-                },
-                // attributes: [
-                //   "id",
-                //   "classScheduleId",
-                //   "termGroupId",
-                //   "termId",
-                //   "sessionPlanId",
-                //   // "status",
-                //   "createdAt",
-                //   "updatedAt",
-                // ],
-              });
+//               // ✅ Attach ClassScheduleTermMap entries for this term
+//               const mappings = await ClassScheduleTermMap.findAll({
+//                 where: {
+//                   classScheduleId: cls.id,
+//                   termId: term.id,
+//                 },
+//                 // attributes: [
+//                 //   "id",
+//                 //   "classScheduleId",
+//                 //   "termGroupId",
+//                 //   "termId",
+//                 //   "sessionPlanId",
+//                 //   // "status",
+//                 //   "createdAt",
+//                 //   "updatedAt",
+//                 // ],
+//               });
 
-              term.dataValues.classScheduleTermMaps = mappings;
-            }
-          }
-        }
-      } else {
-        venue.dataValues.termGroups = [];
-      }
-    }
+//               term.dataValues.classScheduleTermMaps = mappings;
+//             }
+//           }
+//         }
+//       } else {
+//         venue.dataValues.termGroups = [];
+//       }
+//     }
 
-    return { status: true, data: classes };
-  } catch (error) {
-    console.error("❌ getAllClasses Error:", error);
-    return { status: false, message: error.message };
-  }
-};
+//     return { status: true, data: classes };
+//   } catch (error) {
+//     console.error("❌ getAllClasses Error:", error);
+//     return { status: false, message: error.message };
+//   }
+// };
 
+//new
 exports.getAllClasses = async (adminId) => {
   try {
     const classes = await ClassSchedule.findAll({
