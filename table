@@ -340,31 +340,63 @@ Facebook Lead Ingestion	All Facebook ad leads are imported automatically via API
 
 
 
+<!-- card -->
 
-new table 
+"payment": {
+        "paymentType": "card",
+        "firstName": "Saroj",
+        "lastName": "Singh",
+        "email": "kapilakshayofficial@gmail.com",
+        "billingAddress": "123 Main Street, City, Country",
+        "pan": "4111111111111111",
+        "cv2": "653",
+        "expiryDate": "1131",
+        "cardHolderName":"gugbkjd"
+    }
 
-id class schedeule banana tu
- class schedeule id , term id ., term grup id , session plan id,
 
-  class schedule = terup, term , sesiplan   
+<!-- bank -->
 
-
-
-        "classScheduleId": 59,
-             "termGroups": [
-                    {
-                        "id": 167,
-                        "terms": [
-                            
-                            {
-                                "id": 173,
-                                sessionsMap": [
-                                    {
-                                        "session plans sessionPlanId": 150,sessionPlanId": 150,sessionPlanId": 150,sessionPlanId": 150,sessionPlanId": 150,
-                        terms": [
-                            
-                            {
-                                "id": 173,
-                                sessionsMap": [
-                                    {
-                                        "session plans sessionPlanId": 150,sessionPlanId": 150,sessionPlanId": 150,sessionPlanId": 150,sessionPlanId": 150,
+    {
+    "venueId": 3,
+    "classScheduleId": 3,
+    "startDate": "2025-10-18",
+    "totalStudents": 1,
+    "keyInformation": "asd",
+    "students": [
+        {
+            "studentFirstName": "shivani",
+            "studentLastName": "thakur",
+            "dateOfBirth": "2018-05-12",
+            "age": 7,
+            "gender": "Male",
+            "medicalInformation": "None"
+        }
+    ],
+    "parents": [
+        {
+            "parentFirstName": "anshul",
+            "parentLastName": "Singh",
+            "parentEmail": "parent{{$randomInt}}@example.com",
+            "parentPhoneNumber": "+44123456789",
+            "relationToChild": "Mother",
+            "howDidYouHear": "Facebook Ads"
+        }
+    ],
+    "emergency": {
+        "emergencyFirstName": "Sunny",
+        "emergencyLastName": "Deol",
+        "emergencyPhoneNumber": "+44123450000",
+        "emergencyRelation": "Uncle"
+    },
+    "paymentPlanId": 1,
+    "payment": {
+        "paymentType": "rrn",
+        "firstName": "Saroj",
+        "lastName": "Singh",
+        "email": "payment{{$randomInt}}@example.com",
+        "account_holder_name": "Saroj Singh",
+        "account_number": "55779911",
+        "branch_code": "200000"
+    }
+}
