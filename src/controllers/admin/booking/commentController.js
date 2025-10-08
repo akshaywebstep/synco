@@ -18,14 +18,6 @@ exports.addCommentForFreeTrial = async (req, res) => {
     const { isValid, error } = validateFormData(payload, {
         requiredFields: ["comment"], // comment is required
         optionalFields: ["commentType"],
-        customValidators: {
-            comment: (value) => {
-                if (!value || value.trim() === "") {
-                    return "Please enter a comment before submitting.";
-                }
-                return null;
-            },
-        },
     });
 
     if (!isValid) {
@@ -56,7 +48,7 @@ exports.addCommentForFreeTrial = async (req, res) => {
             PANEL,
             MODULE,
             "create",
-            { message: `Comment added (type: ${payload.commentType || "free"})` },
+            { message: `Comment added for book a free trial` },
             true
         );
         if (DEBUG) console.log("📝 Activity logged successfully");
@@ -66,7 +58,7 @@ exports.addCommentForFreeTrial = async (req, res) => {
         await createNotification(
             req,
             "New Comment",
-            `${createdBy} added a comment for booking a free trial.`,
+            `${createdBy} added a comment for book a free trial.`,
             "Admins"
         );
         if (DEBUG) console.log("🔔 Notification created for admins");
@@ -128,14 +120,6 @@ exports.addCommentForMembership = async (req, res) => {
     const { isValid, error } = validateFormData(payload, {
         requiredFields: ["comment"], // comment is required
         optionalFields: ["commentType"],
-        customValidators: {
-            comment: (value) => {
-                if (!value || value.trim() === "") {
-                    return "Please enter a comment before submitting.";
-                }
-                return null;
-            },
-        },
     });
 
     if (!isValid) {
@@ -166,7 +150,7 @@ exports.addCommentForMembership = async (req, res) => {
             PANEL,
             MODULE,
             "create",
-            { message: `Comment added (type: ${payload.commentType || "paid"})` },
+            { message: `Comment added for membership` },
             true
         );
         if (DEBUG) console.log("📝 Activity logged successfully");
@@ -176,7 +160,7 @@ exports.addCommentForMembership = async (req, res) => {
         await createNotification(
             req,
             "New Comment",
-            `${createdBy} added a comment for booking a membership.`,
+            `${createdBy} added a comment for book a membership"}).`,
             "Admins"
         );
         if (DEBUG) console.log("🔔 Notification created for admins");
@@ -238,14 +222,6 @@ exports.addCommentForWaitingList = async (req, res) => {
     const { isValid, error } = validateFormData(payload, {
         requiredFields: ["comment"], // comment is required
         optionalFields: ["commentType"],
-        customValidators: {
-            comment: (value) => {
-                if (!value || value.trim() === "") {
-                    return "Please enter a comment before submitting.";
-                }
-                return null;
-            },
-        },
     });
 
     if (!isValid) {
@@ -276,7 +252,7 @@ exports.addCommentForWaitingList = async (req, res) => {
             PANEL,
             MODULE,
             "create",
-            { message: `Comment added (type: ${payload.commentType || "waiting list"})` },
+            { message: `Comment added waiting list`},
             true
         );
         if (DEBUG) console.log("📝 Activity logged successfully");
@@ -286,7 +262,7 @@ exports.addCommentForWaitingList = async (req, res) => {
         await createNotification(
             req,
             "New Comment",
-            `${createdBy} added a comment for the waiting list.`,
+            `${createdBy} added a comment for waiting list}).`,
             "Admins"
         );
         if (DEBUG) console.log("🔔 Notification created for admins");
