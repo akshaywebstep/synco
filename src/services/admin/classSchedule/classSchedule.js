@@ -463,7 +463,18 @@ exports.getAllClasses = async (adminId) => {
                   banner: spg.banner,
                   player: spg.player,
                   videoUploadedAgo, // ✅ level-wise video upload times
-                  ...(mapping || {}),
+                  ...(mapping
+                    ? {
+                      mapId: mapping.id, // ✅ preserve mapping ID distinctly
+                      classScheduleId: mapping.classScheduleId,
+                      termGroupId: mapping.termGroupId,
+                      termId: mapping.termId,
+                      sessionPlanId: mapping.sessionPlanId,
+                      mappingStatus: mapping.status,
+                      mappingCreatedAt: mapping.createdAt,
+                      mappingUpdatedAt: mapping.updatedAt,
+                    }
+                    : {}),
                 };
               } else {
                 entry.sessionPlan = null;
