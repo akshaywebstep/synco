@@ -1,7 +1,7 @@
 const { validateFormData } = require("../../../utils/validateFormData");
 const BookingTrialService = require("../../../services/admin/booking/waitingList");
 const { logActivity } = require("../../../utils/admin/activityLogger");
-const { sequelize } = require("../../../models");
+const { sequelize, Booking } = require("../../../models");
 
 const {
   Venue,
@@ -192,6 +192,15 @@ exports.createBooking = async (req, res) => {
     if (DEBUG) console.log("🚀 Creating booking...");
 
     const leadId = req.params.leadId || null;
+    if (leadId) {
+          const existingBooking = await Booking.findOne({ where: { leadId } });
+          if (existingBooking) {
+            return res.status(400).json({
+              status: false,
+              message: "You already have a booking linked to this lead.",
+            });
+          }
+        }
 
     const result = await BookingTrialService.createBooking(formData, {
       source: req.source,

@@ -12,10 +12,19 @@ const upload = multer();
 const {
   getAllSessionPlanGroupStructure,
   repinSessionPlanGroup,
+  getSessionPlanGroupStructureById,
+  createSessionPlanGroupStructure,
 
 } = require("../../../controllers/admin/oneToOne/sessionPlanLibrary/sessionPlanGroupController");
 
 // ✅ Get All Session Plan Groups
+
+router.post(
+  "/session-plan-struture/create",
+  authMiddleware,
+  permissionMiddleware("session-plan-structure", "create"),
+  createSessionPlanGroupStructure
+);
 
 router.get(
   "/session-plan-struture/listing",
@@ -24,12 +33,17 @@ router.get(
   getAllSessionPlanGroupStructure
 );
 
-// router.put("/:id/repin", controller.repinSessionPlanGroup);
+router.get(
+  "/session-plan-struture/listing/:id",
+  authMiddleware,
+  permissionMiddleware("session-plan-structure", "view-listing"),
+  getSessionPlanGroupStructureById
+);
 
 router.put(
   "/session-plan-struture/:id/repin",
   authMiddleware,
-  permissionMiddleware("session-plan-structure", "view-listing"),
+  permissionMiddleware("session-plan-structure", "repin"),
   repinSessionPlanGroup
 );
 

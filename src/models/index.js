@@ -73,6 +73,8 @@ const models = {
   AdminDashboardWidget: require("./admin/adminDashboard/adminDashboardWidget"),
   Lead: require("./admin/lead/Leads"),
 
+  SessionPlanConfig: require("./admin/oneToOne/SessionPlanConfig"),
+
 };
 
 // =================== Apply Model-Level Associations =================== //
@@ -127,6 +129,8 @@ const {
   Feedback,
   Lead,
   KeyInformation,
+
+  SessionPlanConfig,
 } = models;
 
 // Many-to-Many
@@ -352,4 +356,5 @@ module.exports = {
   Feedback,
   Lead,
   KeyInformation,
+  SessionPlanConfig,
 };

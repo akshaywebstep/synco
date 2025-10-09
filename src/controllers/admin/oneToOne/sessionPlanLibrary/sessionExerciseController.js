@@ -302,6 +302,7 @@ exports.getAllSessionExercises = async (req, res) => {
 };
 
 // ✅ Update (aligned with createSessionExercise)
+
 exports.updateSessionExercise = async (req, res) => {
   try {
     const { id } = req.params;
@@ -366,7 +367,9 @@ exports.updateSessionExercise = async (req, res) => {
 
         try {
           console.log("⬆️ STEP 3b: Uploading to FTP:", localPath);
-          const publicUrl = await uploadToFTP(localPath, fileName);
+          const remotePath = `temp/admin/${adminId}/sessionExercise/${id}/${fileName}`;
+          const publicUrl = await uploadToFTP(localPath, remotePath);
+
           if (publicUrl) {
             uploadedUrls.push(publicUrl);
             console.log("✅ STEP 3c: Uploaded successfully:", publicUrl);
@@ -375,7 +378,8 @@ exports.updateSessionExercise = async (req, res) => {
           }
         } catch (err) {
           console.error("❌ STEP 3b: FTP upload failed for", localPath, err.message);
-        } finally {
+        }
+        finally {
           await fs.promises.unlink(localPath).catch(() => { });
           console.log("🗑️ STEP 3d: Local temp file deleted:", localPath);
         }

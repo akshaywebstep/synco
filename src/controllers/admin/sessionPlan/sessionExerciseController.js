@@ -451,7 +451,13 @@ exports.updateSessionExercise = async (req, res) => {
     console.log("🔍 STEP 1: Received update request:", updates);
 
     // Normalize files to a flat array
-    let filesArray = Array.isArray(files) ? files : Object.values(files).flat();
+    let filesArray = [];
+    if (Array.isArray(files)) {
+      filesArray = files;
+    } else {
+      filesArray = Object.values(files).flat();
+    }
+
     if (filesArray.length > 0) {
       console.log("📎 Files uploaded:", filesArray.map(f => f.originalname));
     }
@@ -494,7 +500,9 @@ exports.updateSessionExercise = async (req, res) => {
 
         try {
           console.log("⬆️ STEP 3b: Uploading to FTP:", localPath);
-          const publicUrl = await uploadToFTP(localPath, fileName);
+          const remotePath = `temp/admin/${adminId}/sessionExercise/${id}/${fileName}`;
+          const publicUrl = await uploadToFTP(localPath, remotePath);
+
           if (publicUrl) {
             uploadedUrls.push(publicUrl);
             console.log("✅ STEP 3c: Uploaded successfully:", publicUrl);
@@ -503,38 +511,29 @@ exports.updateSessionExercise = async (req, res) => {
           }
         } catch (err) {
           console.error("❌ STEP 3b: FTP upload failed for", localPath, err.message);
-        } finally {
+        }
+        finally {
           await fs.promises.unlink(localPath).catch(() => { });
           console.log("🗑️ STEP 3d: Local temp file deleted:", localPath);
         }
       }
     }
 
-    // ✅ STEP 4: Merge images correctly
-    let existingImages = Array.isArray(existing.data.imageUrl)
-      ? existing.data.imageUrl
-      : JSON.parse(existing.data.imageUrl || "[]");
-
-    let frontendImages = Array.isArray(updates.imageUrl) ? updates.imageUrl : [];
-
-    // If frontend explicitly wants to clear all images
-    if (updates.imageUrl === null) {
-      updates.imageUrl = uploadedUrls.length ? uploadedUrls : [];
-      console.log("🗑️ Frontend requested to clear all images. Saving only new uploads:", uploadedUrls);
+    // ✅ STEP 4: Decide which images to keep
+    if (uploadedUrls.length) {
+      updates.imageUrl = uploadedUrls;
+      console.log("🖼️ Replacing images with new uploads:", uploadedUrls);
+    } else if (updates.imageUrl === null) {
+      updates.imageUrl = [];
+      console.log("🗑️ Clearing all images");
     } else {
-      // Normalize URLs: remove "./" or trailing slashes
-      const normalize = url => url.replace(/\/\.\//g, "/").trim();
-
-      const mergedImages = [
-        ...existingImages.map(normalize),
-        ...frontendImages.map(normalize),
-        ...uploadedUrls.map(normalize)
-      ];
-
-      // Remove duplicates based on URL
-      updates.imageUrl = Array.from(new Set(mergedImages));
-      console.log("🔄 Merged images (existing + frontend + new uploads) without duplicates:", updates.imageUrl);
+      updates.imageUrl = Array.isArray(existing.data.imageUrl)
+        ? existing.data.imageUrl
+        : JSON.parse(existing.data.imageUrl || "[]");
+      console.log("🔄 Keeping existing images:", updates.imageUrl);
     }
+
+    updates.updatedBy = adminId;
 
     // ✅ STEP 5: Update DB
     console.log("📌 STEP 5: Updating exercise in DB");
@@ -573,7 +572,6 @@ exports.updateSessionExercise = async (req, res) => {
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };
-
 // ✅ Delete
 exports.deleteSessionExercise = async (req, res) => {
   const { id } = req.params;
