@@ -254,6 +254,9 @@ exports.getAllClasses = async (adminId) => {
       include: [{ model: Venue, as: "venue" }],
     });
 
+    // ✅ FIX: Fetch all mappings once so we can use them later
+    const mappings = await ClassScheduleTermMap.findAll();
+
     for (const cls of classes) {
       const venue = cls.venue;
 
@@ -478,7 +481,6 @@ exports.getAllClasses = async (adminId) => {
                     }
                     : {}),
                 };
-
               } else {
                 entry.sessionPlan = null;
               }
@@ -488,7 +490,6 @@ exports.getAllClasses = async (adminId) => {
         }
 
         venue.dataValues.termGroups = termGroups;
-
       }
     }
 
