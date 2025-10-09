@@ -376,12 +376,12 @@ exports.syncFacebookLeads = async (req, res) => {
 
     // --- STEP 4: Create lead automatically ---
     const result = await LeadService.createLead({
-      firstName: parsedFields.first_name?.split(" ")[0] || "Unknown",
+      firstName: parsedFields.first_name?.split(" ")[0] || "",
       lastName: parsedFields.last_name?.split(" ")[1] || "",
-      email: parsedFields.email || "no-email@example.com",
+      email: parsedFields.email || "",
       phone: parsedFields.phone_number || "",
       postcode: parsedFields.post_code || "",
-      childAge: parsedFields.child_age || 6,
+      childAge: parsedFields.child_age || 0,
       status: "Facebook"
     });
 
