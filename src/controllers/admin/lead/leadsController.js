@@ -300,10 +300,6 @@ exports.registerFacebookLeads = async (req, res) => {
   }
 };
 
-const axios = require("axios");
-const LeadService = require("../../services/leadService");
-const sendErrorEmail = require("../../utils/sendErrorEmail"); // your refined email sender
-
 exports.syncFacebookLeads = async (req, res) => {
   try {
     console.log("📥 Facebook Webhook Received:", JSON.stringify(req.body, null, 2));
