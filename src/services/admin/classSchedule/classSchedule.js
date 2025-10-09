@@ -413,6 +413,7 @@ exports.getAllClasses = async (adminId) => {
                           title: ex.title,
                           description: ex.description,
                           duration: ex.duration,
+                          imageUrl: ex.imageUrl,
                         }));
                     } else {
                       item.sessionExercises = [];
