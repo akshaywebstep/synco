@@ -510,26 +510,31 @@ exports.updateSessionExercise = async (req, res) => {
       }
     }
 
-    // ✅ STEP 4: Decide which images to keep or add
+    // ✅ STEP 4: Merge images correctly
     let existingImages = Array.isArray(existing.data.imageUrl)
       ? existing.data.imageUrl
       : JSON.parse(existing.data.imageUrl || "[]");
 
+    let frontendImages = Array.isArray(updates.imageUrl) ? updates.imageUrl : [];
+
+    // If frontend explicitly wants to clear all images
     if (updates.imageUrl === null) {
-      // Frontend wants to remove all existing images, save only new uploads
       updates.imageUrl = uploadedUrls.length ? uploadedUrls : [];
       console.log("🗑️ Frontend requested to clear all images. Saving only new uploads:", uploadedUrls);
-    } else if (Array.isArray(updates.imageUrl)) {
-      // Merge frontend-remaining images with newly uploaded images
-      updates.imageUrl = [...updates.imageUrl, ...uploadedUrls];
-      console.log("🔄 Keeping frontend-specified images and adding new uploads:", updates.imageUrl);
     } else {
-      // Frontend did not specify images → keep existing + add new uploads
-      updates.imageUrl = [...existingImages, ...uploadedUrls];
-      console.log("🔄 Keeping existing images and adding new uploads:", updates.imageUrl);
-    }
+      // Normalize URLs: remove "./" or trailing slashes
+      const normalize = url => url.replace(/\/\.\//g, "/").trim();
 
-    updates.updatedBy = adminId;
+      const mergedImages = [
+        ...existingImages.map(normalize),
+        ...frontendImages.map(normalize),
+        ...uploadedUrls.map(normalize)
+      ];
+
+      // Remove duplicates based on URL
+      updates.imageUrl = Array.from(new Set(mergedImages));
+      console.log("🔄 Merged images (existing + frontend + new uploads) without duplicates:", updates.imageUrl);
+    }
 
     // ✅ STEP 5: Update DB
     console.log("📌 STEP 5: Updating exercise in DB");
