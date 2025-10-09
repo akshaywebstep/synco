@@ -7,6 +7,7 @@ const {
 } = require("../../../utils/admin/notificationHelper");
 const { validateFormData } = require("../../../utils/validateFormData");
 const CommentLead = require("../../../services/admin/lead/leads");
+const sendErrorEmail = require("../../../utils/email/sendErrorEmail");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -299,11 +300,14 @@ exports.registerFacebookLeads = async (req, res) => {
   }
 };
 
+const axios = require("axios");
+const LeadService = require("../../services/leadService");
+const sendErrorEmail = require("../../utils/sendErrorEmail"); // your refined email sender
+
 exports.syncFacebookLeads = async (req, res) => {
   try {
     console.log("📥 Facebook Webhook Received:", JSON.stringify(req.body, null, 2));
 
-    // --- Load env variables ---
     const {
       FACEBOOK_PAGE_ACCESS_TOKEN,
       FACEBOOK_GRAPH_API_BASE,
@@ -311,7 +315,9 @@ exports.syncFacebookLeads = async (req, res) => {
     } = process.env;
 
     if (!FACEBOOK_PAGE_ACCESS_TOKEN) {
-      console.error("❌ Missing Facebook Page Access Token in .env");
+      const errMsg = "❌ Missing Facebook Page Access Token in .env";
+      console.error(errMsg);
+      await sendErrorEmail(`<p>${errMsg}</p>`);
       return res.status(500).json({
         status: false,
         message: "Facebook Page Access Token not configured. Please check .env file.",
@@ -336,7 +342,9 @@ exports.syncFacebookLeads = async (req, res) => {
     }
 
     if (!leadgen_id) {
-      console.log("⚠️ No leadgen_id found in webhook payload");
+      const warningMsg = "⚠️ No leadgen_id found in webhook payload";
+      console.log(warningMsg);
+      await sendErrorEmail(`<p>${warningMsg}</p><pre>${JSON.stringify(body, null, 2)}</pre>`);
       return res.status(200).json({ status: false, message: "No lead ID found" });
     }
 
@@ -355,12 +363,14 @@ exports.syncFacebookLeads = async (req, res) => {
     console.log("🌐 Facebook Lead Data:", leadData);
 
     if (!leadData.field_data) {
+      const noFieldMsg = "⚠️ No field_data found in Facebook lead response";
+      await sendErrorEmail(`<p>${noFieldMsg}</p><pre>${JSON.stringify(leadData, null, 2)}</pre>`);
       return res.status(200).json({ status: false, message: "No field_data found" });
     }
 
     // --- STEP 3: Parse field_data into usable key-value pairs ---
     const parsedFields = {};
-    leadData.field_data.forEach((field) => {
+    leadData.field_data.forEach(field => {
       parsedFields[field.name] = Array.isArray(field.values)
         ? field.values.join(", ")
         : field.values || "";
@@ -380,7 +390,9 @@ exports.syncFacebookLeads = async (req, res) => {
     });
 
     if (!result.status) {
-      console.error("❌ Lead creation failed:", result.message);
+      const failMsg = `❌ Lead creation failed: ${result.message}`;
+      console.error(failMsg);
+      await sendErrorEmail(`<p>${failMsg}</p><pre>${JSON.stringify(parsedFields, null, 2)}</pre>`);
       return res.status(500).json({
         status: false,
         message: "Failed to create lead",
@@ -409,6 +421,15 @@ exports.syncFacebookLeads = async (req, res) => {
       userMessage = "Network issue while connecting to Facebook. Please try again.";
     if (isAuthError)
       userMessage = "Authentication failed. Please verify your Facebook token.";
+
+    // --- Send error email ---
+    const errorHtml = `
+      <p>${userMessage}</p>
+      <pre>${error.stack || error.message}</pre>
+      <p>Webhook payload:</p>
+      <pre>${JSON.stringify(req.body, null, 2)}</pre>
+    `;
+    await sendErrorEmail(errorHtml, "Facebook Leads Webhook Error");
 
     return res.status(500).json({
       status: false,
