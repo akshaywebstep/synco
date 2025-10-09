@@ -983,59 +983,50 @@ function generateBookingId(length = 12) {
 exports.convertToMembership = async (data, options) => {
   const t = await sequelize.transaction();
   try {
-    const bookedBy = options?.adminId || null;
+    const adminId = options?.adminId || null;
 
-    // 🔹 Step 1: Update existing booking if id is passed, else create new
+    // Step 1: Update existing booking or create new one
     let booking;
-
     if (data.id) {
-      // ✅ Fetch by primary key
       booking = await Booking.findByPk(data.id, { transaction: t });
       if (!booking) throw new Error("Booking not found with provided id");
 
-      // ✅ Update fields to convert waiting list → membership
       await booking.update(
         {
           totalStudents: data.totalStudents ?? booking.totalStudents,
           classScheduleId: data.classScheduleId ?? booking.classScheduleId,
           startDate: data.startDate ?? booking.startDate,
-          // ✅ Clear startDate when converting to membership
           trialDate: null,
-          // keyInformation: data.keyInformation ?? booking.keyInformation,
-          // ✅ Convert to paid membership if paymentPlanId is passed
           bookingType: data.paymentPlanId ? "paid" : booking.bookingType,
           paymentPlanId: data.paymentPlanId ?? booking.paymentPlanId,
-
-          // ✅ Explicitly set status to active/paid
           status: data.paymentPlanId ? "active" : data.status ?? booking.status,
           bookedBy: options?.adminId || booking.bookedBy,
         },
         { transaction: t }
       );
     } else {
-      // ✅ Create new booking (old behavior)
       booking = await Booking.create(
         {
           venueId: data.venueId,
           bookingId: generateBookingId(12),
           totalStudents: data.totalStudents,
           classScheduleId: data.classScheduleId,
-          trialDate: null, // always null for waiting list
           startDate: data.startDate,
-          // keyInformation: data.keyInformation || null,
+          trialDate: null,
           bookingType: data.paymentPlanId ? "paid" : "waiting list",
           paymentPlanId: data.paymentPlanId || null,
           status: data.status || "active",
-          bookedBy: options?.adminId || null,
+          bookedBy: adminId,
+          createdAt: new Date(),
+          updatedAt: new Date(),
         },
         { transaction: t }
       );
     }
 
-    // 🔹 Step 2: Update Students (no creation)
+    // Step 2: Update Students
     const studentRecords = [];
     for (const student of data.students || []) {
-      // You can also match by student.id if you have it in payload
       let existingStudent = await BookingStudentMeta.findOne({
         where: {
           bookingTrialId: booking.id,
@@ -1059,7 +1050,7 @@ exports.convertToMembership = async (data, options) => {
       }
     }
 
-    // 🔹 Step 3: Update Parents (no creation)
+    // Step 3: Update Parents
     if (data.parents?.length && studentRecords.length) {
       const firstStudent = studentRecords[0];
 
@@ -1067,7 +1058,6 @@ exports.convertToMembership = async (data, options) => {
         const email = parent.parentEmail?.trim()?.toLowerCase();
         if (!email) throw new Error("Parent email is required.");
 
-        // Find existing parent
         let existingParent = await BookingParentMeta.findOne({
           where: { studentId: firstStudent.id, parentEmail: email },
           transaction: t,
@@ -1086,7 +1076,7 @@ exports.convertToMembership = async (data, options) => {
           );
         }
 
-        // Update Admin if exists (skip creation)
+        // Update Admin if exists
         let existingAdmin = await Admin.findOne({
           where: { email },
           transaction: t,
@@ -1097,8 +1087,7 @@ exports.convertToMembership = async (data, options) => {
             {
               firstName: parent.parentFirstName || existingAdmin.firstName,
               lastName: parent.parentLastName || existingAdmin.lastName,
-              phoneNumber:
-                parent.parentPhoneNumber || existingAdmin.phoneNumber,
+              phoneNumber: parent.parentPhoneNumber || existingAdmin.phoneNumber,
               updatedAt: new Date(),
             },
             { transaction: t }
@@ -1107,7 +1096,7 @@ exports.convertToMembership = async (data, options) => {
       }
     }
 
-    // 🔹 Step 4: Update Emergency Contact (no creation)
+    // Step 4: Update Emergency Contact
     if (
       data.emergency?.emergencyFirstName &&
       data.emergency?.emergencyPhoneNumber &&
@@ -1132,11 +1121,9 @@ exports.convertToMembership = async (data, options) => {
       }
     }
 
-    // 🔹 Step 5: Payment Handling (only if paymentPlanId exists)
+    // Step 5: Payment Handling (GoCardless / Pay360)
     if (booking.paymentPlanId && data.payment?.paymentType) {
       const paymentType = data.payment.paymentType;
-      console.log("Step 5: Start payment process, paymentType:", paymentType);
-
       let paymentStatusFromGateway = "pending";
       const firstStudentId = studentRecords[0]?.id;
 
@@ -1148,60 +1135,55 @@ exports.convertToMembership = async (data, options) => {
         const price = paymentPlan.price || 0;
 
         const venue = await Venue.findByPk(data.venueId, { transaction: t });
-        const classSchedule = await ClassSchedule.findByPk(
-          data.classScheduleId,
-          { transaction: t }
-        );
+        const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, {
+          transaction: t,
+        });
 
         const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
         let gatewayResponse = null;
-        const amountInPence = Math.round(price * 100);
+        let goCardlessCustomer, goCardlessBankAccount, goCardlessBillingRequest;
 
-        if (paymentType === "rrn") {
-          if (!data.payment.referenceId)
-            throw new Error("Reference ID is required for RRN payments.");
-
-          const gcPayload = {
-            cardHolderName: null,
-            cv2: null,
-            expiryDate: null,
-            pan: null,
-            billing_requests: {
-              payment_request: {
-                description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-                  }`,
-                amount: amountInPence,
-                scheme: "faster_payments",
-                currency: "GBP",
-                metadata: { referenceId: data.payment.referenceId },
-              },
-              mandate_request: {
-                currency: "GBP",
-                scheme: "bacs",
-                verify: "recommended",
-                metadata: { referenceId: data.payment.referenceId },
-              },
-              links: {},
-              metadata: { test: `BR${Math.floor(Math.random() * 1000000)}` },
-            },
+        if (paymentType === "bank") {
+          // GoCardless customer + billing request
+          const customerPayload = {
+            email: data.payment.email || data.parents?.[0]?.parentEmail || "",
+            given_name: data.payment.firstName || "",
+            family_name: data.payment.lastName || "",
+            address_line1: data.payment.addressLine1 || "",
+            city: data.payment.city || "",
+            postal_code: data.payment.postalCode || "",
+            country_code: data.payment.countryCode || "GB",
+            currency: data.payment.currency || "GBP",
+            account_holder_name: data.payment.account_holder_name || "",
+            account_number: data.payment.account_number || "",
+            branch_code: data.payment.branch_code || "",
           };
 
-          const response = await axios.post(
-            "https://api-sandbox.gocardless.com/billing_requests",
-            gcPayload,
-            {
-              headers: {
-                Authorization: `Bearer ${process.env.GOCARDLESS_ACCESS_TOKEN}`,
-                "Content-Type": "application/json",
-                "GoCardless-Version": "2015-07-06",
-              },
-            }
-          );
+          const createCustomerRes = await createCustomer(customerPayload);
+          if (!createCustomerRes.status) throw new Error(createCustomerRes.message);
 
-          gatewayResponse = response.data;
-          paymentStatusFromGateway =
-            gatewayResponse?.billing_requests?.status || "pending";
+          const billingRequestPayload = {
+            customerId: createCustomerRes.customer.id,
+            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"}`,
+            amount: price,
+            scheme: "faster_payments",
+            currency: "GBP",
+            reference: `TRX-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+            mandateReference: `MD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+            fallbackEnabled: true,
+          };
+
+          const createBillingRequestRes = await createBillingRequest(billingRequestPayload);
+          if (!createBillingRequestRes.status) {
+            await removeCustomer(createCustomerRes.customer.id);
+            throw new Error(createBillingRequestRes.message);
+          }
+
+          goCardlessCustomer = createCustomerRes.customer;
+          goCardlessBankAccount = createCustomerRes.bankAccount;
+          goCardlessBillingRequest = createBillingRequestRes.billingRequest;
         } else if (paymentType === "card") {
+          // Pay360 card payment
           if (
             !process.env.PAY360_INST_ID ||
             !process.env.PAY360_API_USERNAME ||
@@ -1214,8 +1196,7 @@ exports.convertToMembership = async (data, options) => {
               currency: "GBP",
               amount: price,
               merchantRef,
-              description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-                }`,
+              description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"}`,
               commerceType: "ECOM",
             },
             paymentMethod: {
@@ -1234,60 +1215,38 @@ exports.convertToMembership = async (data, options) => {
           ).toString("base64");
 
           const response = await axios.post(url, paymentPayload, {
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Basic ${authHeader}`,
-            },
+            headers: { "Content-Type": "application/json", Authorization: `Basic ${authHeader}` },
           });
 
           gatewayResponse = response.data;
           const txnStatus = gatewayResponse?.transaction?.status?.toLowerCase();
           if (txnStatus === "success") paymentStatusFromGateway = "paid";
-          else if (txnStatus === "pending")
-            paymentStatusFromGateway = "pending";
-          else if (txnStatus === "declined")
-            paymentStatusFromGateway = "failed";
+          else if (txnStatus === "pending") paymentStatusFromGateway = "pending";
+          else if (txnStatus === "declined") paymentStatusFromGateway = "failed";
           else paymentStatusFromGateway = txnStatus || "unknown";
         }
 
+        // Save BookingPayment
         await BookingPayment.create(
           {
             bookingId: booking.id,
             paymentPlanId: booking.paymentPlanId,
             studentId: firstStudentId,
             paymentType,
-            firstName:
-              data.payment.firstName ||
-              data.parents?.[0]?.parentFirstName ||
-              "",
-            lastName:
-              data.payment.lastName || data.parents?.[0]?.parentLastName || "",
+            firstName: data.payment.firstName || data.parents?.[0]?.parentFirstName || "",
+            lastName: data.payment.lastName || data.parents?.[0]?.parentLastName || "",
             email: data.payment.email || data.parents?.[0]?.parentEmail || "",
-            billingAddress: data.payment.billingAddress || "",
-            cardHolderName: data.payment.cardHolderName || "",
-            cv2: data.payment.cv2 || "",
-            expiryDate: data.payment.expiryDate || "",
-            pan: data.payment.pan || "",
-            referenceId: data.payment.referenceId || "",
+             billingAddress: data.payment.billingAddress || "",
+            account_holder_name: data.payment.account_holder_name || "",
             paymentStatus: paymentStatusFromGateway,
-            currency:
-              gatewayResponse?.transaction?.currency ||
-              gatewayResponse?.billing_requests?.currency ||
-              "GBP",
-            merchantRef:
-              gatewayResponse?.transaction?.merchantRef || merchantRef,
-            description:
-              gatewayResponse?.transaction?.description ||
-              `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-              }`,
+            currency: gatewayResponse?.transaction?.currency || gatewayResponse?.billing_requests?.currency || "GBP",
+            merchantRef: gatewayResponse?.transaction?.merchantRef || merchantRef,
+            description: gatewayResponse?.transaction?.description || `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"}`,
             commerceType: "ECOM",
             gatewayResponse,
-            transactionMeta: {
-              status:
-                gatewayResponse?.transaction?.status ||
-                gatewayResponse?.billing_requests?.status ||
-                "unknown",
-            },
+            goCardlessCustomer,
+            goCardlessBankAccount,
+            goCardlessBillingRequest,
             createdAt: new Date(),
             updatedAt: new Date(),
           },
@@ -1295,34 +1254,17 @@ exports.convertToMembership = async (data, options) => {
         );
 
         if (paymentStatusFromGateway === "failed") {
-          throw new Error("Payment failed. Booking not created.");
+          throw new Error("Payment failed. Booking not updated.");
         }
       } catch (err) {
-        let errorMessage = "Payment failed";
-
-        if (err.response?.data) {
-          if (typeof err.response.data === "string") {
-            errorMessage = err.response.data;
-          } else if (err.response.data.reasonMessage) {
-            errorMessage = err.response.data.reasonMessage;
-          } else if (err.response.data.error?.message) {
-            errorMessage = err.response.data.error.message;
-          } else {
-            errorMessage = Object.values(err.response.data).join(" | ");
-          }
-        } else if (err.message) {
-          errorMessage = err.message;
-        }
-
         await t.rollback();
+        const errorMessage = err.response?.data?.reasonMessage || err.message || "Payment failed";
         return { status: false, message: errorMessage };
       }
     }
 
-    // 🔹 Step 6: Update Class Capacity
-    const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, {
-      transaction: t,
-    });
+    // Step 6: Update Class Capacity
+    const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, { transaction: t });
     const newCapacity = classSchedule.capacity - data.totalStudents;
     if (newCapacity < 0) throw new Error("Not enough capacity left.");
     await classSchedule.update({ capacity: newCapacity }, { transaction: t });

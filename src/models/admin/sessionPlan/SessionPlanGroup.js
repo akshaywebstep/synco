@@ -31,7 +31,7 @@ const SessionPlanGroup = sequelize.define(
     },
     pro_video: {
       type: DataTypes.STRING,
-    }, 
+    },
     intermediate_video: {
       type: DataTypes.STRING,
     },
@@ -44,7 +44,7 @@ const SessionPlanGroup = sequelize.define(
     },
     pro_upload: {
       type: DataTypes.STRING,
-    }, 
+    },
     intermediate_upload: {
       type: DataTypes.STRING,
     },
@@ -61,6 +61,13 @@ const SessionPlanGroup = sequelize.define(
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
     },
+
+    // add new feild for one to one ->
+    pinned: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+
   },
   {
     tableName: "session_plan_groups",

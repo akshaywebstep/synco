@@ -41,7 +41,8 @@ const BookingPayment = sequelize.define(
     },
 
     // Card / Payment details
-    cardHolderName: {
+   
+     cardHolderName: {
       type: DataTypes.STRING(100),
       allowNull: true,
     },
@@ -53,9 +54,13 @@ const BookingPayment = sequelize.define(
       type: DataTypes.STRING(10),
       allowNull: true,
     },
+     account_holder_name: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
     // Add this inside your BookingPayment.define fields
     paymentType: {
-      type: DataTypes.ENUM("rrn", "card"),
+      type: DataTypes.ENUM("rrn", "card","bank"),
       allowNull: false,
       defaultValue: "card", // optional: choose a default if needed
     },
@@ -71,10 +76,10 @@ const BookingPayment = sequelize.define(
       defaultValue: "pending",
     },
     // Cardless reference ID
-    referenceId: {
-      type: DataTypes.STRING(100),
-      allowNull: true,
-    },
+    // referenceId: {
+    //   type: DataTypes.STRING(100),
+    //   allowNull: true,
+    // },
 
     // Additional payment details
     currency: {

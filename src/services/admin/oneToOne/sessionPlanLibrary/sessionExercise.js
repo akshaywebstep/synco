@@ -1,4 +1,4 @@
-const { SessionExercise } = require("../../../models");
+const { SessionExercise } = require("../../../../models");
 const { Op } = require("sequelize");
 
 // ✅ Create

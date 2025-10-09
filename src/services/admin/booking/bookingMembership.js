@@ -211,7 +211,7 @@ exports.createBooking = async (data, options) => {
 
     // 🔹 Step 5: Process Payment if booking has a payment plan
     if (booking.paymentPlanId && data.payment?.paymentType) {
-      const paymentType = data.payment.paymentType; // "rrn" or "card"
+      const paymentType = data.payment.paymentType; // "bank" or "card"
       console.log("Step 5: Start payment process, paymentType:", paymentType);
 
       let paymentStatusFromGateway = "pending";
@@ -242,27 +242,41 @@ exports.createBooking = async (data, options) => {
         let goCardlessBankAccount;
         let goCardlessBillingRequest;
 
-        if (paymentType === "rrn") {
+        if (paymentType === "bank") {
           // Step 1: Prepare payload for customer creation
+          // const customerPayload = {
+          //   email: data.payment.email || data.parents?.[0]?.parentEmail || "",
+          //   given_name: data.payment.firstName || "",
+          //   family_name: data.payment.lastName || "",
+          //   address_line1: data.payment.addressLine1 || "",
+          //   address_line2: data.payment.addressLine2 || "",
+          //   city: data.payment.city || "",
+          //   postal_code: data.payment.postalCode || "",
+          //   country_code: data.payment.countryCode || "",
+          //   region: data.payment.region || "",
+          //   crm_id: `CUSTID-${Date.now()}-${Math.floor(
+          //     1000 + Math.random() * 9000
+          //   )}`,
+          //   account_holder_name: data.payment.account_holder_name || "",
+          //   account_number: data.payment.account_number || "",
+          //   branch_code: data.payment.branch_code || "",
+          //   bank_code: data.payment.bank_code || "",
+          //   account_type: data.payment.account_type || "",
+          //   iban: data.payment.iban || "",
+          // };
+
           const customerPayload = {
             email: data.payment.email || data.parents?.[0]?.parentEmail || "",
             given_name: data.payment.firstName || "",
             family_name: data.payment.lastName || "",
             address_line1: data.payment.addressLine1 || "",
-            address_line2: data.payment.addressLine2 || "",
             city: data.payment.city || "",
             postal_code: data.payment.postalCode || "",
-            country_code: data.payment.countryCode || "",
-            region: data.payment.region || "",
-            crm_id: `CUSTID-${Date.now()}-${Math.floor(
-              1000 + Math.random() * 9000
-            )}`,
+            country_code: data.payment.countryCode || "GB", // default to GB
+            currency: data.payment.currency || "GBP",
             account_holder_name: data.payment.account_holder_name || "",
             account_number: data.payment.account_number || "",
             branch_code: data.payment.branch_code || "",
-            bank_code: data.payment.bank_code || "",
-            account_type: data.payment.account_type || "",
-            iban: data.payment.iban || "",
           };
 
           if (DEBUG) console.log("🛠 Generated payload:", customerPayload);
@@ -390,7 +404,8 @@ exports.createBooking = async (data, options) => {
             cv2: data.payment.cv2 || "",
             expiryDate: data.payment.expiryDate || "",
             pan: data.payment.pan || "",
-            referenceId: data.payment.referenceId || "",
+            // referenceId: data.payment.referenceId || "",
+            account_holder_name: data.payment.account_holder_name || "",
             paymentStatus: paymentStatusFromGateway,
             currency:
               gatewayResponse?.transaction?.currency ||
@@ -408,7 +423,7 @@ exports.createBooking = async (data, options) => {
               status:
                 gatewayResponse?.transaction?.status ||
                 gatewayResponse?.billing_requests?.status ||
-                "unknown",
+                "pending",
             },
             goCardlessCustomer,
             goCardlessBankAccount,
@@ -1903,11 +1918,11 @@ exports.retryBookingPayment = async (bookingId, newData) => {
     // Step 4: Retry payment
     // Step 4: Retry payment
     try {
-      if (newData?.payment?.paymentType === "rrn") {
-        console.log("🔹 [Service] Retrying via GoCardless RRN...");
+      if (newData?.payment?.paymentType === "bank") {
+        console.log("🔹 [Service] Retrying via GoCardless bank...");
 
         if (!newData.payment.referenceId)
-          throw new Error("Reference ID is required for RRN payments.");
+          throw new Error("Reference ID is required for bank payments.");
 
         const gcPayload = {
           billing_requests: {
@@ -1934,7 +1949,7 @@ exports.retryBookingPayment = async (bookingId, newData) => {
           },
         };
 
-        console.log("📦 RRN Payload:", gcPayload);
+        console.log("📦 bank Payload:", gcPayload);
 
         const response = await axios.post(
           "https://api-sandbox.gocardless.com/billing_requests",

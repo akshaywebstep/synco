@@ -725,18 +725,19 @@ exports.updateBooking = async (payload, adminId, id) => {
             given_name: payload.payment.firstName || "",
             family_name: payload.payment.lastName || "",
             address_line1: payload.payment.addressLine1 || "",
-            address_line2: payload.payment.addressLine2 || "",
+            // address_line2: payload.payment.addressLine2 || "",
             city: payload.payment.city || "",
             postal_code: payload.payment.postalCode || "",
-            country_code: payload.payment.countryCode || "",
-            region: payload.payment.region || "",
-            crm_id: `CUSTID-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+            country_code: payload.payment.countryCode || "GB",
+            currency: payload.payment.currency || "GBP",
+            // region: payload.payment.region || "",
+            // crm_id: `CUSTID-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
             account_holder_name: payload.payment.account_holder_name || "",
             account_number: payload.payment.account_number || "",
             branch_code: payload.payment.branch_code || "",
-            bank_code: payload.payment.bank_code || "",
-            account_type: payload.payment.account_type || "",
-            iban: payload.payment.iban || "",
+            // bank_code: payload.payment.bank_code || "",
+            // account_type: payload.payment.account_type || "",
+            // iban: payload.payment.iban || "",
           };
 
           if (DEBUG) console.log("🛠 Generated payload:", customerPayload);
@@ -843,7 +844,8 @@ exports.updateBooking = async (payload, adminId, id) => {
             cv2: paymentType === "card" ? payload.payment.cv2 : null,
             expiryDate: paymentType === "card" ? payload.payment.expiryDate : null,
             pan: paymentType === "card" ? payload.payment.pan : null,
-            referenceId: payload.payment.referenceId || "",
+            // referenceId: payload.payment.referenceId || "",
+            account_holder_name: payload.payment.account_holder_name || "",
             paymentStatus: paymentStatusFromGateway,
             currency:
               gatewayResponse?.transaction?.currency ||

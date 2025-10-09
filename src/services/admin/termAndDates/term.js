@@ -154,14 +154,13 @@ exports.getAllTerms = async (adminId) => {
     });
 
     // Seasonal priority mapping
-    const seasonOrder = { autumn: 1, spring: 2, summer: 3, winter: 4 };
+    const seasonOrder = { autumn: 1, spring: 2, summer: 3 };
     function getSeasonPriority(termName) {
       if (!termName) return 99;
       const lowerName = termName.toLowerCase();
       if (lowerName.includes("autumn")) return seasonOrder.autumn;
       if (lowerName.includes("spring")) return seasonOrder.spring;
       if (lowerName.includes("summer")) return seasonOrder.summer;
-      if (lowerName.includes("winter")) return seasonOrder.winter;
       return 99; // other terms come last
     }
 

@@ -106,6 +106,9 @@ router.use("/account-information", require("./accountInformationRoutes"));
 // Lead Mouldule Base Route
 router.use("/lead", require("./leadRoutes"));
 
+// one to one base routes
+router.use("/one-to-one", require("./oneToOneRoutes/sessionPlanLibraryRoutes"));
+
 const {
   listComments,
 } = require("../../controllers/admin/booking/commentController");
