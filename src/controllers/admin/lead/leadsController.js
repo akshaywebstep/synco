@@ -381,7 +381,7 @@ exports.syncFacebookLeads = async (req, res) => {
       email: parsedFields.email || "no-email@example.com",
       phone: parsedFields.phone_number || "",
       postcode: parsedFields.postcode || "",
-      childAge: parsedFields.child_age || null,
+      childAge: parsedFields.child_age || 6,
       status: "Facebook"
     });
 
