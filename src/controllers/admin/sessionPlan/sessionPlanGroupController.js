@@ -1300,19 +1300,22 @@ exports.updateSessionPlanGroup = async (req, res) => {
     let existingImages = Array.isArray(existing.images) ? existing.images : [];
     let newImages = [];
 
-    // Check if "images" field exists in uploaded files
+    // 1️⃣ URLs from req.body (sent as string or array)
+    if (req.body.images) {
+      const bodyImages = Array.isArray(req.body.images) ? req.body.images : [req.body.images];
+      newImages.push(...bodyImages);
+    }
+
+    // 2️⃣ Binary files from req.files
     if (files.images) {
-      for (const file of files.images) {
-        if (typeof file === "string") {
-          newImages.push(file); // URL string, keep as-is
-        } else {
-          const uploadedUrl = await saveFileIfExists(file, "sessionExercise", null);
-          if (uploadedUrl) newImages.push(uploadedUrl);
-        }
+      const fileImages = Array.isArray(files.images) ? files.images : [files.images];
+      for (const file of fileImages) {
+        const uploadedUrl = await saveFileIfExists(file, "sessionExercise", null);
+        if (uploadedUrl) newImages.push(uploadedUrl);
       }
     }
 
-    // Merge old + new images
+    // 3️⃣ Merge with existing
     const finalImages = [...existingImages, ...newImages];
 
     // STEP 7: Prepare update payload
