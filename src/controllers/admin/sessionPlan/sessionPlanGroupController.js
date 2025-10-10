@@ -5,7 +5,7 @@ const { logActivity } = require("../../../utils/admin/activityLogger");
 // const { getVideoDurationInSeconds } = require("../../../utils/videoHelper");
 const { downloadFromFTP, uploadToFTP } = require("../../../utils/uploadToFTP");
 
-const { getVideoDurationInSeconds, formatDuration, } = require("../../../utils/videoHelper"); 
+const { getVideoDurationInSeconds, formatDuration, } = require("../../../utils/videoHelper");
 const {
   createNotification,
 } = require("../../../utils/admin/notificationHelper");
@@ -1297,6 +1297,24 @@ exports.updateSessionPlanGroup = async (req, res) => {
       console.log(`STEP 6: uploadFields[${level}_video] =`, uploadFields[`${level}_video`]);
     }
 
+    let existingImages = Array.isArray(existing.images) ? existing.images : [];
+    let newImages = [];
+
+    // Check if "images" field exists in uploaded files
+    if (files.images) {
+      for (const file of files.images) {
+        if (typeof file === "string") {
+          newImages.push(file); // URL string, keep as-is
+        } else {
+          const uploadedUrl = await saveFileIfExists(file, "sessionExercise", null);
+          if (uploadedUrl) newImages.push(uploadedUrl);
+        }
+      }
+    }
+
+    // Merge old + new images
+    const finalImages = [...existingImages, ...newImages];
+
     // STEP 7: Prepare update payload
     const updatePayload = {
       groupName: groupName?.trim() || existing.groupName,
@@ -1304,6 +1322,7 @@ exports.updateSessionPlanGroup = async (req, res) => {
       player: player || existing.player,
       banner,
       ...uploadFields,
+      images: finalImages,
     };
     console.log("STEP 7: updatePayload =", updatePayload);
 

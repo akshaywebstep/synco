@@ -291,7 +291,7 @@ exports.createVenue = async (data) => {
               attributes: [
                 "id",
                 "groupName",
-                "pinned",
+                // "pinned",
                 "levels",
                 "beginner_video",
                 "intermediate_video",
@@ -463,7 +463,7 @@ exports.updateVenue = async (id, data) => {
               attributes: [
                 "id",
                 "groupName",
-                "pinned",
+                // "pinned",
                 "levels",
                 "beginner_video",
                 "intermediate_video",
@@ -791,7 +791,7 @@ exports.getAllVenues = async (createdBy) => {
                 if (!entry.sessionPlanId) continue;
 
                 const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
-                  attributes: ["id", "groupName", "levels","pinned", "beginner_video",
+                  attributes: ["id", "groupName", "levels", "beginner_video",
                     "intermediate_video",
                     "pro_video",
                     "advanced_video", "banner", "player", "beginner_upload",
@@ -1267,7 +1267,7 @@ exports.getVenueById = async (id, createdBy) => {
             if (!entry.sessionPlanId) continue;
 
             const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
-              attributes: ["id", "groupName", "levels","pinned", "beginner_video",
+              attributes: ["id", "groupName", "levels", "beginner_video",
                 "intermediate_video",
                 "advanced_video",
                 "pro_video", "banner", "beginner_upload",
@@ -1335,7 +1335,7 @@ exports.getVenueById = async (id, createdBy) => {
               entry.sessionPlan = {
                 id: spg.id,
                 groupName: spg.groupName,
-                pinned: spg.pinned,
+                // pinned: spg.pinned,
                 levels,
                 video: spg.video,
                 banner: spg.banner,

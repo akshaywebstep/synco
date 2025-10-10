@@ -32,6 +32,11 @@ const SessionPlanConfig = sequelize.define(
             type: DataTypes.INTEGER.UNSIGNED,
             allowNull: false,
         },
+        // add new feild for one to one ->
+        pinned: {
+            type: DataTypes.BOOLEAN,
+            defaultValue: false,
+        },
     },
     {
         tableName: "session_plan_configs",
