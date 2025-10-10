@@ -108,6 +108,7 @@ router.use("/lead", require("./leadRoutes"));
 
 // one to one base routes
 router.use("/one-to-one", require("./oneToOneRoutes/sessionPlanLibraryRoutes"));
+router.use("/one-to-one", require("./oneToOneRoutes/sessionExerciseRoutes"));
 
 const {
   listComments,

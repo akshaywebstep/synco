@@ -291,6 +291,7 @@ exports.createVenue = async (data) => {
               attributes: [
                 "id",
                 "groupName",
+                // "pinned",
                 "levels",
                 "beginner_video",
                 "intermediate_video",
@@ -462,6 +463,7 @@ exports.updateVenue = async (id, data) => {
               attributes: [
                 "id",
                 "groupName",
+                // "pinned",
                 "levels",
                 "beginner_video",
                 "intermediate_video",
@@ -1333,6 +1335,7 @@ exports.getVenueById = async (id, createdBy) => {
               entry.sessionPlan = {
                 id: spg.id,
                 groupName: spg.groupName,
+                // pinned: spg.pinned,
                 levels,
                 video: spg.video,
                 banner: spg.banner,

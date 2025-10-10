@@ -1,10 +1,10 @@
 
 
-const { Booking, BookingStudentMeta, Venue } = require("../../../models");
+const { Booking, BookingStudentMeta, Venue, ClassSchedule } = require("../../../models");
 
 exports.getAttendanceRegister = async (classScheduleId) => {
   try {
-    // ✅ Fetch bookings with related students and venue
+    // 1️⃣ Fetch bookings first
     const bookings = await Booking.findAll({
       where: { classScheduleId },
       include: [
@@ -22,7 +22,7 @@ exports.getAttendanceRegister = async (classScheduleId) => {
         },
         {
           model: Venue,
-          as: "venue", // Make sure Booking has association with Venue
+          as: "venue",
           attributes: ["id", "name", "address", "area", "facility"],
         },
       ],
@@ -36,6 +36,18 @@ exports.getAttendanceRegister = async (classScheduleId) => {
       };
     }
 
+    // 2️⃣ Only fetch class schedule if there are bookings
+    const classSchedule = await ClassSchedule.findByPk(classScheduleId, {
+      attributes: ["id", "className", "startTime", "endTime", "createdAt"],
+    });
+
+    if (!classSchedule) {
+      return {
+        status: false,
+        message: "Class schedule not found.",
+      };
+    }
+
     const members = [];
     const trials = [];
 
@@ -43,10 +55,11 @@ exports.getAttendanceRegister = async (classScheduleId) => {
       const bookingData = {
         id: booking.id,
         bookingType: booking.bookingType,
+        classScheduleId: booking.classScheduleId,
         status: booking.status,
         students: booking.students || [],
         createdAt: booking.createdAt,
-        venue: booking.venue || null, // Include venue per booking
+        venue: booking.venue || null,
       };
 
       if (booking.bookingType === "free") {
@@ -56,13 +69,18 @@ exports.getAttendanceRegister = async (classScheduleId) => {
       }
     }
 
-    // Include venue info from first booking if you want a top-level venue
+    // Top-level venue (from first booking, optional)
     const topLevelVenue = bookings[0]?.venue || null;
 
     return {
       status: true,
       message: "Attendance register fetched successfully.",
-      data: { classScheduleId, venue: topLevelVenue, members, trials },
+      data: {
+        classSchedule, // 🔹 full class schedule details
+        venue: topLevelVenue,
+        members,
+        trials,
+      },
     };
   } catch (error) {
     console.error("❌ AttendanceRegisterService Error:", error);

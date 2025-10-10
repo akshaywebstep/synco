@@ -245,6 +245,7 @@ exports.updateClass = async (id, data) => {
 //   }
 // };
 
+//new
 exports.getAllClasses = async (adminId) => {
   try {
     const classes = await ClassSchedule.findAll({
@@ -252,6 +253,9 @@ exports.getAllClasses = async (adminId) => {
       order: [["id", "ASC"]],
       include: [{ model: Venue, as: "venue" }],
     });
+
+    // ✅ FIX: Fetch all mappings once so we can use them later
+    const mappings = await ClassScheduleTermMap.findAll();
 
     for (const cls of classes) {
       const venue = cls.venue;
@@ -409,6 +413,7 @@ exports.getAllClasses = async (adminId) => {
                           title: ex.title,
                           description: ex.description,
                           duration: ex.duration,
+                          imageUrl: ex.imageUrl,
                         }));
                     } else {
                       item.sessionExercises = [];
@@ -441,17 +446,18 @@ exports.getAllClasses = async (adminId) => {
                   }
                 }
 
-                // 🔹 Fetch mapping for this sessionPlan
-                const mapping = await ClassScheduleTermMap.findOne({
-                  where: {
-                    classScheduleId: cls.id,
-                    termId: term.id,
-                    sessionPlanId: entry.sessionPlanId,
-                  },
-                  raw: true,
-                });
+                // 🔹 Fetch all possible mappings for this sessionPlan
+                const relatedMappings = mappings.filter(
+                  (m) =>
+                    m.classScheduleId === cls.id &&
+                    m.termGroupId === termGroup.id &&
+                    m.termId === term.id &&
+                    m.sessionPlanId === spg.id
+                );
 
-                // Assign enriched sessionPlan, flattening mapping fields
+                // Pick mapping per index (so each session gets distinct mapId)
+                const mapping = relatedMappings[i] || relatedMappings[0] || null;
+
                 entry.sessionPlan = {
                   id: spg.id,
                   groupName: spg.groupName,
@@ -462,10 +468,10 @@ exports.getAllClasses = async (adminId) => {
                   pro_video: spg.pro_video,
                   banner: spg.banner,
                   player: spg.player,
-                  videoUploadedAgo, // ✅ level-wise video upload times
+                  videoUploadedAgo,
                   ...(mapping
                     ? {
-                      mapId: mapping.id, // ✅ preserve mapping ID distinctly
+                      mapId: mapping.id,
                       classScheduleId: mapping.classScheduleId,
                       termGroupId: mapping.termGroupId,
                       termId: mapping.termId,
@@ -485,7 +491,6 @@ exports.getAllClasses = async (adminId) => {
         }
 
         venue.dataValues.termGroups = termGroups;
-
       }
     }
 

@@ -1,5 +1,3 @@
-const axios = require("axios");
-
 const LeadService = require("../../../services/admin/lead/leads");
 const { logActivity } = require("../../../utils/admin/activityLogger");
 const {
@@ -15,105 +13,105 @@ const MODULE = "leads";
 
 // ✅ Add Comment for lead
 exports.addCommentForLead = async (req, res) => {
-  const payload = req.body;
+    const payload = req.body;
 
-  if (DEBUG) console.log("🎯 Add Comment Payload:", payload);
+    if (DEBUG) console.log("🎯 Add Comment Payload:", payload);
 
-  // ✅ Validate request body
-  const { isValid, error } = validateFormData(payload, {
-    requiredFields: ["comment"], // comment is required
-    optionalFields: ["commentType"],
-  });
-
-  if (!isValid) {
-    await logActivity(req, PANEL, MODULE, "create", error, false);
-    if (DEBUG) console.log("❌ Validation failed:", error);
-    return res.status(400).json({ status: false, ...error });
-  }
-
-  try {
-    // ✅ Use authenticated admin ID
-    const commentBy = req.admin?.id || null;
-
-    const result = await CommentLead.addCommentForLead({
-      commentBy,
-      comment: payload.comment,
-      commentType: payload.commentType || "lead",
+    // ✅ Validate request body
+    const { isValid, error } = validateFormData(payload, {
+        requiredFields: ["comment"], // comment is required
+        optionalFields: ["commentType"],
     });
 
-    if (!result.status) {
-      await logActivity(req, PANEL, MODULE, "create", result, false);
-      if (DEBUG) console.log("❌ Comment creation failed:", result.message);
-      return res.status(400).json({ status: false, message: result.message });
+    if (!isValid) {
+        await logActivity(req, PANEL, MODULE, "create", error, false);
+        if (DEBUG) console.log("❌ Validation failed:", error);
+        return res.status(400).json({ status: false, ...error });
     }
 
-    // ✅ Log admin activity
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "create",
-      { message: `Comment added (type: ${payload.commentType || "lead"})` },
-      true
-    );
-    if (DEBUG) console.log("📝 Activity logged successfully");
+    try {
+        // ✅ Use authenticated admin ID
+        const commentBy = req.admin?.id || null;
 
-    // ✅ Notify admins
-    const createdBy = req.admin?.firstName || "An admin";
-    await createNotification(
-      req,
-      "New Comment",
-      `${createdBy} added a comment for lead.`,
-      "Admins"
-    );
-    if (DEBUG) console.log("🔔 Notification created for admins");
+        const result = await CommentLead.addCommentForLead({
+            commentBy,
+            comment: payload.comment,
+            commentType: payload.commentType || "lead",
+        });
 
-    return res.status(201).json({
-      status: true,
-      message: "✅ Comment added successfully.",
-      data: result.data,
-    });
-  } catch (error) {
-    console.error("❌ Error adding comment:", error);
+        if (!result.status) {
+            await logActivity(req, PANEL, MODULE, "create", result, false);
+            if (DEBUG) console.log("❌ Comment creation failed:", result.message);
+            return res.status(400).json({ status: false, message: result.message });
+        }
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "create",
-      { error: error.message },
-      false
-    );
+        // ✅ Log admin activity
+        await logActivity(
+            req,
+            PANEL,
+            MODULE,
+            "create",
+            { message: `Comment added (type: ${payload.commentType || "lead"})` },
+            true
+        );
+        if (DEBUG) console.log("📝 Activity logged successfully");
 
-    return res.status(500).json({ status: false, message: "Server error." });
-  }
+        // ✅ Notify admins
+        const createdBy = req.admin?.firstName || "An admin";
+        await createNotification(
+            req,
+            "New Comment",
+            `${createdBy} added a comment for lead.`,
+            "Admins"
+        );
+        if (DEBUG) console.log("🔔 Notification created for admins");
+
+        return res.status(201).json({
+            status: true,
+            message: "✅ Comment added successfully.",
+            data: result.data,
+        });
+    } catch (error) {
+        console.error("❌ Error adding comment:", error);
+
+        await logActivity(
+            req,
+            PANEL,
+            MODULE,
+            "create",
+            { error: error.message },
+            false
+        );
+
+        return res.status(500).json({ status: false, message: "Server error." });
+    }
 };
 
 exports.listCommentsForLead = async (req, res) => {
-  try {
-    const commentType = req.query.commentType || "lead";
+    try {
+        const commentType = req.query.commentType || "lead";
 
-    const result = await CommentLead.listCommentsForLead({ commentType });
+        const result = await CommentLead.listCommentsForLead({ commentType });
 
-    if (!result.status) {
-      await logActivity(req, PANEL, MODULE, "list", result, false);
-      return res.status(400).json({ status: false, message: result.message });
+        if (!result.status) {
+            await logActivity(req, PANEL, MODULE, "list", result, false);
+            return res.status(400).json({ status: false, message: result.message });
+        }
+
+        await logActivity(req, PANEL, MODULE, "list", { message: "Comments listed successfully" }, true);
+
+        return res.status(200).json({
+            status: true,
+            message: "✅ Comments fetched successfully",
+            data: result.data,
+        });
+    } catch (error) {
+        console.error("❌ Error listing comments:", error);
+
+        await logActivity(req, PANEL, MODULE, "list", { error: error.message }, false);
+
+        return res.status(500).json({ status: false, message: "Server error." });
     }
-
-    await logActivity(req, PANEL, MODULE, "list", { message: "Comments listed successfully" }, true);
-
-    return res.status(200).json({
-      status: true,
-      message: "✅ Comments fetched successfully",
-      data: result.data,
-    });
-  } catch (error) {
-    console.error("❌ Error listing comments:", error);
-
-    await logActivity(req, PANEL, MODULE, "list", { error: error.message }, false);
-
-    return res.status(500).json({ status: false, message: "Server error." });
-  }
 };
 
 exports.createLead = async (req, res) => {

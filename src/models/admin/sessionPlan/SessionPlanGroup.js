@@ -63,10 +63,10 @@ const SessionPlanGroup = sequelize.define(
     },
 
     // add new feild for one to one ->
-    pinned: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: false,
-    },
+    // pinned: {
+    //   type: DataTypes.BOOLEAN,
+    //   defaultValue: false,
+    // },
 
   },
   {

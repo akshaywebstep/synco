@@ -10,7 +10,7 @@ const {
     BookingPayment,
     PaymentPlan,
     Admin,
-} = require("../../models");
+} = require("../../../../models");
 
 // Helper functions
 function totalRevenueSum(bookings) {
@@ -273,7 +273,7 @@ function groupBookingsByYearMonth(bookings, filter) {
 }
 
 // Main Report
-const getMonthlyClassReport = async (filters) => {
+const getMonthlyReport = async (filters) => {
     try {
         const bookings = await Booking.findAll({
             order: [["id", "DESC"]],
@@ -309,4 +309,4 @@ const getMonthlyClassReport = async (filters) => {
     }
 };
 
-module.exports = { getMonthlyClassReport };
+module.exports = { getMonthlyReport };

@@ -43,7 +43,6 @@ router.put(
   "/:id",
   authMiddleware,
   upload.array("images", 10),
-  authMiddleware,
   permissionMiddleware("session-exercise", "update"),
   updateSessionExercise
 );
