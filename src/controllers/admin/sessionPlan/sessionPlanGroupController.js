@@ -1297,7 +1297,17 @@ exports.updateSessionPlanGroup = async (req, res) => {
       console.log(`STEP 6: uploadFields[${level}_video] =`, uploadFields[`${level}_video`]);
     }
 
-    let existingImages = Array.isArray(existing.images) ? existing.images : [];
+    // Parse existing images (handle JSON string if stored as TEXT)
+    let existingImages = [];
+    if (existing.images) {
+      try {
+        existingImages = typeof existing.images === "string" ? JSON.parse(existing.images) : existing.images;
+      } catch (err) {
+        console.error("Failed to parse existing images", err);
+        existingImages = [];
+      }
+    }
+
     let newImages = [];
 
     // 1️⃣ URLs from req.body (sent as string or array)
@@ -1325,7 +1335,8 @@ exports.updateSessionPlanGroup = async (req, res) => {
       player: player || existing.player,
       banner,
       ...uploadFields,
-      images: finalImages,
+      // images: finalImages,
+      images: JSON.stringify(finalImages)
     };
     console.log("STEP 7: updatePayload =", updatePayload);
 
