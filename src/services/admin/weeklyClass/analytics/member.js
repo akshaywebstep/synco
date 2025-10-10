@@ -14,15 +14,33 @@ const {
 
 // Helper functions
 function totalRevenueSum(bookings) {
-    return bookings.reduce((sum, b) => sum + Number(b.paymentPlan?.price || 0), 0);
+    return bookings.reduce((sum, b) => {
+        if (b.paymentPlan && typeof b.paymentPlan.price === 'number' && Array.isArray(b.students)) {
+            const totalStudents = b.students.length;
+            sum += b.paymentPlan.price * totalStudents;
+        }
+        return sum;
+    }, 0);
 }
 
 function totalPaidRevenueSum(bookings) {
-    return bookings.filter(b => b.bookingType === "paid").reduce((sum, b) => sum + Number(b.paymentPlan?.price || 0), 0);
+    return bookings
+        .filter(b => b.bookingType === "paid" && b.paymentPlan && Array.isArray(b.students))
+        .reduce((sum, b) => {
+            const totalStudents = b.students.length;
+            sum += b.paymentPlan.price * totalStudents;
+            return sum;
+        }, 0);
 }
 
-function totalUnpaidRevenueSum(bookings) {
-    return bookings.filter(b => b.bookingType !== "paid").reduce((sum, b) => sum + Number(b.paymentPlan?.price || 0), 0);
+function totalPaidRevenueSum(bookings) {
+    return bookings
+        .filter(b => b.bookingType !== "paid" && b.paymentPlan && Array.isArray(b.students))
+        .reduce((sum, b) => {
+            const totalStudents = b.students.length;
+            sum += b.paymentPlan.price * totalStudents;
+            return sum;
+        }, 0);
 }
 
 function countPaidBookings(bookings) {
@@ -207,15 +225,23 @@ function groupBookingsByYearMonth(bookings, filter) {
             const admin = b.bookedByAdmin;
             if (!admin) return;
             const price = Number(b.paymentPlan?.price || 0);
-            if (!agents[admin.id]) agents[admin.id] = { id: admin.id, name: `${admin.firstName} ${admin.lastName}`, totalSales: { ...totalSales, totalRevenue: 0, totalPaidRevenue: 0, totalUnpaidRevenue: 0, bookingCount: 0, paidBookingCount: 0, unpaidBookingCount: 0 } };
+            if (!agents[admin.id]) agents[admin.id] = { id: admin.id, name: `${admin.firstName} ${admin.lastName}`, totalSales: { totalRevenue: 0, totalPaidRevenue: 0, totalUnpaidRevenue: 0, bookingCount: 0, paidBookingCount: 0, unpaidBookingCount: 0 } };
+
+            const newStudentsCount = b.students.filter(student => {
+                const studentCreatedAt = moment(student.createdAt);
+                return (
+                    studentCreatedAt.month() === current.month() &&
+                    studentCreatedAt.year() === current.year()
+                );
+            }).length;
 
             agents[admin.id].totalSales.bookingCount += 1;
-            agents[admin.id].totalSales.totalRevenue += price;
+            agents[admin.id].totalSales.totalRevenue += (price * newStudentsCount);
             if (b.bookingType === "paid") {
-                agents[admin.id].totalSales.totalPaidRevenue += price;
+                agents[admin.id].totalSales.totalPaidRevenue += (price * newStudentsCount);
                 agents[admin.id].totalSales.paidBookingCount += 1;
             } else {
-                agents[admin.id].totalSales.totalUnpaidRevenue += price;
+                agents[admin.id].totalSales.totalUnpaidRevenue += (price * newStudentsCount);
                 agents[admin.id].totalSales.unpaidBookingCount += 1;
             }
         });
@@ -277,6 +303,7 @@ const getMonthlyReport = async (filters) => {
     try {
         const bookings = await Booking.findAll({
             order: [["id", "DESC"]],
+            where: { bookingType: 'paid' },
             include: [
                 { model: BookingStudentMeta, as: "students", include: [{ model: BookingParentMeta, as: "parents", required: false }, { model: BookingEmergencyMeta, as: "emergencyContacts", required: false }], required: false },
                 { model: ClassSchedule, as: "classSchedule", required: false, include: [{ model: Venue, as: "venue", required: false }] },
