@@ -6,6 +6,8 @@ const permissionMiddleware = require("../../middleware/admin/permission");
 const {
   createLead,
   getAllForFacebookLeads,
+  registerFacebookLeads,
+  syncFacebookLeads,
   getAllReferallLeads,
   getAllOthersLeads,
   getAllLeads,
@@ -41,6 +43,16 @@ router.get(
   authMiddleware,
   permissionMiddleware("lead", "view-listing"),
   getAllForFacebookLeads
+);
+
+router.get(
+  "/facebook/webhook",
+  registerFacebookLeads
+);
+
+router.post(
+  "/facebook/webhook",
+  syncFacebookLeads
 );
 
 router.get(

@@ -1,14 +1,14 @@
 // controllers/admin/weeklyClassController.js
 
-const weeklyClassService = require("../../services/admin/weeklyClass");
-const { logActivity } = require("../../utils/admin/activityLogger");
+const freeTrailAnalytics = require("../../../../services/admin/weeklyClass/analytics/freeTrail");
+const { logActivity } = require("../../../../utils/admin/activityLogger");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "weekly-class";
 
 // ✅ Generate Weekly Class Report
-exports.generateWeeklyClassReport = async (req, res) => {
+exports.getMonthlyReport = async (req, res) => {
   if (DEBUG) {
     console.log("📊 [Step 1] Request received to generate weekly class report.");
     if (Object.keys(req.query).length > 0) {
@@ -33,7 +33,7 @@ exports.generateWeeklyClassReport = async (req, res) => {
 
   try {
     // Pass filters (if any) from query params to service
-    const reportResult = await weeklyClassService.getMonthlyClassReport(filters);
+    const reportResult = await freeTrailAnalytics.getMonthlyReport(filters);
 
     if (!reportResult.status) {
       const errorMsg =

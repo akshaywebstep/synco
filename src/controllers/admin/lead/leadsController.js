@@ -5,6 +5,7 @@ const {
 } = require("../../../utils/admin/notificationHelper");
 const { validateFormData } = require("../../../utils/validateFormData");
 const CommentLead = require("../../../services/admin/lead/leads");
+const sendErrorEmail = require("../../../utils/email/sendErrorEmail");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -253,6 +254,183 @@ exports.getAllForFacebookLeads = async (req, res) => {
       status: false,
       message: "Server error.",
       error: error.message,
+    });
+  }
+};
+
+exports.registerFacebookLeads = async (req, res) => {
+  try {
+    console.log("📥 Facebook Webhook Verification Request:", JSON.stringify(req.query, null, 2));
+
+    const {
+      FACEBOOK_VERIFY_TOKEN,
+    } = process.env;
+
+    if (!FACEBOOK_VERIFY_TOKEN) {
+      console.error("❌ Missing FACEBOOK_VERIFY_TOKEN in .env");
+      return res.status(500).json({
+        status: false,
+        message: "Facebook verify token not configured. Please check .env file.",
+      });
+    }
+
+    // --- Extract verification parameters from query ---
+    const mode = req.query['hub.mode'] || req.query['hub_mode'];
+    const token = req.query['hub.verify_token'] || req.query['hub_verify_token'];
+    const challenge = req.query['hub.challenge'] || req.query['hub_challenge'];
+
+    if (mode === 'subscribe' && token === FACEBOOK_VERIFY_TOKEN) {
+      console.log("✅ Webhook verified successfully.");
+      return res.status(200).send(challenge); // Respond with the challenge
+    } else {
+      console.error(`❌ Webhook verification failed (mode=${mode}, token=${token})`);
+      return res.status(403).send("Verification failed.");
+    }
+
+  } catch (error) {
+    console.error("❌ registerFacebookLeads Error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "An unexpected error occurred during webhook verification.",
+      developerMessage: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+};
+
+exports.syncFacebookLeads = async (req, res) => {
+  try {
+    console.log("📥 Facebook Webhook Received:", JSON.stringify(req.body, null, 2));
+
+    const {
+      FACEBOOK_PAGE_ACCESS_TOKEN,
+      FACEBOOK_GRAPH_API_BASE,
+      FACEBOOK_GRAPH_API_VERSION,
+    } = process.env;
+
+    if (!FACEBOOK_PAGE_ACCESS_TOKEN) {
+      const errMsg = "❌ Missing Facebook Page Access Token in .env";
+      console.error(errMsg);
+      await sendErrorEmail(`<p>${errMsg}</p>`);
+      return res.status(500).json({
+        status: false,
+        message: "Facebook Page Access Token not configured. Please check .env file.",
+      });
+    }
+
+    // --- STEP 1: Extract leadgen_id safely ---
+    const body = req.body;
+    let leadgen_id = null;
+
+    if (body?.entry) {
+      for (const entry of body.entry) {
+        if (entry.changes) {
+          for (const change of entry.changes) {
+            if (change.field === "leadgen" && change.value?.leadgen_id) {
+              leadgen_id = change.value.leadgen_id;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (!leadgen_id) {
+      const warningMsg = "⚠️ No leadgen_id found in webhook payload";
+      console.log(warningMsg);
+      await sendErrorEmail(`<p>${warningMsg}</p><pre>${JSON.stringify(body, null, 2)}</pre>`);
+      return res.status(200).json({ status: false, message: "No lead ID found" });
+    }
+
+    console.log("🔗 Lead ID:", leadgen_id);
+
+    // --- STEP 2: Fetch full lead details from Facebook ---
+    const leadUrl = `${FACEBOOK_GRAPH_API_BASE}/${FACEBOOK_GRAPH_API_VERSION}/${leadgen_id}`;
+    const leadResponse = await axios.get(leadUrl, {
+      params: {
+        fields: "id,created_time,field_data",
+        access_token: FACEBOOK_PAGE_ACCESS_TOKEN,
+      },
+    });
+
+    const leadData = leadResponse.data;
+    console.log("🌐 Facebook Lead Data:", leadData);
+
+    if (!leadData.field_data) {
+      const noFieldMsg = "⚠️ No field_data found in Facebook lead response";
+      await sendErrorEmail(`<p>${noFieldMsg}</p><pre>${JSON.stringify(leadData, null, 2)}</pre>`);
+      return res.status(200).json({ status: false, message: "No field_data found" });
+    }
+
+    // --- STEP 3: Parse field_data into usable key-value pairs ---
+    const parsedFields = {};
+    leadData.field_data.forEach(field => {
+      parsedFields[field.name] = Array.isArray(field.values)
+        ? field.values.join(", ")
+        : field.values || "";
+    });
+
+    console.log("✅ Parsed Lead Fields:", parsedFields);
+
+    // --- STEP 4: Create lead automatically ---
+    const result = await LeadService.createLead({
+      firstName: parsedFields.first_name?.split(" ")[0] || "Unknown",
+      lastName: parsedFields.last_name?.split(" ")[1] || "",
+      email: parsedFields.email || "no-email@example.com",
+      phone: parsedFields.phone_number || "",
+      postcode: parsedFields.post_code || "",
+      childAge: parsedFields.child_age || 6,
+      status: "Facebook"
+    });
+
+    if (!result.status) {
+      const failMsg = `❌ Lead creation failed: ${result.message}`;
+      console.error(failMsg);
+      await sendErrorEmail(`<p>${failMsg}</p><pre>${JSON.stringify(parsedFields, null, 2)}</pre>`);
+      return res.status(500).json({
+        status: false,
+        message: "Failed to create lead",
+        error: result.message,
+      });
+    }
+
+    console.log("🎉 Lead created successfully:", result.data);
+
+    // --- STEP 5: Respond success to Facebook ---
+    return res.status(200).json({
+      status: true,
+      message: "Lead received and created successfully",
+      leadId: leadgen_id,
+      createdLead: result.data,
+    });
+
+  } catch (error) {
+    console.error("❌ syncFacebookLeads Error:", error);
+
+    const isNetworkError = error.message.includes("network");
+    const isAuthError = error.message.includes("token");
+
+    let userMessage = "An unexpected error occurred while syncing leads.";
+    if (isNetworkError)
+      userMessage = "Network issue while connecting to Facebook. Please try again.";
+    if (isAuthError)
+      userMessage = "Authentication failed. Please verify your Facebook token.";
+
+    // --- Send error email ---
+    const errorHtml = `
+      <p>${userMessage}</p>
+      <pre>${error.stack || error.message}</pre>
+      <p>Webhook payload:</p>
+      <pre>${JSON.stringify(req.body, null, 2)}</pre>
+    `;
+    await sendErrorEmail(errorHtml, "Facebook Leads Webhook Error");
+
+    return res.status(500).json({
+      status: false,
+      code: 500,
+      message: userMessage,
+      developerMessage: error.message,
+      timestamp: new Date().toISOString(),
     });
   }
 };

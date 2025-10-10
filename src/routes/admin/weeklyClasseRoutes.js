@@ -3,16 +3,23 @@ const router = express.Router({ mergeParams: true });
 const authMiddleware = require("../../middleware/admin/authenticate");
 const permissionMiddleware = require("../../middleware/admin/permission");
 
-const {
-  generateWeeklyClassReport,
-} = require("../../controllers/admin/weeklyClassController");
+const memberController = require("../../controllers/admin/weeklyClass/analytics/memberController");
+const freeTrailController = require("../../controllers/admin/weeklyClass/analytics/freeTrailController");
 
 // Weekly class report route
 router.get(
-  "/membership-sales/report",
+  "/analytics/member",
   authMiddleware,
   // permissionMiddleware("weekly-class", "view-report"),
-  generateWeeklyClassReport
+  memberController.getMonthlyReport
+);
+
+// Weekly class report route
+router.get(
+  "/analytics/free-trail",
+  authMiddleware,
+  // permissionMiddleware("weekly-class", "view-report"),
+  freeTrailController.getMonthlyReport
 );
 
 module.exports = router;
