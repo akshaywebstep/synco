@@ -1330,7 +1330,7 @@ exports.updateSessionPlanGroup = async (req, res) => {
       player: player || existing.player,
       banner,
       ...uploadFields,
-      images: finalImages // <-- Do NOT stringify if JSON column
+      images: finalImages 
     };
     console.log("STEP 7: updatePayload =", updatePayload);
 
