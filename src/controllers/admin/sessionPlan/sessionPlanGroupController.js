@@ -1297,26 +1297,21 @@ exports.updateSessionPlanGroup = async (req, res) => {
       console.log(`STEP 6: uploadFields[${level}_video] =`, uploadFields[`${level}_video`]);
     }
 
-    // Parse existing images (handle JSON string if stored as TEXT)
-    let existingImages = [];
-    if (existing.images) {
-      try {
-        existingImages = typeof existing.images === "string" ? JSON.parse(existing.images) : existing.images;
-      } catch (err) {
-        console.error("Failed to parse existing images", err);
-        existingImages = [];
-      }
+    // Parse existing images
+    let existingImages = Array.isArray(existing.images) ? existing.images : [];
+    if (typeof existingImages === "string") {
+      try { existingImages = JSON.parse(existingImages); }
+      catch (e) { existingImages = []; }
     }
 
+    // Collect new images from req.body (URLs)
     let newImages = [];
-
-    // 1️⃣ URLs from req.body (sent as string or array)
     if (req.body.images) {
       const bodyImages = Array.isArray(req.body.images) ? req.body.images : [req.body.images];
       newImages.push(...bodyImages);
     }
 
-    // 2️⃣ Binary files from req.files
+    // Collect new images from uploaded files (binary)
     if (files.images) {
       const fileImages = Array.isArray(files.images) ? files.images : [files.images];
       for (const file of fileImages) {
@@ -1325,18 +1320,17 @@ exports.updateSessionPlanGroup = async (req, res) => {
       }
     }
 
-    // 3️⃣ Merge with existing
+    // Merge old + new images
     const finalImages = [...existingImages, ...newImages];
 
-    // STEP 7: Prepare update payload
+    // Update payload (store as array if JSON column, or stringify if TEXT)
     const updatePayload = {
       groupName: groupName?.trim() || existing.groupName,
       levels: parsedLevels,
       player: player || existing.player,
       banner,
       ...uploadFields,
-      // images: finalImages,
-      images: JSON.stringify(finalImages)
+      images: finalImages // <-- Do NOT stringify if JSON column
     };
     console.log("STEP 7: updatePayload =", updatePayload);
 
