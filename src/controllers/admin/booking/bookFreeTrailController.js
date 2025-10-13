@@ -4,7 +4,7 @@ const { logActivity } = require("../../../utils/admin/activityLogger");
 const { Venue, ClassSchedule, Admin } = require("../../../models");
 const emailModel = require("../../../services/email");
 const sendEmail = require("../../../utils/email/sendEmail");
-const { BookingParentMeta , Booking} = require("../../../models");
+const { BookingParentMeta, Booking } = require("../../../models");
 
 const {
   createNotification,
@@ -222,6 +222,59 @@ exports.createBooking = async (req, res) => {
 
     // Create parent admin accounts
 
+    // // Send email
+    // const parentMetas = await BookingParentMeta.findAll({
+    //   where: { studentId },
+    // });
+
+    // if (parentMetas && parentMetas.length > 0) {
+    //   const {
+    //     status: configStatus,
+    //     emailConfig,
+    //     htmlTemplate,
+    //     subject,
+    //   } = await emailModel.getEmailConfig(PANEL, "free-trial-confirmation");
+
+    //   if (configStatus && htmlTemplate) {
+    //     const recipients = parentMetas.map((p) => ({
+    //       name: `${p.parentFirstName} ${p.parentLastName}`,
+    //       email: p.parentEmail,
+    //     }));
+
+    //     for (const recipient of recipients) {
+    //       const variables = {
+    //         "{{parentName}}": recipient.name,
+    //         "{{parentEmail}}": recipient.email,
+    //         "{{parentPassword}}": "Synco123",
+    //         "{{studentFirstName}}": studentFirstName || "",
+    //         "{{studentLastName}}": studentLastName || "",
+    //         "{{venueName}}": venue?.name || "N/A",
+    //         "{{className}}": classData?.className || "N/A",
+    //         "{{trialDate}}": booking?.trialDate || "",
+    //         "{{classTime}}": classData?.startTime || "",
+    //         "{{logoUrl}}": "https://webstepdev.com/demo/syncoUploads/syncoLogo.png",
+    //         "{{kidsPlaying}}": "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png",
+    //         "{{appName}}": "Synco",
+    //         "{{year}}": new Date().getFullYear().toString(),
+    //       };
+
+    //       let finalHtml = htmlTemplate;
+    //       for (const [key, val] of Object.entries(variables)) {
+    //         const safeKey = key.replace(/[{}]/g, "").trim(); // remove braces and spaces
+    //         const regex = new RegExp(`{{\\s*${safeKey}\\s*}}`, "g"); // match {{ parentName }} or {{parentName}}
+    //         finalHtml = finalHtml.replace(regex, val);
+    //       }
+
+    //       await sendEmail(emailConfig, {
+    //         recipient: [recipient],
+    //         cc: emailConfig.cc || [],
+    //         bcc: emailConfig.bcc || [],
+    //         subject,
+    //         htmlBody: finalHtml,
+    //       });
+    //     }
+    //   }
+    // }
     // Send email
     const parentMetas = await BookingParentMeta.findAll({
       where: { studentId },
