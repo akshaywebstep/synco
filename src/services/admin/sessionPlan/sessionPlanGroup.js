@@ -103,7 +103,7 @@ exports.createSessionPlanGroup = async (data) => {
 
 exports.getAllSessionPlanGroups = async ({
   orderBy = "createdAt",
-  order = "ASC",
+  order = "DESC",
   createdBy,
 } = {}) => {
   try {

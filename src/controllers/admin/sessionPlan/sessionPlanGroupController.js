@@ -912,11 +912,11 @@ exports.getSessionPlanGroupDetails = async (req, res) => {
 exports.getAllSessionPlanGroups = async (req, res) => {
   try {
     const createdBy = req.admin?.id || req.user?.id;
-    const { orderBy = "sortOrder", order = "DESC" } = req.query;
+    // const { orderBy = "sortOrder", order = "DESC" } = req.query;
 
     const result = await SessionPlanGroupService.getAllSessionPlanGroups({
-      orderBy,
-      order,
+      // orderBy,
+      // order,
       createdBy,
     });
 
