@@ -73,7 +73,7 @@ router.post(
 );
 
 router.post(
-  "/waiting-list",
+  "/add-to/waiting-list",
   authMiddleware,
   permissionMiddleware("add-waiting-list", "create"),
   addToWaitingList
