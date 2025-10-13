@@ -360,7 +360,7 @@ exports.updateVenue = async (id, data) => {
         if (!isNaN(parsed)) {
           data.paymentGroupId = parsed;
         } else {
-          throw new Error("Invalid paymentGroupId");
+          throw new Error("Payment group is required");
         }
       }
     } else {
