@@ -27,6 +27,48 @@ function timeToMinutes(time) {
   return hours * 60 + minutes;
 }
 
+// ✅ GET All Class Schedules
+exports.getAllClassSchedules = async (req, res) => {
+  if (DEBUG) console.log("📥 Fetching all class schedules...");
+
+  try {
+    const adminId = req.admin?.id;
+    const result = await ClassScheduleService.getAllClasses(adminId); // ✅ pass admin ID
+
+    if (!result.status) {
+      if (DEBUG) console.log("⚠️ Fetch failed:", result.message);
+      await logActivity(req, PANEL, MODULE, "list", result, false);
+      return res.status(500).json({ status: false, message: result.message });
+    }
+
+    if (DEBUG) console.table(result.data);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { oneLineMessage: `Fetched ${result.data.length} class schedules.` },
+      true
+    );
+
+    return res.status(200).json({
+      status: true,
+      message: "Fetched class schedules successfully.",
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching all class schedules:", error);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { oneLineMessage: error.message },
+      false
+    );
+    return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
 exports.createClassSchedule = async (req, res) => {
   const {
     className,
@@ -234,48 +276,7 @@ exports.createClassSchedule = async (req, res) => {
   }
 };
 
-// ✅ GET All Class Schedules
-exports.getAllClassSchedules = async (req, res) => {
-  if (DEBUG) console.log("📥 Fetching all class schedules...");
 
-  try {
-    const adminId = req.admin?.id;
-    const result = await ClassScheduleService.getAllClasses(adminId); // ✅ pass admin ID
-
-    if (!result.status) {
-      if (DEBUG) console.log("⚠️ Fetch failed:", result.message);
-      await logActivity(req, PANEL, MODULE, "list", result, false);
-      return res.status(500).json({ status: false, message: result.message });
-    }
-
-    if (DEBUG) console.table(result.data);
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "list",
-      { oneLineMessage: `Fetched ${result.data.length} class schedules.` },
-      true
-    );
-
-    return res.status(200).json({
-      status: true,
-      message: "Fetched class schedules successfully.",
-      data: result.data,
-    });
-  } catch (error) {
-    console.error("❌ Error fetching all class schedules:", error);
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "list",
-      { oneLineMessage: error.message },
-      false
-    );
-    return res.status(500).json({ status: false, message: "Server error." });
-  }
-};
 
 // ✅ GET Class Schedule by ID with Venue
 exports.getClassScheduleDetails = async (req, res) => {
