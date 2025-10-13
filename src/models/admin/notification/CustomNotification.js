@@ -45,26 +45,30 @@ const CustomNotification = sequelize.define(
       allowNull: false,
       defaultValue: DataTypes.NOW,
     },
+    // ✅ Soft delete column
+    deletedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+
+    // ✅ Foreign key to admins table for deletion
+    deletedBy: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
   },
   {
     tableName: "custom_notifications",
     timestamps: false,
+    paranoid: true, // ✅ enable soft deletes
   }
 );
-
-// CustomNotification.associate = (models) => {
-//   CustomNotification.belongsTo(models.Admin, {
-//     foreignKey: "adminId",
-//     as: "admin",
-//     onDelete: "CASCADE",
-//   });
-
-//   CustomNotification.hasMany(models.CustomNotificationRead, {
-//     foreignKey: "customNotificationId",
-//     as: "reads",
-//     onDelete: "CASCADE",
-//   });
-// };
 
 CustomNotification.associate = function (models) {
   CustomNotification.belongsTo(models.Admin, {

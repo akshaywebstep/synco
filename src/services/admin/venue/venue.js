@@ -1370,19 +1370,44 @@ exports.getVenueById = async (id, createdBy) => {
   }
 };
 // 🔹 Delete
-exports.deleteVenue = async (id) => {
+// exports.deleteVenue = async (id) => {
+//   try {
+//     // First, find the venue
+//     const venue = await Venue.findOne({ where: { id } });
+//     if (!venue) {
+//       return { status: false, message: "Venue not found." };
+//     }
+
+//     // Delete it
+//     await Venue.destroy({ where: { id } });
+
+//     return { status: true, name: venue.name }; // ✅ return name
+//   } catch (error) {
+//     return { status: false, message: error.message };
+//   }
+// };
+
+// 🔹 Soft delete a venue
+exports.deleteVenue = async (id, deletedBy) => {
   try {
-    // First, find the venue
-    const venue = await Venue.findOne({ where: { id } });
+    // Find the venue (not already deleted)
+    const venue = await Venue.findOne({
+      where: { id, deletedAt: null },
+    });
+
     if (!venue) {
       return { status: false, message: "Venue not found." };
     }
 
-    // Delete it
-    await Venue.destroy({ where: { id } });
+    // Track who deleted
+    await venue.update({ deletedBy });
 
-    return { status: true, name: venue.name }; // ✅ return name
+    // Soft delete (paranoid mode automatically sets deletedAt)
+    await venue.destroy();
+
+    return { status: true, name: venue.name };
   } catch (error) {
-    return { status: false, message: error.message };
+    console.error("❌ deleteVenue Service Error:", error);
+    return { status: false, message: `Failed to delete venue. ${error.message}` };
   }
 };

@@ -1,7 +1,7 @@
 const { validateFormData } = require("../../../utils/validateFormData");
 const ClassScheduleService = require("../../../services/admin/classSchedule/classSchedule");
 const { logActivity } = require("../../../utils/admin/activityLogger");
-const { getVideoDurationInSeconds, formatDuration, } = require("../../../utils/videoHelper"); 
+const { getVideoDurationInSeconds, formatDuration, } = require("../../../utils/videoHelper");
 
 const {
   Venue,
@@ -553,19 +553,71 @@ exports.updateClassSchedule = async (req, res) => {
 // };
 
 // ✅ DELETE Class Schedule
+// exports.deleteClassSchedule = async (req, res) => {
+//   const { id } = req.params;
+//   if (DEBUG) console.log(`🗑️ Deleting class schedule with ID: ${id}`);
+
+//   try {
+//     const result = await ClassScheduleService.deleteClass(id);
+
+//     if (!result.status) {
+//       if (DEBUG) console.log("⚠️ Delete failed:", result.message);
+//       return res.status(404).json({ status: false, message: result.message });
+//     }
+
+//     if (DEBUG) console.log("✅ Class schedule deleted");
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "delete",
+//       { oneLineMessage: `Deleted class schedule with ID: ${id}` },
+//       true
+//     );
+//     // ✅ Create notification
+//     await createNotification(
+//       req,
+//       "Class Schedule Deleted",
+//       `Class schedule with ID ${id} has been deleted.`,
+//       "Admins"
+//     );
+//     return res.status(200).json({
+//       status: true,
+//       message: "Class schedule deleted successfully.",
+//     });
+//   } catch (error) {
+//     console.error("❌ Error deleting class schedule:", error);
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "delete",
+//       { oneLineMessage: error.message },
+//       false
+//     );
+//     return res.status(500).json({ status: false, message: "Server error." });
+//   }
+// };
+
+// 🔹 DELETE Class Schedule
 exports.deleteClassSchedule = async (req, res) => {
   const { id } = req.params;
-  if (DEBUG) console.log(`🗑️ Deleting class schedule with ID: ${id}`);
+  const adminId = req.admin?.id;
+
+  if (DEBUG) console.log(`🗑️ Soft deleting class schedule with ID: ${id}`);
 
   try {
-    const result = await ClassScheduleService.deleteClass(id);
+    const result = await ClassScheduleService.deleteClass(id, adminId);
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Delete failed:", result.message);
+      await logActivity(req, PANEL, MODULE, "delete", result, false);
       return res.status(404).json({ status: false, message: result.message });
     }
 
-    if (DEBUG) console.log("✅ Class schedule deleted");
+    if (DEBUG) console.log("✅ Class schedule soft-deleted");
+
+    // Log activity
     await logActivity(
       req,
       PANEL,
@@ -574,19 +626,21 @@ exports.deleteClassSchedule = async (req, res) => {
       { oneLineMessage: `Deleted class schedule with ID: ${id}` },
       true
     );
-    // ✅ Create notification
+
+    // Create notification
     await createNotification(
       req,
       "Class Schedule Deleted",
-      `Class schedule with ID ${id} has been deleted.`,
+      `Class schedule with ID ${id} has been soft-deleted by ${req.admin?.firstName || "Admin"}.`,
       "Admins"
     );
+
     return res.status(200).json({
       status: true,
-      message: "Class schedule deleted successfully.",
+      message: "Class schedule soft-deleted successfully.",
     });
   } catch (error) {
-    console.error("❌ Error deleting class schedule:", error);
+    console.error("❌ deleteClassSchedule Controller Error:", error);
     await logActivity(
       req,
       PANEL,
@@ -598,58 +652,59 @@ exports.deleteClassSchedule = async (req, res) => {
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };
+
 // ✅ DELETE Class Schedule
-exports.deleteClassSchedule = async (req, res) => {
-  const { id } = req.params;
-  const adminId = req.adminId;
+// exports.deleteClassSchedule = async (req, res) => {
+//   const { id } = req.params;
+//   const adminId = req.adminId;
 
-  if (DEBUG)
-    console.log(
-      `🗑️ Deleting class schedule with ID: ${id} by Admin: ${adminId}`
-    );
+//   if (DEBUG)
+//     console.log(
+//       `🗑️ Deleting class schedule with ID: ${id} by Admin: ${adminId}`
+//     );
 
-  try {
-    const result = await ClassScheduleService.deleteClass(id, adminId); // ✅ Pass adminId
+//   try {
+//     const result = await ClassScheduleService.deleteClass(id, adminId); // ✅ Pass adminId
 
-    if (!result.status) {
-      if (DEBUG) console.log("⚠️ Delete failed:", result.message);
-      return res.status(404).json({ status: false, message: result.message });
-    }
+//     if (!result.status) {
+//       if (DEBUG) console.log("⚠️ Delete failed:", result.message);
+//       return res.status(404).json({ status: false, message: result.message });
+//     }
 
-    if (DEBUG) console.log("✅ Class schedule deleted");
+//     if (DEBUG) console.log("✅ Class schedule deleted");
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "delete",
-      { oneLineMessage: `Deleted class schedule with ID: ${id}` },
-      true
-    );
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "delete",
+//       { oneLineMessage: `Deleted class schedule with ID: ${id}` },
+//       true
+//     );
 
-    await createNotification(
-      req,
-      "Class Schedule Deleted",
-      `Class schedule with ID ${id} has been deleted.`,
-      "Admins"
-    );
+//     await createNotification(
+//       req,
+//       "Class Schedule Deleted",
+//       `Class schedule with ID ${id} has been deleted.`,
+//       "Admins"
+//     );
 
-    return res.status(200).json({
-      status: true,
-      message: "Class schedule deleted successfully.",
-    });
-  } catch (error) {
-    console.error("❌ Error deleting class schedule:", error);
+//     return res.status(200).json({
+//       status: true,
+//       message: "Class schedule deleted successfully.",
+//     });
+//   } catch (error) {
+//     console.error("❌ Error deleting class schedule:", error);
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "delete",
-      { oneLineMessage: error.message },
-      false
-    );
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "delete",
+//       { oneLineMessage: error.message },
+//       false
+//     );
 
-    return res.status(500).json({ status: false, message: "Server error." });
-  }
-};
+//     return res.status(500).json({ status: false, message: "Server error." });
+//   }
+// };

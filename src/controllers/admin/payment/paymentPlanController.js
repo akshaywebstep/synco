@@ -559,39 +559,83 @@ exports.updatePaymentPlan = async (req, res) => {
 };
 
 // ✅ DELETE Plan (restricted by admin)
+// exports.deletePaymentPlan = async (req, res) => {
+//   const { id } = req.params;
+//   const adminId = req.admin?.id;
+
+//   if (DEBUG) console.log(`🗑️ Deleting plan with ID: ${id}`);
+
+//   try {
+//     const result = await PaymentPlan.deletePlan(id, adminId); // ✅ adminId passed
+
+//     if (!result.status) {
+//       if (DEBUG) console.log("⚠️ Delete failed:", result.message);
+//       await logActivity(req, PANEL, MODULE, "delete", result, false);
+//       return res.status(404).json({ status: false, message: result.message });
+//     }
+
+//     if (DEBUG) console.log("✅ Plan deleted successfully");
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "delete",
+//       {
+//         oneLineMessage: `Deleted plan with ID: ${id}`,
+//       },
+//       true
+//     );
+
+//     return res.status(200).json({
+//       status: true,
+//       message: "Payment plan deleted successfully.",
+//     });
+//   } catch (error) {
+//     console.error("❌ Error deleting plan:", error);
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "delete",
+//       { oneLineMessage: error.message },
+//       false
+//     );
+//     return res.status(500).json({ status: false, message: "Server error." });
+//   }
+// };
+
+// ✅ DELETE Plan (restricted by admin)
 exports.deletePaymentPlan = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id;
 
-  if (DEBUG) console.log(`🗑️ Deleting plan with ID: ${id}`);
+  if (!id) {
+    return res.status(400).json({ status: false, message: "Plan ID is required." });
+  }
+
+  if (DEBUG) console.log(`🗑️ Soft deleting Payment Plan ID: ${id}`);
 
   try {
-    const result = await PaymentPlan.deletePlan(id, adminId); // ✅ adminId passed
+    // ✅ Call service to soft delete plan
+    const result = await PaymentPlan.deletePlan(id, adminId);
+
+    // ✅ Log the action
+    await logActivity(req, PANEL, MODULE, "delete", result, result.status);
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Delete failed:", result.message);
-      await logActivity(req, PANEL, MODULE, "delete", result, false);
       return res.status(404).json({ status: false, message: result.message });
     }
 
-    if (DEBUG) console.log("✅ Plan deleted successfully");
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "delete",
-      {
-        oneLineMessage: `Deleted plan with ID: ${id}`,
-      },
-      true
-    );
+    // ✅ Send success notification if needed
+    if (DEBUG) console.log("✅ Payment plan soft-deleted successfully");
 
     return res.status(200).json({
       status: true,
-      message: "Payment plan deleted successfully.",
+      message: "Payment plan soft-deleted successfully.",
     });
   } catch (error) {
-    console.error("❌ Error deleting plan:", error);
+    console.error("❌ Error deleting payment plan:", error);
     await logActivity(
       req,
       PANEL,

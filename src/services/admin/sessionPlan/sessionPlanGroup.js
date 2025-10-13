@@ -317,17 +317,24 @@ exports.updateSessionPlanGroup = async (id, updatePayload, createdBy) => {
   }
 };
 
-exports.deleteSessionPlanGroup = async (id, createdBy) => {
+exports.deleteSessionPlanGroup = async (id, deletedBy) => {
   try {
+    // ✅ Find group by ID (paranoid-enabled model)
     const group = await SessionPlanGroup.findOne({
-      where: { id, createdBy },
+      where: { id },
     });
+
     if (!group) {
       return { status: false, message: "Session Plan Group not found" };
     }
 
+    // ✅ Set deletedBy before soft delete
+    await group.update({ deletedBy });
+
+    // ✅ Soft delete (sets deletedAt)
     await group.destroy();
-    return { status: true, message: "Session Plan Group deleted successfully" };
+
+    return { status: true, message: "Session Plan Group soft-deleted successfully" };
   } catch (error) {
     console.error("❌ Delete Error:", error);
     return { status: false, message: error.message };

@@ -862,12 +862,13 @@ exports.changeAdminStatus = async (req, res) => {
   }
 };
 
-// ✅ Delete a admin
+// ✅ Delete an admin (soft delete)
 exports.deleteAdmin = async (req, res) => {
   try {
     const { id } = req.params;
+    const currentAdminId = req.admin.id; 
 
-    // 🔍 Check if admin exists
+    // 🔍 Check if admin exists (including soft-deleted check)
     const { status, data } = await adminModel.getAdminById(id);
     if (!status || !data) {
       return res.status(404).json({
@@ -876,12 +877,16 @@ exports.deleteAdmin = async (req, res) => {
       });
     }
 
-    // 🚮 Delete admin (all related rows are auto-deleted by ON DELETE CASCADE)
-    await adminModel.deleteAdmin(id);
+    // 🚮 Soft delete admin
+    const result = await adminModel.deleteAdmin(id, currentAdminId);
+
+    if (!result.status) {
+      return res.status(400).json(result);
+    }
 
     return res.status(200).json({
       status: true,
-      message: "Admin and all related data deleted successfully",
+      message: "Admin soft-deleted successfully",
     });
   } catch (error) {
     console.error("❌ deleteAdmin Error:", error);

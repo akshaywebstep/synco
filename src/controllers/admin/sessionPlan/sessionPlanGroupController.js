@@ -1330,7 +1330,7 @@ exports.updateSessionPlanGroup = async (req, res) => {
       player: player || existing.player,
       banner,
       ...uploadFields,
-      images: finalImages 
+      images: finalImages
     };
     console.log("STEP 7: updatePayload =", updatePayload);
 
@@ -1375,17 +1375,15 @@ exports.updateSessionPlanGroup = async (req, res) => {
 
 exports.deleteSessionPlanGroup = async (req, res) => {
   const { id } = req.params;
-  const adminId = req.admin?.id; // ✅ GET createdBy from token
+  const adminId = req.admin?.id; // ✅ track who deleted
 
-  if (DEBUG) console.log(`🗑️ STEP 1: Deleting Session Plan Group ID: ${id}`);
+  if (DEBUG) console.log(`🗑️ Deleting Session Plan Group ID: ${id}`);
 
   try {
-    // ✅ STEP 2: Check if group exists before deleting (with createdBy)
-    const existingResult =
-      await SessionPlanGroupService.getSessionPlanGroupById(id, adminId);
+    // ✅ Check if group exists
+    const existingResult = await SessionPlanGroupService.getSessionPlanGroupById(id, adminId);
 
     if (!existingResult.status || !existingResult.data) {
-      if (DEBUG) console.log("❌ Group not found for deletion:", id);
       await logActivity(
         req,
         PANEL,
@@ -1402,14 +1400,13 @@ exports.deleteSessionPlanGroup = async (req, res) => {
 
     const existing = existingResult.data;
 
-    // ✅ STEP 3: Delete group from DB
+    // ✅ Soft delete the group
     const deleteResult = await SessionPlanGroupService.deleteSessionPlanGroup(
       id,
       adminId
     );
 
     if (!deleteResult.status) {
-      if (DEBUG) console.log("⚠️ Delete failed:", deleteResult.message);
       await logActivity(
         req,
         PANEL,
@@ -1424,9 +1421,8 @@ exports.deleteSessionPlanGroup = async (req, res) => {
       });
     }
 
-    // ✅ STEP 4: Remove uploaded files
+    // ✅ Remove uploaded files if needed (optional)
     const filePaths = [existing.banner, existing.video].filter(Boolean);
-
     for (const filePath of filePaths) {
       try {
         await deleteFile(filePath);

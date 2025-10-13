@@ -42,9 +42,34 @@ const CancelSession = sequelize.define(
       allowNull: true,
     },
 
+    // ✅ Foreign key to admins table for creation
     createdBy: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "RESTRICT",
+    },
+
+    // ✅ Soft delete column
+    deletedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+
+    // ✅ Foreign key to admins table for deletion
+    deletedBy: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
     },
 
     cancelledAt: {
@@ -56,6 +81,7 @@ const CancelSession = sequelize.define(
     tableName: "cancel_session",
     timestamps: true,
     underscored: false,
+    paranoid: true, // ✅ Enable soft deletes
   }
 );
 

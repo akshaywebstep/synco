@@ -455,11 +455,18 @@ exports.deleteAdmin = async (id, currentAdminId) => {
       };
     }
 
-    const result = await Admin.destroy({
-      where: { id },
+    // ✅ Soft delete and set deletedBy
+    const result = await Admin.update(
+      { deletedBy: currentAdminId }, // track who deleted
+      { where: { id } }
+    );
+
+    // Perform soft delete
+    const destroyed = await Admin.destroy({
+      where: { id }, // will set deletedAt because paranoid: true
     });
 
-    if (result === 0) {
+    if (destroyed === 0) {
       return {
         status: false,
         message: "No admin deleted. The provided ID may be incorrect.",
@@ -468,7 +475,7 @@ exports.deleteAdmin = async (id, currentAdminId) => {
 
     return {
       status: true,
-      message: "Admin account deleted successfully.",
+      message: "Admin account soft-deleted successfully.",
     };
   } catch (error) {
     console.error("❌ Sequelize Error in deleteAdmin:", error);

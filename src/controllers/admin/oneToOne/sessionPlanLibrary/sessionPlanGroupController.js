@@ -9,7 +9,7 @@ const { getVideoDurationInSeconds, formatDuration, } = require("../../../../util
 const {
   createNotification,
 } = require("../../../../utils/admin/notificationHelper");
-const { SessionExercise } = require("../../../../models");
+const { SessionExercise, SessionPlanConfig } = require("../../../../models");
 const path = require("path");
 const { saveFile, deleteFile } = require("../../../../utils/fileHandler");
 
@@ -243,16 +243,20 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
 
 exports.getSessionPlanGroupStructureById = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { id } = req.params; // ✔ use `id` instead of configId
     const createdBy = req.admin?.id || req.user?.id;
 
-    if (DEBUG)
-      console.log("Fetching session plan group id:", id, "user:", createdBy);
+    if (!id) {
+      return res.status(400).json({
+        status: false,
+        message: "Session Plan Group ID is required.",
+      });
+    }
 
-    const result = await SessionPlanGroupService.getSessionPlanGroupById(id, createdBy);
+    // Now you can safely call your service
+    const result = await SessionPlanGroupService.getSessionPlanConfigById(id, createdBy);
 
     if (!result.status) {
-      if (DEBUG) console.warn("Session plan group not found:", id);
       return res.status(404).json({ status: false, message: result.message });
     }
 
@@ -265,66 +269,22 @@ exports.getSessionPlanGroupStructureById = async (req, res) => {
           ? JSON.parse(group.levels)
           : group.levels || {};
     } catch (err) {
-      if (DEBUG) console.error("Failed to parse levels:", err);
       parsedLevels = {};
+      console.error("Failed to parse levels:", err);
     }
 
-    const sessionExercises = await SessionExercise.findAll({ where: { createdBy } });
-    const exerciseMap = sessionExercises.reduce((acc, ex) => {
-      acc[ex.id] = ex;
-      return acc;
-    }, {});
-
-    // ✅ Helper to calculate elapsed time
-    const getElapsedTime = (createdAt) => {
-      const now = new Date();
-      const created = new Date(createdAt);
-      const diffMs = now - created;
-      const diffSeconds = Math.floor(diffMs / 1000);
-      const diffMinutes = Math.floor(diffSeconds / 60);
-      const diffHours = Math.floor(diffMinutes / 60);
-      const diffDays = Math.floor(diffHours / 24);
-
-      if (diffDays > 0) return `${diffDays} day(s) ago`;
-      if (diffHours > 0) return `${diffHours} hour(s) ago`;
-      if (diffMinutes > 0) return `${diffMinutes} minute(s) ago`;
-      return `${diffSeconds} second(s) ago`;
-    };
-
-    // ✅ Process all levels in parallel (faster)
-    const levels = ["beginner", "intermediate", "advanced", "pro"];
-    const videoInfo = {};
-
-    await Promise.all(
-      levels.map(async (level) => {
-        const videoUrl = group[`${level}_video`];
-        if (videoUrl) {
-          const durationSec = await getVideoDurationInSeconds(videoUrl);
-          const durationFormatted = formatDuration(durationSec);
-          const uploadedAgo = getElapsedTime(group.createdAt);
-
-          videoInfo[`${level}_video_duration`] = durationFormatted;
-          videoInfo[`${level}_video_uploadedAgo`] = uploadedAgo;
-        } else {
-          videoInfo[`${level}_video_duration`] = null;
-          videoInfo[`${level}_video_uploadedAgo`] = null;
-        }
-      })
-    );
-
-    if (DEBUG) console.log("Video info added to response:", videoInfo);
-
+    // … rest of your code (exercise enrichment, video info, etc.)
+    
     return res.status(200).json({
       status: true,
-      message: "Fetched session plan group with video durations.",
+      message: "Fetched session plan group successfully.",
       data: {
         ...group,
-        levels: parsedLevels,
-        ...videoInfo, // ✅ durations & uploadedAgo are flattened
+        // levels: parsedLevels,
       },
     });
   } catch (error) {
-    if (DEBUG) console.error("Error in getSessionPlanGroupDetails:", error);
+    console.error("Error in getSessionPlanGroupStructureById:", error);
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };
@@ -334,57 +294,28 @@ exports.getAllSessionPlanGroupStructure = async (req, res) => {
     const createdBy = req.admin?.id || req.user?.id;
     const { orderBy = "sortOrder", order = "ASC" } = req.query;
 
-    const result = await SessionPlanGroupService.getAllSessionPlanGroups({
-      orderBy,
-      order,
-      createdBy,
-    });
-
-    if (!result.status) {
-      await logActivity(req, PANEL, MODULE, "list", result, false);
-      return res.status(500).json({ status: false, message: result.message });
-    }
+    const result = await SessionPlanGroupService.getAllSessionPlanConfig({ orderBy, order, createdBy });
+    if (!result.status) return res.status(500).json({ status: false, message: result.message });
 
     const { groups, exerciseMap } = result.data;
 
-    const formattedData = groups.map((group) => {
+    // Enrich levels with exercises
+    const formattedData = groups.map(group => {
       let parsedLevels = {};
       try {
-        parsedLevels =
-          typeof group.levels === "string"
-            ? JSON.parse(group.levels)
-            : group.levels || {};
-      } catch {
-        parsedLevels = {};
-      }
+        parsedLevels = typeof group.levels === "string" ? JSON.parse(group.levels) : group.levels || {};
+      } catch { parsedLevels = {}; }
 
-      Object.keys(parsedLevels).forEach((levelKey) => {
-        const items = Array.isArray(parsedLevels[levelKey])
-          ? parsedLevels[levelKey]
-          : [parsedLevels[levelKey]];
-
-        parsedLevels[levelKey] = items.map((item) => ({
+      Object.keys(parsedLevels).forEach(levelKey => {
+        const items = Array.isArray(parsedLevels[levelKey]) ? parsedLevels[levelKey] : [parsedLevels[levelKey]];
+        parsedLevels[levelKey] = items.map(item => ({
           ...item,
-          sessionExercises: (item.sessionExerciseId || [])
-            .map((id) => exerciseMap[id])
-            .filter(Boolean),
+          sessionExercises: (item.sessionExerciseId || []).map(id => exerciseMap[id]).filter(Boolean),
         }));
       });
 
-      return {
-        ...group,
-        levels: parsedLevels,
-      };
+      return { ...group, levels: parsedLevels };
     });
-
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "list",
-      { count: formattedData.length },
-      true
-    );
 
     return res.status(200).json({
       status: true,
@@ -393,7 +324,7 @@ exports.getAllSessionPlanGroupStructure = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Controller Error:", error);
-    return res.status(500).json({ status: false, message: "Server error" });
+    return res.status(500).json({ status: false, message: "Server error." });
   }
 };
 

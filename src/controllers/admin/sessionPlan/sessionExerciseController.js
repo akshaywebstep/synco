@@ -575,6 +575,7 @@ exports.updateSessionExercise = async (req, res) => {
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };
+
 // ✅ Delete
 exports.deleteSessionExercise = async (req, res) => {
   const { id } = req.params;
@@ -584,7 +585,8 @@ exports.deleteSessionExercise = async (req, res) => {
     const result = await SessionExerciseService.deleteSessionExercise(
       id,
       adminId
-    ); // ✅ pass adminId
+    );
+
     if (!result.status) {
       await logActivity(req, PANEL, MODULE, "delete", result, false);
       return res.status(404).json(result);
@@ -603,8 +605,7 @@ exports.deleteSessionExercise = async (req, res) => {
     await createNotification(
       req,
       "Session Exercise Deleted",
-      `Session Exercise ID '${id}' was deleted by ${req?.admin?.name || "Admin"
-      }.`,
+      `Session Exercise ID '${id}' was deleted by ${req?.admin?.name || "Admin"}.`,
       "System"
     );
 

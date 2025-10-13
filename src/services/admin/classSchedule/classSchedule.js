@@ -641,14 +641,39 @@ exports.getClassByIdWithFullDetails = async (classId) => {
   }
 };
 
-// ✅ Delete class by ID
-exports.deleteClass = async (id) => {
+// // ✅ Delete class by ID
+// exports.deleteClass = async (id) => {
+//   try {
+//     const deleted = await ClassSchedule.destroy({ where: { id } });
+//     if (!deleted) return { status: false, message: "Class not found" };
+//     return { status: true, message: "Class deleted successfully." };
+//   } catch (error) {
+//     console.error("❌ deleteClass Error:", error);
+//     return { status: false, message: error.message };
+//   }
+// };
+
+// ✅ Soft delete a class by ID
+exports.deleteClass = async (id, deletedBy) => {
   try {
-    const deleted = await ClassSchedule.destroy({ where: { id } });
-    if (!deleted) return { status: false, message: "Class not found" };
-    return { status: true, message: "Class deleted successfully." };
+    // Find the class (not already deleted)
+    const classSchedule = await ClassSchedule.findOne({
+      where: { id, deletedAt: null },
+    });
+
+    if (!classSchedule) {
+      return { status: false, message: "Class schedule not found." };
+    }
+
+    // Track who deleted
+    await classSchedule.update({ deletedBy });
+
+    // Soft delete (sets deletedAt automatically because of paranoid)
+    await classSchedule.destroy();
+
+    return { status: true, message: "Class schedule soft-deleted successfully." };
   } catch (error) {
-    console.error("❌ deleteClass Error:", error);
-    return { status: false, message: error.message };
+    console.error("❌ deleteClass Service Error:", error);
+    return { status: false, message: `Failed to soft delete class. ${error.message}` };
   }
 };

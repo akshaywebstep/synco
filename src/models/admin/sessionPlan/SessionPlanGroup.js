@@ -57,9 +57,34 @@ const SessionPlanGroup = sequelize.define(
       allowNull: false,
       defaultValue: 0,
     },
+    // ✅ Foreign key to admins table for creation
     createdBy: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "RESTRICT",
+    },
+
+    // ✅ Soft delete column
+    deletedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+
+    // ✅ Foreign key to admins table for deletion
+    deletedBy: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
     },
 
     // add new feild for one to one ->
@@ -72,6 +97,7 @@ const SessionPlanGroup = sequelize.define(
   {
     tableName: "session_plan_groups",
     timestamps: true,
+    paranoid: true, // ✅ enable soft deletes
   }
 );
 
