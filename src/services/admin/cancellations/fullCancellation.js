@@ -164,7 +164,7 @@ exports.getFullCancelBooking = async ({
             "startDate",
             "bookingType",
             "totalStudents",
-            "keyInformation",
+            // "keyInformation",
             "paymentPlanId",
           ],
           include: [
@@ -250,7 +250,7 @@ exports.getFullCancelBooking = async ({
           classScheduleId: booking.classScheduleId,
           startDate: booking.startDate,
           totalStudents: booking.totalStudents,
-          keyInformation: booking.keyInformation,
+          // keyInformation: booking.keyInformation,
           paymentPlan: booking.paymentPlan || null,
           status: booking.status,
 
