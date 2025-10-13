@@ -194,7 +194,7 @@ exports.createVenue = async (data) => {
       data.paymentGroupId = parseInt(data.paymentGroupId.trim());
     }
     if (isNaN(data.paymentGroupId)) {
-      throw new Error("Invalid paymentGroupId");
+      throw new Error("Payment group is required");
     }
 
     // ✅ Geocode address

@@ -10,17 +10,80 @@ const PANEL = "admin";
 const MODULE = "rebooking_trial";
 
 // ✅ Create or update a booking with rebooking info
+// exports.createRebookingTrial = async (req, res) => {
+//    console.log("📍 createRebookingTrial reached");
+//   const payload = req.body;
+
+//   const { isValid, error } = validateFormData(payload, {
+//     requiredFields: ["bookingId", "reasonForNonAttendance"],
+//   });
+
+//   if (!isValid) {
+//     await logActivity(req, PANEL, MODULE, "create", error, false);
+//     return res.status(400).json({ status: false, ...error });
+//   }
+
+//   try {
+//     const result = await RebookingService.createRebooking({
+//       ...payload,
+//       createdBy: req?.admin?.id,
+//     });
+
+//     if (!result.status) {
+//       await logActivity(req, PANEL, MODULE, "create", result, false);
+//       return res.status(400).json({ status: false, message: result.message });
+//     }
+
+//     const notifyMsg = `Trial rebooked for booking ID ${payload.bookingId}`;
+//     await createNotification(req, "Trial Rebooked", notifyMsg, "System");
+
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "create",
+//       { message: notifyMsg },
+//       true
+//     );
+
+//     return res.status(201).json({
+//       status: true,
+//       message: "Rebooking created successfully.",
+//       data: result.data,
+//     });
+//   } catch (error) {
+//     console.error("❌ Error creating rebooking:", error);
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "create",
+//       { error: error.message },
+//       false
+//     );
+//     return res.status(500).json({ status: false, message: "Server error." });
+//   }
+// };
 exports.createRebookingTrial = async (req, res) => {
-   console.log("📍 createRebookingTrial reached");
+  console.log("📍 createRebookingTrial reached");
   const payload = req.body;
 
-  const { isValid, error } = validateFormData(payload, {
-    requiredFields: ["bookingId", "reasonForNonAttendance"],
-  });
+  // ✅ Field-by-field validation — show one message at a time
+  if (!payload.bookingId || payload.bookingId.toString().trim() === "") {
+    const message = "bookingId is required";
+    if (DEBUG) console.log("❌ Validation failed:", message);
+    await logActivity(req, PANEL, MODULE, "create", { message }, false);
+    return res.status(400).json({ status: false, message });
+  }
 
-  if (!isValid) {
-    await logActivity(req, PANEL, MODULE, "create", error, false);
-    return res.status(400).json({ status: false, ...error });
+  if (
+    !payload.reasonForNonAttendance ||
+    payload.reasonForNonAttendance.toString().trim() === ""
+  ) {
+    const message = "reasonForNonAttendance is required";
+    if (DEBUG) console.log("❌ Validation failed:", message);
+    await logActivity(req, PANEL, MODULE, "create", { message }, false);
+    return res.status(400).json({ status: false, message });
   }
 
   try {
@@ -31,20 +94,16 @@ exports.createRebookingTrial = async (req, res) => {
 
     if (!result.status) {
       await logActivity(req, PANEL, MODULE, "create", result, false);
-      return res.status(400).json({ status: false, message: result.message });
+      return res.status(400).json({
+        status: false,
+        message: result.message,
+      });
     }
 
     const notifyMsg = `Trial rebooked for booking ID ${payload.bookingId}`;
     await createNotification(req, "Trial Rebooked", notifyMsg, "System");
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "create",
-      { message: notifyMsg },
-      true
-    );
+    await logActivity(req, PANEL, MODULE, "create", { message: notifyMsg }, true);
 
     return res.status(201).json({
       status: true,
@@ -53,18 +112,13 @@ exports.createRebookingTrial = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error creating rebooking:", error);
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "create",
-      { error: error.message },
-      false
-    );
-    return res.status(500).json({ status: false, message: "Server error." });
+    await logActivity(req, PANEL, MODULE, "create", { error: error.message }, false);
+    return res.status(500).json({
+      status: false,
+      message: "Server error. Please try again later.",
+    });
   }
 };
-
 // ✅ Get all bookings that have rebooking info
 exports.getAllRebookingTrials = async (req, res) => {
   try {
