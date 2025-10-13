@@ -161,47 +161,57 @@ exports.getAllRebookingTrials = async (req, res) => {
 
 // ✅ Send rebooking email to parents
 exports.sendRebookingEmail = async (req, res) => {
-  const { bookingId } = req.body;
+  const { bookingIds } = req.body;
 
-  if (!bookingId) {
-    return res
-      .status(400)
-      .json({ status: false, message: "bookingId is required" });
+  // ✅ Validation
+  if (
+    !Array.isArray(bookingIds) ||
+    bookingIds.length === 0 ||
+    bookingIds.some((id) => typeof id !== "number")
+  ) {
+    return res.status(400).json({
+      status: false,
+      message: "bookingIds must be a non-empty array of numbers",
+    });
   }
 
   if (DEBUG) {
-    console.log("📨 Sending Rebooking Email for bookingId:", bookingId);
+    console.log("📨 Sending Rebooking Emails for bookingIds:", bookingIds);
   }
 
   try {
-    const result = await RebookingService.sendRebookingEmailToParents({
-      bookingId,
-    });
+    const results = [];
 
-    if (!result.status) {
-      await logActivity(req, PANEL, MODULE, "send", result, false);
-      return res.status(500).json({
-        status: false,
+    // ✅ Loop through each booking ID
+    for (const bookingId of bookingIds) {
+      const result = await RebookingService.sendRebookingEmailToParents({
+        bookingId,
+      });
+
+      // Log each individually
+      await logActivity(
+        req,
+        PANEL,
+        MODULE,
+        "send",
+        {
+          message: `Rebooking email result for bookingId ${bookingId}: ${result.message}`,
+        },
+        result.status
+      );
+
+      results.push({
+        bookingId,
+        status: result.status,
         message: result.message,
-        error: result.error,
+        sentTo: result.sentTo || [],
       });
     }
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "send",
-      {
-        message: `Rebooking email sent for bookingId ${bookingId}`,
-      },
-      true
-    );
-
     return res.status(200).json({
       status: true,
-      message: result.message,
-      sentTo: result.sentTo,
+      message: `Emails processed for ${bookingIds.length} bookings`,
+      results,
     });
   } catch (error) {
     console.error("❌ Controller sendRebookingEmail Error:", error);
@@ -213,6 +223,9 @@ exports.sendRebookingEmail = async (req, res) => {
       { error: error.message },
       false
     );
-    return res.status(500).json({ status: false, message: "Server error" });
+    return res.status(500).json({
+      status: false,
+      message: "Server error while sending rebooking emails",
+    });
   }
 };
