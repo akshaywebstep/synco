@@ -489,3 +489,56 @@ exports.deleteAdmin = async (id, currentAdminId) => {
     };
   }
 };
+
+// exports.deleteAdmin = async (id, transferToAdminId) => {
+//   try {
+//     // Prevent missing transfer admin
+//     if (!transferToAdminId) {
+//       return {
+//         status: false,
+//         message: "Please provide transferToAdminId to reassign data.",
+//       };
+//     }
+
+//     // Fetch the admin to delete
+//     const adminToDelete = await Admin.findByPk(id);
+//     if (!adminToDelete) {
+//       return { status: false, message: "Admin not found" };
+//     }
+
+//     // Fetch the admin to transfer data to
+//     const newAdmin = await Admin.findByPk(transferToAdminId);
+//     if (!newAdmin) {
+//       return { status: false, message: "Target admin not found" };
+//     }
+
+//     // Reassign all related data to the new admin
+//     await Promise.all([
+//       PaymentGroup.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
+//       PaymentGroupHasPlan.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
+//       PaymentPlan.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
+//       SessionPlanGroup.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
+//       SessionExercise.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
+//       TermGroup.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
+//       Term.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
+//       Venue.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
+//       ClassSchedule.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
+//       Booking.update({ adminId: transferToAdminId }, { where: { adminId: id } }),
+//       User.update({ adminId: transferToAdminId }, { where: { adminId: id } }),
+//     ]);
+
+//     // Delete the admin from Admins table only
+//     await Admin.destroy({ where: { id } });
+
+//     return {
+//       status: true,
+//       message: `Admin deleted and all related data reassigned to admin ${transferToAdminId}`,
+//     };
+//   } catch (error) {
+//     console.error("❌ deleteAdmin Error:", error);
+//     return {
+//       status: false,
+//       message: error?.parent?.sqlMessage || error?.message || "Failed to delete or reassign admin.",
+//     };
+//   }
+// };

@@ -1817,7 +1817,8 @@ exports.getBookingsById = async (bookingId) => {
     const payment = payments[0] || null;
 
     const parsedBooking = {
-      bookingId: booking.id,
+      id: booking.id,
+      bookingId: booking.bookingId,
       status: booking.status,
       startDate: booking.startDate,
       dateBooked: booking.createdAt,

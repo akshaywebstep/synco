@@ -104,14 +104,14 @@ exports.createBooking = async (req, res) => {
 
     const leadId = req.params.leadId || null;
     if (leadId) {
-          const existingBooking = await Booking.findOne({ where: { leadId } });
-          if (existingBooking) {
-            return res.status(400).json({
-              status: false,
-              message: "You already have a booking linked to this lead.",
-            });
-          }
-        }
+      const existingBooking = await Booking.findOne({ where: { leadId } });
+      if (existingBooking) {
+        return res.status(400).json({
+          status: false,
+          message: "You already have a booking linked to this lead.",
+        });
+      }
+    }
     // 🔹 Step 1: Create Booking + Students + Parents (Service)
     const result = await BookingMembershipService.createBooking(formData, {
       source: req.source,
@@ -313,54 +313,43 @@ exports.getAllPaidBookings = async (req, res) => {
 exports.sendSelectedMemberEmail = async (req, res) => {
   const { bookingIds } = req.body;
 
-  if (!bookingIds || !Array.isArray(bookingIds) || bookingIds.length === 0) {
+  if (!Array.isArray(bookingIds) || bookingIds.length === 0) {
     return res.status(400).json({
       status: false,
       message: "bookingIds (array) is required",
     });
   }
 
-  if (DEBUG) {
-    console.log("📨 Sending Emails for bookingIds:", bookingIds);
-  }
-
   try {
-    const allSentTo = [];
+    const results = await Promise.all(
+      bookingIds.map(async (bookingId) => {
+        const result =
+          await BookingMembershipService.sendActiveMemberSaleEmailToParents({
+            bookingId,
+          });
 
-    for (const bookingId of bookingIds) {
-      // Call service for each bookingId
-      const result =
-        await BookingMembershipService.sendActiveMemberSaleEmailToParents({
-          bookingId,
-        });
+        await logActivity(
+          req,
+          PANEL,
+          MODULE,
+          "send",
+          {
+            message: `Email attempt for bookingId ${bookingId}: ${result.message}`,
+          },
+          result.status
+        );
 
-      if (!result.status) {
-        await logActivity(req, PANEL, MODULE, "send", result, false);
-        return res.status(500).json({
-          status: false,
-          message: result.message,
-          error: result.error,
-        });
-      }
+        return { bookingId, ...result };
+      })
+    );
 
-      allSentTo.push(...result.sentTo);
-
-      await logActivity(
-        req,
-        PANEL,
-        MODULE,
-        "send",
-        {
-          message: `Email sent for bookingId ${bookingId}`,
-        },
-        true
-      );
-    }
+    const allSentTo = results.flatMap((r) => r.sentTo || []);
 
     return res.status(200).json({
       status: true,
-      message: `Emails sent for ${bookingIds.length} bookings`,
-      sentTo: allSentTo, // combined array of all parent emails
+      message: `Emails processed for ${bookingIds.length} bookings`,
+      results,
+      sentTo: allSentTo,
     });
   } catch (error) {
     console.error("❌ Controller Send Email Error:", error);
