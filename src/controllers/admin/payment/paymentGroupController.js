@@ -470,7 +470,7 @@ exports.deletePaymentGroup = async (req, res) => {
     });
   }
 
-  if (DEBUG) console.log(`🗑️ Soft deleting Payment Group ID: ${id}`);
+  if (DEBUG) console.log(`🗑️ deleting Payment Group ID: ${id}`);
 
   try {
     // Step 1: Ensure the group exists (and not already soft-deleted)
@@ -493,7 +493,7 @@ exports.deletePaymentGroup = async (req, res) => {
     }
 
     // Step 3: Log + Notify
-    const successMsg = `Payment Group "${paymentGroup.name}" soft-deleted by ${req.admin?.name || "Admin"}.`;
+    const successMsg = `Payment Group "${paymentGroup.name}" deleted by ${req.admin?.name || "Admin"}.`;
 
     await logActivity(req, PANEL, MODULE, "delete", { oneLineMessage: successMsg }, true);
 
@@ -506,7 +506,7 @@ exports.deletePaymentGroup = async (req, res) => {
 
     return res.status(200).json({
       status: true,
-      message: "Payment group soft-deleted successfully.",
+      message: "Payment group deleted successfully.",
     });
   } catch (error) {
     console.error("❌ Error in deletePaymentGroup Controller:", error);

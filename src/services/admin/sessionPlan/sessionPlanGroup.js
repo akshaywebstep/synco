@@ -334,7 +334,7 @@ exports.deleteSessionPlanGroup = async (id, deletedBy) => {
     // ✅ Soft delete (sets deletedAt)
     await group.destroy();
 
-    return { status: true, message: "Session Plan Group soft-deleted successfully" };
+    return { status: true, message: "Session Plan Group deleted successfully" };
   } catch (error) {
     console.error("❌ Delete Error:", error);
     return { status: false, message: error.message };

@@ -110,7 +110,7 @@ exports.deleteSessionExercise = async (id, adminId) => {
     // ✅ Soft delete row (paranoid: true sets deletedAt)
     await exercise.destroy();
 
-    return { status: true, message: "Exercise soft-deleted successfully" };
+    return { status: true, message: "Exercise deleted successfully" };
   } catch (error) {
     console.error("❌ Error deleting exercise:", error);
     return { status: false, message: error.message };

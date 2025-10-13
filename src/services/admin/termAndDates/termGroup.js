@@ -80,7 +80,7 @@ exports.deleteGroup = async (id, deletedBy) => {
     // ✅ Soft delete (sets deletedAt)
     await group.destroy();
 
-    return { status: true, message: "Term group soft-deleted (terms unlinked)." };
+    return { status: true, message: "Term group deleted successfully" };
   } catch (error) {
     console.error("❌ deleteGroup Service Error:", error);
     return {

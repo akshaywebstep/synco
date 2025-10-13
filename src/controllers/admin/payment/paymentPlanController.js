@@ -613,7 +613,7 @@ exports.deletePaymentPlan = async (req, res) => {
     return res.status(400).json({ status: false, message: "Plan ID is required." });
   }
 
-  if (DEBUG) console.log(`🗑️ Soft deleting Payment Plan ID: ${id}`);
+  if (DEBUG) console.log(`🗑️deleting Payment Plan ID: ${id}`);
 
   try {
     // ✅ Call service to soft delete plan
@@ -628,7 +628,7 @@ exports.deletePaymentPlan = async (req, res) => {
     }
 
     // ✅ Send success notification if needed
-    if (DEBUG) console.log("✅ Payment plan soft-deleted successfully");
+    if (DEBUG) console.log("✅ Payment plan deleted successfully");
 
     return res.status(200).json({
       status: true,

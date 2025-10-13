@@ -671,9 +671,9 @@ exports.deleteClass = async (id, deletedBy) => {
     // Soft delete (sets deletedAt automatically because of paranoid)
     await classSchedule.destroy();
 
-    return { status: true, message: "Class schedule soft-deleted successfully." };
+    return { status: true, message: "Class schedule deleted successfully." };
   } catch (error) {
     console.error("❌ deleteClass Service Error:", error);
-    return { status: false, message: `Failed to soft delete class. ${error.message}` };
+    return { status: false, message: `Failed to delete class. ${error.message}` };
   }
 };

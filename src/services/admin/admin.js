@@ -475,7 +475,7 @@ exports.deleteAdmin = async (id, currentAdminId) => {
 
     return {
       status: true,
-      message: "Admin account soft-deleted successfully.",
+      message: "Admin account deleted successfully.",
     };
   } catch (error) {
     console.error("❌ Sequelize Error in deleteAdmin:", error);

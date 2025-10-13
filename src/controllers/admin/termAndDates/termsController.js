@@ -254,7 +254,7 @@ exports.deleteTerm = async (req, res) => {
       await createNotification(
         req,
         "Term Deleted",
-        `Term ID '${id}' was soft-deleted by ${req?.admin?.firstName || "Admin"}.`,
+        `Term ID '${id}' was deleted by ${req?.admin?.firstName || "Admin"}.`,
         "System"
       );
     }

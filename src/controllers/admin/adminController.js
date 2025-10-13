@@ -886,7 +886,7 @@ exports.deleteAdmin = async (req, res) => {
 
     return res.status(200).json({
       status: true,
-      message: "Admin soft-deleted successfully",
+      message: "Admin deleted successfully",
     });
   } catch (error) {
     console.error("❌ deleteAdmin Error:", error);

@@ -186,7 +186,7 @@ exports.deleteGroup = async (req, res) => {
       await createNotification(
         req,
         "Term Group Deleted",
-        `Term Group ID '${id}' and its associated terms were soft-deleted by ${
+        `Term Group ID '${id}' and its associated terms were deleted by ${
           req?.admin?.firstName || "Admin"
         }.`,
         "System"

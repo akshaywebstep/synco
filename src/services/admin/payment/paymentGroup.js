@@ -173,13 +173,13 @@ exports.deletePaymentGroup = async (id, deletedBy) => {
 
     return {
       status: true,
-      message: "Payment group soft-deleted successfully.",
+      message: "Payment group deleted successfully.",
     };
   } catch (error) {
     console.error("❌ Error in deletePaymentGroup Service:", error);
     return {
       status: false,
-      message: `Failed to soft delete group. ${error.message}`,
+      message: `Failed to  delete group. ${error.message}`,
     };
   }
 };

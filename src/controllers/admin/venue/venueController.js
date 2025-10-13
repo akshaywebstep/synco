@@ -241,13 +241,13 @@ exports.deleteVenue = async (req, res) => {
     await createNotification(
       req,
       "Venue Deleted",
-      `Venue "${result.name || "Unknown"}" has been soft-deleted by ${req.admin?.firstName || "Admin"}.`,
+      `Venue "${result.name || "Unknown"}" has been deleted by ${req.admin?.firstName || "Admin"}.`,
       "System"
     );
 
     return res.status(200).json({
       status: true,
-      message: "Venue soft-deleted successfully.",
+      message: "Venue deleted successfully.",
     });
   } catch (error) {
     console.error("❌ deleteVenue Controller Error:", error);

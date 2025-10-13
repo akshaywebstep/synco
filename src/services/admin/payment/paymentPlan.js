@@ -172,13 +172,13 @@ exports.deletePlan = async (id, deletedBy) => {
 
     return {
       status: true,
-      message: "Payment plan soft-deleted successfully.",
+      message: "Payment plan deleted successfully.",
     };
   } catch (error) {
     console.error("❌ deletePlan Service Error:", error);
     return {
       status: false,
-      message: `Failed to soft delete payment plan. ${error.message}`,
+      message: `Failed to  delete payment plan. ${error.message}`,
     };
   }
 };

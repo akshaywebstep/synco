@@ -484,7 +484,7 @@ exports.deleteTerm = async (id, deletedBy) => {
     // ✅ Perform soft delete (Sequelize sets deletedAt automatically)
     await term.destroy();
 
-    return { status: true, message: "Term soft-deleted successfully." };
+    return { status: true, message: "Term deleted successfully." };
   } catch (error) {
     console.error("❌ deleteTerm Service Error:", error);
     return { status: false, message: "Delete failed. " + error.message };
