@@ -136,8 +136,10 @@ async function createCustomer({
 
       return {
         status: false,
+        // message:
+        //   "Customer was created successfully, but linking the bank account failed. Please try again later.",
         message:
-          "Customer was created successfully, but linking the bank account failed. Please try again later.",
+          "Incorrect account details",
         error: customerBankAccountRes.error || "Unknown bank account error",
       };
     }
