@@ -242,7 +242,7 @@ exports.cancelWaitingListSpot = async ({
         {
           reasonForCancelling,
           additionalNote,
-          bookingType: "waiting list", // static value
+          bookingType: "membership", // static value
         },
         { transaction: t }
       );
@@ -252,7 +252,7 @@ exports.cancelWaitingListSpot = async ({
           bookingId,
           reasonForCancelling,
           additionalNote,
-          bookingType: "waiting list", // static value
+          bookingType: "membership", // static value
         },
         { transaction: t }
       );
