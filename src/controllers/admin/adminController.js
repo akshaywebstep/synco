@@ -900,7 +900,7 @@ exports.deleteAdmin = async (req, res) => {
   try {
     const { id } = req.params;
     // const { transferToAdminId } = req.body;
-     const { transferToAdminId } = req.body || {};
+    const { transferToAdminId } = req.body || {};
 
     if (DEBUG) console.log("🔍 deleteAdmin request:", { id, transferToAdminId });
 
@@ -923,6 +923,61 @@ exports.deleteAdmin = async (req, res) => {
     return res.status(500).json({
       status: false,
       message: error?.parent?.sqlMessage || "Server error while deleting admin",
+    });
+  }
+};
+
+// ✅ Get all admins
+exports.getAllAdminsForReassign = async (req, res) => {
+  if (DEBUG) console.log("📋 Request received to list all admins");
+
+  try {
+    // ✅ No need to pass loggedInAdminId to the service
+    const result = await adminModel.getAllAdminsForReassignData();
+
+    if (!result.status) {
+      if (DEBUG) console.log("❌ Failed to retrieve admins:", result.message);
+
+      await logActivity(req, PANEL, MODULE, "list", result, false);
+      return res.status(500).json({
+        status: false,
+        message: result.message || "Failed to fetch admins.",
+      });
+    }
+
+    if (DEBUG) {
+      console.log(`✅ Retrieved ${result.data.length} admin(s)`);
+      console.table(
+        result.data.map((m) => ({
+          ID: m.id,
+          Name: `${m.firstName} ${m.lastName}`,
+          Email: m.email,
+          Created: m.createdAt,
+        }))
+      );
+    }
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      {
+        oneLineMessage: `Fetched ${result.data.length} admin(s) successfully.`,
+      },
+      true
+    );
+
+    return res.status(200).json({
+      status: true,
+      message: `Fetched ${result.data.length} admin(s) successfully.`,
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ List Admins Error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Failed to fetch admins. Please try again later.",
     });
   }
 };

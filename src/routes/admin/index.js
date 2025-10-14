@@ -11,6 +11,7 @@ const {
   deleteAdmin,
   getAdminProfile,
   resetPassword,
+  getAllAdminsForReassign,
 } = require("../../controllers/admin/adminController");
 
 const multer = require("multer");
@@ -160,6 +161,14 @@ router.delete(
   permissionMiddleware("member", "delete"),
   deleteAdmin
 );
+
+router.get(
+  "/reassign/data",
+  authMiddleware,
+  permissionMiddleware("member", "view-listing"),
+  getAllAdminsForReassign
+);
+ 
 // ✅ Reset password
 router.post("/reset-password", resetPassword);
 

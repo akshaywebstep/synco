@@ -534,7 +534,7 @@ exports.deleteAdmin = async (id, transferToAdminId) => {
           { where: { createdBy: id } }
         ),
 
-      ClassSchedule.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
+        ClassSchedule.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
         Booking.update({ bookedBy: transferToAdminId }, { where: { bookedBy: id } }),
         Lead.update({ assignedAgentId: transferToAdminId }, { where: { assignedAgentId: id } }),
         CancelSession.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
@@ -581,6 +581,40 @@ exports.deleteAdmin = async (id, transferToAdminId) => {
     return {
       status: false,
       message: error?.parent?.sqlMessage || error?.message || "Failed to delete admin",
+    };
+  }
+};
+
+// Get all admins
+exports.getAllAdminsForReassignData = async () => {
+  try {
+    const admins = await Admin.findAll({
+      attributes: { exclude: ["password", "resetOtp", "resetOtpExpiry"] },
+      include: [
+        {
+          model: AdminRole,
+          as: "role",
+          attributes: ["id", "role"],
+          where: { role: "Admin" }, // ✅ Only include users with role 'Admin'
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+    });
+
+    return {
+      status: true,
+      message: `Fetched ${admins.length} admin(s) successfully.`,
+      data: admins,
+    };
+  } catch (error) {
+    console.error("❌ Sequelize Error in getAllAdmins:", error);
+
+    return {
+      status: false,
+      message:
+        error?.parent?.sqlMessage ||
+        error?.message ||
+        "Failed to fetch admins.",
     };
   }
 };
