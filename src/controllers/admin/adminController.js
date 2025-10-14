@@ -3,7 +3,7 @@ const path = require("path");
 const fs = require("fs");
 
 const { createToken } = require("../../utils/jwt");
-const {uploadToFTP} = require("../../utils/uploadToFTP");
+const { uploadToFTP } = require("../../utils/uploadToFTP");
 const { generatePasswordHint } = require("../../utils/auth");
 const sendEmail = require("../../utils/email/sendEmail");
 
@@ -181,7 +181,7 @@ exports.createAdmin = async (req, res) => {
       } catch (err) {
         console.error("❌ Failed to upload profile image:", err.message);
       } finally {
-        await fs.promises.unlink(localPath).catch(() => {});
+        await fs.promises.unlink(localPath).catch(() => { });
       }
     }
 
@@ -194,9 +194,8 @@ exports.createAdmin = async (req, res) => {
       }
     }
     // ✅ Log activity & notification
-    const successMessage = `${roleName} '${firstName}' created successfully by Super Admin: ${
-      req.admin?.firstName || "System"
-    }`;
+    const successMessage = `${roleName} '${firstName}' created successfully by Super Admin: ${req.admin?.firstName || "System"
+      }`;
     await logActivity(req, PANEL, MODULE, "create", createResult, true);
     await createNotification(
       req,
@@ -236,9 +235,9 @@ exports.createAdmin = async (req, res) => {
       const replacePlaceholders = (text) =>
         typeof text === "string"
           ? Object.entries(replacements).reduce(
-              (result, [key, val]) => result.replace(new RegExp(key, "g"), val),
-              text
-            )
+            (result, [key, val]) => result.replace(new RegExp(key, "g"), val),
+            text
+          )
           : text;
 
       const emailSubject = replacePlaceholders(
@@ -247,7 +246,7 @@ exports.createAdmin = async (req, res) => {
 
       const htmlBody = replacePlaceholders(
         htmlTemplate?.trim() ||
-          `<p>Hello {{firstName}},</p>
+        `<p>Hello {{firstName}},</p>
            <p>Your admin account for <strong>{{appName}}</strong> has been created successfully.</p>
            <p>If you’d like to reset your password, use the secure link below:</p>
            <p><a href="{{resetLink}}" target="_blank">{{resetLink}}</a></p>
@@ -258,9 +257,9 @@ exports.createAdmin = async (req, res) => {
       const mapRecipients = (list) =>
         Array.isArray(list)
           ? list.map(({ name, email }) => ({
-              name: replacePlaceholders(name),
-              email: replacePlaceholders(email),
-            }))
+            name: replacePlaceholders(name),
+            email: replacePlaceholders(email),
+          }))
           : [];
 
       // const mailData = {
@@ -273,18 +272,18 @@ exports.createAdmin = async (req, res) => {
       //   attachments: [],
       // };
       const mailData = {
-  recipient: [
-    {
-      name: `${firstName || ""} ${lastName || ""}`.trim(), // full name
-      email: email, // actual email
-    },
-  ],
-  cc: mapRecipients(emailConfig.cc),
-  bcc: mapRecipients(emailConfig.bcc),
-  subject: emailSubject,
-  htmlBody,
-  attachments: [],
-};
+        recipient: [
+          {
+            name: `${firstName || ""} ${lastName || ""}`.trim(), // full name
+            email: email, // actual email
+          },
+        ],
+        cc: mapRecipients(emailConfig.cc),
+        bcc: mapRecipients(emailConfig.bcc),
+        subject: emailSubject,
+        htmlBody,
+        attachments: [],
+      };
 
       const emailResult = await sendEmail(emailConfig, mailData);
 
@@ -539,7 +538,7 @@ exports.updateAdmin = async (req, res) => {
           message: "Failed to upload profile image. Please try again.",
         });
       } finally {
-        await fs.promises.unlink(localPath).catch(() => {});
+        await fs.promises.unlink(localPath).catch(() => { });
       }
     }
 
@@ -584,8 +583,7 @@ exports.updateAdmin = async (req, res) => {
     await createNotification(
       req,
       "Admin Updated",
-      `Admin '${formData.firstName}' was updated by ${
-        req?.admin?.firstName || "System"
+      `Admin '${formData.firstName}' was updated by ${req?.admin?.firstName || "System"
       }.`,
       "System"
     );
@@ -863,37 +861,68 @@ exports.changeAdminStatus = async (req, res) => {
 };
 
 // ✅ Delete an admin (soft delete)
+// exports.deleteAdmin = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const currentAdminId = req.admin.id; 
+
+//     // 🔍 Check if admin exists (including soft-deleted check)
+//     const { status, data } = await adminModel.getAdminById(id);
+//     if (!status || !data) {
+//       return res.status(404).json({
+//         status: false,
+//         message: "Admin not found",
+//       });
+//     }
+
+//     // 🚮 Soft delete admin
+//     const result = await adminModel.deleteAdmin(id, currentAdminId);
+
+//     if (!result.status) {
+//       return res.status(400).json(result);
+//     }
+
+//     return res.status(200).json({
+//       status: true,
+//       message: "Admin deleted successfully",
+//     });
+//   } catch (error) {
+//     console.error("❌ deleteAdmin Error:", error);
+//     return res.status(500).json({
+//       status: false,
+//       message:
+//         error?.parent?.sqlMessage || "Server error while deleting admin.",
+//     });
+//   }
+// };
+
 exports.deleteAdmin = async (req, res) => {
   try {
     const { id } = req.params;
-    const currentAdminId = req.admin.id; 
+    // const { transferToAdminId } = req.body;
+     const { transferToAdminId } = req.body || {};
 
-    // 🔍 Check if admin exists (including soft-deleted check)
+    if (DEBUG) console.log("🔍 deleteAdmin request:", { id, transferToAdminId });
+
+    // Check admin exists
     const { status, data } = await adminModel.getAdminById(id);
     if (!status || !data) {
-      return res.status(404).json({
-        status: false,
-        message: "Admin not found",
-      });
+      return res.status(404).json({ status: false, message: "Admin not found" });
     }
 
-    // 🚮 Soft delete admin
-    const result = await adminModel.deleteAdmin(id, currentAdminId);
+    const result = await adminModel.deleteAdmin(id, transferToAdminId);
 
-    if (!result.status) {
-      return res.status(400).json(result);
-    }
+    if (!result.status) return res.status(400).json(result);
 
     return res.status(200).json({
       status: true,
-      message: "Admin deleted successfully",
+      message: result.message,
     });
   } catch (error) {
-    console.error("❌ deleteAdmin Error:", error);
+    console.error("❌ deleteAdmin Controller Error:", error);
     return res.status(500).json({
       status: false,
-      message:
-        error?.parent?.sqlMessage || "Server error while deleting admin.",
+      message: error?.parent?.sqlMessage || "Server error while deleting admin",
     });
   }
 };

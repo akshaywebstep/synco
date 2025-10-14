@@ -90,7 +90,8 @@ const Venue = sequelize.define(
         key: "id",
       },
       onUpdate: "CASCADE",
-      onDelete: "RESTRICT",
+      // onDelete: "RESTRICT",
+      onDelete: "SET NULL",
     },
 
     // ✅ Soft delete column
