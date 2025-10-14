@@ -649,41 +649,101 @@ exports.updateBooking = async (payload, adminId, id) => {
     await booking.save({ transaction: t });
 
     // 🔹 Step 3: Update existing students/parents/emergency contacts
+    // if (Array.isArray(payload.students)) {
+    //   for (const student of payload.students) {
+    //     if (!student.id) continue;
+    //     const studentRecord = booking.students.find((s) => s.id === student.id);
+    //     if (!studentRecord) continue;
+
+    //     Object.assign(studentRecord, student);
+    //     await studentRecord.save({ transaction: t });
+
+    //     // Parents
+    //     if (Array.isArray(student.parents)) {
+    //       for (const parent of student.parents) {
+    //         if (!parent.id) continue;
+    //         const parentRecord = studentRecord.parents.find(
+    //           (p) => p.id === parent.id
+    //         );
+    //         if (parentRecord) {
+    //           Object.assign(parentRecord, parent);
+    //           await parentRecord.save({ transaction: t });
+    //         }
+    //       }
+    //     }
+
+    //     // Emergency
+    //     if (Array.isArray(student.emergencyContacts)) {
+    //       for (const emergency of student.emergencyContacts) {
+    //         if (!emergency.id) continue;
+    //         const emergencyRecord = studentRecord.emergencyContacts.find(
+    //           (e) => e.id === emergency.id
+    //         );
+    //         if (emergencyRecord) {
+    //           Object.assign(emergencyRecord, emergency);
+    //           await emergencyRecord.save({ transaction: t });
+    //         }
+    //       }
+    //     }
+    //   }
+    // }
     if (Array.isArray(payload.students)) {
+      let currentCount = booking.students.length;
+      const createdStudents = [];
+
+      // 1️⃣ Create/update students
       for (const student of payload.students) {
-        if (!student.id) continue;
-        const studentRecord = booking.students.find((s) => s.id === student.id);
-        if (!studentRecord) continue;
+        if (student.id) {
+          // Existing student → update
+          const studentRecord = booking.students.find((s) => s.id === student.id);
+          if (!studentRecord) continue;
 
-        Object.assign(studentRecord, student);
-        await studentRecord.save({ transaction: t });
+          Object.assign(studentRecord, student);
+          await studentRecord.save({ transaction: t });
+          createdStudents.push(studentRecord);
+        } else {
+          // New student → create
+          const newTotal = currentCount + 1;
+          if (newTotal > 3) throw new Error("You cannot add more than 3 students in one booking.");
 
+          const newStudent = await BookingStudentMeta.create(
+            {
+              bookingTrialId: booking.id, // link to booking
+              studentFirstName: student.studentFirstName,
+              studentLastName: student.studentLastName,
+              dateOfBirth: student.dateOfBirth,
+              age: student.age,
+              gender: student.gender,
+              medicalInformation: student.medicalInformation || null,
+            },
+            { transaction: t }
+          );
+
+          createdStudents.push(newStudent);
+          booking.students.push(newStudent);
+          currentCount++;
+        }
+      }
+
+      // 2️⃣ Link parents and emergency to the **first student**
+      const firstStudent = createdStudents[0];
+      if (firstStudent) {
         // Parents
-        if (Array.isArray(student.parents)) {
-          for (const parent of student.parents) {
-            if (!parent.id) continue;
-            const parentRecord = studentRecord.parents.find(
-              (p) => p.id === parent.id
+        if (Array.isArray(payload.parents)) {
+          for (const parent of payload.parents) {
+            await BookingParentMeta.create(
+              { ...parent, studentId: firstStudent.id }, // link to first student
+              { transaction: t }
             );
-            if (parentRecord) {
-              Object.assign(parentRecord, parent);
-              await parentRecord.save({ transaction: t });
-            }
           }
         }
 
-        // Emergency
-        if (Array.isArray(student.emergencyContacts)) {
-          for (const emergency of student.emergencyContacts) {
-            if (!emergency.id) continue;
-            const emergencyRecord = studentRecord.emergencyContacts.find(
-              (e) => e.id === emergency.id
-            );
-            if (emergencyRecord) {
-              Object.assign(emergencyRecord, emergency);
-              await emergencyRecord.save({ transaction: t });
-            }
-          }
+        // Emergency contact
+        if (payload.emergency && Object.keys(payload.emergency).length > 0) {
+          await BookingEmergencyMeta.create(
+            { ...payload.emergency, studentId: firstStudent.id }, // link to first student
+            { transaction: t }
+          );
         }
       }
     }
