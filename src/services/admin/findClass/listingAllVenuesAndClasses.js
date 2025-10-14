@@ -337,7 +337,7 @@ exports.getAllVenuesWithClasses = async ({
             required: true, // ✅ Only include venues that HAVE classes
           },
         ],
-        order: [[Sequelize.col("distanceMiles"), "ASC"]],
+        order: [[Sequelize.col("distanceMiles"), "DESC"]],
       });
     } else {
       venues = await Venue.findAll({
@@ -348,7 +348,7 @@ exports.getAllVenuesWithClasses = async ({
             required: true, // ✅ Only include venues that HAVE classes
           },
         ],
-        order: [["id", "ASC"]],
+        order: [["id", "DESC"]],
       });
     }
 
@@ -451,6 +451,7 @@ exports.getAllVenuesWithClasses = async ({
             className: cls.className,
             time: `${cls.startTime} - ${cls.endTime}`,
             capacity: cls.capacity,
+            totalCapacity: cls.totalCapacity,
             allowFreeTrial: !!cls.allowFreeTrial,
           });
           return acc;
@@ -533,7 +534,7 @@ exports.getAllVenuesWithClasses = async ({
 exports.getAllClasses = async (adminId) => {
   try {
     const classes = await ClassSchedule.findAll({
-      order: [["id", "ASC"]],
+      order: [["id", "DESC"]],
       include: [
         {
           model: Venue,

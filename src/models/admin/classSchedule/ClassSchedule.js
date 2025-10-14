@@ -16,7 +16,11 @@ const ClassSchedule = sequelize.define(
     },
 
     capacity: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    totalCapacity: {
+      type: DataTypes.INTEGER,
       allowNull: true,
     },
 

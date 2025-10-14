@@ -7,6 +7,7 @@ const {
   Venue,
   TermGroup,
   Term,
+  ClassSchedule,
   ClassScheduleTermMap,
 } = require("../../../models");
 const {
@@ -95,6 +96,7 @@ exports.createClassSchedule = async (req, res) => {
     const result = await ClassScheduleService.createClass({
       className,
       capacity,
+      totalCapacity: capacity,
       day,
       startTime,
       endTime,
@@ -187,7 +189,7 @@ exports.createClassSchedule = async (req, res) => {
                   termId: term.id,
                   sessionPlanId: session.sessionPlanId,
                   status: "pending", // ✅ default
-                  createdBy: createdBy, 
+                  createdBy: createdBy,
                 });
 
                 if (DEBUG)
@@ -349,6 +351,96 @@ exports.getClassScheduleDetails = async (req, res) => {
 //   }
 // };
 
+// exports.updateClassSchedule = async (req, res) => {
+//   const { id } = req.params;
+//   const {
+//     className,
+//     capacity,
+//     day,
+//     startTime,
+//     endTime,
+//     allowFreeTrial,
+//     facility,
+//     venueId,
+//   } = req.body;
+
+//   const adminId = req.admin?.id;
+
+//   if (DEBUG) console.log(`✏️ Updating class schedule ID: ${id}`, req.body);
+
+//   const validation = validateFormData(req.body, {
+//     requiredFields: ["className", "day", "startTime", "endTime", "venueId"],
+//   });
+
+//   if (!validation.isValid) {
+//     if (DEBUG) console.log("❌ Validation failed:", validation.error);
+//     await logActivity(req, PANEL, MODULE, "update", validation.error, false);
+//     return res.status(400).json({ status: false, ...validation });
+//   }
+
+//   const venue = await Venue.findByPk(venueId);
+//   if (!venue) {
+//     if (DEBUG) console.log("❌ Invalid venue ID:", venueId);
+//     return res.status(404).json({
+//       status: false,
+//       message: "Venue not found. Please select a valid venue.",
+//     });
+//   }
+
+//   try {
+//     const result = await ClassScheduleService.updateClass(id, {
+//       className,
+//       capacity,
+//       day,
+//       startTime,
+//       endTime,
+//       allowFreeTrial,
+//       facility,
+//       venueId,
+//       createdBy: adminId, // ✅ FIXED HERE
+//     });
+
+//     if (!result.status) {
+//       if (DEBUG) console.log("⚠️ Update failed:", result.message);
+//       return res.status(404).json({ status: false, message: result.message });
+//     }
+
+//     if (DEBUG) console.log("✅ Class schedule updated:", result.data);
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "update",
+//       { oneLineMessage: `Updated class schedule with ID: ${id}` },
+//       true
+//     );
+
+//     await createNotification(
+//       req,
+//       "Class Schedule Updated",
+//       `Class "${className}" was updated for ${day}, ${startTime} - ${endTime}.`,
+//       "System"
+//     );
+
+//     return res.status(200).json({
+//       status: true,
+//       message: "Class schedule updated successfully.",
+//       data: result.data,
+//     });
+//   } catch (error) {
+//     console.error("❌ Error updating class schedule:", error);
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "update",
+//       { oneLineMessage: error.message },
+//       false
+//     );
+//     return res.status(500).json({ status: false, message: "Server error." });
+//   }
+// };
+
 exports.updateClassSchedule = async (req, res) => {
   const { id } = req.params;
   const {
@@ -386,16 +478,43 @@ exports.updateClassSchedule = async (req, res) => {
   }
 
   try {
+    // ✅ Fetch existing record to apply capacity logic
+    const existingClass = await ClassSchedule.findByPk(id);
+    if (!existingClass) {
+      return res.status(404).json({
+        status: false,
+        message: "Class schedule not found.",
+      });
+    }
+
+    let updatedCapacity = existingClass.capacity;
+    let updatedTotalCapacity = existingClass.totalCapacity;
+
+    if (capacity !== undefined) {
+      if (capacity < existingClass.capacity) {
+        // 🔻 Decrease capacity → reduce only capacity
+        updatedCapacity = capacity;
+        updatedTotalCapacity = existingClass.totalCapacity;
+      } else if (capacity > existingClass.capacity) {
+        // 🔺 Increase capacity → increase totalCapacity, keep current capacity same
+        const diff = capacity - existingClass.capacity;
+        updatedTotalCapacity = existingClass.totalCapacity + diff;
+        updatedCapacity = existingClass.capacity;
+      }
+    }
+
+    // ✅ Now call your service
     const result = await ClassScheduleService.updateClass(id, {
       className,
-      capacity,
+      capacity: updatedCapacity,
+      totalCapacity: updatedTotalCapacity,
       day,
       startTime,
       endTime,
       allowFreeTrial,
       facility,
       venueId,
-      createdBy: adminId, // ✅ FIXED HERE
+      createdBy: adminId, // ✅ keep same variable
     });
 
     if (!result.status) {
