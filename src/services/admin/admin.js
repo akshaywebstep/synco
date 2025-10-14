@@ -489,6 +489,8 @@ exports.deleteAdmin = async (id, currentAdminId) => {
     };
   }
 };
+ 
+//  delte
 
 // exports.deleteAdmin = async (id, transferToAdminId) => {
 //   try {
@@ -523,8 +525,8 @@ exports.deleteAdmin = async (id, currentAdminId) => {
 //       Term.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
 //       Venue.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
 //       ClassSchedule.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
-//       Booking.update({ adminId: transferToAdminId }, { where: { adminId: id } }),
-//       User.update({ adminId: transferToAdminId }, { where: { adminId: id } }),
+//       Booking.update({ bookedBy: transferToAdminId }, { where: { bookedBy: id } }),
+//       Lead.update({	assignedAgentId: transferToAdminId }, { where : { assignedAgentId: id} })
 //     ]);
 
 //     // Delete the admin from Admins table only
