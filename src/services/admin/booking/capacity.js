@@ -9,8 +9,12 @@ const { Op } = require("sequelize");
 
 exports.getAllBookings = async (adminId, filters = {}) => {
   try {
-    const trialWhere = {};
-    trialWhere.bookingType = { [Op.in]: ["free", "paid"] };
+    // const trialWhere = {};
+    // trialWhere.bookingType = { [Op.in]: ["free", "paid"] };
+    const trialWhere = {
+      bookingType: { [Op.in]: ["free", "paid"] },
+      bookedBy: adminId, // ✅ only bookings created by the logged-in admin
+    };
 
     if (filters.venueId) trialWhere.venueId = filters.venueId;
     if (filters.bookedBy) trialWhere.bookedBy = filters.bookedBy;
@@ -35,8 +39,17 @@ exports.getAllBookings = async (adminId, filters = {}) => {
     }
 
     // --- FETCH ALL VENUES ---
+    // const allVenues = await Venue.findAll({
+    //   where: venueWhere,
+    //   order: [["id", "ASC"]],
+    // });
+
+    // --- FETCH ONLY VENUES OWNED BY THIS ADMIN ---
     const allVenues = await Venue.findAll({
-      where: venueWhere,
+      where: {
+        ...venueWhere,
+        createdBy: adminId, // ✅ only venues created/owned by the logged-in admin
+      },
       order: [["id", "ASC"]],
     });
 
