@@ -594,7 +594,7 @@ exports.getAllBookings = async (adminId, filters = {}) => {
         const clsStats = {
           totalCapacity: cls.totalCapacity || cls.capacity || 0,
           totalBooked: clsTotalBooked,
-          availableSpaces: Math.max((cls.capacity || 0) - clsTotalBooked, 0),
+          availableSpaces: cls.capacity || 0,
           members: clsMembers,
           freeTrials: clsFreeTrials,
           occupancyRate: cls.capacity
@@ -669,7 +669,17 @@ exports.getAllBookings = async (adminId, filters = {}) => {
       { totalCapacity: 0, totalBooked: 0, members: 0, freeTrials: 0 }
     );
 
-    globalStats.availableSpaces = globalStats.totalCapacity - globalStats.totalBooked;
+    // globalStats.availableSpaces = globalStats.totalCapacity;
+    globalStats.availableSpaces = venues.reduce(
+      (sum, venue) =>
+        sum +
+        venue.classes.reduce(
+          (clsSum, cls) => clsSum + (cls.capacity || 0),
+          0
+        ),
+      0
+    );
+
     globalStats.occupancyRate = globalStats.totalCapacity
       ? Math.round((globalStats.totalBooked / globalStats.totalCapacity) * 100)
       : 0;
