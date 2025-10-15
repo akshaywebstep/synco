@@ -723,7 +723,7 @@ exports.deleteClassSchedule = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id;
 
-  if (DEBUG) console.log(`🗑️ Soft deleting class schedule with ID: ${id}`);
+  if (DEBUG) console.log(`🗑️ deleting class schedule with ID: ${id}`);
 
   try {
     const result = await ClassScheduleService.deleteClass(id, adminId);
@@ -734,7 +734,7 @@ exports.deleteClassSchedule = async (req, res) => {
       return res.status(404).json({ status: false, message: result.message });
     }
 
-    if (DEBUG) console.log("✅ Class schedule soft-deleted");
+    if (DEBUG) console.log("✅ Class schedule deleted");
 
     // Log activity
     await logActivity(
@@ -750,13 +750,13 @@ exports.deleteClassSchedule = async (req, res) => {
     await createNotification(
       req,
       "Class Schedule Deleted",
-      `Class schedule with ID ${id} has been soft-deleted by ${req.admin?.firstName || "Admin"}.`,
+      `Class schedule with ID ${id} has been deleted by ${req.admin?.firstName || "Admin"}.`,
       "Admins"
     );
 
     return res.status(200).json({
       status: true,
-      message: "Class schedule soft-deleted successfully.",
+      message: "Class schedule deleted successfully.",
     });
   } catch (error) {
     console.error("❌ deleteClassSchedule Controller Error:", error);

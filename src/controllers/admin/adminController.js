@@ -4,7 +4,7 @@ const fs = require("fs");
 
 const { createToken } = require("../../utils/jwt");
 const { uploadToFTP } = require("../../utils/uploadToFTP");
-const { generatePasswordHint } = require("../../utils/auth");
+const { generatePasswordHint, getMainSuperAdminOfAdmin } = require("../../utils/auth");
 const sendEmail = require("../../utils/email/sendEmail");
 
 const adminModel = require("../../services/admin/admin");
@@ -44,6 +44,9 @@ exports.createAdmin = async (req, res) => {
     const file = req.file;
 
     if (DEBUG) console.log("📥 Received FormData:", formData);
+
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
 
     const email = formData.email;
     // const name = formData.name;
@@ -139,6 +142,8 @@ exports.createAdmin = async (req, res) => {
       resetOtpExpiry,
       status,
       postalCode,
+      createdByAdmin: req.admin.id ?? null,
+      superAdminId,
     });
 
     if (!createResult.status) {
