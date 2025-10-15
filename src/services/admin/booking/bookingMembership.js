@@ -210,6 +210,273 @@ exports.createBooking = async (data, options) => {
     }
 
     // 🔹 Step 5: Process Payment if booking has a payment plan
+    // if (booking.paymentPlanId && data.payment?.paymentType) {
+    //   const paymentType = data.payment.paymentType; // "bank" or "card"
+    //   console.log("Step 5: Start payment process, paymentType:", paymentType);
+
+    //   let paymentStatusFromGateway = "pending";
+    //   const firstStudentId = studentRecords[0]?.id;
+
+    //   try {
+    //     // Fetch payment plan & pricing
+    //     const paymentPlan = await PaymentPlan.findByPk(booking.paymentPlanId, {
+    //       transaction: t,
+    //     });
+    //     if (!paymentPlan) throw new Error("Invalid payment plan selected.");
+    //     const price = paymentPlan.price || 0;
+
+    //     // Fetch venue & classSchedule info
+    //     const venue = await Venue.findByPk(data.venueId, { transaction: t });
+    //     const classSchedule = await ClassSchedule.findByPk(
+    //       data.classScheduleId,
+    //       {
+    //         transaction: t,
+    //       }
+    //     );
+
+    //     const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
+    //     let gatewayResponse = null;
+    //     const amountInPence = Math.round(price * 100);
+
+    //     let goCardlessCustomer;
+    //     let goCardlessBankAccount;
+    //     let goCardlessBillingRequest;
+
+    //     if (paymentType === "bank") {
+    //       // Step 1: Prepare payload for customer creation
+    //       // const customerPayload = {
+    //       //   email: data.payment.email || data.parents?.[0]?.parentEmail || "",
+    //       //   given_name: data.payment.firstName || "",
+    //       //   family_name: data.payment.lastName || "",
+    //       //   address_line1: data.payment.addressLine1 || "",
+    //       //   address_line2: data.payment.addressLine2 || "",
+    //       //   city: data.payment.city || "",
+    //       //   postal_code: data.payment.postalCode || "",
+    //       //   country_code: data.payment.countryCode || "",
+    //       //   region: data.payment.region || "",
+    //       //   crm_id: `CUSTID-${Date.now()}-${Math.floor(
+    //       //     1000 + Math.random() * 9000
+    //       //   )}`,
+    //       //   account_holder_name: data.payment.account_holder_name || "",
+    //       //   account_number: data.payment.account_number || "",
+    //       //   branch_code: data.payment.branch_code || "",
+    //       //   bank_code: data.payment.bank_code || "",
+    //       //   account_type: data.payment.account_type || "",
+    //       //   iban: data.payment.iban || "",
+    //       // };
+
+    //       const customerPayload = {
+    //         email: data.payment.email || data.parents?.[0]?.parentEmail || "",
+    //         given_name: data.payment.firstName || "",
+    //         family_name: data.payment.lastName || "",
+    //         address_line1: data.payment.addressLine1 || "",
+    //         city: data.payment.city || "",
+    //         postal_code: data.payment.postalCode || "",
+    //         country_code: data.payment.countryCode || "GB", // default to GB
+    //         currency: data.payment.currency || "GBP",
+    //         account_holder_name: data.payment.account_holder_name || "",
+    //         account_number: data.payment.account_number || "",
+    //         branch_code: data.payment.branch_code || "",
+    //       };
+
+    //       if (DEBUG) console.log("🛠 Generated payload:", customerPayload);
+
+    //       // Step 2: Create customer + bank account
+    //       const createCustomerRes = await createCustomer(customerPayload);
+    //       if (!createCustomerRes.status) {
+    //         throw new Error(
+    //           createCustomerRes.message ||
+    //           "Failed to create goCardless customer."
+    //         );
+    //       }
+
+    //       // Step 3: Prepare payload for billing request
+    //       const billingRequestPayload = {
+    //         customerId: createCustomerRes.customer.id,
+    //         description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+    //           }`,
+    //         amount: price,
+    //         scheme: "faster_payments",
+    //         currency: "GBP",
+    //         reference: `TRX-${Date.now()}-${Math.floor(
+    //           1000 + Math.random() * 9000
+    //         )}`,
+    //         mandateReference: `MD-${Date.now()}-${Math.floor(
+    //           1000 + Math.random() * 9000
+    //         )}`,
+    //         metadata: {
+    //           crm_id: customerPayload.crm_id,
+    //         },
+    //         fallbackEnabled: true,
+    //       };
+
+    //       if (DEBUG)
+    //         console.log(
+    //           "🛠 Generated billing request payload:",
+    //           billingRequestPayload
+    //         );
+
+    //       // Step 4: Create billing request
+    //       const createBillingRequestRes = await createBillingRequest(
+    //         billingRequestPayload
+    //       );
+    //       if (!createBillingRequestRes.status) {
+    //         await removeCustomer(createCustomerRes.customer.id);
+    //         throw new Error(
+    //           createBillingRequestRes.message ||
+    //           "Failed to create billing request."
+    //         );
+    //       }
+
+    //       goCardlessCustomer = createCustomerRes.customer;
+    //       goCardlessBankAccount = createCustomerRes.bankAccount;
+    //       goCardlessBillingRequest = createBillingRequestRes.billingRequest;
+    //     } else if (paymentType === "card") {
+    //       // 🔹 Card payment using Pay360
+    //       if (
+    //         !process.env.PAY360_INST_ID ||
+    //         !process.env.PAY360_API_USERNAME ||
+    //         !process.env.PAY360_API_PASSWORD
+    //       )
+    //         throw new Error("Pay360 credentials not set.");
+
+    //       const paymentPayload = {
+    //         transaction: {
+    //           currency: "GBP",
+    //           amount: price,
+    //           merchantRef,
+    //           description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+    //             }`,
+    //           commerceType: "ECOM",
+    //         },
+    //         paymentMethod: {
+    //           card: {
+    //             pan: data.payment.pan,
+    //             expiryDate: data.payment.expiryDate,
+    //             cardHolderName: data.payment.cardHolderName,
+    //             cv2: data.payment.cv2,
+    //           },
+    //         },
+    //       };
+
+    //       const url = `https://api.mite.pay360.com/acceptor/rest/transactions/${process.env.PAY360_INST_ID}/payment`;
+    //       const authHeader = Buffer.from(
+    //         `${process.env.PAY360_API_USERNAME}:${process.env.PAY360_API_PASSWORD}`
+    //       ).toString("base64");
+
+    //       const response = await axios.post(url, paymentPayload, {
+    //         headers: {
+    //           "Content-Type": "application/json",
+    //           Authorization: `Basic ${authHeader}`,
+    //         },
+    //       });
+
+    //       gatewayResponse = response.data;
+    //       // Map status dynamically
+    //       const txnStatus = gatewayResponse?.transaction?.status?.toLowerCase();
+    //       if (txnStatus === "success") {
+    //         paymentStatusFromGateway = "paid";
+    //       } else if (txnStatus === "pending") {
+    //         paymentStatusFromGateway = "pending";
+    //       } else if (txnStatus === "declined") {
+    //         paymentStatusFromGateway = "failed";
+    //       } else {
+    //         paymentStatusFromGateway = txnStatus || "unknown";
+    //       }
+    //     }
+
+    //     // 🔹 Save BookingPayment (always save, even if failed)
+    //     await BookingPayment.create(
+    //       {
+    //         bookingId: booking.id,
+    //         paymentPlanId: booking.paymentPlanId,
+    //         studentId: firstStudentId,
+    //         paymentType,
+    //         firstName:
+    //           data.payment.firstName ||
+    //           data.parents?.[0]?.parentFirstName ||
+    //           "",
+    //         lastName:
+    //           data.payment.lastName || data.parents?.[0]?.parentLastName || "",
+    //         email: data.payment.email || data.parents?.[0]?.parentEmail || "",
+    //         billingAddress: data.payment.billingAddress || "",
+    //         cardHolderName: data.payment.cardHolderName || "",
+    //         cv2: data.payment.cv2 || "",
+    //         expiryDate: data.payment.expiryDate || "",
+    //         pan: data.payment.pan || "",
+    //         // referenceId: data.payment.referenceId || "",
+    //         account_holder_name: data.payment.account_holder_name || "",
+    //         paymentStatus: paymentStatusFromGateway,
+    //         currency:
+    //           gatewayResponse?.transaction?.currency ||
+    //           gatewayResponse?.billing_requests?.currency ||
+    //           "GBP",
+    //         merchantRef:
+    //           gatewayResponse?.transaction?.merchantRef || merchantRef,
+    //         description:
+    //           gatewayResponse?.transaction?.description ||
+    //           `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+    //           }`,
+    //         commerceType: "ECOM",
+    //         gatewayResponse,
+    //         transactionMeta: {
+    //           status:
+    //             gatewayResponse?.transaction?.status ||
+    //             gatewayResponse?.billing_requests?.status ||
+    //             "pending",
+    //         },
+    //         goCardlessCustomer,
+    //         goCardlessBankAccount,
+    //         goCardlessBillingRequest,
+    //         createdAt: new Date(),
+    //         updatedAt: new Date(),
+    //       },
+    //       { transaction: t }
+    //     );
+
+    //     console.log(
+    //       `${paymentType.toUpperCase()} payment saved with status:`,
+    //       paymentStatusFromGateway
+    //     );
+
+    //     // 🔹 Fail booking creation only if payment explicitly failed
+    //     if (paymentStatusFromGateway === "failed") {
+    //       throw new Error("Payment failed. Booking not created.");
+    //     }
+    //   } catch (err) {
+    //     // 🔹 Proper error handling: only show readable message
+    //     let errorMessage = "Payment failed";
+
+    //     if (err.response?.data) {
+    //       // Gateway returned an error
+    //       if (typeof err.response.data === "string") {
+    //         errorMessage = err.response.data;
+    //       } else if (err.response.data.reasonMessage) {
+    //         // Use reasonMessage from gateway response if available
+    //         errorMessage = err.response.data.reasonMessage;
+    //       } else if (err.response.data.error?.message) {
+    //         // Use error.message if available
+    //         errorMessage = err.response.data.error.message;
+    //       } else {
+    //         // Fallback: convert object to string safely
+    //         errorMessage = Object.values(err.response.data).join(" | ");
+    //       }
+    //     } else if (err.message) {
+    //       // Standard JS error
+    //       errorMessage = err.message;
+    //     }
+
+    //     // Rollback transaction
+    //     await t.rollback();
+
+    //     // Return clean error message
+    //     return {
+    //       status: false,
+    //       message: errorMessage,
+    //     };
+    //   }
+    // }
+    // Step 5: Process Payment if booking has a payment plan
     if (booking.paymentPlanId && data.payment?.paymentType) {
       const paymentType = data.payment.paymentType; // "bank" or "card"
       console.log("Step 5: Start payment process, paymentType:", paymentType);
@@ -218,53 +485,21 @@ exports.createBooking = async (data, options) => {
       const firstStudentId = studentRecords[0]?.id;
 
       try {
-        // Fetch payment plan & pricing
-        const paymentPlan = await PaymentPlan.findByPk(booking.paymentPlanId, {
-          transaction: t,
-        });
+        // ✅ Fetch Payment Plan to get price
+        const paymentPlan = await PaymentPlan.findByPk(booking.paymentPlanId, { transaction: t });
         if (!paymentPlan) throw new Error("Invalid payment plan selected.");
-        const price = paymentPlan.price || 0;
+        const planPrice = paymentPlan.price || 0;
 
         // Fetch venue & classSchedule info
         const venue = await Venue.findByPk(data.venueId, { transaction: t });
-        const classSchedule = await ClassSchedule.findByPk(
-          data.classScheduleId,
-          {
-            transaction: t,
-          }
-        );
+        const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, { transaction: t });
 
         const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
         let gatewayResponse = null;
-        const amountInPence = Math.round(price * 100);
-
-        let goCardlessCustomer;
-        let goCardlessBankAccount;
-        let goCardlessBillingRequest;
+        let goCardlessCustomer, goCardlessBankAccount, goCardlessBillingRequest;
 
         if (paymentType === "bank") {
-          // Step 1: Prepare payload for customer creation
-          // const customerPayload = {
-          //   email: data.payment.email || data.parents?.[0]?.parentEmail || "",
-          //   given_name: data.payment.firstName || "",
-          //   family_name: data.payment.lastName || "",
-          //   address_line1: data.payment.addressLine1 || "",
-          //   address_line2: data.payment.addressLine2 || "",
-          //   city: data.payment.city || "",
-          //   postal_code: data.payment.postalCode || "",
-          //   country_code: data.payment.countryCode || "",
-          //   region: data.payment.region || "",
-          //   crm_id: `CUSTID-${Date.now()}-${Math.floor(
-          //     1000 + Math.random() * 9000
-          //   )}`,
-          //   account_holder_name: data.payment.account_holder_name || "",
-          //   account_number: data.payment.account_number || "",
-          //   branch_code: data.payment.branch_code || "",
-          //   bank_code: data.payment.bank_code || "",
-          //   account_type: data.payment.account_type || "",
-          //   iban: data.payment.iban || "",
-          // };
-
+          // ✅ Prepare GoCardless payload
           const customerPayload = {
             email: data.payment.email || data.parents?.[0]?.parentEmail || "",
             given_name: data.payment.firstName || "",
@@ -272,81 +507,45 @@ exports.createBooking = async (data, options) => {
             address_line1: data.payment.addressLine1 || "",
             city: data.payment.city || "",
             postal_code: data.payment.postalCode || "",
-            country_code: data.payment.countryCode || "GB", // default to GB
+            country_code: data.payment.countryCode || "GB",
             currency: data.payment.currency || "GBP",
             account_holder_name: data.payment.account_holder_name || "",
             account_number: data.payment.account_number || "",
             branch_code: data.payment.branch_code || "",
           };
 
-          if (DEBUG) console.log("🛠 Generated payload:", customerPayload);
-
-          // Step 2: Create customer + bank account
           const createCustomerRes = await createCustomer(customerPayload);
-          if (!createCustomerRes.status) {
-            throw new Error(
-              createCustomerRes.message ||
-              "Failed to create goCardless customer."
-            );
-          }
+          if (!createCustomerRes.status) throw new Error(createCustomerRes.message || "Failed to create GoCardless customer.");
 
-          // Step 3: Prepare payload for billing request
           const billingRequestPayload = {
             customerId: createCustomerRes.customer.id,
-            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-              }`,
-            amount: price,
+            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"}`,
+            amount: planPrice, // ✅ use plan price
             scheme: "faster_payments",
             currency: "GBP",
-            reference: `TRX-${Date.now()}-${Math.floor(
-              1000 + Math.random() * 9000
-            )}`,
-            mandateReference: `MD-${Date.now()}-${Math.floor(
-              1000 + Math.random() * 9000
-            )}`,
-            metadata: {
-              crm_id: customerPayload.crm_id,
-            },
+            reference: `TRX-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+            mandateReference: `MD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+            metadata: { crm_id: customerPayload.crm_id },
             fallbackEnabled: true,
           };
 
-          if (DEBUG)
-            console.log(
-              "🛠 Generated billing request payload:",
-              billingRequestPayload
-            );
-
-          // Step 4: Create billing request
-          const createBillingRequestRes = await createBillingRequest(
-            billingRequestPayload
-          );
+          const createBillingRequestRes = await createBillingRequest(billingRequestPayload);
           if (!createBillingRequestRes.status) {
             await removeCustomer(createCustomerRes.customer.id);
-            throw new Error(
-              createBillingRequestRes.message ||
-              "Failed to create billing request."
-            );
+            throw new Error(createBillingRequestRes.message || "Failed to create billing request.");
           }
 
           goCardlessCustomer = createCustomerRes.customer;
           goCardlessBankAccount = createCustomerRes.bankAccount;
-          goCardlessBillingRequest = createBillingRequestRes.billingRequest;
+          goCardlessBillingRequest = { ...createBillingRequestRes.billingRequest, planPrice }; // ✅ store plan price
         } else if (paymentType === "card") {
-          // 🔹 Card payment using Pay360
-          if (
-            !process.env.PAY360_INST_ID ||
-            !process.env.PAY360_API_USERNAME ||
-            !process.env.PAY360_API_PASSWORD
-          )
-            throw new Error("Pay360 credentials not set.");
-
+          // Card payment
           const paymentPayload = {
             transaction: {
               currency: "GBP",
-              amount: price,
+              amount: planPrice, // ✅ use plan price
               merchantRef,
-              description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-                }`,
+              description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"}`,
               commerceType: "ECOM",
             },
             paymentMethod: {
@@ -360,120 +559,55 @@ exports.createBooking = async (data, options) => {
           };
 
           const url = `https://api.mite.pay360.com/acceptor/rest/transactions/${process.env.PAY360_INST_ID}/payment`;
-          const authHeader = Buffer.from(
-            `${process.env.PAY360_API_USERNAME}:${process.env.PAY360_API_PASSWORD}`
-          ).toString("base64");
+          const authHeader = Buffer.from(`${process.env.PAY360_API_USERNAME}:${process.env.PAY360_API_PASSWORD}`).toString("base64");
 
           const response = await axios.post(url, paymentPayload, {
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Basic ${authHeader}`,
-            },
+            headers: { "Content-Type": "application/json", Authorization: `Basic ${authHeader}` },
           });
 
           gatewayResponse = response.data;
-          // Map status dynamically
           const txnStatus = gatewayResponse?.transaction?.status?.toLowerCase();
-          if (txnStatus === "success") {
-            paymentStatusFromGateway = "paid";
-          } else if (txnStatus === "pending") {
-            paymentStatusFromGateway = "pending";
-          } else if (txnStatus === "declined") {
-            paymentStatusFromGateway = "failed";
-          } else {
-            paymentStatusFromGateway = txnStatus || "unknown";
-          }
+          paymentStatusFromGateway = txnStatus === "success" ? "paid" :
+            txnStatus === "pending" ? "pending" :
+              txnStatus === "declined" ? "failed" : txnStatus || "unknown";
         }
 
-        // 🔹 Save BookingPayment (always save, even if failed)
-        await BookingPayment.create(
-          {
-            bookingId: booking.id,
-            paymentPlanId: booking.paymentPlanId,
-            studentId: firstStudentId,
-            paymentType,
-            firstName:
-              data.payment.firstName ||
-              data.parents?.[0]?.parentFirstName ||
-              "",
-            lastName:
-              data.payment.lastName || data.parents?.[0]?.parentLastName || "",
-            email: data.payment.email || data.parents?.[0]?.parentEmail || "",
-            billingAddress: data.payment.billingAddress || "",
-            cardHolderName: data.payment.cardHolderName || "",
-            cv2: data.payment.cv2 || "",
-            expiryDate: data.payment.expiryDate || "",
-            pan: data.payment.pan || "",
-            // referenceId: data.payment.referenceId || "",
-            account_holder_name: data.payment.account_holder_name || "",
-            paymentStatus: paymentStatusFromGateway,
-            currency:
-              gatewayResponse?.transaction?.currency ||
-              gatewayResponse?.billing_requests?.currency ||
-              "GBP",
-            merchantRef:
-              gatewayResponse?.transaction?.merchantRef || merchantRef,
-            description:
-              gatewayResponse?.transaction?.description ||
-              `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-              }`,
-            commerceType: "ECOM",
-            gatewayResponse,
-            transactionMeta: {
-              status:
-                gatewayResponse?.transaction?.status ||
-                gatewayResponse?.billing_requests?.status ||
-                "pending",
-            },
-            goCardlessCustomer,
-            goCardlessBankAccount,
-            goCardlessBillingRequest,
-            createdAt: new Date(),
-            updatedAt: new Date(),
+        // 🔹 Save BookingPayment
+        await BookingPayment.create({
+          bookingId: booking.id,
+          paymentPlanId: booking.paymentPlanId,
+          studentId: firstStudentId,
+          paymentType,
+          firstName: data.payment.firstName || data.parents?.[0]?.parentFirstName || "",
+          lastName: data.payment.lastName || data.parents?.[0]?.parentLastName || "",
+          email: data.payment.email || data.parents?.[0]?.parentEmail || "",
+          amount: planPrice, // ✅ save price from PaymentPlan
+          billingAddress: data.payment.billingAddress || "",
+          cardHolderName: data.payment.cardHolderName || "",
+          cv2: data.payment.cv2 || "",
+          expiryDate: data.payment.expiryDate || "",
+          pan: data.payment.pan || "",
+          account_holder_name: data.payment.account_holder_name || "",
+          paymentStatus: paymentStatusFromGateway,
+          currency: gatewayResponse?.transaction?.currency || "GBP",
+          merchantRef: gatewayResponse?.transaction?.merchantRef || merchantRef,
+          description: gatewayResponse?.transaction?.description || `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"}`,
+          commerceType: "ECOM",
+          gatewayResponse,
+          transactionMeta: {
+            status: gatewayResponse?.transaction?.status || "pending",
           },
-          { transaction: t }
-        );
+          goCardlessCustomer,
+          goCardlessBankAccount,
+          goCardlessBillingRequest,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }, { transaction: t });
 
-        console.log(
-          `${paymentType.toUpperCase()} payment saved with status:`,
-          paymentStatusFromGateway
-        );
-
-        // 🔹 Fail booking creation only if payment explicitly failed
-        if (paymentStatusFromGateway === "failed") {
-          throw new Error("Payment failed. Booking not created.");
-        }
+        if (paymentStatusFromGateway === "failed") throw new Error("Payment failed. Booking not created.");
       } catch (err) {
-        // 🔹 Proper error handling: only show readable message
-        let errorMessage = "Payment failed";
-
-        if (err.response?.data) {
-          // Gateway returned an error
-          if (typeof err.response.data === "string") {
-            errorMessage = err.response.data;
-          } else if (err.response.data.reasonMessage) {
-            // Use reasonMessage from gateway response if available
-            errorMessage = err.response.data.reasonMessage;
-          } else if (err.response.data.error?.message) {
-            // Use error.message if available
-            errorMessage = err.response.data.error.message;
-          } else {
-            // Fallback: convert object to string safely
-            errorMessage = Object.values(err.response.data).join(" | ");
-          }
-        } else if (err.message) {
-          // Standard JS error
-          errorMessage = err.message;
-        }
-
-        // Rollback transaction
         await t.rollback();
-
-        // Return clean error message
-        return {
-          status: false,
-          message: errorMessage,
-        };
+        return { status: false, message: err.message || "Payment failed" };
       }
     }
 
@@ -2172,14 +2306,14 @@ exports.getFailedPaymentsByBookingId = async (bookingId) => {
         console.error("Failed to parse goCardlessBankAccount:", err.message);
       }
     }
-     if (typeof goCardlessBillingRequest === "string") {
+    if (typeof goCardlessBillingRequest === "string") {
       try {
         goCardlessBillingRequest = JSON.parse(goCardlessBillingRequest);
       } catch (err) {
         console.error("Failed to parse goCardlessBillingRequest:", err.message);
       }
     }
-    
+
     return {
       id: payment.id,
       bookingId: payment.bookingId,

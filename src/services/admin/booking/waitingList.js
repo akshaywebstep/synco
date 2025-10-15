@@ -1237,6 +1237,7 @@ exports.convertToMembership = async (data, options) => {
             firstName: data.payment.firstName || data.parents?.[0]?.parentFirstName || "",
             lastName: data.payment.lastName || data.parents?.[0]?.parentLastName || "",
             email: data.payment.email || data.parents?.[0]?.parentEmail || "",
+            amount: price,
              billingAddress: data.payment.billingAddress || "",
             account_holder_name: data.payment.account_holder_name || "",
             paymentStatus: paymentStatusFromGateway,
