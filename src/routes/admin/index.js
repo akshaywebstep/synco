@@ -65,7 +65,7 @@ router.use("/find-class", require("./findClassRoutes"));
 router.use("/dashboard", require("./dashboardRoutes"));
 
 // Book Free Trials Module Base Routes
-router.use("/book/free-trials", require("./bookFreeTrailsRoutes"));
+router.use("/book/free-trials", require("./bookFreeTrialsRoutes"));
 router.use("/service-history", require("./serviceHistoryRoutes"));
 router.use("/reebooking", require("./reebookFreeTrialRoutes"));
 router.use("/cancel-freeTrial", require("./cancelBookingRoutes"));

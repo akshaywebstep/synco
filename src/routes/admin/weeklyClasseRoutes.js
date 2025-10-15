@@ -4,7 +4,7 @@ const authMiddleware = require("../../middleware/admin/authenticate");
 const permissionMiddleware = require("../../middleware/admin/permission");
 
 const memberController = require("../../controllers/admin/weeklyClass/analytics/memberController");
-const freeTrailController = require("../../controllers/admin/weeklyClass/analytics/freeTrailController");
+const freeTrialController = require("../../controllers/admin/weeklyClass/analytics/freeTrialController");
 const saleController = require("../../controllers/admin/weeklyClass/analytics/saleController");
 
 // Weekly class report route
@@ -17,10 +17,10 @@ router.get(
 
 // Weekly class report route
 router.get(
-  "/analytics/free-trail",
+  "/analytics/free-trial",
   authMiddleware,
   // permissionMiddleware("weekly-class", "view-report"),
-  freeTrailController.getMonthlyReport
+  freeTrialController.getMonthlyReport
 );
 
 // Weekly class report route

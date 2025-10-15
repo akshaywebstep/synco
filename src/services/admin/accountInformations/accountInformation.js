@@ -16,7 +16,35 @@ exports.getAllStudentsListing = async (filters = {}) => {
   try {
     const students = await BookingStudentMeta.findAll({
       include: [
-        { model: BookingParentMeta, as: "parents", required: false },
+        {
+          model: Booking, // 👈 The Booking table
+          as: "booking",
+          required: false,
+          attributes: [
+            "id",
+            "bookingType",
+            "bookingId",
+            "leadId",
+            "venueId",
+            "classScheduleId",
+            "paymentPlanId",
+            "trialDate",
+            "startDate",
+            "status",
+            "totalStudents",
+            "interest",
+            "bookedBy",
+            "additionalNote",
+            "reasonForNonAttendance",
+            "createdAt",
+            "updatedAt",
+          ],
+        },
+        {
+          model: BookingParentMeta,
+          as: "parents",
+          required: false,
+        },
         {
           model: BookingEmergencyMeta,
           as: "emergencyContacts",
@@ -28,45 +56,79 @@ exports.getAllStudentsListing = async (filters = {}) => {
     const grouped = {};
 
     students.forEach((student) => {
-      const trialId = student.bookingTrialId;
+      const booking = student.booking;
 
-      if (!grouped[trialId]) {
-        const parents = (student.parents || []).map((p) => ({
-          id: p.id,
-          studentId: p.studentId,
-          parentFirstName: p.parentFirstName,
-          parentLastName: p.parentLastName,
-          parentEmail: p.parentEmail,
-          parentPhoneNumber: p.parentPhoneNumber,
-          relationToChild: p.relationToChild,
-          howDidYouHear: p.howDidYouHear,
-        }));
+      // Skip if no booking found
+      if (!booking) return;
 
-        const emergency = (student.emergencyContacts || []).map((e) => ({
-          id: e.id,
-          studentId: e.studentId,
-          emergencyFirstName: e.emergencyFirstName,
-          emergencyLastName: e.emergencyLastName,
-          emergencyPhoneNumber: e.emergencyPhoneNumber,
-          emergencyRelation: e.emergencyRelation,
-        }));
+      const bookingId = booking.id;
 
-        grouped[trialId] = {
-          bookingTrialId: trialId,
+      // Initialize group for each booking
+      if (!grouped[bookingId]) {
+        grouped[bookingId] = {
+          id: booking.id,
+          bookingType: booking.bookingType,
+          bookingId: booking.bookingId,
+          leadId: booking.leadId,
+          venueId: booking.venueId,
+          classScheduleId: booking.classScheduleId,
+          paymentPlanId: booking.paymentPlanId,
+          trialDate: booking.trialDate,
+          startDate: booking.startDate,
+          status: booking.status,
+          totalStudents: booking.totalStudents,
+          interest: booking.interest,
+          bookedBy: booking.bookedBy,
+          additionalNote: booking.additionalNote,
+          reasonForNonAttendance: booking.reasonForNonAttendance,
+          createdAt: booking.createdAt,
+          updatedAt: booking.updatedAt,
           students: [],
-          parents,
-          emergency,
+          parents: [],
+          emergency: [],
         };
       }
 
-      grouped[trialId].students.push({
+      // Add student info
+      grouped[bookingId].students.push({
         id: student.id,
+        bookingTrialId: student.bookingTrialId,
         studentFirstName: student.studentFirstName,
         studentLastName: student.studentLastName,
         dateOfBirth: student.dateOfBirth,
         age: student.age,
         gender: student.gender,
         medicalInformation: student.medicalInformation,
+      });
+
+      // Add parents (avoid duplicates)
+      (student.parents || []).forEach((p) => {
+        if (!grouped[bookingId].parents.some((x) => x.id === p.id)) {
+          grouped[bookingId].parents.push({
+            id: p.id,
+            studentId: p.studentId,
+            parentFirstName: p.parentFirstName,
+            parentLastName: p.parentLastName,
+            parentEmail: p.parentEmail,
+            parentPhoneNumber: p.parentPhoneNumber,
+            relationToChild: p.relationToChild,
+            howDidYouHear: p.howDidYouHear,
+          });
+        }
+      });
+
+      // Add emergency contacts (avoid duplicates)
+      (student.emergencyContacts || []).forEach((e) => {
+        if (!grouped[bookingId].emergency.some((x) => x.id === e.id)) {
+          grouped[bookingId].emergency.push({
+            id: e.id,
+            studentId: e.studentId,
+            emergencyFirstName: e.emergencyFirstName,
+            emergencyLastName: e.emergencyLastName,
+            emergencyPhoneNumber: e.emergencyPhoneNumber,
+            emergencyRelation: e.emergencyRelation,
+          });
+        }
       });
     });
 
@@ -82,6 +144,7 @@ exports.getAllStudentsListing = async (filters = {}) => {
     return { status: false, message: error.message };
   }
 };
+
 exports.getStudentById = async (studentId) => {
   try {
     if (!studentId) {
@@ -91,12 +154,32 @@ exports.getStudentById = async (studentId) => {
     const student = await BookingStudentMeta.findOne({
       where: { id: studentId },
       include: [
-        { model: BookingParentMeta, as: "parents", required: false },
         {
-          model: BookingEmergencyMeta,
-          as: "emergencyContacts",
+          model: Booking, // 👈 Include Booking details
+          as: "booking",
           required: false,
+          attributes: [
+            "id",
+            "bookingType",
+            "bookingId",
+            "leadId",
+            "venueId",
+            "classScheduleId",
+            "paymentPlanId",
+            "trialDate",
+            "startDate",
+            "status",
+            "totalStudents",
+            "interest",
+            "bookedBy",
+            "additionalNote",
+            "reasonForNonAttendance",
+            "createdAt",
+            "updatedAt",
+          ],
         },
+        { model: BookingParentMeta, as: "parents", required: false },
+        { model: BookingEmergencyMeta, as: "emergencyContacts", required: false },
       ],
     });
 
@@ -104,7 +187,7 @@ exports.getStudentById = async (studentId) => {
       return { status: false, message: "Student not found" };
     }
 
-    // Map parents and emergency contacts safely
+    // 🧩 Map related data
     const parents = (student.parents || []).map((p) => ({
       id: p.id,
       studentId: p.studentId,
@@ -125,23 +208,60 @@ exports.getStudentById = async (studentId) => {
       emergencyRelation: e.emergencyRelation,
     }));
 
-    // Wrap in same format as accountInformation
-    const accountInformation = {
-      bookingTrialId: student.bookingTrialId,
-      students: [
-        {
-          id: student.id,
-          studentFirstName: student.studentFirstName,
-          studentLastName: student.studentLastName,
-          dateOfBirth: student.dateOfBirth,
-          age: student.age,
-          gender: student.gender,
-          medicalInformation: student.medicalInformation,
-        },
-      ],
-      parents,
-      emergency,
-    };
+    // 🧠 Get booking info
+    const booking = student.booking;
+
+    const accountInformation = booking
+      ? {
+          id: booking.id,
+          bookingType: booking.bookingType,
+          bookingId: booking.bookingId,
+          leadId: booking.leadId,
+          venueId: booking.venueId,
+          classScheduleId: booking.classScheduleId,
+          paymentPlanId: booking.paymentPlanId,
+          trialDate: booking.trialDate,
+          startDate: booking.startDate,
+          status: booking.status,
+          totalStudents: booking.totalStudents,
+          interest: booking.interest,
+          bookedBy: booking.bookedBy,
+          additionalNote: booking.additionalNote,
+          reasonForNonAttendance: booking.reasonForNonAttendance,
+          createdAt: booking.createdAt,
+          updatedAt: booking.updatedAt,
+          students: [
+            {
+              id: student.id,
+              bookingTrialId: student.bookingTrialId,
+              studentFirstName: student.studentFirstName,
+              studentLastName: student.studentLastName,
+              dateOfBirth: student.dateOfBirth,
+              age: student.age,
+              gender: student.gender,
+              medicalInformation: student.medicalInformation,
+            },
+          ],
+          parents,
+          emergency,
+        }
+      : {
+          // fallback if no booking found
+          id: null,
+          students: [
+            {
+              id: student.id,
+              studentFirstName: student.studentFirstName,
+              studentLastName: student.studentLastName,
+              dateOfBirth: student.dateOfBirth,
+              age: student.age,
+              gender: student.gender,
+              medicalInformation: student.medicalInformation,
+            },
+          ],
+          parents,
+          emergency,
+        };
 
     return {
       status: true,
@@ -153,6 +273,7 @@ exports.getStudentById = async (studentId) => {
     return { status: false, message: error.message };
   }
 };
+
 exports.updateBookingInformationByTrialId = async (
   bookingTrialId,
   updateData
@@ -391,13 +512,13 @@ exports.getBookingsById = async (bookingId, filters = {}) => {
         payments,
         paymentData: payment
           ? {
-              firstName: payment.firstName,
-              lastName: payment.lastName,
-              email: payment.email,
-              billingAddress: payment.billingAddress,
-              paymentStatus: payment.paymentStatus,
-              totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
-            }
+            firstName: payment.firstName,
+            lastName: payment.lastName,
+            email: payment.email,
+            billingAddress: payment.billingAddress,
+            paymentStatus: payment.paymentStatus,
+            totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
+          }
           : null,
         bookedByAdmin: booking.bookedByAdmin || null,
       };

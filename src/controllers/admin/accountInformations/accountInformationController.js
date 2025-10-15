@@ -11,18 +11,19 @@ const MODULE = "account_information";
 //  controller
 exports.getAllStudentsListing = async (req, res) => {
   try {
+    // 🧾 Extract filters from query params
     const filters = {
-      studentName: req.query.studentName,
-      dateFrom: req.query.dateFrom,
-      dateTo: req.query.dateTo,
-      status: req.query.status,
-      venueId: req.query.venueId,
+      studentName: req.query.studentName || null,
+      dateFrom: req.query.dateFrom || null,
+      dateTo: req.query.dateTo || null,
+      status: req.query.status || null,
+      venueId: req.query.venueId || null,
     };
 
-    const result = await AccountInformationService.getAllStudentsListing(
-      filters
-    );
+    // 🧠 Call the service layer
+    const result = await AccountInformationService.getAllStudentsListing(filters);
 
+    // ❌ Handle service-level failure
     if (!result.status) {
       await logActivity(
         req,
@@ -32,9 +33,13 @@ exports.getAllStudentsListing = async (req, res) => {
         { filters, error: result.message },
         false
       );
-      return res.status(500).json({ status: false, message: result.message });
+      return res.status(500).json({
+        status: false,
+        message: result.message || "Failed to retrieve student listings",
+      });
     }
 
+    // 🧩 Optional: Debug logging
     if (DEBUG) {
       console.log(
         "DEBUG: Retrieved student listing:",
@@ -42,6 +47,7 @@ exports.getAllStudentsListing = async (req, res) => {
       );
     }
 
+    // ✅ Log successful read
     await logActivity(
       req,
       PANEL,
@@ -51,9 +57,16 @@ exports.getAllStudentsListing = async (req, res) => {
       true
     );
 
-    return res.status(200).json(result);
+    // ✅ Return formatted response
+    return res.status(200).json({
+      status: true,
+      message: "Bookings retrieved successfully",
+      data: result.data,
+    });
   } catch (error) {
-    console.error("❌ getAllStudentsListing Error:", error.message);
+    console.error("❌ getAllStudentsListing Controller Error:", error.message);
+
+    // 🧾 Log and respond with server error
     await logActivity(
       req,
       PANEL,
@@ -62,7 +75,11 @@ exports.getAllStudentsListing = async (req, res) => {
       { error: error.message },
       false
     );
-    return res.status(500).json({ status: false, message: "Server error" });
+
+    return res.status(500).json({
+      status: false,
+      message: "Server error. Please try again later.",
+    });
   }
 };
 
@@ -175,6 +192,14 @@ exports.getBookingsById = async (req, res) => {
     const { bookingId } = req.params;
     const { type, fromDate, toDate } = req.query;
 
+    // 🧾 Validate input
+    if (!bookingId) {
+      return res.status(400).json({
+        status: false,
+        message: "Booking ID is required",
+      });
+    }
+
     // 🔎 Call service with filters
     const result = await AccountInformationService.getBookingsById(bookingId, {
       type,
@@ -182,31 +207,49 @@ exports.getBookingsById = async (req, res) => {
       toDate,
     });
 
+    // ❌ Handle service failure
     if (!result.status) {
       await logActivity(
         req,
         PANEL,
         MODULE,
         "read",
-        { error: result.message },
+        { bookingId, error: result.message },
         false
       );
+
       return res.status(404).json({
         status: false,
         message: result.message || "Booking not found",
       });
     }
 
-    // ✅ Log success activity
-    await logActivity(req, PANEL, MODULE, "read", {}, true);
+    // 🧩 Optional Debug Logging
+    if (DEBUG) {
+      console.log(
+        "DEBUG: Retrieved booking info:",
+        JSON.stringify(result.data, null, 2)
+      );
+    }
 
+    // ✅ Log successful retrieval
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "read",
+      { bookingId },
+      true
+    );
+
+    // ✅ Send successful response
     return res.status(200).json({
       status: true,
-      message: "Account Information Retrieved Successfully",
+      message: "Booking retrieved successfully",
       data: result.data,
     });
   } catch (error) {
-    console.error("❌ Controller Error:", error);
+    console.error("❌ getBookingsById Controller Error:", error.message);
 
     await logActivity(
       req,
@@ -219,7 +262,7 @@ exports.getBookingsById = async (req, res) => {
 
     return res.status(500).json({
       status: false,
-      message: "Server error",
+      message: "Server error. Please try again later.",
     });
   }
 };

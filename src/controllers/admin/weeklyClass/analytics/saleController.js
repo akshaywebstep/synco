@@ -1,6 +1,6 @@
 // controllers/admin/weeklyClassController.js
 
-const saleTrailAnalytics = require("../../../../services/admin/weeklyClass/analytics/saleTrial");
+const saleTrialAnalytics = require("../../../../services/admin/weeklyClass/analytics/saleTrial");
 const { logActivity } = require("../../../../utils/admin/activityLogger");
 
 const DEBUG = process.env.DEBUG === "true";
@@ -33,7 +33,7 @@ exports.getMonthlyReport = async (req, res) => {
 
   try {
     // Pass filters (if any) from query params to service
-    const reportResult = await saleTrailAnalytics.getMonthlyReport(filters);
+    const reportResult = await saleTrialAnalytics.getMonthlyReport(filters);
 
     if (!reportResult.status) {
       const errorMsg =
