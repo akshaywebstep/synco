@@ -73,11 +73,12 @@ router.post(
 );
 
 router.post(
-  "/waiting-list",
+  "/add-to/waiting-list",
   authMiddleware,
-  permissionMiddleware("waiting-list", "create"),
+  permissionMiddleware("add-waiting-list", "create"),
   addToWaitingList
 );
+
 router.get(
   "/waiting-list/listing",
   authMiddleware,

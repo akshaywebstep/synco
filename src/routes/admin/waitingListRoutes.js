@@ -56,7 +56,7 @@ router.post(
 
 // ✅ Remove from waiting list route
 router.post(
-  "/remove",
+  "/from/remove",
   authMiddleware,
   permissionMiddleware("waiting-list", "remove"), // new permission key
   removeWaitingList

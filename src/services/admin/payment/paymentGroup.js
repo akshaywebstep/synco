@@ -123,19 +123,52 @@ exports.updatePaymentGroup = async (id, createdBy, { name, description }) => {
 };
 
 // ✅ Delete a group by ID and createdBy
-exports.deletePaymentGroup = async (id, createdBy) => {
+// exports.deletePaymentGroup = async (id, createdBy) => {
+//   try {
+//     const group = await PaymentGroup.findOne({
+//       where: { id, createdBy },
+//     });
+
+//     if (!group) {
+//       return {
+//         status: false,
+//         message: "Cannot delete. Payment group not found.",
+//       };
+//     }
+
+//     await group.destroy();
+
+//     return {
+//       status: true,
+//       message: "Payment group deleted successfully.",
+//     };
+//   } catch (error) {
+//     return {
+//       status: false,
+//       message: `Failed to delete group. ${error.message}`,
+//     };
+//   }
+// };
+
+// ✅ Soft delete a payment group by ID (no unlinking)
+exports.deletePaymentGroup = async (id, deletedBy) => {
   try {
+    // ✅ Find the group owned by this admin and not already deleted
     const group = await PaymentGroup.findOne({
-      where: { id, createdBy },
+      where: { id, createdBy: deletedBy, deletedAt: null },
     });
 
     if (!group) {
       return {
         status: false,
-        message: "Cannot delete. Payment group not found.",
+        message: "Payment group not found or unauthorized.",
       };
     }
 
+    // ✅ Record who deleted the group
+    await group.update({ deletedBy });
+
+    // ✅ Soft delete (requires paranoid: true in model)
     await group.destroy();
 
     return {
@@ -143,9 +176,10 @@ exports.deletePaymentGroup = async (id, createdBy) => {
       message: "Payment group deleted successfully.",
     };
   } catch (error) {
+    console.error("❌ Error in deletePaymentGroup Service:", error);
     return {
       status: false,
-      message: `Failed to delete group. ${error.message}`,
+      message: `Failed to  delete group. ${error.message}`,
     };
   }
 };

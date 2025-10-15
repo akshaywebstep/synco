@@ -16,7 +16,11 @@ const ClassSchedule = sequelize.define(
     },
 
     capacity: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    totalCapacity: {
+      type: DataTypes.INTEGER,
       allowNull: true,
     },
 
@@ -55,9 +59,34 @@ const ClassSchedule = sequelize.define(
       onUpdate: "CASCADE",
       onDelete: "CASCADE",
     },
+     // ✅ Foreign key to admins table for creation
     createdBy: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "RESTRICT",
+    },
+
+    // ✅ Soft delete column
+    deletedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+
+    // ✅ Foreign key to admins table for deletion
+    deletedBy: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
     },
     status: {
       type: DataTypes.ENUM("active", "cancelled"),
@@ -68,6 +97,7 @@ const ClassSchedule = sequelize.define(
   {
     tableName: "class_schedules",
     timestamps: true,
+    paranoid: true, // ✅ Enable soft deletes
   }
 );
 

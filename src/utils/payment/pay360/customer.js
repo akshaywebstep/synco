@@ -99,8 +99,29 @@ async function createCustomer({
       iban,
     });
 
+    // if (!customerBankAccountRes.status) {
+    //   if (DEBUG) console.log("❌ Bank account creation failed. Rolling back customer...");
+
+    //   const removeCustomerRes = await removeCustomer(customer.id);
+
+    //   if (!removeCustomerRes.status) {
+    //     return {
+    //       status: false,
+    //       message:
+    //         "Customer created but bank account linking failed. Also failed to roll back the customer record. Please contact support.",
+    //       error: customerBankAccountRes.error || "Unknown bank account error",
+    //     };
+    //   }
+
+    //   return {
+    //     status: false,
+    //     message:
+    //       "Customer creation succeeded, but bank account setup failed. The customer record has been rolled back.",
+    //     error: customerBankAccountRes.error || "Unknown bank account error",
+    //   };
+    // }
     if (!customerBankAccountRes.status) {
-      if (DEBUG) console.log("❌ Bank account creation failed. Rolling back customer...");
+      if (DEBUG) console.log("❌ Bank account creation failed. Attempting to remove created customer...");
 
       const removeCustomerRes = await removeCustomer(customer.id);
 
@@ -108,15 +129,17 @@ async function createCustomer({
         return {
           status: false,
           message:
-            "Customer created but bank account linking failed. Also failed to roll back the customer record. Please contact support.",
+            "Customer was created, but linking the bank account failed. The system also failed to delete the customer record. Please contact support.",
           error: customerBankAccountRes.error || "Unknown bank account error",
         };
       }
 
       return {
         status: false,
+        // message:
+        //   "Customer was created successfully, but linking the bank account failed. Please try again later.",
         message:
-          "Customer creation succeeded, but bank account setup failed. The customer record has been rolled back.",
+          "Incorrect account details",
         error: customerBankAccountRes.error || "Unknown bank account error",
       };
     }

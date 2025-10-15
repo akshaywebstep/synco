@@ -92,10 +92,11 @@ exports.updateSessionExercise = async (id, data, adminId) => {
 // ✅ Delete
 exports.deleteSessionExercise = async (id, adminId) => {
   try {
+    // Find the exercise (include only exercises created by this admin)
     const exercise = await SessionExercise.findOne({
       where: {
         id,
-        createdBy: adminId, // ensure only creator can delete
+        createdBy: adminId, // only creator can delete
       },
     });
 
@@ -103,7 +104,12 @@ exports.deleteSessionExercise = async (id, adminId) => {
       return { status: false, message: "Exercise not found or unauthorized" };
     }
 
+    // ✅ Soft delete: set deletedBy before destroy
+    await exercise.update({ deletedBy: adminId });
+
+    // ✅ Soft delete row (paranoid: true sets deletedAt)
     await exercise.destroy();
+
     return { status: true, message: "Exercise deleted successfully" };
   } catch (error) {
     console.error("❌ Error deleting exercise:", error);

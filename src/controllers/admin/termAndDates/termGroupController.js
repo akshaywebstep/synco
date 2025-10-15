@@ -168,16 +168,20 @@ exports.updateGroup = async (req, res) => {
 
 exports.deleteGroup = async (req, res) => {
   const { id } = req.params;
-  const adminId = req.admin?.id;
+  const adminId = req.admin?.id; // ✅ track who deletes
 
   if (!id) {
     return res.status(400).json({ status: false, message: "ID is required." });
   }
 
   try {
+    // ✅ Soft delete group
     const result = await TermGroupService.deleteGroup(id, adminId);
+
+    // ✅ Log activity
     await logActivity(req, PANEL, MODULE, "delete", result, result.status);
 
+    // ✅ Send notification if successful
     if (result.status) {
       await createNotification(
         req,
@@ -191,7 +195,7 @@ exports.deleteGroup = async (req, res) => {
 
     return res.status(result.status ? 200 : 404).json(result);
   } catch (error) {
-    console.error("❌ Error in deleteGroup:", error);
+    console.error("❌ Error in deleteGroup Controller:", error);
     await logActivity(
       req,
       PANEL,

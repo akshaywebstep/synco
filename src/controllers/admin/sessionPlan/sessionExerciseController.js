@@ -520,20 +520,23 @@ exports.updateSessionExercise = async (req, res) => {
     }
 
     // ✅ STEP 4: Decide which images to keep
+    // ✅ STEP 4: Decide which images to keep
+    const existingImages = Array.isArray(existing.data.imageUrl)
+      ? existing.data.imageUrl
+      : JSON.parse(existing.data.imageUrl || "[]");
+
     if (uploadedUrls.length) {
-      updates.imageUrl = uploadedUrls;
-      console.log("🖼️ Replacing images with new uploads:", uploadedUrls);
+      // Append new uploads to existing images instead of replacing
+      updates.imageUrl = [...existingImages, ...uploadedUrls];
+      console.log("🖼️ Adding new uploaded images to existing:", updates.imageUrl);
     } else if (updates.imageUrl === null) {
       updates.imageUrl = [];
       console.log("🗑️ Clearing all images");
     } else {
-      updates.imageUrl = Array.isArray(existing.data.imageUrl)
-        ? existing.data.imageUrl
-        : JSON.parse(existing.data.imageUrl || "[]");
+      // Keep existing images if no new upload
+      updates.imageUrl = existingImages;
       console.log("🔄 Keeping existing images:", updates.imageUrl);
     }
-
-    updates.updatedBy = adminId;
 
     // ✅ STEP 5: Update DB
     console.log("📌 STEP 5: Updating exercise in DB");
@@ -572,6 +575,7 @@ exports.updateSessionExercise = async (req, res) => {
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };
+
 // ✅ Delete
 exports.deleteSessionExercise = async (req, res) => {
   const { id } = req.params;
@@ -581,7 +585,8 @@ exports.deleteSessionExercise = async (req, res) => {
     const result = await SessionExerciseService.deleteSessionExercise(
       id,
       adminId
-    ); // ✅ pass adminId
+    );
+
     if (!result.status) {
       await logActivity(req, PANEL, MODULE, "delete", result, false);
       return res.status(404).json(result);
@@ -600,8 +605,7 @@ exports.deleteSessionExercise = async (req, res) => {
     await createNotification(
       req,
       "Session Exercise Deleted",
-      `Session Exercise ID '${id}' was deleted by ${req?.admin?.name || "Admin"
-      }.`,
+      `Session Exercise ID '${id}' was deleted by ${req?.admin?.name || "Admin"}.`,
       "System"
     );
 

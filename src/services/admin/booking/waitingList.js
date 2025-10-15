@@ -921,7 +921,7 @@ exports.sendAllEmailToParents = async ({ bookingId }) => {
   }
 };
 
-exports.removeWaitingList = async ({ bookingId, removedBy, reason, notes }) => {
+exports.removeWaitingList = async ({ bookingId, reason, notes }) => {
   try {
     // 1. Find the booking in waiting list
     const booking = await Booking.findOne({
@@ -940,15 +940,16 @@ exports.removeWaitingList = async ({ bookingId, removedBy, reason, notes }) => {
 
     // 2. Update booking table -> status + bookingType
     booking.status = "removed";
-    booking.bookingType = "removed"; // ✅ also update bookingType
+    booking.bookingType = "removed";
     await booking.save();
 
     // 3. Insert record in CancelBooking
     await CancelBooking.create({
       bookingId: booking.id,
-      bookingType: "removed", // ✅ original type stored
+      bookingType: "removed",
       removedReason: reason,
       removedNotes: notes || null,
+      // removedBy, // optional: who removed
     });
 
     return {

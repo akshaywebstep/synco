@@ -460,16 +460,33 @@ exports.updateTerm = async (id, data, adminId) => {
   }
 };
 
-// ✅ DELETE
-exports.deleteTerm = async (id, adminId) => {
+// ✅ SOFT DELETE TERM (service)
+exports.deleteTerm = async (id, deletedBy) => {
   try {
-    const term = await Term.findOne({ where: { id, createdBy: adminId } });
-    if (!term)
-      return { status: false, message: "Term not found or unauthorized." };
+    // ✅ Find the term that belongs to this admin and is not already deleted
+    const term = await Term.findOne({
+      where: { id, createdBy: deletedBy, deletedAt: null },
+    });
 
+    if (!term) {
+      return { status: false, message: "Term not found or unauthorized." };
+    }
+
+    // // ✅ Unlink this term from its TermGroup (if any)
+    // await Term.update(
+    //   { termGroupId: null },
+    //   { where: { id } }
+    // );
+
+    // ✅ Record who deleted it
+    await term.update({ deletedBy });
+
+    // ✅ Perform soft delete (Sequelize sets deletedAt automatically)
     await term.destroy();
+
     return { status: true, message: "Term deleted successfully." };
   } catch (error) {
-    return { status: false, message: error.message };
+    console.error("❌ deleteTerm Service Error:", error);
+    return { status: false, message: "Delete failed. " + error.message };
   }
 };

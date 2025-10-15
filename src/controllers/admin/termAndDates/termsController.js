@@ -234,7 +234,6 @@ exports.updateTerm = async (req, res) => {
   }
 };
 
-// ✅ DELETE TERM (with admin check)
 exports.deleteTerm = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id;
@@ -244,33 +243,25 @@ exports.deleteTerm = async (req, res) => {
   }
 
   try {
-    const term = await Term.findOne({ where: { id, createdBy: adminId } });
-    if (!term) {
-      return res
-        .status(404)
-        .json({ status: false, message: "Term not found or unauthorized." });
+    // ✅ Call the service to perform soft delete
+    const result = await TermService.deleteTerm(id, adminId);
+
+    // ✅ Log the action
+    await logActivity(req, PANEL, MODULE, "delete", result, result.status);
+
+    // ✅ Notify if successful
+    if (result.status) {
+      await createNotification(
+        req,
+        "Term Deleted",
+        `Term ID '${id}' was deleted by ${req?.admin?.firstName || "Admin"}.`,
+        "System"
+      );
     }
 
-    const termName = term.termName; // ✅ get before deletion
-
-    await term.destroy();
-
-    await logActivity(req, PANEL, MODULE, "delete", { id }, true);
-
-    // ✅ Send Notification AFTER successful delete
-    await createNotification(
-      req,
-      "Term Deleted",
-      `Term '${termName}' was deleted by ${req?.admin?.firstName || "Admin"}.`,
-      "System"
-    );
-
-    return res.status(200).json({
-      status: true,
-      message: "Term deleted successfully.",
-    });
+    return res.status(result.status ? 200 : 404).json(result);
   } catch (error) {
-    console.error("❌ Error in deleteTerm:", error);
+    console.error("❌ Error in deleteTerm Controller:", error);
     await logActivity(
       req,
       PANEL,

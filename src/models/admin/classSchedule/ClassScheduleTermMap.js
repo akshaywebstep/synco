@@ -60,10 +60,40 @@ const ClassScheduleTermMap = sequelize.define(
       allowNull: false,
       defaultValue: "pending",
     },
+     // ✅ Foreign key to admins table for creation
+    createdBy: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: false,
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "RESTRICT",
+    },
+
+    // ✅ Soft delete column
+    deletedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+
+    // ✅ Foreign key to admins table for deletion
+    deletedBy: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
   },
   {
     tableName: "class_schedule_term_maps",
     timestamps: true,
+    paranoid: true, // ✅ Enable soft deletes
   }
 );
 

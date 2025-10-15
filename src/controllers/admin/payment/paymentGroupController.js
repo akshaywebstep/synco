@@ -377,57 +377,126 @@ exports.updatePaymentGroup = async (req, res) => {
   }
 };
 
-// ✅ Delete a payment group
+// // ✅ Delete a payment group
+// exports.deletePaymentGroup = async (req, res) => {
+//   const { id } = req.params;
+//   const adminId = req.admin?.id;
+
+//   if (DEBUG) console.log(`🗑️ Deleting payment group ID: ${id}`);
+
+//   try {
+//     // Step 1: Fetch group by ID to ensure it exists
+//     const groupResult = await paymentGroupModel.getPaymentGroupById(
+//       id,
+//       adminId
+//     ); // ⬅️ Pass adminId here
+
+//     if (!groupResult.status || !groupResult.data) {
+//       const notFoundMsg =
+//         groupResult.message || `Payment group with ID ${id} not found.`;
+//       console.warn("⚠️", notFoundMsg);
+//       await logActivity(req, PANEL, MODULE, "getById", groupResult, false);
+
+//       return res.status(404).json({ status: false, message: notFoundMsg });
+//     }
+
+//     const paymentGroup = groupResult.data;
+
+//     // Step 2: Delete the group
+//     const deleteResult = await paymentGroupModel.deletePaymentGroup(
+//       id,
+//       adminId
+//     ); // ⬅️ Also pass here
+
+//     if (!deleteResult.status) {
+//       console.warn("⚠️ Failed to delete payment group:", deleteResult.message);
+//       await logActivity(req, PANEL, MODULE, "delete", deleteResult, false);
+
+//       return res
+//         .status(500)
+//         .json({ status: false, message: deleteResult.message });
+//     }
+
+//     const successMsg = `Payment group "${paymentGroup.name}" deleted by Admin: ${req.admin?.name}`;
+//     if (DEBUG) console.log("✅", successMsg);
+
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "delete",
+//       { oneLineMessage: successMsg },
+//       true
+//     );
+//     await createNotification(
+//       req,
+//       "Payment Group Deleted",
+//       successMsg,
+//       "Payment Groups"
+//     );
+
+//     return res.status(200).json({
+//       status: true,
+//       message: "Payment group deleted successfully.",
+//     });
+//   } catch (error) {
+//     const errorMsg =
+//       error?.message || "Unexpected error while deleting the payment group.";
+//     console.error("❌ Error deleting payment group:", error);
+
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "delete",
+//       { oneLineMessage: errorMsg },
+//       false
+//     );
+//     return res
+//       .status(500)
+//       .json({ status: false, message: "Server error occurred." });
+//   }
+// };
+
+// ✅ Soft delete payment group (controller)
 exports.deletePaymentGroup = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id;
 
-  if (DEBUG) console.log(`🗑️ Deleting payment group ID: ${id}`);
+  if (!id) {
+    return res.status(400).json({
+      status: false,
+      message: "Payment group ID is required.",
+    });
+  }
+
+  if (DEBUG) console.log(`🗑️ deleting Payment Group ID: ${id}`);
 
   try {
-    // Step 1: Fetch group by ID to ensure it exists
-    const groupResult = await paymentGroupModel.getPaymentGroupById(
-      id,
-      adminId
-    ); // ⬅️ Pass adminId here
+    // Step 1: Ensure the group exists (and not already soft-deleted)
+    const groupResult = await paymentGroupModel.getPaymentGroupById(id, adminId);
 
     if (!groupResult.status || !groupResult.data) {
-      const notFoundMsg =
-        groupResult.message || `Payment group with ID ${id} not found.`;
-      console.warn("⚠️", notFoundMsg);
+      const notFoundMsg = groupResult.message || `Payment group with ID ${id} not found.`;
       await logActivity(req, PANEL, MODULE, "getById", groupResult, false);
-
       return res.status(404).json({ status: false, message: notFoundMsg });
     }
 
     const paymentGroup = groupResult.data;
 
-    // Step 2: Delete the group
-    const deleteResult = await paymentGroupModel.deletePaymentGroup(
-      id,
-      adminId
-    ); // ⬅️ Also pass here
+    // Step 2: Perform soft delete
+    const deleteResult = await paymentGroupModel.deletePaymentGroup(id, adminId);
 
     if (!deleteResult.status) {
-      console.warn("⚠️ Failed to delete payment group:", deleteResult.message);
       await logActivity(req, PANEL, MODULE, "delete", deleteResult, false);
-
-      return res
-        .status(500)
-        .json({ status: false, message: deleteResult.message });
+      return res.status(400).json({ status: false, message: deleteResult.message });
     }
 
-    const successMsg = `Payment group "${paymentGroup.name}" deleted by Admin: ${req.admin?.name}`;
-    if (DEBUG) console.log("✅", successMsg);
+    // Step 3: Log + Notify
+    const successMsg = `Payment Group "${paymentGroup.name}" deleted by ${req.admin?.name || "Admin"}.`;
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "delete",
-      { oneLineMessage: successMsg },
-      true
-    );
+    await logActivity(req, PANEL, MODULE, "delete", { oneLineMessage: successMsg }, true);
+
     await createNotification(
       req,
       "Payment Group Deleted",
@@ -440,20 +509,20 @@ exports.deletePaymentGroup = async (req, res) => {
       message: "Payment group deleted successfully.",
     });
   } catch (error) {
-    const errorMsg =
-      error?.message || "Unexpected error while deleting the payment group.";
-    console.error("❌ Error deleting payment group:", error);
+    console.error("❌ Error in deletePaymentGroup Controller:", error);
 
     await logActivity(
       req,
       PANEL,
       MODULE,
       "delete",
-      { oneLineMessage: errorMsg },
+      { oneLineMessage: error.message },
       false
     );
-    return res
-      .status(500)
-      .json({ status: false, message: "Server error occurred." });
+
+    return res.status(500).json({
+      status: false,
+      message: "Server error occurred while deleting the payment group.",
+    });
   }
 };

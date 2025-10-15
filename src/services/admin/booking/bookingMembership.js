@@ -1423,12 +1423,12 @@ exports.addToWaitingListService = async (data, adminId) => {
 
     // Validate venue and class schedule
     const venue = await Venue.findByPk(data.venueId, { transaction: t });
-    if (!venue) throw new Error("Invalid venue selected.");
+    if (!venue) throw new Error("Venue is required.");
 
     const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, {
       transaction: t,
     });
-    if (!classSchedule) throw new Error("Invalid class schedule selected.");
+    if (!classSchedule) throw new Error("Class schedule is required.");
 
     // Prevent duplicate waiting list entries
     const studentIds = originalBooking.students.map((s) => s.id);
@@ -1818,6 +1818,7 @@ exports.getBookingsById = async (bookingId) => {
 
     const parsedBooking = {
       bookingId: booking.id,
+      bookedId: booking.bookingId,
       status: booking.status,
       startDate: booking.startDate,
       dateBooked: booking.createdAt,
@@ -2136,6 +2137,9 @@ exports.getFailedPaymentsByBookingId = async (bookingId) => {
   const parsedPayments = failedPayments.map((payment) => {
     let gatewayResponse = payment.gatewayResponse;
     let transactionMeta = payment.transactionMeta;
+    let goCardlessCustomer = payment.goCardlessCustomer;
+    let goCardlessBankAccount = payment.goCardlessBankAccount;
+    let goCardlessBillingRequest = payment.goCardlessBillingRequest;
 
     // Ensure JSON parsing if stored as string
     if (typeof gatewayResponse === "string") {
@@ -2154,17 +2158,41 @@ exports.getFailedPaymentsByBookingId = async (bookingId) => {
       }
     }
 
+    if (typeof goCardlessCustomer === "string") {
+      try {
+        goCardlessCustomer = JSON.parse(goCardlessCustomer);
+      } catch (err) {
+        console.error("Failed to parse goCardlessCustomer:", err.message);
+      }
+    }
+    if (typeof goCardlessBankAccount === "string") {
+      try {
+        goCardlessBankAccount = JSON.parse(goCardlessBankAccount);
+      } catch (err) {
+        console.error("Failed to parse goCardlessBankAccount:", err.message);
+      }
+    }
+     if (typeof goCardlessBillingRequest === "string") {
+      try {
+        goCardlessBillingRequest = JSON.parse(goCardlessBillingRequest);
+      } catch (err) {
+        console.error("Failed to parse goCardlessBillingRequest:", err.message);
+      }
+    }
+    
     return {
       id: payment.id,
       bookingId: payment.bookingId,
       studentId: payment.studentId,
       paymentType: payment.paymentType,
-      amount: payment.amount,
+      // amount: payment.amount,
       paymentStatus: payment.paymentStatus,
       createdAt: payment.createdAt,
       updatedAt: payment.updatedAt,
       gatewayResponse, // parsed object
       transactionMeta, // parsed object
+      goCardlessCustomer,
+      goCardlessBankAccount,
     };
   });
 

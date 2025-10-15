@@ -71,12 +71,12 @@ function calcStats(records) {
         age <= 6
           ? "0-6"
           : age <= 10
-          ? "7-10"
-          : age <= 14
-          ? "11-14"
-          : age <= 18
-          ? "15-18"
-          : "18+";
+            ? "7-10"
+            : age <= 14
+              ? "11-14"
+              : age <= 18
+                ? "15-18"
+                : "18+";
       acc[group] = (acc[group] || 0) + 1;
     });
     return acc;
@@ -106,7 +106,8 @@ exports.getRequestToCancel = async ({
   try {
     // Build where clause
     const whereClause = {
-      bookingType,
+      // bookingType,
+      bookingType: "membership",
       cancellationType: "scheduled", // only scheduled cancellations
     };
     if (cancellationType) whereClause.cancellationType = cancellationType;
@@ -164,7 +165,6 @@ exports.getRequestToCancel = async ({
             "startDate",
             "bookingType",
             "totalStudents",
-            "keyInformation",
             "paymentPlanId",
           ],
           include: [
@@ -250,7 +250,7 @@ exports.getRequestToCancel = async ({
           classScheduleId: booking.classScheduleId,
           startDate: booking.startDate,
           totalStudents: booking.totalStudents,
-          keyInformation: booking.keyInformation,
+          // keyInformation: booking.keyInformation,
           paymentPlan: booking.paymentPlan || null,
           status: booking.status,
 
@@ -495,7 +495,7 @@ exports.sendCancelBookingEmailToParents = async ({ bookingIds }) => {
 exports.getFullCancelBookingById = async (id, adminId) => {
   try {
     const booking = await Booking.findOne({
-      where: { id },
+      where: { id, bookingType: "paid" },
       include: [
         {
           model: BookingStudentMeta,

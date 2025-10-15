@@ -528,14 +528,14 @@ exports.updateWaitinglistBooking = async (req, res) => {
 exports.removeWaitingList = async (req, res) => {
   try {
     const { bookingId, removedReason, removedNotes } = req.body;
-    const removedBy = req.adminId?.id || null;
+    // const removedBy = req.adminId?.id || null;
 
     if (DEBUG) {
       console.log("📥 removeWaitingList request:", {
         bookingId,
         removedReason,
         removedNotes,
-        removedBy,
+        // removedBy,
       });
     }
 
@@ -550,7 +550,7 @@ exports.removeWaitingList = async (req, res) => {
 
     const result = await BookingTrialService.removeWaitingList({
       bookingId,
-      removedBy,
+      // removedBy,
       reason: removedReason,
       notes: removedNotes,
     });

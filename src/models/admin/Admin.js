@@ -58,10 +58,34 @@ const Admin = sequelize.define(
       type: DataTypes.ENUM("active", "inactive", "suspend"),
       defaultValue: "active",
     },
+    // ✅ Soft delete column
+        deletedAt: {
+          type: DataTypes.DATE,
+          allowNull: true,
+        },
+    
+        // ✅ Foreign key to admins table for deletion
+        deletedBy: {
+          type: DataTypes.INTEGER.UNSIGNED,
+          allowNull: true,
+          references: {
+            model: "admins",
+            key: "id",
+          },
+          onUpdate: "CASCADE",
+          onDelete: "SET NULL",
+        },
+    // ✅ New field
+    // isStatus: {
+    //   type: DataTypes.ENUM("active", "inactive"),
+    //   defaultValue: "active",
+    //   allowNull: false,
+    // },
   },
   {
     tableName: "admins",
     timestamps: true,
+    paranoid: true, // ✅ Enable soft deletes
   }
 );
 

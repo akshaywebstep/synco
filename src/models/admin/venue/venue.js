@@ -39,7 +39,7 @@ const Venue = sequelize.define(
     //   allowNull: true,
     //   comment: "Selected payment group for paid bookings (stored as text instead of FK)",
     // },
-     // ✅ Use FK to PaymentGroups
+    // ✅ Use FK to PaymentGroups
     paymentGroupId: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: true,
@@ -81,14 +81,41 @@ const Venue = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
     },
+    // ✅ Foreign key to admins table for creation
     createdBy: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      // onDelete: "RESTRICT",
+      onDelete: "SET NULL",
+    },
+
+    // ✅ Soft delete column
+    deletedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+
+    // ✅ Foreign key to admins table for deletion
+    deletedBy: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
     },
   },
   {
     tableName: "venues",
     timestamps: true,
+    paranoid: true, // ✅ Enable soft deletes
   }
 );
 

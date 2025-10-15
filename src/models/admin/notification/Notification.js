@@ -49,10 +49,28 @@ const Notification = sequelize.define(
       allowNull: false,
       defaultValue: DataTypes.NOW,
     },
+    // ✅ Soft delete column
+    deletedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+
+    // ✅ Foreign key to admins table for deletion
+    deletedBy: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
   },
   {
     tableName: "notifications",
     timestamps: false,
+    paranoid: true, // ✅ enable soft deletes
   }
 );
 

@@ -121,20 +121,53 @@ exports.updatePlan = async (id, adminId, data) => {
   }
 };
 
-// ✅ Delete a payment plan by ID and createdBy
-exports.deletePlan = async (id, createdBy) => {
+// // ✅ Delete a payment plan by ID and createdBy
+// exports.deletePlan = async (id, createdBy) => {
+//   try {
+//     const plan = await PaymentPlan.findOne({
+//       where: { id, createdBy },
+//     });
+
+//     if (!plan) {
+//       return {
+//         status: false,
+//         message: "Cannot delete. Payment plan not found.",
+//       };
+//     }
+
+//     await plan.destroy();
+
+//     return {
+//       status: true,
+//       message: "Payment plan deleted successfully.",
+//     };
+//   } catch (error) {
+//     return {
+//       status: false,
+//       message: `Failed to delete payment plan. ${error.message}`,
+//     };
+//   }
+// };
+
+// ✅ Soft delete a payment plan by ID (restricted by createdBy/admin)
+exports.deletePlan = async (id, deletedBy) => {
   try {
+    // ✅ Find plan owned by this admin and not already deleted
     const plan = await PaymentPlan.findOne({
-      where: { id, createdBy },
+      where: { id, createdBy: deletedBy, deletedAt: null },
     });
 
     if (!plan) {
       return {
         status: false,
-        message: "Cannot delete. Payment plan not found.",
+        message: "Payment plan not found or unauthorized.",
       };
     }
 
+    // ✅ Track who deleted
+    await plan.update({ deletedBy });
+
+    // ✅ Soft delete (sets deletedAt automatically)
     await plan.destroy();
 
     return {
@@ -142,9 +175,10 @@ exports.deletePlan = async (id, createdBy) => {
       message: "Payment plan deleted successfully.",
     };
   } catch (error) {
+    console.error("❌ deletePlan Service Error:", error);
     return {
       status: false,
-      message: `Failed to delete payment plan. ${error.message}`,
+      message: `Failed to  delete payment plan. ${error.message}`,
     };
   }
 };

@@ -5,7 +5,22 @@ const {
   State,
   City,
   AdminRolePermission,
+  PaymentGroup,
+  PaymentPlan,
+  PaymentGroupHasPlan,
+  SessionPlanGroup,
+  SessionExercise,
+  TermGroup,
+  Term,
+  Venue,
+  ClassSchedule,
+  Booking,
+  Lead,
+  CancelSession,
+  ClassScheduleTermMap
 } = require("../../models");
+const DEBUG = process.env.DEBUG === "true";
+
 const { Op } = require("sequelize");
 
 // Create admin
@@ -445,40 +460,161 @@ exports.updatePasswordAndClearResetToken = async (adminId, hashedPassword) => {
 // };
 
 // Delete admin by ID
-exports.deleteAdmin = async (id, currentAdminId) => {
+// exports.deleteAdmin = async (id, currentAdminId) => {
+//   try {
+//     // Prevent deleting own account
+//     if (parseInt(id) === parseInt(currentAdminId)) {
+//       return {
+//         status: false,
+//         message: "You cannot delete your own account while logged in.",
+//       };
+//     }
+
+//     // ✅ Soft delete and set deletedBy
+//     const result = await Admin.update(
+//       { deletedBy: currentAdminId }, // track who deleted
+//       { where: { id } }
+//     );
+
+//     // Perform soft delete
+//     const destroyed = await Admin.destroy({
+//       where: { id }, // will set deletedAt because paranoid: true
+//     });
+
+//     if (destroyed === 0) {
+//       return {
+//         status: false,
+//         message: "No admin deleted. The provided ID may be incorrect.",
+//       };
+//     }
+
+//     return {
+//       status: true,
+//       message: "Admin account deleted successfully.",
+//     };
+//   } catch (error) {
+//     console.error("❌ Sequelize Error in deleteAdmin:", error);
+
+//     return {
+//       status: false,
+//       message:
+//         error?.parent?.sqlMessage ||
+//         error?.message ||
+//         "Failed to delete admin.",
+//     };
+//   }
+// };
+
+//  delte
+
+exports.deleteAdmin = async (id, transferToAdminId) => {
   try {
-    // Prevent deleting own account
-    if (parseInt(id) === parseInt(currentAdminId)) {
-      return {
-        status: false,
-        message: "You cannot delete your own account while logged in.",
-      };
+    if (!id) throw new Error("Admin ID is required");
+
+    // Fetch admin to delete
+    const adminToDelete = await Admin.findByPk(id);
+    if (!adminToDelete) {
+      return { status: false, message: "Admin not found" };
     }
 
-    const result = await Admin.destroy({
-      where: { id },
-    });
+    if (transferToAdminId) {
+      // 🔹 Reassign related data to another admin
+      if (DEBUG) console.log(`🔄 Reassigning related data to admin ${transferToAdminId}...`);
 
-    if (result === 0) {
-      return {
-        status: false,
-        message: "No admin deleted. The provided ID may be incorrect.",
-      };
+      await Promise.all([
+        PaymentGroup.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
+        PaymentGroupHasPlan.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
+        PaymentPlan.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
+        SessionPlanGroup.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
+        SessionExercise.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
+        TermGroup.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
+        Term.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
+        await Venue.update(
+          { createdBy: transferToAdminId },
+          { where: { createdBy: id } }
+        ),
+
+        ClassSchedule.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
+        Booking.update({ bookedBy: transferToAdminId }, { where: { bookedBy: id } }),
+        Lead.update({ assignedAgentId: transferToAdminId }, { where: { assignedAgentId: id } }),
+        CancelSession.update({ createdBy: transferToAdminId }, { where: { createdBy: id } }),
+        ClassScheduleTermMap.update({ createdBy: transferToAdminId }, { where: { createdBy: id } })
+      ]);
+
+      if (DEBUG) console.log("✅ Related data reassigned successfully");
+    } else {
+      // 🔹 Delete all related data
+      if (DEBUG) console.log("🔄 No transfer admin, deleting all related data...");
+
+      await Promise.all([
+        PaymentGroup.destroy({ where: { createdBy: id }, force: true }),
+        PaymentGroupHasPlan.destroy({ where: { createdBy: id }, force: true }),
+        PaymentPlan.destroy({ where: { createdBy: id }, force: true }),
+        SessionPlanGroup.destroy({ where: { createdBy: id }, force: true }),
+        SessionExercise.destroy({ where: { createdBy: id }, force: true }),
+        TermGroup.destroy({ where: { createdBy: id }, force: true }),
+        Term.destroy({ where: { createdBy: id }, force: true }),
+        Venue.destroy({ where: { createdBy: id }, force: true }),
+        ClassSchedule.destroy({ where: { createdBy: id }, force: true }),
+        Booking.destroy({ where: { bookedBy: id }, force: true }),
+        Lead.destroy({ where: { assignedAgentId: id }, force: true }),
+        CancelSession.destroy({ where: { createdBy: id }, force: true }),
+        ClassScheduleTermMap.destroy({ where: { createdBy: id }, force: true }),
+      ]);
+
+      if (DEBUG) console.log("✅ All related data deleted successfully");
     }
+
+    // 🔹 Delete the admin permanently
+    if (DEBUG) console.log("🚮 Deleting admin permanently...");
+    await Admin.destroy({ where: { id }, force: true });
+    if (DEBUG) console.log("✅ Admin deleted permanently");
 
     return {
       status: true,
-      message: "Admin account deleted successfully.",
+      message: transferToAdminId
+        ? `Admin deleted and all related data reassigned to admin ${transferToAdminId}`
+        : "Admin and all related data deleted permanently",
     };
   } catch (error) {
-    console.error("❌ Sequelize Error in deleteAdmin:", error);
+    console.error("❌ deleteAdmin Error:", error);
+    return {
+      status: false,
+      message: error?.parent?.sqlMessage || error?.message || "Failed to delete admin",
+    };
+  }
+};
+
+// Get all admins
+exports.getAllAdminsForReassignData = async () => {
+  try {
+    const admins = await Admin.findAll({
+      attributes: { exclude: ["password", "resetOtp", "resetOtpExpiry"] },
+      include: [
+        {
+          model: AdminRole,
+          as: "role",
+          attributes: ["id", "role"],
+          where: { role: "Admin" }, // ✅ Only include users with role 'Admin'
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+    });
+
+    return {
+      status: true,
+      message: `Fetched ${admins.length} admin(s) successfully.`,
+      data: admins,
+    };
+  } catch (error) {
+    console.error("❌ Sequelize Error in getAllAdmins:", error);
 
     return {
       status: false,
       message:
         error?.parent?.sqlMessage ||
         error?.message ||
-        "Failed to delete admin.",
+        "Failed to fetch admins.",
     };
   }
 };

@@ -57,23 +57,32 @@ exports.updateGroup = async (id, { name }, adminId) => {
   }
 };
 
-exports.deleteGroup = async (id, adminId) => {
+exports.deleteGroup = async (id, deletedBy) => {
   try {
+    // ✅ Find the TermGroup by ID and createdBy
     const group = await TermGroup.findOne({
-      where: { id, createdBy: adminId },
+      where: { id, createdBy: deletedBy },
     });
 
     if (!group) {
       return { status: false, message: "Group not found or unauthorized." };
     }
 
-    // ✅ Unlink terms before deleting group
-    await Term.update({ termGroupId: null }, { where: { termGroupId: id } });
+    // // ✅ Unlink associated terms
+    // await Term.update(
+    //   { termGroupId: null },
+    //   { where: { termGroupId: id } }
+    // );
 
+    // ✅ Track who deleted the group
+    await group.update({ deletedBy });
+
+    // ✅ Soft delete (sets deletedAt)
     await group.destroy();
 
-    return { status: true, message: "Term group deleted (terms unlinked)." };
+    return { status: true, message: "Term group deleted successfully" };
   } catch (error) {
+    console.error("❌ deleteGroup Service Error:", error);
     return {
       status: false,
       message: "Delete group failed. " + error.message,

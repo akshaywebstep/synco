@@ -23,7 +23,7 @@ function totalRevenueSum(bookings) {
     }, 0);
 }
 
-function totalPaidRevenueSum(bookings) {
+function totalUnpaidRevenueSum(bookings) {
     return bookings
         .filter(b => b.bookingType === "paid" && b.paymentPlan && Array.isArray(b.students))
         .reduce((sum, b) => {
@@ -121,13 +121,13 @@ function groupBookingsByYearMonth(bookings, filter) {
     if (!bookings || bookings.length === 0) return {};
 
     bookings.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-
+    
     const startDate = moment(bookings[0].createdAt).startOf("month");
     const endDate = moment(bookings[bookings.length - 1].createdAt).endOf("month");
 
     const grouped = {};
     let current = startDate.clone();
-
+    
     while (current.isSameOrBefore(endDate, "month")) {
         const yearKey = current.format("YYYY");
         const monthKey = current.format("MM");

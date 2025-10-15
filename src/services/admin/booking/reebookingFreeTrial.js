@@ -167,7 +167,7 @@ exports.sendRebookingEmailToParents = async ({ bookingId }) => {
 
     return {
       status: true,
-      message: `Emails sent to ${sentTo.length} parents`,
+      message: `Emails sent to ${sentTo.length} parents for booking ${bookingId}`,
       sentTo,
     };
   } catch (error) {

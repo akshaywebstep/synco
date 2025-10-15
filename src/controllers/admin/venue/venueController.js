@@ -177,28 +177,71 @@ exports.updateVenue = async (req, res) => {
 };
 
 // ✅ Delete Venue
+// exports.deleteVenue = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+
+//     const result = await venueModel.deleteVenue(id);
+
+//     // Log activity
+//     await logActivity(req, PANEL, MODULE, "delete", result, result.status);
+
+//     if (!result.status) {
+//       // If venue not found, return 404
+//       return res.status(404).json({
+//         status: false,
+//         message: result.message || "Venue not found.",
+//       });
+//     }
+
+//     // ✅ Create Notification
+//     await createNotification(
+//       req,
+//       "Venue Deleted",
+//       `Venue "${result.name || "Unknown"}" has been deleted.`,
+//       "System"
+//     );
+
+//     return res.status(200).json({
+//       status: true,
+//       message: "Venue deleted successfully.",
+//     });
+//   } catch (error) {
+//     console.error("❌ deleteVenue Error:", error);
+//     return res.status(500).json({
+//       status: false,
+//       message: "Server error while deleting venue.",
+//     });
+//   }
+// };
+
+// ✅ Delete Venue (soft delete)
 exports.deleteVenue = async (req, res) => {
   try {
     const { id } = req.params;
+    const adminId = req.admin?.id; // admin performing the delete
 
-    const result = await venueModel.deleteVenue(id);
+    if (!id) {
+      return res.status(400).json({ status: false, message: "Venue ID is required." });
+    }
+
+    const result = await venueModel.deleteVenue(id, adminId);
 
     // Log activity
     await logActivity(req, PANEL, MODULE, "delete", result, result.status);
 
     if (!result.status) {
-      // If venue not found, return 404
       return res.status(404).json({
         status: false,
         message: result.message || "Venue not found.",
       });
     }
 
-    // ✅ Create Notification
+    // ✅ Create notification
     await createNotification(
       req,
       "Venue Deleted",
-      `Venue "${result.name || "Unknown"}" has been deleted.`,
+      `Venue "${result.name || "Unknown"}" has been deleted by ${req.admin?.firstName || "Admin"}.`,
       "System"
     );
 
@@ -207,7 +250,7 @@ exports.deleteVenue = async (req, res) => {
       message: "Venue deleted successfully.",
     });
   } catch (error) {
-    console.error("❌ deleteVenue Error:", error);
+    console.error("❌ deleteVenue Controller Error:", error);
     return res.status(500).json({
       status: false,
       message: "Server error while deleting venue.",

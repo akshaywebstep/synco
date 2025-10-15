@@ -1,6 +1,6 @@
 // controllers/admin/weeklyClassController.js
 
-const saleTrailAnalytics = require("../../../../services/admin/weeklyClass/analytics/saleTrail");
+const saleTrailAnalytics = require("../../../../services/admin/weeklyClass/analytics/saleTrial");
 const { logActivity } = require("../../../../utils/admin/activityLogger");
 
 const DEBUG = process.env.DEBUG === "true";
