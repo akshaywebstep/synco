@@ -584,6 +584,8 @@ exports.resolveFeedback = async (req, res) => {
   }
 };
 
+// com
+
 exports.getEventsByBookingId = async (req, res) => {
   try {
     const { bookingId } = req.params;
