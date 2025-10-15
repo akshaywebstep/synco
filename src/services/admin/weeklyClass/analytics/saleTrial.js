@@ -16,25 +16,53 @@ const {
 } = require("../../../../models");
 
 // Helper functions
-function countFreeTrials(bookings) {
+function totalRevenueSum(bookings) {
     return bookings.reduce((sum, b) => {
-        // Check if trialDate is not null and type is 'free'
-        if (b.trialDate !== null || b.type === 'free') {
-            return sum + 1; // or sum + b.amount if you want to sum a value
+        if (b.paymentPlan && typeof b.paymentPlan.price === 'number' && Array.isArray(b.students)) {
+            const totalStudents = b.students.length;
+            sum += b.paymentPlan.price * totalStudents;
         }
         return sum;
     }, 0);
 }
 
-function countAttendedTrials(bookings) {
-    return bookings.reduce((sum, b) => {
-        if (b.students && Array.isArray(b.students)) {
-            // Count students with attendance === 'attended'
-            const attendedCount = b.students.filter(student => student.attendance === 'attended').length;
-            return sum + attendedCount;
+function totalCancellations(bookings) {
+    return bookings.filter(b => b.status === 'cancelled').length;
+}
+
+function getNewStudents(bookings) {
+    const current = moment();
+
+    return bookings
+        .flatMap(booking => booking.students || []) // flatten all students into a single array
+        .filter(student => {
+            const studentCreatedAt = moment(student.createdAt);
+            return (
+                studentCreatedAt.month() === current.month() &&
+                studentCreatedAt.year() === current.year()
+            );
+        });
+}
+
+function getNewStudents(bookings) {
+    const current = moment();
+    const newStudents = [];
+
+    bookings.forEach(booking => {
+        if (booking.students && Array.isArray(booking.students)) {
+            booking.students.forEach(student => {
+                const studentCreatedAt = moment(student.createdAt);
+                if (
+                    studentCreatedAt.month() === current.month() &&
+                    studentCreatedAt.year() === current.year()
+                ) {
+                    newStudents.push(student);
+                }
+            });
         }
-        return sum;
-    }, 0);
+    });
+
+    return newStudents;
 }
 
 function countTrialToMember(bookings) {
@@ -97,56 +125,28 @@ function groupBookingsByYearMonth(bookings, filter) {
 
         const monthBookings = bookings.filter(b => moment(b.createdAt).isBetween(current.clone().startOf("month"), current.clone().endOf("month"), null, "[]"));
 
-        const freeTrialsCount = countFreeTrials(monthBookings);
-        const attendedCount = countAttendedTrials(monthBookings);
+        const newStudents = getNewStudents(monthBookings).length;
+        const totalRevenue = totalRevenueSum(monthBookings);
+        const totalCancellation = totalCancellations(monthBookings);
 
-        const attendanceRate = freeTrialsCount > 0
-            ? (attendedCount / freeTrialsCount) * 100
-            : 0;
+        // Avoid division by zero
+        const averageMonthlyFee = newStudents > 0 ? totalRevenue / newStudents : 0;
 
-        const trialToMemberCount = countTrialToMember(monthBookings);
-
-        const conversionRate = freeTrialsCount > 0
-            ? (trialToMemberCount / freeTrialsCount) * 100
-            : 0;
-
-        const rebookCount = countRebook(monthBookings);
-
-        const freeTrialTrend = { freeTrialsCount, attendedCount, attendanceRate, trialToMemberCount, conversionRate, rebookCount };
+        const saleTrend = {
+            newStudents,
+            totalRevenue,
+            averageMonthlyFee,
+            totalCancellation
+        };
 
         const agents = [];
         const filteredBookings = [];
-        const enrolledStudents = { byAge: {}, byGender: {}, byVenue: [] };
+        const enrolledStudents = { byAge: {}, byGender: {} };
         const paymentPlansTrend = [];
 
         const marketingChannelPerformance = {};
 
         monthBookings.forEach(b => {
-            if (b.venue) {
-                const venueId = b.venue.id;
-
-                // Check if this venue already exists in byVenue
-                let venueEntry = enrolledStudents.byVenue.find(v => v.id === venueId);
-
-                if (!venueEntry) {
-                    // If not found, create a new entry
-                    venueEntry = {
-                        id: b.venue.id,
-                        name: b.venue.name || null,
-                        facility: b.venue.facility || null,
-                        area: b.venue.area || null,
-                        address: b.venue.address || null,
-                        freeTrialsCount: 0,
-                        studentsCount: 0,
-                    };
-                    enrolledStudents.byVenue.push(venueEntry);
-                }
-
-                // Increment counts for this venue
-                venueEntry.freeTrialsCount += 1;
-                venueEntry.studentsCount += (b.students ? b.students.length : 0);
-            }
-
             if (b.lead && b.lead.status) {
                 // If the lead status already exists, increment by 1
                 if (marketingChannelPerformance[b.lead.status]) {
@@ -225,43 +225,34 @@ function groupBookingsByYearMonth(bookings, filter) {
             // Agents
             const admin = b.bookedByAdmin;
             if (!admin) return;
-            
-            if (!agents[admin.id]) agents[admin.id] = { id: admin.id, name: `${admin.firstName} ${admin.lastName}`, freeTrialTrend: { freeTrialsCount: 0, attendedCount: 0, attendanceRate: 0, trialToMemberCount: 0, conversionRate: 0, rebookCount: 0 } };
-
-            if (b.trialDate !== null || b.type === 'free') {
-                agents[admin.id].freeTrialTrend.freeTrialsCount += 1;
-            }
+            const price = Number(b.paymentPlan?.price || 0);
+            if (!agents[admin.id]) agents[admin.id] = { id: admin.id, name: `${admin.firstName} ${admin.lastName}`, saleTrend: { newStudents: 0, totalRevenue: 0, averageMonthlyFee: 0, totalCancellation: 0 } };
 
             if (b.students && Array.isArray(b.students)) {
-                // Count students with attendance === 'attended'
-                agents[admin.id].freeTrialTrend.attendedCount += b.students.filter(student => student.attendance === 'attended').length;
+                const newStudentsCount = b.students.filter(student => {
+                    const studentCreatedAt = moment(student.createdAt);
+                    return (
+                        studentCreatedAt.month() === current.month() &&
+                        studentCreatedAt.year() === current.year()
+                    );
+                }).length;
+
+                agents[admin.id].saleTrend.newStudents += newStudentsCount;
             }
 
-            agents[admin.id].freeTrialTrend.attendanceRate = agents[admin.id].freeTrialTrend.freeTrialsCount > 0
-                ? (agents[admin.id].freeTrialTrend.attendedCount / agents[admin.id].freeTrialTrend.freeTrialsCount) * 100
-                : 0;
+            agents[admin.id].saleTrend.totalRevenue += (price * agents[admin.id].saleTrend.newStudents);
+            agents[admin.id].saleTrend.averageMonthlyFee = agents[admin.id].saleTrend.newStudents > 0 ? agents[admin.id].saleTrend.totalRevenue / agents[admin.id].saleTrend.newStudents : 0;
 
-            if (
-                ((b.type === 'free' || b.trialDate !== null) && (b.paymentPlanId !== null || b.startDate !== null)) ||
-                (b.trialDate !== null && b.startDate !== null)
-            ) {
-                agents[admin.id].freeTrialTrend.trialToMemberCount += 1; // count this booking
-            }
-
-            agents[admin.id].freeTrialTrend.conversionRate = agents[admin.id].freeTrialTrend.freeTrialsCount > 0
-                ? (agents[admin.id].freeTrialTrend.trialToMemberCount / agents[admin.id].freeTrialTrend.freeTrialsCount) * 100
-                : 0;
-
-            if (b.status === 'rebooked') {
-                agents[admin.id].freeTrialTrend.rebookCount += 1;
+            if (b.status === 'cancelled') {
+                agents[admin.id].saleTrend.totalCancellation += 1;
             }
         });
 
-        const agentSummary = Object.values(agents).sort((a, b) => b.freeTrialTrend.freeTrialsCount - a.freeTrialTrend.freeTrialsCount);
+        const agentSummary = Object.values(agents).sort((a, b) => b.saleTrend.totalRevenue - a.saleTrend.totalRevenue);
 
         if (!grouped[yearKey]) grouped[yearKey] = { monthlyGrouped: {} };
 
-        grouped[yearKey].monthlyGrouped[monthKey] = { bookings: filteredBookings, freeTrialTrend, agentSummary, enrolledStudents, paymentPlansTrend, marketingChannelPerformance };
+        grouped[yearKey].monthlyGrouped[monthKey] = { bookings: filteredBookings, saleTrend, agentSummary, enrolledStudents, paymentPlansTrend, marketingChannelPerformance };
 
         current.add(1, "month");
     }
@@ -272,39 +263,37 @@ function groupBookingsByYearMonth(bookings, filter) {
         months.forEach((monthKey, i) => {
             const monthData = grouped[yearKey].monthlyGrouped[monthKey];
             if (i === 0) {
-                monthData.freeTrialTrend = calcPercentageDiff(monthData.freeTrialTrend, null);
+                monthData.saleTrend = calcPercentageDiff(monthData.saleTrend, null);
                 monthData.agentSummary = monthData.agentSummary.map(agent => {
-                    const { freeTrialTrend, ...rest } = agent;
-                    return { ...rest, freeTrialTrend: calcPercentageDiff(freeTrialTrend, null) };
+                    const { saleTrend, ...rest } = agent;
+                    return { ...rest, saleTrend: calcPercentageDiff(saleTrend, null) };
                 });
             } else {
                 const lastMonthKey = months[i - 1];
                 const lastMonthData = grouped[yearKey].monthlyGrouped[lastMonthKey];
 
-                monthData.freeTrialTrend = calcPercentageDiff(monthData.freeTrialTrend, lastMonthData.freeTrialTrend);
+                monthData.saleTrend = calcPercentageDiff(monthData.saleTrend, lastMonthData.saleTrend);
                 monthData.agentSummary = monthData.agentSummary.map(agent => {
                     const prev = lastMonthData.agentSummary.find(a => a.id === agent.id);
-                    const { freeTrialTrend, ...rest } = agent;
-                    return { ...rest, freeTrialTrend: calcPercentageDiff(agent.freeTrialTrend, prev ? prev.freeTrialTrend : null) };
+                    const { saleTrend, ...rest } = agent;
+                    return { ...rest, saleTrend: calcPercentageDiff(agent.saleTrend, prev ? prev.saleTrend : null) };
                 });
             }
         });
 
-        // Yearly freeTrialTrend
-        const yearTotal = { freeTrialsCount: 0, attendedCount: 0, attendanceRate: 0, trialToMemberCount: 0, conversionRate: 0, rebookCount: 0 };
+        // Yearly saleTrend
+        const yearTotal = { newStudents: 0, totalRevenue: 0, averageMonthlyFee: 0, totalCancellation: 0 };
         const lastYearTotal = grouped[String(Number(yearKey) - 1)]?.yearlyTotal || null;
         const yearlyMarketingPerformance = {};
 
         Object.values(grouped[yearKey].monthlyGrouped).forEach(m => {
-            const monthStats = m.freeTrialTrend.currentMonthStats;
+            const monthStats = m.saleTrend.currentMonthStats;
 
             // ✅ Aggregate numeric stats
-            yearTotal.freeTrialsCount += monthStats.freeTrialsCount;
-            yearTotal.attendedCount += monthStats.attendedCount;
-            yearTotal.attendanceRate += monthStats.attendanceRate;
-            yearTotal.trialToMemberCount += monthStats.trialToMemberCount;
-            yearTotal.conversionRate += monthStats.conversionRate;
-            yearTotal.rebookCount += monthStats.rebookCount;
+            yearTotal.newStudents += monthStats.newStudents;
+            yearTotal.totalRevenue += monthStats.totalRevenue;
+            yearTotal.averageMonthlyFee += monthStats.averageMonthlyFee;
+            yearTotal.totalCancellation += monthStats.totalCancellation;
 
             // ✅ Combine marketing channel performance across months
             const monthlyMarketing = m.marketingChannelPerformance || {};
@@ -314,11 +303,12 @@ function groupBookingsByYearMonth(bookings, filter) {
             });
         });
 
-        // ✅ Store yearly marketing performance directly under the year group
         grouped[yearKey].marketingChannelPerformance = yearlyMarketingPerformance;
+        
+        yearTotal.averageMonthlyFee = yearTotal.newStudents > 0 ? yearTotal.totalRevenue / yearTotal.newStudents : 0;
 
         // ✅ Compute percentage difference
-        grouped[yearKey].freeTrialTrend = calcPercentageDiff(yearTotal, lastYearTotal, true);
+        grouped[yearKey].saleTrend = calcPercentageDiff(yearTotal, lastYearTotal, true);
     });
 
     return grouped;
@@ -329,12 +319,7 @@ const getMonthlyReport = async (filters) => {
     try {
         const bookings = await Booking.findAll({
             order: [["id", "DESC"]],
-            where: {
-                [Op.or]: [
-                    { bookingType: 'free' },
-                    { trialDate: { [Op.not]: null } }
-                ]
-            },
+            where: { bookingType: 'paid' },
             include: [
                 { model: Venue, as: "venue", required: false },
                 { model: Lead, as: "lead", required: false },
@@ -349,28 +334,21 @@ const getMonthlyReport = async (filters) => {
         const yealyGrouped = groupBookingsByYearMonth(bookings, filters);
 
         // Overall Sales
-        const overallTrends = { freeTrialsCount: 0, attendedCount: 0, attendanceRate: 0, trialToMemberCount: 0, conversionRate: 0, rebookCount: 0 };
-        const overallMarketingPerformance = {};
+        const overallTrends = { newStudents: 0, totalRevenue: 0, averageMonthlyFee: 0, totalCancellation: 0 };
 
         Object.values(yealyGrouped).forEach(year => {
             Object.values(year.monthlyGrouped).forEach(month => {
-                const s = month.freeTrialTrend.currentMonthStats;
-                overallTrends.freeTrialsCount += s.freeTrialsCount;
-                overallTrends.attendedCount += s.attendedCount;
-                overallTrends.attendanceRate += s.attendanceRate;
-                overallTrends.trialToMemberCount += s.trialToMemberCount;
-                overallTrends.conversionRate += s.conversionRate;
-                overallTrends.rebookCount += s.rebookCount;
-
-                const monthlyMarketing = month.marketingChannelPerformance || {};
-                Object.entries(monthlyMarketing).forEach(([channel, count]) => {
-                    overallMarketingPerformance[channel] =
-                        (overallMarketingPerformance[channel] || 0) + count;
-                });
+                const s = month.saleTrend.currentMonthStats;
+                overallTrends.newStudents += s.newStudents;
+                overallTrends.totalRevenue += s.totalRevenue;
+                overallTrends.averageMonthlyFee += s.averageMonthlyFee;
+                overallTrends.totalCancellation += s.totalCancellation;
             });
         });
 
-        return { status: true, message: "Monthly class report generated successfully.", data: { yealyGrouped, overallTrends, overallMarketingPerformance } };
+        overallTrends.averageMonthlyFee = overallTrends.newStudents > 0 ? overallTrends.totalRevenue / overallTrends.newStudents : 0;
+
+        return { status: true, message: "Monthly class report generated successfully.", data: { yealyGrouped, overallTrends } };
     } catch (error) {
         console.error("❌ Sequelize Error:", error);
         return { status: false, message: error?.parent?.sqlMessage || error?.message || "Error occurred while generating monthly class report." };
