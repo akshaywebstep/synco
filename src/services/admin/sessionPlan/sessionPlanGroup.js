@@ -111,7 +111,7 @@ exports.getAllSessionPlanGroups = async ({
       return {
         status: false,
         message: "No valid parent or super admin found for this request.",
-        data: [],
+        data: { groups: [], exerciseMap: {} },
       };
     }
 
@@ -192,7 +192,7 @@ exports.getSessionPlanGroupById = async (id, createdBy) => {
         data: [],
       };
     }
-    
+
     const group = await SessionPlanGroup.findOne({
       where: { id, createdBy: Number(createdBy) },
       attributes: [
