@@ -106,8 +106,16 @@ function removeNullFields(obj) {
 // ✅ GET ALL TERMS (by admin)
 exports.getAllTerms = async (adminId) => {
   try {
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
+
     const terms = await Term.findAll({
-      where: { createdBy: adminId },
+      where: { createdBy: Number(adminId) },
       include: [
         {
           model: TermGroup,

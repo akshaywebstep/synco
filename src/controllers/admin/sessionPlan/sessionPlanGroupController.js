@@ -15,6 +15,7 @@ const { saveFile, deleteFile } = require("../../../utils/fileHandler");
 
 const fs = require("fs");
 const os = require("os");
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -826,10 +827,13 @@ exports.getSessionPlanGroupDetails = async (req, res) => {
     const { id } = req.params;
     const createdBy = req.admin?.id || req.user?.id;
 
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+
     if (DEBUG)
       console.log("Fetching session plan group id:", id, "user:", createdBy);
 
-    const result = await SessionPlanGroupService.getSessionPlanGroupById(id, createdBy);
+    const result = await SessionPlanGroupService.getSessionPlanGroupById(id, superAdminId);
 
     if (!result.status) {
       if (DEBUG) console.warn("Session plan group not found:", id);
@@ -914,10 +918,13 @@ exports.getAllSessionPlanGroups = async (req, res) => {
     const createdBy = req.admin?.id || req.user?.id;
     // const { orderBy = "sortOrder", order = "DESC" } = req.query;
 
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+
     const result = await SessionPlanGroupService.getAllSessionPlanGroups({
       // orderBy,
       // order,
-      createdBy,
+      superAdminId,
     });
 
     if (!result.status) {

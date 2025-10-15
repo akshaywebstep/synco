@@ -668,7 +668,7 @@ exports.getAllVenues = async (createdBy) => {
     if (!createdBy || isNaN(Number(createdBy))) {
       return {
         status: false,
-        message: "Invalid or missing 'createdBy' admin ID.",
+        message: "No valid parent or super admin found for this request.",
         data: [],
       };
     }
@@ -1148,7 +1148,7 @@ exports.getVenueById = async (id, createdBy) => {
     if (!createdBy || isNaN(Number(createdBy))) {
       return {
         status: false,
-        message: "Invalid or missing 'createdBy' admin ID.",
+        message: "No valid parent or super admin found for this request.",
         data: [],
       };
     }

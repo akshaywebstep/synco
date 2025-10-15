@@ -1,6 +1,7 @@
 const { validateFormData } = require("../../../utils/validateFormData");
 const PaymentPlan = require("../../../services/admin/payment/paymentPlan");
 const { logActivity } = require("../../../utils/admin/activityLogger");
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -383,11 +384,15 @@ exports.createPaymentPlan = async (req, res) => {
 // ✅ GET All Plans (by admin)
 exports.getAllPaymentPlans = async (req, res) => {
   const adminId = req.admin?.id;
+if (DEBUG)
+    console.log(`📦 Getting all payment groups for admin ID: ${adminId}`);
 
   if (DEBUG) console.log("📥 Fetching all payment plans...");
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
 
   try {
-    const result = await PaymentPlan.getAllPlans(adminId); // ✅ filtered by admin
+    const result = await PaymentPlan.getAllPlans(superAdminId); // ✅ filtered by admin
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Fetch failed:", result.message);
@@ -434,11 +439,13 @@ exports.getAllPaymentPlans = async (req, res) => {
 exports.getPaymentPlanById = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id;
+   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+      const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
 
   if (DEBUG) console.log(`🔍 Fetching plan by ID: ${id}`);
 
   try {
-    const result = await PaymentPlan.getPlanById(id, adminId); // ✅ adminId added
+    const result = await PaymentPlan.getPlanById(id, superAdminId); // ✅ adminId added
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Plan not found:", result.message);

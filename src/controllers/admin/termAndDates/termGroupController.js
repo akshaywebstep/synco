@@ -5,6 +5,7 @@ const TermGroupService = require("../../../services/admin/termAndDates/termGroup
 const {
   createNotification,
 } = require("../../../utils/admin/notificationHelper");
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -38,8 +39,7 @@ exports.createTermGroup = async (req, res) => {
     await createNotification(
       req,
       "Term Group Created",
-      `Term Group '${name}' was created by ${
-        req?.admin?.firstName || "Admin"
+      `Term Group '${name}' was created by ${req?.admin?.firstName || "Admin"
       }.`,
       "System"
     );
@@ -68,8 +68,11 @@ exports.getAllGroups = async (req, res) => {
       .json({ status: false, message: "Unauthorized. Admin ID missing." });
   }
 
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+
   try {
-    const result = await TermGroupService.getAllGroups(adminId); // ✅ pass adminId
+    const result = await TermGroupService.getAllGroups(superAdminId); // ✅ pass adminId
     await logActivity(req, PANEL, MODULE, "list", result, result.status);
     return res.status(result.status ? 200 : 500).json(result);
   } catch (error) {
@@ -101,8 +104,11 @@ exports.getGroupById = async (req, res) => {
       .json({ status: false, message: "Unauthorized. Admin ID missing." });
   }
 
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+
   try {
-    const result = await TermGroupService.getGroupById(id, adminId); // ✅ pass adminId
+    const result = await TermGroupService.getGroupById(id, superAdminId); // ✅ pass adminId
     await logActivity(req, PANEL, MODULE, "getById", result, result.status);
     return res.status(result.status ? 200 : 404).json(result);
   } catch (error) {
@@ -142,8 +148,7 @@ exports.updateGroup = async (req, res) => {
       await createNotification(
         req,
         "Term Group Updated",
-        `Term Group '${name}' was updated by ${
-          req?.admin?.firstName || "Admin"
+        `Term Group '${name}' was updated by ${req?.admin?.firstName || "Admin"
         }.`,
         "System"
       );
@@ -186,8 +191,7 @@ exports.deleteGroup = async (req, res) => {
       await createNotification(
         req,
         "Term Group Deleted",
-        `Term Group ID '${id}' and its associated terms were deleted by ${
-          req?.admin?.firstName || "Admin"
+        `Term Group ID '${id}' and its associated terms were deleted by ${req?.admin?.firstName || "Admin"
         }.`,
         "System"
       );

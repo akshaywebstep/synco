@@ -248,8 +248,15 @@ exports.updateClass = async (id, data) => {
 //new
 exports.getAllClasses = async (adminId) => {
   try {
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
     const classes = await ClassSchedule.findAll({
-      where: { createdBy: adminId },
+      where: { createdBy: Number(adminId) },
       order: [["id", "ASC"]],
       include: [{ model: Venue, as: "venue" }],
     });
@@ -507,16 +514,22 @@ exports.getAllClasses = async (adminId) => {
   }
 };
 
-exports.getClassByIdWithFullDetails = async (classId) => {
+exports.getClassByIdWithFullDetails = async (classId, createdBy) => {
   try {
+    // Validate createdBy
+    if (!createdBy || isNaN(Number(createdBy))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
+
+    // Fetch class with venue
     const cls = await ClassSchedule.findOne({
-      where: { id: classId },
+      where: { id: classId, createdBy: Number(createdBy) },
       include: [{ model: Venue, as: "venue" }],
     });
-
-    if (!cls) {
-      return { status: false, message: "Class not found." };
-    }
 
     const venue = cls.venue;
 

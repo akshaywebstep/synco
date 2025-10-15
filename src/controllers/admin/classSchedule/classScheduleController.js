@@ -2,7 +2,7 @@ const { validateFormData } = require("../../../utils/validateFormData");
 const ClassScheduleService = require("../../../services/admin/classSchedule/classSchedule");
 const { logActivity } = require("../../../utils/admin/activityLogger");
 const { getVideoDurationInSeconds, formatDuration, } = require("../../../utils/videoHelper");
-
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 const {
   Venue,
   TermGroup,
@@ -242,7 +242,10 @@ exports.getAllClassSchedules = async (req, res) => {
 
   try {
     const adminId = req.admin?.id;
-    const result = await ClassScheduleService.getAllClasses(adminId); // ✅ pass admin ID
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+
+    const result = await ClassScheduleService.getAllClasses(superAdminId); // ✅ pass admin ID
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Fetch failed:", result.message);
@@ -281,19 +284,24 @@ exports.getAllClassSchedules = async (req, res) => {
 
 // ✅ GET Class Schedule by ID with Venue
 exports.getClassScheduleDetails = async (req, res) => {
-  const { id } = req.params;
+  const { id } = req.params; // Class ID
+  const createdBy = req.admin?.id; // Current admin ID
   if (DEBUG) console.log(`🔍 Fetching class + venue for class ID: ${id}`);
 
   try {
-    // ✅ Call service with only classId (no adminId)
-    const result = await ClassScheduleService.getClassByIdWithFullDetails(id);
+    // ✅ Get the top-level super admin for this admin
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(createdBy);
+    const superAdminId = mainSuperAdminResult?.superAdminId ?? createdBy;
+
+    // ✅ Pass both classId and superAdminId to the service
+    const result = await ClassScheduleService.getClassByIdWithFullDetails(id, superAdminId);
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Not found:", result.message);
       return res.status(404).json({ status: false, message: result.message });
     }
 
-    if (DEBUG) console.log("✅ Data fetched:", result.data);
+    if (DEBUG) console.log("✅ Data fetched successfully");
     await logActivity(
       req,
       PANEL,
