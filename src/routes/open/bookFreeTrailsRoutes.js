@@ -4,7 +4,7 @@ const openParam = require("../../middleware/open");
 
 const {
   createBooking
-} = require("../../controllers/admin/booking/bookFreeTrailController");
+} = require("../../controllers/admin/booking/bookFreeTrialController");
 
 // ✅ Create a new free trial booking
 router.post(

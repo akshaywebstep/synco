@@ -53,7 +53,7 @@ const models = {
   //cancel class
   CancelSession: require("./admin/classSchedule/CancelSession"),
 
-  //Book Free trails
+  //Book Free Trials
   Booking: require("./admin/booking/Booking"),
   BookingStudentMeta: require("./admin/booking/BookingStudentMeta"),
   BookingParentMeta: require("./admin/booking/BookingParentMeta"),

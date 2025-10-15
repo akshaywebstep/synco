@@ -8,7 +8,7 @@ const {
   getAllBookFreeTrials,
   getBookFreeTrialDetails,
   sendSelectedTrialistEmail,
-} = require("../../controllers/admin/booking/bookFreeTrailController");
+} = require("../../controllers/admin/booking/bookFreeTrialController");
 
 // 📧 Send trial confirmation emails
 router.post(

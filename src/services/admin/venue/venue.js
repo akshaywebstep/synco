@@ -666,7 +666,7 @@ exports.updateVenue = async (id, data) => {
 exports.getAllVenues = async (createdBy) => {
   try {
     const venues = await Venue.findAll({
-      where: { createdBy },
+      // where: { createdBy },
       order: [["createdAt", "DESC"]],
       attributes: [
         "id",
@@ -1140,7 +1140,8 @@ exports.getVenueById = async (id, createdBy) => {
     console.log("🔍 Fetching venue by ID:", id);
 
     const venue = await Venue.findOne({
-      where: { id, createdBy },
+      where: { id },
+      // where: { id, createdBy },
       attributes: [
         "id",
         "area",

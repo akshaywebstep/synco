@@ -1,6 +1,6 @@
 // controllers/admin/weeklyClassController.js
 
-const freeTrailAnalytics = require("../../../../services/admin/weeklyClass/analytics/freeTrail");
+const freeTrialAnalytics = require("../../../../services/admin/weeklyClass/analytics/freeTrial");
 const { logActivity } = require("../../../../utils/admin/activityLogger");
 
 const DEBUG = process.env.DEBUG === "true";
@@ -33,7 +33,7 @@ exports.getMonthlyReport = async (req, res) => {
 
   try {
     // Pass filters (if any) from query params to service
-    const reportResult = await freeTrailAnalytics.getMonthlyReport(filters);
+    const reportResult = await freeTrialAnalytics.getMonthlyReport(filters);
 
     if (!reportResult.status) {
       const errorMsg =
