@@ -23,7 +23,14 @@ exports.createFreezeBooking = async (req, res) => {
 
   if (!isValid) {
     await logActivity(req, PANEL, MODULE, "create", error, false);
-    return res.status(400).json({ status: false, ...error });
+
+    // Get the first error message
+    const firstError = Object.values(error)[0];
+
+    return res.status(400).json({
+      status: false,
+      message: firstError
+    });
   }
 
   try {

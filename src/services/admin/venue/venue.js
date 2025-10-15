@@ -665,8 +665,16 @@ exports.updateVenue = async (id, data) => {
 
 exports.getAllVenues = async (createdBy) => {
   try {
+    if (!createdBy || isNaN(Number(createdBy))) {
+      return {
+        status: false,
+        message: "Invalid or missing 'createdBy' admin ID.",
+        data: [],
+      };
+    }
+
     const venues = await Venue.findAll({
-      // where: { createdBy },
+      where: { createdBy: Number(createdBy) },
       order: [["createdAt", "DESC"]],
       attributes: [
         "id",
@@ -1137,11 +1145,17 @@ exports.getAllVenues = async (createdBy) => {
 // };
 exports.getVenueById = async (id, createdBy) => {
   try {
-    console.log("🔍 Fetching venue by ID:", id);
+    if (!createdBy || isNaN(Number(createdBy))) {
+      return {
+        status: false,
+        message: "Invalid or missing 'createdBy' admin ID.",
+        data: [],
+      };
+    }
 
     const venue = await Venue.findOne({
-      where: { id },
-      // where: { id, createdBy },
+      // where: { id },
+      where: { id, createdBy: Number(createdBy) },
       attributes: [
         "id",
         "area",

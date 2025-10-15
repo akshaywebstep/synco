@@ -4,6 +4,7 @@ const venueModel = require("../../../services/admin/venue/venue");
 const {
   createNotification,
 } = require("../../../utils/admin/notificationHelper");
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "venue";
@@ -66,10 +67,13 @@ exports.createVenue = async (req, res) => {
 
 // ✅ Get All Venues
 exports.getAllVenues = async (req, res) => {
-  const createdBy = req.admin?.id; // ✅ Correctly extract adminId
+  const createdBy = req.admin?.id;
+
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
 
   try {
-    const result = await venueModel.getAllVenues(createdBy);
+    const result = await venueModel.getAllVenues(superAdminId);
 
     await logActivity(req, PANEL, MODULE, "list", result, result.status);
 
@@ -102,8 +106,11 @@ exports.getVenueById = async (req, res) => {
 
   console.log("📥 Incoming request for venue ID:", id);
 
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+
   try {
-    const result = await venueModel.getVenueById(id, createdBy); // 👈 Pass createdBy if required
+    const result = await venueModel.getVenueById(id, superAdminId); // 👈 Pass createdBy if required
 
     await logActivity(req, PANEL, MODULE, "getById", result, result.status); // ✅ Consistent logging
 

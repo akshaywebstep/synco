@@ -51,9 +51,4 @@ Credit.associate = (models) => {
     foreignKey: "bookingId",
     as: "booking",
   });
-
-  // Credit.belongsTo(models.ClassSchedule, {
-  //   foreignKey: "classScheduleId",
-  //   as: "classSchedule",
-  // });
 };
