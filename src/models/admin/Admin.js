@@ -59,28 +59,40 @@ const Admin = sequelize.define(
       defaultValue: "active",
     },
     // ✅ Soft delete column
-        deletedAt: {
-          type: DataTypes.DATE,
-          allowNull: true,
-        },
-    
-        // ✅ Foreign key to admins table for deletion
-        deletedBy: {
-          type: DataTypes.INTEGER.UNSIGNED,
-          allowNull: true,
-          references: {
-            model: "admins",
-            key: "id",
-          },
-          onUpdate: "CASCADE",
-          onDelete: "SET NULL",
-        },
-    // ✅ New field
-    // isStatus: {
-    //   type: DataTypes.ENUM("active", "inactive"),
-    //   defaultValue: "active",
-    //   allowNull: false,
-    // },
+    deletedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+
+    // ✅ Foreign key to admins table for deletion
+    deletedBy: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
+
+    // 🔹 Self-referencing foreign keys
+    createdByAdmin: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      defaultValue: null,
+      references: { model: "admins", key: "id" },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
+    superAdminId: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      defaultValue: null,
+      references: { model: "admins", key: "id" },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
   },
   {
     tableName: "admins",
@@ -94,6 +106,16 @@ Admin.associate = (models) => {
   Admin.belongsTo(models.AdminRole, {
     foreignKey: "roleId",
     as: "role",
+  });
+
+  // Self-referencing associations
+  Admin.belongsTo(models.Admin, {
+    foreignKey: "createdByAdmin",
+    as: "creatorAdmin",
+  });
+  Admin.belongsTo(models.Admin, {
+    foreignKey: "superAdminId",
+    as: "superAdminCreator",
   });
 
   Admin.hasMany(models.ActivityLog, {
