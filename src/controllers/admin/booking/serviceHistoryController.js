@@ -7,6 +7,7 @@ const { sequelize, Booking, BookingStudentMeta,
 
 // const Admin = require("../../../services/admin/Admin");
 const { logActivity } = require("../../../utils/admin/activityLogger");
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 const emailModel = require("../../../services/email");
 const sendEmail = require("../../../utils/email/sendEmail");
 const {
@@ -86,12 +87,16 @@ exports.updateBookingStudents = async (req, res) => {
 
 exports.getAccountProfile = async (req, res) => {
   const { id } = req.params;
-  const adminId = req.admin?.id;
+  // const adminId = req.admin?.id;
   if (DEBUG) console.log(`🔍 Fetching free trial booking ID: ${id}`);
+
+  const bookedBy = req.admin?.id;
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
 
   try {
     // const result = await BookingTrialService.getBookingById(id);
-    const result = await BookingTrialService.getBookingById(id, adminId); // ✅ pass adminId
+    const result = await BookingTrialService.getBookingById(id,bookedBy ); // ✅ pass adminId
 
     if (!result.status) {
       return res.status(404).json({ status: false, message: result.message });

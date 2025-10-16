@@ -665,7 +665,14 @@ exports.createBooking = async (data, options) => {
   }
 };
 
-exports.getAllBookingsWithStats = async (filters = {}) => {
+exports.getAllBookingsWithStats = async (bookedBy,filters = {}) => {
+   if (!bookedBy || isNaN(Number(bookedBy))) {
+    return {
+      status: false,
+      message: "No valid super admin found for this request.",
+      data: [],
+    };
+  }
   try {
     // const whereBooking = { bookingType: "paid" };
     const whereBooking = {
@@ -719,6 +726,10 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
 
     const bookings = await Booking.findAll({
       where: whereBooking,
+      where: {
+        bookedBy: Number(bookedBy),
+        ...whereBooking, // spread the filters correctly
+      },
       order: [["id", "DESC"]],
       include: [
         {

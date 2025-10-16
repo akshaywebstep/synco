@@ -5,11 +5,16 @@ const {
   BookingEmergencyMeta,
   ClassSchedule,
   Venue,
-  PaymentPlan,
   Admin,
   BookingPayment,
+  TermGroup,
+  PaymentGroup,
+  PaymentPlan,
+  PaymentGroupHasPlan,
+  Term,
 } = require("../../../models");
-const { sequelize } = require("../../../models");
+const { sequelize, } = require("../../../models");
+const { Op } = require("sequelize");
 const axios = require("axios");
 const bcrypt = require("bcrypt");
 const { getEmailConfig } = require("../../email");
@@ -167,10 +172,161 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
   }
 };
 
+// exports.getBookingById = async (id, adminId) => {
+//   try {
+//     const booking = await Booking.findOne({
+//       where: { id },
+//       include: [
+//         {
+//           model: BookingStudentMeta,
+//           as: "students",
+//           required: false,
+//           include: [
+//             { model: BookingParentMeta, as: "parents", required: false },
+//             {
+//               model: BookingEmergencyMeta,
+//               as: "emergencyContacts",
+//               required: false,
+//             },
+//           ],
+//         },
+//         {
+//           model: ClassSchedule,
+//           as: "classSchedule",
+//           required: false,
+//           include: [{ model: Venue, as: "venue", required: false }],
+//         },
+//         {
+//           model: Admin, // ✅ Include bookedBy admin
+//           as: "bookedByAdmin",
+//           attributes: [
+//             "id",
+//             "firstName",
+//             "lastName",
+//             "email",
+//             "roleId",
+//             "status",
+//             "profile",
+//           ],
+//           required: false,
+//         },
+//       ],
+//     });
+
+//     if (!booking) {
+//       return { status: false, message: "Booking not found or not authorized." };
+//     }
+
+//     // Handle payment plans
+//     let paymentPlans = [];
+//     let paymentPlanIds = [];
+
+//     const venue = booking.classSchedule?.venue;
+//     if (venue?.paymentPlanId) {
+//       if (typeof venue.paymentPlanId === "string") {
+//         try {
+//           paymentPlanIds = JSON.parse(venue.paymentPlanId);
+//         } catch {
+//           console.warn("⚠️ Failed to parse venue.paymentPlanId");
+//         }
+//       } else if (Array.isArray(venue.paymentPlanId)) {
+//         paymentPlanIds = venue.paymentPlanId;
+//       }
+
+//       paymentPlanIds = paymentPlanIds
+//         .map((id) => parseInt(id, 10))
+//         .filter(Boolean);
+
+//       if (paymentPlanIds.length) {
+//         paymentPlans = await PaymentPlan.findAll({
+//           where: { id: paymentPlanIds },
+//         });
+//       }
+//     }
+
+//     // Extract students
+//     const students =
+//       booking.students?.map((s) => ({
+//         id: s.id, // <-- include DB id
+//         studentId: s.studentId,
+//         studentFirstName: s.studentFirstName,
+//         studentLastName: s.studentLastName,
+//         dateOfBirth: s.dateOfBirth,
+//         age: s.age,
+//         gender: s.gender,
+//         medicalInformation: s.medicalInformation,
+//       })) || [];
+
+//     // Extract parents from first student
+//     const parents =
+//       booking.students?.[0]?.parents?.map((p) => ({
+//         id: p.id, // <-- include DB id
+//         parentId: p.parentId,
+//         parentFirstName: p.parentFirstName,
+//         parentLastName: p.parentLastName,
+//         parentEmail: p.parentEmail,
+//         parentPhoneNumber: p.parentPhoneNumber,
+//         relationToChild: p.relationToChild,
+//         howDidYouHear: p.howDidYouHear,
+//       })) || [];
+
+//     // Extract emergency contacts from first student
+//     const emergency =
+//       booking.students?.[0]?.emergencyContacts?.map((e) => ({
+//         id: e.id, // <-- include DB id
+//         emergencyId: e.emergencyId,
+//         emergencyFirstName: e.emergencyFirstName,
+//         emergencyLastName: e.emergencyLastName,
+//         emergencyPhoneNumber: e.emergencyPhoneNumber,
+//         emergencyRelation: e.emergencyRelation,
+//       })) || [];
+
+//     // Final response
+//     const response = {
+//       id: booking.id,
+//       bookingId: booking.bookingId,
+//       classScheduleId: booking.classScheduleId,
+//       trialDate: booking.trialDate,
+//       bookedBy: booking.bookedByAdmin || null, // ✅ full admin object
+//       className: booking.className,
+//       classTime: booking.classTime,
+//       venueId: booking.venueId,
+//       status: booking.status,
+//       totalStudents: booking.totalStudents,
+//       // source: booking.source,
+//       createdAt: booking.createdAt,
+
+//       students,
+//       parents,
+//       emergency,
+
+//       classSchedule: booking.classSchedule || {},
+//       paymentPlans,
+//     };
+
+//     return {
+//       status: true,
+//       message: "Fetched booking details successfully.",
+//       data: response,
+//     };
+//   } catch (error) {
+//     console.error("❌ getBookingById Error:", error.message);
+//     return { status: false, message: error.message };
+//   }
+// };
+
 exports.getBookingById = async (id, adminId) => {
+  if (!adminId || isNaN(Number(adminId))) {
+    return {
+      status: false,
+      message: "No valid super admin found for this request.",
+      data: [],
+    };
+  }
   try {
+    // 1️⃣ Fetch booking with related data
     const booking = await Booking.findOne({
-      where: { id },
+      where: { id, bookedBy: Number(adminId) },
       include: [
         {
           model: BookingStudentMeta,
@@ -178,11 +334,7 @@ exports.getBookingById = async (id, adminId) => {
           required: false,
           include: [
             { model: BookingParentMeta, as: "parents", required: false },
-            {
-              model: BookingEmergencyMeta,
-              as: "emergencyContacts",
-              required: false,
-            },
+            { model: BookingEmergencyMeta, as: "emergencyContacts", required: false },
           ],
         },
         {
@@ -192,17 +344,9 @@ exports.getBookingById = async (id, adminId) => {
           include: [{ model: Venue, as: "venue", required: false }],
         },
         {
-          model: Admin, // ✅ Include bookedBy admin
+          model: Admin,
           as: "bookedByAdmin",
-          attributes: [
-            "id",
-            "firstName",
-            "lastName",
-            "email",
-            "roleId",
-            "status",
-            "profile",
-          ],
+          attributes: ["id", "firstName", "lastName", "email", "roleId", "status", "profile"],
           required: false,
         },
       ],
@@ -212,98 +356,174 @@ exports.getBookingById = async (id, adminId) => {
       return { status: false, message: "Booking not found or not authorized." };
     }
 
-    // Handle payment plans
-    let paymentPlans = [];
-    let paymentPlanIds = [];
-
     const venue = booking.classSchedule?.venue;
-    if (venue?.paymentPlanId) {
-      if (typeof venue.paymentPlanId === "string") {
+
+    // 2️⃣ Handle PaymentGroups
+    let paymentGroups = [];
+    if (venue?.paymentGroupId) {
+      let paymentGroupIds = [];
+      if (typeof venue.paymentGroupId === "string") {
         try {
-          paymentPlanIds = JSON.parse(venue.paymentPlanId);
+          paymentGroupIds = JSON.parse(venue.paymentGroupId);
         } catch {
-          console.warn("⚠️ Failed to parse venue.paymentPlanId");
+          paymentGroupIds = [];
         }
-      } else if (Array.isArray(venue.paymentPlanId)) {
-        paymentPlanIds = venue.paymentPlanId;
+      } else if (Array.isArray(venue.paymentGroupId)) {
+        paymentGroupIds = venue.paymentGroupId;
+      } else {
+        paymentGroupIds = [venue.paymentGroupId]; // single number
       }
 
-      paymentPlanIds = paymentPlanIds
-        .map((id) => parseInt(id, 10))
-        .filter(Boolean);
-
-      if (paymentPlanIds.length) {
-        paymentPlans = await PaymentPlan.findAll({
-          where: { id: paymentPlanIds },
+      if (paymentGroupIds.length) {
+        paymentGroups = await PaymentGroup.findAll({
+          where: { id: { [Op.in]: paymentGroupIds }, createdBy: Number(adminId) },
+          include: [
+            {
+              model: PaymentPlan,
+              as: "paymentPlans",
+              through: { model: PaymentGroupHasPlan },
+            },
+          ],
+          order: [["createdAt", "DESC"]],
         });
       }
     }
 
-    // Extract students
-    const students =
-      booking.students?.map((s) => ({
-        id: s.id, // <-- include DB id
-        studentId: s.studentId,
-        studentFirstName: s.studentFirstName,
-        studentLastName: s.studentLastName,
-        dateOfBirth: s.dateOfBirth,
-        age: s.age,
-        gender: s.gender,
-        medicalInformation: s.medicalInformation,
-      })) || [];
+    // 3️⃣ Handle TermGroups + Terms with safe JSON parsing
+    let termGroupIds = [];
 
-    // Extract parents from first student
-    const parents =
-      booking.students?.[0]?.parents?.map((p) => ({
-        id: p.id, // <-- include DB id
-        parentId: p.parentId,
-        parentFirstName: p.parentFirstName,
-        parentLastName: p.parentLastName,
-        parentEmail: p.parentEmail,
-        parentPhoneNumber: p.parentPhoneNumber,
-        relationToChild: p.relationToChild,
-        howDidYouHear: p.howDidYouHear,
-      })) || [];
+    // Parse termGroupId from string/array/number
+    if (typeof venue?.termGroupId === "string") {
+      try {
+        termGroupIds = JSON.parse(venue.termGroupId);
+      } catch {
+        termGroupIds = [];
+      }
+    } else if (Array.isArray(venue?.termGroupId)) {
+      termGroupIds = venue.termGroupId;
+    } else if (typeof venue?.termGroupId === "number") {
+      termGroupIds = [venue.termGroupId];
+    }
 
-    // Extract emergency contacts from first student
-    const emergency =
-      booking.students?.[0]?.emergencyContacts?.map((e) => ({
-        id: e.id, // <-- include DB id
-        emergencyId: e.emergencyId,
-        emergencyFirstName: e.emergencyFirstName,
-        emergencyLastName: e.emergencyLastName,
-        emergencyPhoneNumber: e.emergencyPhoneNumber,
-        emergencyRelation: e.emergencyRelation,
-      })) || [];
+    // Use the creator of the venue to fetch termGroups and terms
+    const creatorId = venue?.createdBy ?? adminId;
 
-    // Final response
+    const termGroups = termGroupIds.length
+      ? await TermGroup.findAll({
+        where: { id: termGroupIds, createdBy: creatorId },
+      })
+      : [];
+
+    const terms = termGroupIds.length
+      ? await Term.findAll({
+        where: { termGroupId: { [Op.in]: termGroupIds }, createdBy: creatorId },
+        attributes: [
+          "id",
+          "termName",
+          "day",
+          "startDate",
+          "endDate",
+          "termGroupId",
+          "exclusionDates",
+          "totalSessions",
+          "sessionsMap",
+        ],
+      })
+      : [];
+
+    // Parse the terms safely
+    const parsedTerms = terms.map((t) => ({
+      id: t.id,
+      name: t.termName,
+      day: t.day,
+      startDate: t.startDate,
+      endDate: t.endDate,
+      termGroupId: t.termGroupId,
+      exclusionDates:
+        typeof t.exclusionDates === "string" ? JSON.parse(t.exclusionDates) : t.exclusionDates || [],
+      totalSessions: t.totalSessions,
+      sessionsMap:
+        typeof t.sessionsMap === "string" ? JSON.parse(t.sessionsMap) : t.sessionsMap || [],
+    }));
+
+    // 4️⃣ Extract students, parents, emergency contacts
+    const students = booking.students?.map((s) => ({
+      id: s.id,
+      studentId: s.studentId,
+      studentFirstName: s.studentFirstName,
+      studentLastName: s.studentLastName,
+      dateOfBirth: s.dateOfBirth,
+      age: s.age,
+      gender: s.gender,
+      medicalInformation: s.medicalInformation,
+    })) || [];
+
+    const parents = booking.students?.flatMap((s) => s.parents || []).map((p) => ({
+      id: p.id,
+      parentId: p.parentId,
+      parentFirstName: p.parentFirstName,
+      parentLastName: p.parentLastName,
+      parentEmail: p.parentEmail,
+      parentPhoneNumber: p.parentPhoneNumber,
+      relationToChild: p.relationToChild,
+      howDidYouHear: p.howDidYouHear,
+    })) || [];
+
+    const emergency = booking.students?.flatMap((s) => s.emergencyContacts || []).map((e) => ({
+      id: e.id,
+      emergencyId: e.emergencyId,
+      emergencyFirstName: e.emergencyFirstName,
+      emergencyLastName: e.emergencyLastName,
+      emergencyPhoneNumber: e.emergencyPhoneNumber,
+      emergencyRelation: e.emergencyRelation,
+    })) || [];
+
+    // 5️⃣ Build final response
     const response = {
       id: booking.id,
       bookingId: booking.bookingId,
       classScheduleId: booking.classScheduleId,
       trialDate: booking.trialDate,
-      bookedBy: booking.bookedByAdmin || null, // ✅ full admin object
+      bookedBy: booking.bookedByAdmin || null,
       className: booking.className,
       classTime: booking.classTime,
       venueId: booking.venueId,
       status: booking.status,
       totalStudents: booking.totalStudents,
-      source: booking.source,
       createdAt: booking.createdAt,
-
       students,
       parents,
       emergency,
-
       classSchedule: booking.classSchedule || {},
-      paymentPlans,
+      paymentGroups: paymentGroups.map((pg) => ({
+        id: pg.id,
+        name: pg.name,
+        description: pg.description,
+        createdBy: pg.createdBy,
+        createdAt: pg.createdAt,
+        updatedAt: pg.updatedAt,
+        paymentPlans: (pg.paymentPlans || []).map((plan) => ({
+          id: plan.id,
+          title: plan.title,
+          price: plan.price,
+          priceLesson: plan.priceLesson,
+          interval: plan.interval,
+          duration: plan.duration,
+          students: plan.students,
+          joiningFee: plan.joiningFee,
+          HolidayCampPackage: plan.HolidayCampPackage,
+          termsAndCondition: plan.termsAndCondition,
+          createdBy: plan.createdBy,
+          createdAt: plan.createdAt,
+          updatedAt: plan.updatedAt,
+          PaymentGroupHasPlan: plan.PaymentGroupHasPlan || null,
+        })),
+      })),
+      termGroups: termGroups.map((tg) => ({ id: tg.id, name: tg.name })),
+      terms: parsedTerms,
     };
 
-    return {
-      status: true,
-      message: "Fetched booking details successfully.",
-      data: response,
-    };
+    return { status: true, message: "Fetched booking details successfully.", data: response };
   } catch (error) {
     console.error("❌ getBookingById Error:", error.message);
     return { status: false, message: error.message };

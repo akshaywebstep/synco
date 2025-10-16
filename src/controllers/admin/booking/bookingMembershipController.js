@@ -265,6 +265,10 @@ exports.createBooking = async (req, res) => {
 };
 
 exports.getAllPaidBookings = async (req, res) => {
+  if (DEBUG) console.log("📥 Fetching all free trial bookings...");
+    const bookedBy = req.admin?.id;
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
   try {
     const filters = {
       status: req.query.status,
@@ -286,7 +290,8 @@ exports.getAllPaidBookings = async (req, res) => {
     };
 
     const result = await BookingMembershipService.getAllBookingsWithStats(
-      filters
+      bookedBy,
+      filters,
     );
 
     if (!result.status) {

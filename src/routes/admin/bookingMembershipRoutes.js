@@ -18,7 +18,7 @@ const {
   updateBooking,
 } = require("../../controllers/admin/booking/bookingMembershipController");
 
-// ✅ Create a new free trial booking
+// ✅ Create 
 router.post(
   "/",
   authMiddleware,
