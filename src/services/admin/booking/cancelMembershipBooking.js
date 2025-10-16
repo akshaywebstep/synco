@@ -164,6 +164,7 @@ exports.createCancelBooking = async ({
     });
 
     // 🔹 Update booking status based on cancellation type
+    // 🔹 Update booking status based on cancellation type
     if (cancellationType === "immediate") {
       await booking.update({ status: "cancelled" });
       await booking.reload();
@@ -182,6 +183,8 @@ exports.createCancelBooking = async ({
           });
         }
       }
+    } else if (cancellationType === "scheduled") {
+      await booking.update({ status: "request_to_cancel" }); // ✅ Add this
     }
 
     return {
