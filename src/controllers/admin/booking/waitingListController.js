@@ -14,6 +14,7 @@ const sendEmail = require("../../../utils/email/sendEmail");
 const {
   createNotification,
 } = require("../../../utils/admin/notificationHelper");
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -193,14 +194,14 @@ exports.createBooking = async (req, res) => {
 
     const leadId = req.params.leadId || null;
     if (leadId) {
-          const existingBooking = await Booking.findOne({ where: { leadId } });
-          if (existingBooking) {
-            return res.status(400).json({
-              status: false,
-              message: "You already have a booking linked to this lead.",
-            });
-          }
-        }
+      const existingBooking = await Booking.findOne({ where: { leadId } });
+      if (existingBooking) {
+        return res.status(400).json({
+          status: false,
+          message: "You already have a booking linked to this lead.",
+        });
+      }
+    }
 
     const result = await BookingTrialService.createBooking(formData, {
       source: req.source,
@@ -252,8 +253,10 @@ exports.createBooking = async (req, res) => {
             "{{classTime}}": classData?.startTime || "",
             "{{appName}}": "Synco",
             "{{year}}": new Date().getFullYear().toString(),
-            "{{logoUrl}}": "https://webstepdev.com/demo/syncoUploads/syncoLogo.png",
-            "{{kidsPlaying}}": "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png",
+            "{{logoUrl}}":
+              "https://webstepdev.com/demo/syncoUploads/syncoLogo.png",
+            "{{kidsPlaying}}":
+              "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png",
           };
 
           let finalHtml = htmlTemplate;
@@ -306,9 +309,15 @@ exports.createBooking = async (req, res) => {
 // 📌 Get All Waiting List Bookings
 exports.getAllWaitingListBookings = async (req, res) => {
   console.debug("🔹 getAllWaitingListBookings called with query:", req.query);
+  const bookedBy = req.admin?.id;
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
 
   try {
-    const result = await BookingTrialService.getWaitingList(req.query);
+    const result = await BookingTrialService.getWaitingList(
+      bookedBy,
+      req.query
+    );
 
     console.debug(
       "🔹 Result from getWaitingList:",
@@ -422,10 +431,16 @@ exports.getAccountProfile = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id;
   if (DEBUG) console.log(`🔍 Fetching free trial booking ID: ${id}`);
+  const bookedBy = req.admin?.id;
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
 
   try {
-    // const result = await BookingTrialService.getBookingById(id);
-    const result = await BookingTrialService.getBookingById(id, adminId); // ✅ pass adminId
+    const result = await BookingTrialService.getBookingById(
+      id,
+      bookedBy,
+      adminId
+    );
 
     if (!result.status) {
       return res.status(404).json({ status: false, message: result.message });
@@ -470,24 +485,36 @@ exports.updateWaitinglistBooking = async (req, res) => {
     const adminId = req.admin?.id;
 
     // ✅ Security check
-    if (!adminId) return res.status(401).json({ status: false, message: "Unauthorized" });
+    if (!adminId)
+      return res.status(401).json({ status: false, message: "Unauthorized" });
 
     // ✅ Validate bookingId
-    if (!bookingId) return res.status(400).json({ status: false, message: "Booking ID is required in URL" });
+    if (!bookingId)
+      return res
+        .status(400)
+        .json({ status: false, message: "Booking ID is required in URL" });
 
     // ✅ Validate payload
     if (!Array.isArray(studentsPayload) || studentsPayload.length === 0) {
-      return res.status(400).json({ status: false, message: "Students array is required and cannot be empty" });
+      return res.status(400).json({
+        status: false,
+        message: "Students array is required and cannot be empty",
+      });
     }
 
-    studentsPayload.forEach(student => {
+    studentsPayload.forEach((student) => {
       if (!student.id) throw new Error("Each student must have an ID");
       if (!Array.isArray(student.parents)) student.parents = [];
-      if (!Array.isArray(student.emergencyContacts)) student.emergencyContacts = [];
+      if (!Array.isArray(student.emergencyContacts))
+        student.emergencyContacts = [];
     });
 
     const t = await sequelize.transaction();
-    const result = await BookingTrialService.updateBookingStudents(bookingId, studentsPayload, t);
+    const result = await BookingTrialService.updateBookingStudents(
+      bookingId,
+      studentsPayload,
+      t
+    );
 
     if (!result.status) {
       await t.rollback();
@@ -503,7 +530,9 @@ exports.updateWaitinglistBooking = async (req, res) => {
       PANEL,
       MODULE,
       "update",
-      { message: `Updated student, parent, and emergency data for booking ID: ${bookingId}` },
+      {
+        message: `Updated student, parent, and emergency data for booking ID: ${bookingId}`,
+      },
       true
     );
 
@@ -518,9 +547,12 @@ exports.updateWaitinglistBooking = async (req, res) => {
     if (DEBUG) console.log("✅ Controller finished successfully");
 
     return res.status(200).json(result);
-
   } catch (error) {
-    if (DEBUG) console.error("❌ Controller updateWaitinglistBooking Error:", error.message);
+    if (DEBUG)
+      console.error(
+        "❌ Controller updateWaitinglistBooking Error:",
+        error.message
+      );
     return res.status(500).json({ status: false, message: error.message });
   }
 };
@@ -697,7 +729,8 @@ exports.convertToMembership = async (req, res) => {
               .replace(/{{studentLastName}}/g, student.studentLastName || "")
               .replace(
                 /{{studentName}}/g,
-                `${student.studentFirstName || ""} ${student.studentLastName || ""
+                `${student.studentFirstName || ""} ${
+                  student.studentLastName || ""
                 }`
               )
               .replace(/{{venueName}}/g, venueName)

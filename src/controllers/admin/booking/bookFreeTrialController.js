@@ -305,8 +305,10 @@ exports.createBooking = async (req, res) => {
             "{{className}}": classData?.className || "N/A",
             "{{trialDate}}": booking?.trialDate || "",
             "{{classTime}}": classData?.startTime || "",
-            "{{logoUrl}}": "https://webstepdev.com/demo/syncoUploads/syncoLogo.png",
-            "{{kidsPlaying}}": "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png",
+            "{{logoUrl}}":
+              "https://webstepdev.com/demo/syncoUploads/syncoLogo.png",
+            "{{kidsPlaying}}":
+              "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png",
             "{{appName}}": "Synco",
             "{{year}}": new Date().getFullYear().toString(),
           };
@@ -439,7 +441,11 @@ exports.getBookFreeTrialDetails = async (req, res) => {
 
   try {
     // const result = await BookingTrialService.getBookingById(id);
-    const result = await BookingTrialService.getBookingById(id, adminId,superAdminId); // ✅ pass adminId
+    const result = await BookingTrialService.getBookingById(
+      id,
+      adminId,
+      superAdminId
+    ); // ✅ pass adminId
 
     if (!result.status) {
       return res.status(404).json({ status: false, message: result.message });

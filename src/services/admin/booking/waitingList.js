@@ -37,13 +37,13 @@ exports.createBooking = async (data, options) => {
     const source = options?.source;
     const leadId = options?.leadId || null;
 
-     if (DEBUG) {
+    if (DEBUG) {
       console.log("🔍 [DEBUG] Extracted adminId:", adminId);
       console.log("🔍 [DEBUG] Extracted source:", source);
       console.log("🔍 [DEBUG] Extracted leadId:", leadId);
     }
 
-    if (source !== 'open' && !adminId) {
+    if (source !== "open" && !adminId) {
       throw new Error("Admin ID is required for bookedBy");
     }
 
@@ -70,7 +70,8 @@ exports.createBooking = async (data, options) => {
     }
 
     if (data.parents?.length > 0) {
-      if (DEBUG) console.log("🔍 [DEBUG] Source is 'open'. Processing first parent...");
+      if (DEBUG)
+        console.log("🔍 [DEBUG] Source is 'open'. Processing first parent...");
 
       const firstParent = data.parents[0];
       const email = firstParent.parentEmail?.trim()?.toLowerCase();
@@ -94,7 +95,8 @@ exports.createBooking = async (data, options) => {
       const plainPassword = "Synco123";
       const hashedPassword = await bcrypt.hash(plainPassword, 10);
 
-      if (DEBUG) console.log("🔍 [DEBUG] Generated hashed password for parent account");
+      if (DEBUG)
+        console.log("🔍 [DEBUG] Generated hashed password for parent account");
 
       const [admin, created] = await Admin.findOrCreate({
         where: { email },
@@ -115,11 +117,17 @@ exports.createBooking = async (data, options) => {
       if (DEBUG) {
         console.log("🔍 [DEBUG] Admin account lookup completed.");
         console.log("🔍 [DEBUG] Was new admin created?:", created);
-        console.log("🔍 [DEBUG] Admin record:", admin.toJSON ? admin.toJSON() : admin);
+        console.log(
+          "🔍 [DEBUG] Admin record:",
+          admin.toJSON ? admin.toJSON() : admin
+        );
       }
 
       if (!created) {
-        if (DEBUG) console.log("🔍 [DEBUG] Updating existing admin record with parent details");
+        if (DEBUG)
+          console.log(
+            "🔍 [DEBUG] Updating existing admin record with parent details"
+          );
 
         await admin.update(
           {
@@ -131,9 +139,10 @@ exports.createBooking = async (data, options) => {
         );
       }
 
-      if (source === 'open') {
+      if (source === "open") {
         bookedByAdminId = admin.id;
-        if (DEBUG) console.log("🔍 [DEBUG] bookedByAdminId set to:", bookedByAdminId);
+        if (DEBUG)
+          console.log("🔍 [DEBUG] bookedByAdminId set to:", bookedByAdminId);
       }
     }
 
@@ -150,13 +159,13 @@ exports.createBooking = async (data, options) => {
           bookingStatus === "waiting list"
             ? "waiting list"
             : data.paymentPlanId
-              ? "paid"
-              : "free",
+            ? "paid"
+            : "free",
         className: data.className,
         classTime: data.classTime,
         // keyInformation: data.keyInformation,
         status: bookingStatus,
-        bookedBy: source === 'open' ? bookedByAdminId : adminId,
+        bookedBy: source === "open" ? bookedByAdminId : adminId,
         intrest: data.intrest,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -273,7 +282,14 @@ exports.createBooking = async (data, options) => {
   }
 };
 
-exports.getWaitingList = async (filters = {}) => {
+exports.getWaitingList = async (bookedBy, filters = {}) => {
+  if (!bookedBy || isNaN(Number(bookedBy))) {
+    return {
+      status: false,
+      message: "No valid super admin found for this request.",
+      data: [],
+    };
+  }
   try {
     const trialWhere = {
       bookingType: "waiting list",
@@ -323,7 +339,11 @@ exports.getWaitingList = async (filters = {}) => {
 
     const bookings = await Booking.findAll({
       order: [["id", "DESC"]],
-      where: trialWhere,
+      where: {
+        bookedBy: Number(bookedBy),
+        ...trialWhere,
+      },
+      // where: trialWhere,
       include: [
         {
           model: BookingStudentMeta,
@@ -456,23 +476,23 @@ exports.getWaitingList = async (filters = {}) => {
     const avgInterest =
       allInterests.length > 0
         ? (
-          allInterests.reduce((a, b) => a + b, 0) / allInterests.length
-        ).toFixed(2)
+            allInterests.reduce((a, b) => a + b, 0) / allInterests.length
+          ).toFixed(2)
         : 0;
 
     // Avg. days waiting (currentDate - createdAt)
     const avgDaysWaiting =
       parsedBookings.length > 0
         ? (
-          parsedBookings.reduce((sum, b) => {
-            const created = new Date(b.createdAt);
-            const now = new Date();
-            const diffDays = Math.floor(
-              (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)
-            );
-            return sum + diffDays;
-          }, 0) / parsedBookings.length
-        ).toFixed(0)
+            parsedBookings.reduce((sum, b) => {
+              const created = new Date(b.createdAt);
+              const now = new Date();
+              const diffDays = Math.floor(
+                (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)
+              );
+              return sum + diffDays;
+            }, 0) / parsedBookings.length
+          ).toFixed(0)
         : 0;
 
     // Top Referrer (admin with most bookings)
@@ -533,12 +553,21 @@ exports.getWaitingList = async (filters = {}) => {
   }
 };
 
-exports.getBookingById = async (id, adminId) => {
+exports.getBookingById = async (id, bookedBy, adminId) => {
+  if (!bookedBy || isNaN(Number(bookedBy))) {
+    return {
+      status: false,
+      message: "No valid super admin found for this request.",
+      data: [],
+    };
+  }
+
   try {
     const booking = await Booking.findOne({
       where: {
+        bookedBy: Number(bookedBy),
         id,
-        bookingType: "waiting list", // ✅ Only waiting list bookings
+        bookingType: "waiting list",
       },
       include: [
         {
@@ -561,7 +590,7 @@ exports.getBookingById = async (id, adminId) => {
           include: [{ model: Venue, as: "venue", required: false }],
         },
         {
-          model: Admin, // ✅ Include bookedBy admin
+          model: Admin,
           as: "bookedByAdmin",
           attributes: [
             "id",
@@ -584,7 +613,7 @@ exports.getBookingById = async (id, adminId) => {
       };
     }
 
-    // Handle payment plans
+    // Payment plan logic
     let paymentPlans = [];
     let paymentPlanIds = [];
 
@@ -611,10 +640,10 @@ exports.getBookingById = async (id, adminId) => {
       }
     }
 
-    // Extract students
+    // Extract students, parents, emergency
     const students =
       booking.students?.map((s) => ({
-        id: s.id, // <-- DB id
+        id: s.id,
         studentFirstName: s.studentFirstName,
         studentLastName: s.studentLastName,
         dateOfBirth: s.dateOfBirth,
@@ -623,10 +652,9 @@ exports.getBookingById = async (id, adminId) => {
         medicalInformation: s.medicalInformation,
       })) || [];
 
-    // Extract parents from first student
     const parents =
       booking.students?.[0]?.parents?.map((p) => ({
-        id: p.id, // <-- DB id
+        id: p.id,
         parentFirstName: p.parentFirstName,
         parentLastName: p.parentLastName,
         parentEmail: p.parentEmail,
@@ -635,10 +663,9 @@ exports.getBookingById = async (id, adminId) => {
         howDidYouHear: p.howDidYouHear,
       })) || [];
 
-    // Extract emergency contacts from first student
     const emergency =
       booking.students?.[0]?.emergencyContacts?.map((e) => ({
-        id: e.id, // <-- DB id
+        id: e.id,
         emergencyFirstName: e.emergencyFirstName,
         emergencyLastName: e.emergencyLastName,
         emergencyPhoneNumber: e.emergencyPhoneNumber,
@@ -650,7 +677,6 @@ exports.getBookingById = async (id, adminId) => {
       id: booking.id,
       bookingId: booking.bookingId,
       classScheduleId: booking.classScheduleId,
-      // trialDate: booking.trialDate,
       startDate: booking.startDate,
       interest: booking.interest,
       bookedBy: booking.bookedByAdmin || null,
@@ -666,7 +692,6 @@ exports.getBookingById = async (id, adminId) => {
       students,
       parents,
       emergency,
-
       classSchedule: booking.classSchedule || {},
       paymentPlans,
     };
@@ -682,8 +707,12 @@ exports.getBookingById = async (id, adminId) => {
   }
 };
 
-exports.updateBookingStudents = async (bookingId, studentsPayload, transaction) => {
-  const t = transaction || await sequelize.transaction();
+exports.updateBookingStudents = async (
+  bookingId,
+  studentsPayload,
+  transaction
+) => {
+  const t = transaction || (await sequelize.transaction());
   let isNewTransaction = !transaction;
 
   try {
@@ -696,7 +725,11 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, transaction) 
           as: "students",
           include: [
             { model: BookingParentMeta, as: "parents", required: false },
-            { model: BookingEmergencyMeta, as: "emergencyContacts", required: false },
+            {
+              model: BookingEmergencyMeta,
+              as: "emergencyContacts",
+              required: false,
+            },
           ],
           required: false,
         },
@@ -715,30 +748,56 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, transaction) 
 
       if (student.id) {
         // Update existing student
-        studentRecord = booking.students.find(s => s.id === student.id);
+        studentRecord = booking.students.find((s) => s.id === student.id);
         if (!studentRecord) continue;
 
-        ["studentFirstName", "studentLastName", "dateOfBirth", "age", "gender", "medicalInformation"]
-          .forEach(field => { if (student[field] !== undefined) studentRecord[field] = student[field]; });
+        [
+          "studentFirstName",
+          "studentLastName",
+          "dateOfBirth",
+          "age",
+          "gender",
+          "medicalInformation",
+        ].forEach((field) => {
+          if (student[field] !== undefined)
+            studentRecord[field] = student[field];
+        });
 
         await studentRecord.save({ transaction: t });
       } else {
         // Create new student
-        studentRecord = await BookingStudentMeta.create({ bookingId, ...student }, { transaction: t });
+        studentRecord = await BookingStudentMeta.create(
+          { bookingId, ...student },
+          { transaction: t }
+        );
       }
 
       // Parents
       if (Array.isArray(student.parents)) {
         for (const parent of student.parents) {
           if (parent.id) {
-            const parentRecord = studentRecord.parents?.find(p => p.id === parent.id);
+            const parentRecord = studentRecord.parents?.find(
+              (p) => p.id === parent.id
+            );
             if (parentRecord) {
-              ["parentFirstName", "parentLastName", "parentEmail", "parentPhoneNumber", "relationToChild", "howDidYouHear"]
-                .forEach(field => { if (parent[field] !== undefined) parentRecord[field] = parent[field]; });
+              [
+                "parentFirstName",
+                "parentLastName",
+                "parentEmail",
+                "parentPhoneNumber",
+                "relationToChild",
+                "howDidYouHear",
+              ].forEach((field) => {
+                if (parent[field] !== undefined)
+                  parentRecord[field] = parent[field];
+              });
               await parentRecord.save({ transaction: t });
             }
           } else {
-            await BookingParentMeta.create({ bookingStudentMetaId: studentRecord.id, ...parent }, { transaction: t });
+            await BookingParentMeta.create(
+              { bookingStudentMetaId: studentRecord.id, ...parent },
+              { transaction: t }
+            );
           }
         }
       }
@@ -747,14 +806,26 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, transaction) 
       if (Array.isArray(student.emergencyContacts)) {
         for (const emergency of student.emergencyContacts) {
           if (emergency.id) {
-            const emergencyRecord = studentRecord.emergencyContacts?.find(e => e.id === emergency.id);
+            const emergencyRecord = studentRecord.emergencyContacts?.find(
+              (e) => e.id === emergency.id
+            );
             if (emergencyRecord) {
-              ["emergencyFirstName", "emergencyLastName", "emergencyPhoneNumber", "emergencyRelation"]
-                .forEach(field => { if (emergency[field] !== undefined) emergencyRecord[field] = emergency[field]; });
+              [
+                "emergencyFirstName",
+                "emergencyLastName",
+                "emergencyPhoneNumber",
+                "emergencyRelation",
+              ].forEach((field) => {
+                if (emergency[field] !== undefined)
+                  emergencyRecord[field] = emergency[field];
+              });
               await emergencyRecord.save({ transaction: t });
             }
           } else {
-            await BookingEmergencyMeta.create({ bookingStudentMetaId: studentRecord.id, ...emergency }, { transaction: t });
+            await BookingEmergencyMeta.create(
+              { bookingStudentMetaId: studentRecord.id, ...emergency },
+              { transaction: t }
+            );
           }
         }
       }
@@ -763,37 +834,42 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, transaction) 
     if (isNewTransaction) await t.commit();
 
     // 🔹 Prepare structured response
-    const students = booking.students?.map(s => ({
-      studentId: s.id,
-      studentFirstName: s.studentFirstName,
-      studentLastName: s.studentLastName,
-      dateOfBirth: s.dateOfBirth,
-      age: s.age,
-      gender: s.gender,
-      medicalInformation: s.medicalInformation,
-    })) || [];
+    const students =
+      booking.students?.map((s) => ({
+        studentId: s.id,
+        studentFirstName: s.studentFirstName,
+        studentLastName: s.studentLastName,
+        dateOfBirth: s.dateOfBirth,
+        age: s.age,
+        gender: s.gender,
+        medicalInformation: s.medicalInformation,
+      })) || [];
 
-    const parents = booking.students?.flatMap(s =>
-      s.parents?.map(p => ({
-        parentId: p.id,
-        parentFirstName: p.parentFirstName,
-        parentLastName: p.parentLastName,
-        parentEmail: p.parentEmail,
-        parentPhoneNumber: p.parentPhoneNumber,
-        relationToChild: p.relationToChild,
-        howDidYouHear: p.howDidYouHear,
-      })) || []
-    ) || [];
+    const parents =
+      booking.students?.flatMap(
+        (s) =>
+          s.parents?.map((p) => ({
+            parentId: p.id,
+            parentFirstName: p.parentFirstName,
+            parentLastName: p.parentLastName,
+            parentEmail: p.parentEmail,
+            parentPhoneNumber: p.parentPhoneNumber,
+            relationToChild: p.relationToChild,
+            howDidYouHear: p.howDidYouHear,
+          })) || []
+      ) || [];
 
-    const emergencyContacts = booking.students?.flatMap(s =>
-      s.emergencyContacts?.map(e => ({
-        emergencyId: e.id,
-        emergencyFirstName: e.emergencyFirstName,
-        emergencyLastName: e.emergencyLastName,
-        emergencyPhoneNumber: e.emergencyPhoneNumber,
-        emergencyRelation: e.emergencyRelation,
-      })) || []
-    ) || [];
+    const emergencyContacts =
+      booking.students?.flatMap(
+        (s) =>
+          s.emergencyContacts?.map((e) => ({
+            emergencyId: e.id,
+            emergencyFirstName: e.emergencyFirstName,
+            emergencyLastName: e.emergencyLastName,
+            emergencyPhoneNumber: e.emergencyPhoneNumber,
+            emergencyRelation: e.emergencyRelation,
+          })) || []
+      ) || [];
 
     return {
       status: true,
@@ -806,7 +882,6 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, transaction) 
         emergencyContacts,
       },
     };
-
   } catch (error) {
     if (isNewTransaction) await t.rollback();
     console.error("❌ Service updateBookingStudents Error:", error.message);
@@ -835,13 +910,17 @@ exports.sendAllEmailToParents = async ({ bookingId }) => {
     const classSchedule = await ClassSchedule.findByPk(booking.classScheduleId);
     const venueName = venue?.venueName || venue?.name || "Unknown Venue";
     const className = classSchedule?.className || "Unknown Class";
-    const classTime = classSchedule?.classTime || classSchedule?.startTime || "TBA";
+    const classTime =
+      classSchedule?.classTime || classSchedule?.startTime || "TBA";
     const trialDate = booking.trialDate || booking.startDate;
     const additionalNote = booking.additionalNote || "";
     const status = booking.status || "active ";
 
     // 4️⃣ Email template
-    const emailConfigResult = await getEmailConfig("admin", "waiting-listing-sendEmail");
+    const emailConfigResult = await getEmailConfig(
+      "admin",
+      "waiting-listing-sendEmail"
+    );
     if (!emailConfigResult.status) {
       return { status: false, message: "Email config missing" };
     }
@@ -851,7 +930,7 @@ exports.sendAllEmailToParents = async ({ bookingId }) => {
 
     // 5️⃣ Get unique parents for all students
     const allParents = await BookingParentMeta.findAll({
-      where: { studentId: studentMetas.map(s => s.id) },
+      where: { studentId: studentMetas.map((s) => s.id) },
     });
     const parentsMap = {};
     for (const parent of allParents) {
@@ -861,15 +940,21 @@ exports.sendAllEmailToParents = async ({ bookingId }) => {
     }
 
     // 6️⃣ Build students list and table HTML
-    const studentsList = studentMetas.map(s => `${s.studentFirstName} ${s.studentLastName}`).join(", ");
-    const studentsTableRows = studentMetas.map(s => `
+    const studentsList = studentMetas
+      .map((s) => `${s.studentFirstName} ${s.studentLastName}`)
+      .join(", ");
+    const studentsTableRows = studentMetas
+      .map(
+        (s) => `
       <tr>
         <td style="padding:8px;">${s.studentFirstName} ${s.studentLastName}</td>
         <td style="padding:8px;">${s.className || className}</td>
         <td style="padding:8px;">${s.classTime || classTime}</td>
         <td style="padding:8px;">${trialDate}</td>
       </tr>
-    `).join("");
+    `
+      )
+      .join("");
 
     // 7️⃣ Send email to each parent
     for (const parentEmail in parentsMap) {
@@ -891,13 +976,18 @@ exports.sendAllEmailToParents = async ({ bookingId }) => {
         .replace(/{{trialDate}}/g, trialDate)
         .replace(/{{additionalNoteSection}}/g, noteHtml)
         .replace(/{{appName}}/g, "Synco")
-        .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
+        .replace(
+          /{{logoUrl}}/g,
+          "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
+        )
         .replace(/{{year}}/g, new Date().getFullYear());
 
-      const recipient = [{
-        name: `${parent.parentFirstName} ${parent.parentLastName}`,
-        email: parent.parentEmail,
-      }];
+      const recipient = [
+        {
+          name: `${parent.parentFirstName} ${parent.parentLastName}`,
+          email: parent.parentEmail,
+        },
+      ];
 
       const sendResult = await sendEmail(emailConfig, {
         recipient,
@@ -989,7 +1079,10 @@ exports.convertToMembership = async (data, options) => {
     // Step 1: Update existing booking or create new one
     let booking;
     if (data.id) {
-      booking = await Booking.findByPk(data.id, { transaction: t });
+      booking = await Booking.findByPk(data.id, {
+        include: [{ model: BookingStudentMeta, as: "students" }],
+        transaction: t,
+      });
       if (!booking) throw new Error("Booking not found with provided id");
 
       await booking.update(
@@ -1001,7 +1094,7 @@ exports.convertToMembership = async (data, options) => {
           bookingType: data.paymentPlanId ? "paid" : booking.bookingType,
           paymentPlanId: data.paymentPlanId ?? booking.paymentPlanId,
           status: data.paymentPlanId ? "active" : data.status ?? booking.status,
-          bookedBy: options?.adminId || booking.bookedBy,
+          bookedBy: adminId || booking.bookedBy,
         },
         { transaction: t }
       );
@@ -1023,102 +1116,108 @@ exports.convertToMembership = async (data, options) => {
         },
         { transaction: t }
       );
+      booking.students = [];
     }
 
-    // Step 2: Update Students
+    // Step 2 & 3: Update or create students, link parents & emergency
     const studentRecords = [];
-    for (const student of data.students || []) {
-      let existingStudent = await BookingStudentMeta.findOne({
-        where: {
-          bookingTrialId: booking.id,
-          studentFirstName: student.studentFirstName,
-          studentLastName: student.studentLastName,
-        },
-        transaction: t,
-      });
+    let currentCount = booking.students.length || 0;
 
-      if (existingStudent) {
-        await existingStudent.update(
+    for (const student of data.students || []) {
+      let studentRecord;
+
+      if (student.id) {
+        studentRecord = booking.students.find((s) => s.id === student.id);
+        if (studentRecord) {
+          await studentRecord.update(
+            {
+              studentFirstName: student.studentFirstName,
+              studentLastName: student.studentLastName,
+              dateOfBirth: student.dateOfBirth,
+              age: student.age,
+              gender: student.gender,
+              medicalInformation: student.medicalInformation || null,
+            },
+            { transaction: t }
+          );
+        }
+      } else {
+        // Create new student (limit 3)
+        if (currentCount >= 3)
+          throw new Error(
+            "You cannot add more than 3 students in one booking."
+          );
+
+        studentRecord = await BookingStudentMeta.create(
           {
+            bookingTrialId: booking.id,
+            studentFirstName: student.studentFirstName,
+            studentLastName: student.studentLastName,
             dateOfBirth: student.dateOfBirth,
             age: student.age,
             gender: student.gender,
-            medicalInformation: student.medicalInformation,
+            medicalInformation: student.medicalInformation || null,
           },
           { transaction: t }
         );
-        studentRecords.push(existingStudent);
+        booking.students.push(studentRecord);
+        currentCount++;
       }
-    }
 
-    // Step 3: Update Parents
-    if (data.parents?.length && studentRecords.length) {
-      const firstStudent = studentRecords[0];
+      studentRecords.push(studentRecord);
 
-      for (const parent of data.parents) {
-        const email = parent.parentEmail?.trim()?.toLowerCase();
-        if (!email) throw new Error("Parent email is required.");
+      // Link parents to this student
+      if (Array.isArray(data.parents)) {
+        for (const parent of data.parents) {
+          if (parent.id) {
+            const existingParent = await BookingParentMeta.findByPk(parent.id, {
+              transaction: t,
+            });
+            if (existingParent) {
+              await existingParent.update(
+                { ...parent, studentId: studentRecord.id },
+                { transaction: t }
+              );
+            } else {
+              await BookingParentMeta.create(
+                { ...parent, studentId: studentRecord.id },
+                { transaction: t }
+              );
+            }
+          } else {
+            await BookingParentMeta.create(
+              { ...parent, studentId: studentRecord.id },
+              { transaction: t }
+            );
+          }
+        }
+      }
 
-        let existingParent = await BookingParentMeta.findOne({
-          where: { studentId: firstStudent.id, parentEmail: email },
-          transaction: t,
-        });
-
-        if (existingParent) {
-          await existingParent.update(
-            {
-              parentFirstName: parent.parentFirstName,
-              parentLastName: parent.parentLastName,
-              parentPhoneNumber: parent.parentPhoneNumber,
-              relationToChild: parent.relationToChild,
-              howDidYouHear: parent.howDidYouHear,
-            },
+      // Link emergency contact to this student
+      if (data.emergency && Object.keys(data.emergency).length > 0) {
+        const emergency = data.emergency;
+        if (emergency.id) {
+          const existingEmergency = await BookingEmergencyMeta.findByPk(
+            emergency.id,
+            { transaction: t }
+          );
+          if (existingEmergency) {
+            await existingEmergency.update(
+              { ...emergency, studentId: studentRecord.id },
+              { transaction: t }
+            );
+          } else {
+            await BookingEmergencyMeta.create(
+              { ...emergency, studentId: studentRecord.id },
+              { transaction: t }
+            );
+          }
+        } else {
+          await BookingEmergencyMeta.create(
+            { ...emergency, studentId: studentRecord.id },
             { transaction: t }
           );
         }
-
-        // Update Admin if exists
-        let existingAdmin = await Admin.findOne({
-          where: { email },
-          transaction: t,
-        });
-
-        if (existingAdmin) {
-          await existingAdmin.update(
-            {
-              firstName: parent.parentFirstName || existingAdmin.firstName,
-              lastName: parent.parentLastName || existingAdmin.lastName,
-              phoneNumber: parent.parentPhoneNumber || existingAdmin.phoneNumber,
-              updatedAt: new Date(),
-            },
-            { transaction: t }
-          );
-        }
-      }
-    }
-
-    // Step 4: Update Emergency Contact
-    if (
-      data.emergency?.emergencyFirstName &&
-      data.emergency?.emergencyPhoneNumber &&
-      studentRecords.length
-    ) {
-      const firstStudent = studentRecords[0];
-      let existingEmergency = await BookingEmergencyMeta.findOne({
-        where: { studentId: firstStudent.id },
-        transaction: t,
-      });
-
-      if (existingEmergency) {
-        await existingEmergency.update(
-          {
-            emergencyFirstName: data.emergency.emergencyFirstName,
-            emergencyLastName: data.emergency.emergencyLastName,
-            emergencyPhoneNumber: data.emergency.emergencyPhoneNumber,
-            emergencyRelation: data.emergency.emergencyRelation,
-          },
-          { transaction: t }
-        );
       }
     }
 
@@ -1136,9 +1235,12 @@ exports.convertToMembership = async (data, options) => {
         const price = paymentPlan.price || 0;
 
         const venue = await Venue.findByPk(data.venueId, { transaction: t });
-        const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, {
-          transaction: t,
-        });
+        const classSchedule = await ClassSchedule.findByPk(
+          data.classScheduleId,
+          {
+            transaction: t,
+          }
+        );
 
         const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
         let gatewayResponse = null;
@@ -1161,20 +1263,29 @@ exports.convertToMembership = async (data, options) => {
           };
 
           const createCustomerRes = await createCustomer(customerPayload);
-          if (!createCustomerRes.status) throw new Error(createCustomerRes.message);
+          if (!createCustomerRes.status)
+            throw new Error(createCustomerRes.message);
 
           const billingRequestPayload = {
             customerId: createCustomerRes.customer.id,
-            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"}`,
+            description: `${venue?.name || "Venue"} - ${
+              classSchedule?.className || "Class"
+            }`,
             amount: price,
             scheme: "faster_payments",
             currency: "GBP",
-            reference: `TRX-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
-            mandateReference: `MD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+            reference: `TRX-${Date.now()}-${Math.floor(
+              1000 + Math.random() * 9000
+            )}`,
+            mandateReference: `MD-${Date.now()}-${Math.floor(
+              1000 + Math.random() * 9000
+            )}`,
             fallbackEnabled: true,
           };
 
-          const createBillingRequestRes = await createBillingRequest(billingRequestPayload);
+          const createBillingRequestRes = await createBillingRequest(
+            billingRequestPayload
+          );
           if (!createBillingRequestRes.status) {
             await removeCustomer(createCustomerRes.customer.id);
             throw new Error(createBillingRequestRes.message);
@@ -1197,7 +1308,9 @@ exports.convertToMembership = async (data, options) => {
               currency: "GBP",
               amount: price,
               merchantRef,
-              description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"}`,
+              description: `${venue?.name || "Venue"} - ${
+                classSchedule?.className || "Class"
+              }`,
               commerceType: "ECOM",
             },
             paymentMethod: {
@@ -1216,14 +1329,19 @@ exports.convertToMembership = async (data, options) => {
           ).toString("base64");
 
           const response = await axios.post(url, paymentPayload, {
-            headers: { "Content-Type": "application/json", Authorization: `Basic ${authHeader}` },
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Basic ${authHeader}`,
+            },
           });
 
           gatewayResponse = response.data;
           const txnStatus = gatewayResponse?.transaction?.status?.toLowerCase();
           if (txnStatus === "success") paymentStatusFromGateway = "paid";
-          else if (txnStatus === "pending") paymentStatusFromGateway = "pending";
-          else if (txnStatus === "declined") paymentStatusFromGateway = "failed";
+          else if (txnStatus === "pending")
+            paymentStatusFromGateway = "pending";
+          else if (txnStatus === "declined")
+            paymentStatusFromGateway = "failed";
           else paymentStatusFromGateway = txnStatus || "unknown";
         }
 
@@ -1234,16 +1352,28 @@ exports.convertToMembership = async (data, options) => {
             paymentPlanId: booking.paymentPlanId,
             studentId: firstStudentId,
             paymentType,
-            firstName: data.payment.firstName || data.parents?.[0]?.parentFirstName || "",
-            lastName: data.payment.lastName || data.parents?.[0]?.parentLastName || "",
+            firstName:
+              data.payment.firstName ||
+              data.parents?.[0]?.parentFirstName ||
+              "",
+            lastName:
+              data.payment.lastName || data.parents?.[0]?.parentLastName || "",
             email: data.payment.email || data.parents?.[0]?.parentEmail || "",
             amount: price,
-             billingAddress: data.payment.billingAddress || "",
+            billingAddress: data.payment.billingAddress || "",
             account_holder_name: data.payment.account_holder_name || "",
             paymentStatus: paymentStatusFromGateway,
-            currency: gatewayResponse?.transaction?.currency || gatewayResponse?.billing_requests?.currency || "GBP",
-            merchantRef: gatewayResponse?.transaction?.merchantRef || merchantRef,
-            description: gatewayResponse?.transaction?.description || `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"}`,
+            currency:
+              gatewayResponse?.transaction?.currency ||
+              gatewayResponse?.billing_requests?.currency ||
+              "GBP",
+            merchantRef:
+              gatewayResponse?.transaction?.merchantRef || merchantRef,
+            description:
+              gatewayResponse?.transaction?.description ||
+              `${venue?.name || "Venue"} - ${
+                classSchedule?.className || "Class"
+              }`,
             commerceType: "ECOM",
             gatewayResponse,
             goCardlessCustomer,
@@ -1260,13 +1390,16 @@ exports.convertToMembership = async (data, options) => {
         }
       } catch (err) {
         await t.rollback();
-        const errorMessage = err.response?.data?.reasonMessage || err.message || "Payment failed";
+        const errorMessage =
+          err.response?.data?.reasonMessage || err.message || "Payment failed";
         return { status: false, message: errorMessage };
       }
     }
 
     // Step 6: Update Class Capacity
-    const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, { transaction: t });
+    const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, {
+      transaction: t,
+    });
     const newCapacity = classSchedule.capacity - data.totalStudents;
     if (newCapacity < 0) throw new Error("Not enough capacity left.");
     await classSchedule.update({ capacity: newCapacity }, { transaction: t });
