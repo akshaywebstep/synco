@@ -139,12 +139,58 @@ exports.getVenueById = async (req, res) => {
 };
 
 // ✅ Update Venue
+// exports.updateVenue = async (req, res) => {
+//   const { id } = req.params;
+//   const formData = req.body;
+
+//   if (DEBUG) console.log("🛠️ Updating Venue ID:", id, formData);
+
+//   const validation = validateFormData(formData, {
+//     // requiredFields: ["area", "name", "address", "facility"],
+//     enumValidations: {
+//       facility: ["Indoor", "Outdoor"],
+//     },
+//   });
+
+//   if (!validation.isValid) {
+//     await logActivity(req, PANEL, MODULE, "update", validation.error, false);
+//     return res.status(400).json({
+//       status: false,
+//       message: validation.message,
+//       error: validation.error,
+//     });
+//   }
+
+//   const result = await venueModel.updateVenue(id, formData);
+
+//   await logActivity(req, PANEL, MODULE, "update", result, result.status);
+
+//   if (!result.status) {
+//     return res.status(500).json({ status: false, message: result.message });
+//   }
+//   // ✅ Create Notification
+//   await createNotification(
+//     req,
+//     "Venue Updated",
+//     `Venue "${formData.name}" has been updated.`,
+//     "System"
+//   );
+
+//   return res.status(200).json({
+//     status: true,
+//     message: result.message,
+//     data: result.data,
+//   });
+// };
+
+// ✅ Update Venue
 exports.updateVenue = async (req, res) => {
   const { id } = req.params;
   const formData = req.body;
 
   if (DEBUG) console.log("🛠️ Updating Venue ID:", id, formData);
 
+  // ✅ Validate form data
   const validation = validateFormData(formData, {
     // requiredFields: ["area", "name", "address", "facility"],
     enumValidations: {
@@ -161,26 +207,43 @@ exports.updateVenue = async (req, res) => {
     });
   }
 
-  const result = await venueModel.updateVenue(id, formData);
+  try {
+    // ✅ Update venue using model
+    const result = await venueModel.updateVenue(id, formData);
 
-  await logActivity(req, PANEL, MODULE, "update", result, result.status);
+    await logActivity(req, PANEL, MODULE, "update", result, result.status);
 
-  if (!result.status) {
-    return res.status(500).json({ status: false, message: result.message });
+    if (!result.status) {
+      // Always return JSON object
+      return res.status(500).json({
+        status: false,
+        message: result.message || "Update failed",
+      });
+    }
+
+    // ✅ Create Notification
+    await createNotification(
+      req,
+      "Venue Updated",
+      `Venue "${formData.name}" has been updated.`,
+      "System"
+    );
+
+    // ✅ Return successful response
+    return res.status(200).json({
+      status: true,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ updateVenue Controller Error:", error);
+
+    // ✅ Always return JSON on unexpected errors
+    return res.status(500).json({
+      status: false,
+      message: "Something broke! " + (error.message || ""),
+    });
   }
-  // ✅ Create Notification
-  await createNotification(
-    req,
-    "Venue Updated",
-    `Venue "${formData.name}" has been updated.`,
-    "System"
-  );
-
-  return res.status(200).json({
-    status: true,
-    message: result.message,
-    data: result.data,
-  });
 };
 
 // ✅ Delete Venue
