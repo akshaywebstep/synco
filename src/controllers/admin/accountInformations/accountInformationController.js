@@ -8,7 +8,7 @@ const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "account_information";
 
-//  controller account information  io
+//  controller account information  iokjbre
 exports.getAllStudentsListing = async (req, res) => {
   try {
     // 🧾 Extract filters from query params
