@@ -5,7 +5,7 @@ const { Venue, ClassSchedule, Admin } = require("../../../models");
 const emailModel = require("../../../services/email");
 const sendEmail = require("../../../utils/email/sendEmail");
 const { BookingParentMeta, Booking } = require("../../../models");
-
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 const {
   createNotification,
 } = require("../../../utils/admin/notificationHelper");
@@ -365,6 +365,9 @@ exports.createBooking = async (req, res) => {
  */
 exports.getAllBookFreeTrials = async (req, res) => {
   if (DEBUG) console.log("📥 Fetching all free trial bookings...");
+  const bookedBy = req.admin?.id;
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
 
   const filters = {
     studentName: req.query.studentName,
@@ -384,6 +387,7 @@ exports.getAllBookFreeTrials = async (req, res) => {
 
   try {
     const result = await BookingTrialService.getAllBookings(
+      superAdminId,
       req.admin.id,
       filters
     );
@@ -429,10 +433,13 @@ exports.getBookFreeTrialDetails = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id;
   if (DEBUG) console.log(`🔍 Fetching free trial booking ID: ${id}`);
+  const bookedBy = req.admin?.id;
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
 
   try {
     // const result = await BookingTrialService.getBookingById(id);
-    const result = await BookingTrialService.getBookingById(id, adminId); // ✅ pass adminId
+    const result = await BookingTrialService.getBookingById(id, adminId,superAdminId); // ✅ pass adminId
 
     if (!result.status) {
       return res.status(404).json({ status: false, message: result.message });

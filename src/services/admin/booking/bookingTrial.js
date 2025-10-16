@@ -230,7 +230,14 @@ exports.createBooking = async (data, options) => {
 };
 
 // Get all booking with bookingType = free
-exports.getAllBookings = async (adminId, filters = {}) => {
+exports.getAllBookings = async (adminId, bookedBy, filters = {}) => {
+  if (!bookedBy || isNaN(Number(bookedBy))) {
+    return {
+      status: false,
+      message: "No valid super admin found for this request.",
+      data: [],
+    };
+  }
   try {
     const trialWhere = {};
     const venueWhere = {};
@@ -284,7 +291,10 @@ exports.getAllBookings = async (adminId, filters = {}) => {
 
     const bookings = await Booking.findAll({
       order: [["id", "DESC"]],
-      where: trialWhere,
+      where: {
+        bookedBy: Number(bookedBy),
+        ...trialWhere, // spread the filters correctly
+      },
       include: [
         {
           model: BookingStudentMeta,
@@ -533,10 +543,20 @@ exports.getAllBookings = async (adminId, filters = {}) => {
   }
 };
 
-exports.getBookingById = async (id, adminId) => {
+exports.getBookingById = async (id,bookedBy, adminId) => {
+   if (!bookedBy || isNaN(Number(bookedBy))) {
+    return {
+      status: false,
+      message: "No valid super admin found for this request.",
+      data: [],
+    };
+  }
   try {
     const booking = await Booking.findOne({
-      where: { id },
+       where: {
+        bookedBy: Number(bookedBy),
+        id, // spread the filters correctly
+      },
       include: [
         {
           model: BookingStudentMeta,
