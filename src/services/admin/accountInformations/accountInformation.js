@@ -14,10 +14,12 @@ const { Op } = require("sequelize");
 
 exports.getAllStudentsListing = async (filters = {}) => {
   try {
+    const { bookedBy, paymentPlanId, classScheduleId } = filters;
+
     const students = await BookingStudentMeta.findAll({
       include: [
         {
-          model: Booking, // 👈 The Booking table
+          model: Booking,
           as: "booking",
           required: false,
           attributes: [
@@ -39,6 +41,36 @@ exports.getAllStudentsListing = async (filters = {}) => {
             "createdAt",
             "updatedAt",
           ],
+          where: {
+            ...(bookedBy !== undefined ? { bookedBy } : {}),
+            ...(paymentPlanId !== undefined ? { paymentPlanId } : {}),
+            ...(classScheduleId !== undefined ? { classScheduleId } : {}),
+          },
+          include: [
+            {
+              model: Admin,
+              as: "bookedByAdmin",
+              attributes: ["id", "firstName", "lastName", "email", "roleId", "status", "profile"],
+              required: false,
+            },
+            {
+              model: ClassSchedule,
+              as: "classSchedule",
+              required: false,
+              include: [
+                {
+                  model: Venue,
+                  as: "venue",
+                  required: false,
+                },
+              ],
+            },
+            {
+              model: PaymentPlan,
+              as: "paymentPlan",
+              required: false,
+            },
+          ],
         },
         {
           model: BookingParentMeta,
@@ -57,13 +89,10 @@ exports.getAllStudentsListing = async (filters = {}) => {
 
     students.forEach((student) => {
       const booking = student.booking;
-
-      // Skip if no booking found
       if (!booking) return;
 
       const bookingId = booking.id;
 
-      // Initialize group for each booking
       if (!grouped[bookingId]) {
         grouped[bookingId] = {
           id: booking.id,
@@ -72,13 +101,16 @@ exports.getAllStudentsListing = async (filters = {}) => {
           leadId: booking.leadId,
           venueId: booking.venueId,
           classScheduleId: booking.classScheduleId,
+          classSchedule: booking.classSchedule || null,
           paymentPlanId: booking.paymentPlanId,
+          paymentPlan: booking.paymentPlan || null,
+          bookedBy: booking.bookedBy,
+          bookedByAdmin: booking.bookedByAdmin || null,
           trialDate: booking.trialDate,
           startDate: booking.startDate,
           status: booking.status,
           totalStudents: booking.totalStudents,
           interest: booking.interest,
-          bookedBy: booking.bookedBy,
           additionalNote: booking.additionalNote,
           reasonForNonAttendance: booking.reasonForNonAttendance,
           createdAt: booking.createdAt,
@@ -89,7 +121,7 @@ exports.getAllStudentsListing = async (filters = {}) => {
         };
       }
 
-      // Add student info
+      // Add student
       grouped[bookingId].students.push({
         id: student.id,
         bookingTrialId: student.bookingTrialId,
@@ -155,7 +187,7 @@ exports.getStudentById = async (studentId) => {
       where: { id: studentId },
       include: [
         {
-          model: Booking, // 👈 Include Booking details
+          model: Booking,
           as: "booking",
           required: false,
           attributes: [
@@ -177,6 +209,31 @@ exports.getStudentById = async (studentId) => {
             "createdAt",
             "updatedAt",
           ],
+          include: [
+            {
+              model: Admin,
+              as: "bookedByAdmin",
+              attributes: ["id", "firstName", "lastName", "email", "roleId", "status", "profile"],
+              required: false,
+            },
+            {
+              model: ClassSchedule,
+              as: "classSchedule",
+              required: false,
+              include: [
+                {
+                  model: Venue,
+                  as: "venue",
+                  required: false,
+                },
+              ],
+            },
+            {
+              model: PaymentPlan,
+              as: "paymentPlan",
+              required: false,
+            },
+          ],
         },
         { model: BookingParentMeta, as: "parents", required: false },
         { model: BookingEmergencyMeta, as: "emergencyContacts", required: false },
@@ -187,7 +244,6 @@ exports.getStudentById = async (studentId) => {
       return { status: false, message: "Student not found" };
     }
 
-    // 🧩 Map related data
     const parents = (student.parents || []).map((p) => ({
       id: p.id,
       studentId: p.studentId,
@@ -208,60 +264,61 @@ exports.getStudentById = async (studentId) => {
       emergencyRelation: e.emergencyRelation,
     }));
 
-    // 🧠 Get booking info
     const booking = student.booking;
 
     const accountInformation = booking
       ? {
-          id: booking.id,
-          bookingType: booking.bookingType,
-          bookingId: booking.bookingId,
-          leadId: booking.leadId,
-          venueId: booking.venueId,
-          classScheduleId: booking.classScheduleId,
-          paymentPlanId: booking.paymentPlanId,
-          trialDate: booking.trialDate,
-          startDate: booking.startDate,
-          status: booking.status,
-          totalStudents: booking.totalStudents,
-          interest: booking.interest,
-          bookedBy: booking.bookedBy,
-          additionalNote: booking.additionalNote,
-          reasonForNonAttendance: booking.reasonForNonAttendance,
-          createdAt: booking.createdAt,
-          updatedAt: booking.updatedAt,
-          students: [
-            {
-              id: student.id,
-              bookingTrialId: student.bookingTrialId,
-              studentFirstName: student.studentFirstName,
-              studentLastName: student.studentLastName,
-              dateOfBirth: student.dateOfBirth,
-              age: student.age,
-              gender: student.gender,
-              medicalInformation: student.medicalInformation,
-            },
-          ],
-          parents,
-          emergency,
-        }
+        id: booking.id,
+        bookingType: booking.bookingType,
+        bookingId: booking.bookingId,
+        leadId: booking.leadId,
+        venueId: booking.venueId,
+        classScheduleId: booking.classScheduleId,
+        classSchedule: booking.classSchedule || null,
+        paymentPlanId: booking.paymentPlanId,
+        paymentPlan: booking.paymentPlan || null,
+        bookedBy: booking.bookedBy,
+        bookedByAdmin: booking.bookedByAdmin || null,
+        trialDate: booking.trialDate,
+        startDate: booking.startDate,
+        status: booking.status,
+        totalStudents: booking.totalStudents,
+        interest: booking.interest,
+        additionalNote: booking.additionalNote,
+        reasonForNonAttendance: booking.reasonForNonAttendance,
+        createdAt: booking.createdAt,
+        updatedAt: booking.updatedAt,
+        students: [
+          {
+            id: student.id,
+            bookingTrialId: student.bookingTrialId,
+            studentFirstName: student.studentFirstName,
+            studentLastName: student.studentLastName,
+            dateOfBirth: student.dateOfBirth,
+            age: student.age,
+            gender: student.gender,
+            medicalInformation: student.medicalInformation,
+          },
+        ],
+        parents,
+        emergency,
+      }
       : {
-          // fallback if no booking found
-          id: null,
-          students: [
-            {
-              id: student.id,
-              studentFirstName: student.studentFirstName,
-              studentLastName: student.studentLastName,
-              dateOfBirth: student.dateOfBirth,
-              age: student.age,
-              gender: student.gender,
-              medicalInformation: student.medicalInformation,
-            },
-          ],
-          parents,
-          emergency,
-        };
+        id: null,
+        students: [
+          {
+            id: student.id,
+            studentFirstName: student.studentFirstName,
+            studentLastName: student.studentLastName,
+            dateOfBirth: student.dateOfBirth,
+            age: student.age,
+            gender: student.gender,
+            medicalInformation: student.medicalInformation,
+          },
+        ],
+        parents,
+        emergency,
+      };
 
     return {
       status: true,
