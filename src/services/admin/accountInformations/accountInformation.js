@@ -42,6 +42,7 @@ exports.getAllStudentsListing = async (filters = {}) => {
             "updatedAt",
           ],
           where: {
+             bookingType: "paid",
             ...(bookedBy !== undefined ? { bookedBy } : {}),
             ...(paymentPlanId !== undefined ? { paymentPlanId } : {}),
             ...(classScheduleId !== undefined ? { classScheduleId } : {}),

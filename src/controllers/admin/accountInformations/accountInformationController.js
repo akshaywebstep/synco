@@ -143,6 +143,10 @@ exports.updateBookingInformationByTrialId = async (req, res) => {
       });
     }
 
+    if (process.env.DEBUG) {
+      console.log("DEBUG: bookingTrialId:", bookingTrialId);
+    }
+
     const result =
       await AccountInformationService.updateBookingInformationByTrialId(
         bookingTrialId,
@@ -167,7 +171,6 @@ exports.updateBookingInformationByTrialId = async (req, res) => {
     await createNotification(
       req,
       "Account Information Updated",
-      `${studentFirstName} Booking Account Information  has been updated.`,
       "System"
     );
     await logActivity(req, PANEL, MODULE, "update", { bookingTrialId }, true);
