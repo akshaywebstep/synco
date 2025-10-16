@@ -378,6 +378,9 @@ exports.getAllPaidActiveBookings = async (req, res) => {
   try {
     console.log("🔹 Controller start: getAllPaidActiveBookings");
 
+    const bookedBy = req.admin?.id;
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
     // Step 1: Prepare filters
     const filters = {
       status: req.query.status,
@@ -398,6 +401,7 @@ exports.getAllPaidActiveBookings = async (req, res) => {
 
     // Step 2: Call service
     const result = await BookingMembershipService.getActiveMembershipBookings(
+      bookedBy,
       filters
     );
     console.log("🔹 Service result received:", result);
