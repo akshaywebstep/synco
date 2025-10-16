@@ -89,7 +89,7 @@ exports.getPlanById = async (id, adminId) => {
     if (!plan) {
       return {
         status: false,
-        message: "No payment plan found with the provided ID.",
+        message: "No payment plan found with the provided ID. (1)",
       };
     }
 

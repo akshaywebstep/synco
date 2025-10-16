@@ -481,14 +481,17 @@ exports.createBooking = async (data, options) => {
       const paymentType = data.payment.paymentType; // "bank" or "card"
       console.log("Step 5: Start payment process, paymentType:", paymentType);
 
+      console.log(`Step - 1`);
       let paymentStatusFromGateway = "pending";
       const firstStudentId = studentRecords[0]?.id;
+      console.log(`Step - 2`);
 
       try {
         // ✅ Fetch Payment Plan to get price
         const paymentPlan = await PaymentPlan.findByPk(booking.paymentPlanId, { transaction: t });
         if (!paymentPlan) throw new Error("Invalid payment plan selected.");
         const planPrice = paymentPlan.price || 0;
+        console.log(`Step - 3`);
 
         // Fetch venue & classSchedule info
         const venue = await Venue.findByPk(data.venueId, { transaction: t });
@@ -496,7 +499,9 @@ exports.createBooking = async (data, options) => {
 
         const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
         let gatewayResponse = null;
+        let response;
         let goCardlessCustomer, goCardlessBankAccount, goCardlessBillingRequest;
+        console.log(`Step - 4`);
 
         if (paymentType === "bank") {
           // ✅ Prepare GoCardless payload
@@ -539,6 +544,8 @@ exports.createBooking = async (data, options) => {
           goCardlessBankAccount = createCustomerRes.bankAccount;
           goCardlessBillingRequest = { ...createBillingRequestRes.billingRequest, planPrice }; // ✅ store plan price
         } else if (paymentType === "card") {
+          console.log(`Step - 5`);
+
           // Card payment
           const paymentPayload = {
             transaction: {
@@ -559,18 +566,33 @@ exports.createBooking = async (data, options) => {
           };
 
           const url = `https://api.mite.pay360.com/acceptor/rest/transactions/${process.env.PAY360_INST_ID}/payment`;
-          const authHeader = Buffer.from(`${process.env.PAY360_API_USERNAME}:${process.env.PAY360_API_PASSWORD}`).toString("base64");
 
-          const response = await axios.post(url, paymentPayload, {
-            headers: { "Content-Type": "application/json", Authorization: `Basic ${authHeader}` },
-          });
+          try {
+            const authHeader = Buffer.from(`${process.env.PAY360_API_USERNAME}:${process.env.PAY360_API_PASSWORD}`).toString("base64");
 
-          gatewayResponse = response.data;
-          const txnStatus = gatewayResponse?.transaction?.status?.toLowerCase();
+            response = await axios.post(url, paymentPayload, {
+              headers: { "Content-Type": "application/json", Authorization: `Basic ${authHeader}` },
+            });
+            // Log the full response if needed
+            console.log("🔍 [DEBUG] Full Axios response:", response);
+
+          } catch (err) {
+            console.error("❌ Axios request failed:", err.response?.data || err.message || err);
+          }
+
+          const gatewayResponse = response?.data;
+
+          // Safely check if transaction and status exist
+          const txnStatus = gatewayResponse?.transaction?.status
+            ? gatewayResponse.transaction.status.toLowerCase()
+            : null;
+
           paymentStatusFromGateway = txnStatus === "success" ? "paid" :
             txnStatus === "pending" ? "pending" :
               txnStatus === "declined" ? "failed" : txnStatus || "unknown";
         }
+
+        console.log("🔍 [DEBUG] Response data:", response?.data);
 
         // 🔹 Save BookingPayment
         await BookingPayment.create({
@@ -605,9 +627,16 @@ exports.createBooking = async (data, options) => {
         }, { transaction: t });
 
         if (paymentStatusFromGateway === "failed") throw new Error("Payment failed. Booking not created.");
+        if (DEBUG) {
+          console.log("🔍 [DEBUG] Extracted paymentStatusFromGateway:", paymentStatusFromGateway);
+        }
+
       } catch (err) {
         await t.rollback();
         return { status: false, message: err.message || "Payment failed" };
+        if (DEBUG) {
+          console.log("🔍 [DEBUG] Extracted message:", message);
+        }
       }
     }
 

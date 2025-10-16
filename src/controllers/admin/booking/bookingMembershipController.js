@@ -22,6 +22,7 @@ const {
   createNotification,
 } = require("../../../utils/admin/notificationHelper");
 const PaymentPlan = require("../../../services/admin/payment/paymentPlan");
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -65,14 +66,17 @@ exports.createBooking = async (req, res) => {
     // ✅ Inject venue
     formData.venueId = classData.venueId;
     let skipped = [];
+    const adminId = req.admin?.id;
+        const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+        const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
     // 🔹 Attach payment gateway response so the service can save it
     // if (formData.paymentPlanId) {
 
     //   const planCheck = await PaymentPlan.getPlanById(paymentPlanId, createdBy); // ✅ add createdBy here
     const paymentPlanId = formData.paymentPlanId; // ✅ define it first
     if (paymentPlanId) {
-
-      const planCheck = await PaymentPlan.getPlanById(paymentPlanId, req.admin?.id);
+      const planCheck = await PaymentPlan.getPlanById(paymentPlanId,superAdminId);
+      console.log(`planCheck - `, planCheck);
       if (!planCheck.status) {
         skipped.push({ paymentPlanId, reason: "Plan does not exist" });
         if (DEBUG) {
