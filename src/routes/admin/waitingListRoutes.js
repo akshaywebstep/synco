@@ -13,15 +13,13 @@ const {
   updateWaitinglistBooking,
 } = require("../../controllers/admin/booking/waitingListController");
 
-router.post(
-  "/",
-  authMiddleware,
-  permissionMiddleware("waiting-list", "create"),
-  createBooking
-);
+const {
+  addCommentForWaitingList,
+  listCommentsForWaitingList,
+} = require("../../controllers/admin/booking/commentController");
 
 router.post(
-  "/:leadId",
+  "/",
   authMiddleware,
   permissionMiddleware("waiting-list", "create"),
   createBooking
@@ -32,19 +30,6 @@ router.get(
   authMiddleware,
   permissionMiddleware("waiting-list", "view-listing"),
   getAllWaitingListBookings
-);
-router.get(
-  "/service-history/:id",
-  authMiddleware,
-  permissionMiddleware("waiting-list", "view-listing"),
-  getAccountProfile
-);
-
-router.put(
-  "/service-history/update/:bookingId",
-  authMiddleware,
-  permissionMiddleware("waiting-list", "update"),
-  updateWaitinglistBooking
 );
 
 router.post(
@@ -61,17 +46,6 @@ router.post(
   permissionMiddleware("waiting-list", "remove"), // new permission key
   removeWaitingList
 );
-router.put(
-  "/convert-membership/:id", // ✅ add :id here
-  authMiddleware,
-  permissionMiddleware("waiting-list", "remove"),
-  convertToMembership
-);
-
-const {
-  addCommentForWaitingList,
-  listCommentsForWaitingList,
-} = require("../../controllers/admin/booking/commentController");
 
 router.post(
   "/comment/create",
@@ -84,6 +58,33 @@ router.get(
   authMiddleware,
   permissionMiddleware("comment", "view-listing"),
   listCommentsForWaitingList
+);
+
+router.put(
+  "/service-history/update/:bookingId",
+  authMiddleware,
+  permissionMiddleware("waiting-list", "update"),
+  updateWaitinglistBooking
+);
+
+router.get(
+  "/service-history/:id",
+  authMiddleware,
+  permissionMiddleware("waiting-list", "view-listing"),
+  getAccountProfile
+);
+
+router.put(
+  "/convert-membership/:id", // ✅ add :id here
+  authMiddleware,
+  permissionMiddleware("waiting-list", "remove"),
+  convertToMembership
+);
+router.post(
+  "/:leadId",
+  authMiddleware,
+  permissionMiddleware("waiting-list", "create"),
+  createBooking
 );
 
 module.exports = router;
