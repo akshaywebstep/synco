@@ -47,6 +47,7 @@ exports.createCancellationRecord = async (
       const mapEntry = await ClassScheduleTermMap.findByPk(targetMapId);
 
       if (mapEntry) {
+        console.log(`mapEntry - `, mapEntry);
         sessionPlanId = mapEntry.sessionPlanId;
         await mapEntry.update({ status: "cancelled" });
         console.log("✔️ ClassScheduleTermMap cancelled:", mapEntry.id);
@@ -57,6 +58,7 @@ exports.createCancellationRecord = async (
       console.log("⚠️ No mapId provided in request");
     }
 
+    console.log(`sessionPlanId - `, sessionPlanId);
     // Step 3: Save cancellation record (always)
     const cancelEntry = await CancelSession.create({
       classScheduleId,
@@ -67,7 +69,7 @@ exports.createCancellationRecord = async (
       notifyCoaches: cancelData.notifyCoaches,
       notifications: cancelData.notifications,
       mapId: targetMapId,
-      sessionPlanId,
+      sessionPlanGroupId: sessionPlanId,
       createdBy: adminId,
       cancelledAt: new Date(),
     });
