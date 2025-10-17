@@ -68,7 +68,7 @@ exports.cancelClassSession = async (req, res) => {
       });
     }
 
-    const cancelSessionPlanResult = await CancelClassService.getCancelledSessionBySessionPlanId(classScheduleTermMapResult.mapEntry.sessionPlanId);
+    const cancelSessionPlanResult = await CancelClassService.getCancelledSessionByMapIdSessionPlanId(classScheduleTermMapResult.mapEntry.sessionPlanId);
     console.log(`cancelSessionPlanResult - `, cancelSessionPlanResult);
     
     if (cancelSessionPlanResult.status) {
