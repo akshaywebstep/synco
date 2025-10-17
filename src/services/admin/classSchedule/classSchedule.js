@@ -533,7 +533,7 @@ exports.getAllClasses = async (adminId) => {
                         sessionPlanId: mapping.sessionPlanId,
                         cancelSession: await (async () => {
                           const cancelled = await getCancelledSessionBySessionPlanId(mapping.sessionPlanId);
-                          return cancelled?.status ? cancelled.cancelSession : [];
+                          return cancelled?.status ? cancelled.cancelSession : {};
                         })(),
                         status: mapping.status,
                         createdAt: mapping.createdAt,
