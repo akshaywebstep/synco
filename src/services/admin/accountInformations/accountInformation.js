@@ -102,7 +102,7 @@ exports.getAllStudentsListing = async (filters = {}) => {
           bookingId: booking.bookingId,
           leadId: booking.leadId,
           venueId: booking.venueId,
-          venue:  booking.venue || nulll,
+          venue:  booking.venue || null,
           classScheduleId: booking.classScheduleId,
           classSchedule: booking.classSchedule || null,
           
