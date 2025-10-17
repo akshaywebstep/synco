@@ -66,6 +66,7 @@ exports.getAllStudentsListing = async (filters = {}) => {
                 },
               ],
             },
+            
             {
               model: PaymentPlan,
               as: "paymentPlan",
@@ -101,8 +102,10 @@ exports.getAllStudentsListing = async (filters = {}) => {
           bookingId: booking.bookingId,
           leadId: booking.leadId,
           venueId: booking.venueId,
+          venue:  booking.venue || nulll,
           classScheduleId: booking.classScheduleId,
           classSchedule: booking.classSchedule || null,
+          
           paymentPlanId: booking.paymentPlanId,
           paymentPlan: booking.paymentPlan || null,
           bookedBy: booking.bookedBy,
