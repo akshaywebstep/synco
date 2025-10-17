@@ -66,6 +66,11 @@ exports.getAllStudentsListing = async (filters = {}) => {
                 },
               ],
             },
+            {
+          model: Venue, 
+          as: "venue",
+          required: false,
+        },
             
             {
               model: PaymentPlan,
@@ -105,7 +110,6 @@ exports.getAllStudentsListing = async (filters = {}) => {
           venue:  booking.venue || null,
           classScheduleId: booking.classScheduleId,
           classSchedule: booking.classSchedule || null,
-          
           paymentPlanId: booking.paymentPlanId,
           paymentPlan: booking.paymentPlan || null,
           bookedBy: booking.bookedBy,
