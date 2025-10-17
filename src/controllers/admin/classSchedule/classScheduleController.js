@@ -346,12 +346,13 @@ exports.updateClassSchedule = async (req, res) => {
     // ✅ Capacity logic
     let updatedCapacity = existingClass.capacity;
     let updatedTotalCapacity = existingClass.totalCapacity;
+
     if (req.body.capacity !== undefined) {
-      if (req.body.capacity < existingClass.capacity) {
-        updatedCapacity = req.body.capacity;
-      } else if (req.body.capacity > existingClass.capacity) {
-        const diff = req.body.capacity - existingClass.capacity;
-        updatedTotalCapacity = existingClass.totalCapacity + diff;
+      const diff = req.body.capacity - existingClass.capacity;
+
+      if (diff !== 0) {
+        updatedCapacity += diff;
+        updatedTotalCapacity += diff;
       }
     }
 
