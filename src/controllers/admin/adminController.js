@@ -32,6 +32,7 @@ const allowedExtensions = [
   "tiff",
   "heic",
   "svg",
+  "jfif",
 ];
 
 const ADMIN_RESET_URL =
@@ -329,11 +330,12 @@ exports.createAdmin = async (req, res) => {
 // ✅ Get all admins
 exports.getAllAdmins = async (req, res) => {
   if (DEBUG) console.log("📋 Request received to list all admins");
-
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin?.id);
+  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
   try {
-    const loggedInAdminId = req.admin.id; // Get the current admin's ID
+    const loggedInAdminId = req.admin?.id; // Get the current admin's ID
 
-    const result = await adminModel.getAllAdmins(loggedInAdminId); // Pass it to the service
+    const result = await adminModel.getAllAdmins(superAdminId); // Pass it to the service
 
     if (!result.status) {
       if (DEBUG) console.log("❌ Failed to retrieve admins:", result.message);
