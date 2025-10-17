@@ -339,6 +339,160 @@ exports.getStudentById = async (studentId) => {
   }
 };
 
+exports.getStudentByBookingId = async (bookingId) => {
+  try {
+    if (!bookingId) {
+      return { status: false, message: "Student ID is required" };
+    }
+
+    const student = await BookingStudentMeta.findOne({
+      where: { bookingTrialId: bookingId },
+      include: [
+        {
+          model: Booking,
+          as: "booking",
+          required: false,
+          attributes: [
+            "id",
+            "bookingType",
+            "bookingId",
+            "leadId",
+            "venueId",
+            "classScheduleId",
+            "paymentPlanId",
+            "trialDate",
+            "startDate",
+            "status",
+            "totalStudents",
+            "interest",
+            "bookedBy",
+            "additionalNote",
+            "reasonForNonAttendance",
+            "createdAt",
+            "updatedAt",
+          ],
+          include: [
+            {
+              model: Admin,
+              as: "bookedByAdmin",
+              attributes: ["id", "firstName", "lastName", "email", "roleId", "status", "profile"],
+              required: false,
+            },
+            {
+              model: ClassSchedule,
+              as: "classSchedule",
+              required: false,
+              include: [
+                {
+                  model: Venue,
+                  as: "venue",
+                  required: false,
+                },
+              ],
+            },
+            {
+              model: PaymentPlan,
+              as: "paymentPlan",
+              required: false,
+            },
+          ],
+        },
+        { model: BookingParentMeta, as: "parents", required: false },
+        { model: BookingEmergencyMeta, as: "emergencyContacts", required: false },
+      ],
+    });
+
+    if (!student) {
+      return { status: false, message: "Student not found" };
+    }
+
+    const parents = (student.parents || []).map((p) => ({
+      id: p.id,
+      studentId: p.studentId,
+      parentFirstName: p.parentFirstName,
+      parentLastName: p.parentLastName,
+      parentEmail: p.parentEmail,
+      parentPhoneNumber: p.parentPhoneNumber,
+      relationToChild: p.relationToChild,
+      howDidYouHear: p.howDidYouHear,
+    }));
+
+    const emergency = (student.emergencyContacts || []).map((e) => ({
+      id: e.id,
+      studentId: e.studentId,
+      emergencyFirstName: e.emergencyFirstName,
+      emergencyLastName: e.emergencyLastName,
+      emergencyPhoneNumber: e.emergencyPhoneNumber,
+      emergencyRelation: e.emergencyRelation,
+    }));
+
+    const booking = student.booking;
+
+    const accountInformation = booking
+      ? {
+        id: booking.id,
+        bookingType: booking.bookingType,
+        bookingId: booking.bookingId,
+        leadId: booking.leadId,
+        venueId: booking.venueId,
+        classScheduleId: booking.classScheduleId,
+        classSchedule: booking.classSchedule || null,
+        paymentPlanId: booking.paymentPlanId,
+        paymentPlan: booking.paymentPlan || null,
+        bookedBy: booking.bookedBy,
+        bookedByAdmin: booking.bookedByAdmin || null,
+        trialDate: booking.trialDate,
+        startDate: booking.startDate,
+        status: booking.status,
+        totalStudents: booking.totalStudents,
+        interest: booking.interest,
+        additionalNote: booking.additionalNote,
+        reasonForNonAttendance: booking.reasonForNonAttendance,
+        createdAt: booking.createdAt,
+        updatedAt: booking.updatedAt,
+        students: [
+          {
+            id: student.id,
+            bookingTrialId: student.bookingTrialId,
+            studentFirstName: student.studentFirstName,
+            studentLastName: student.studentLastName,
+            dateOfBirth: student.dateOfBirth,
+            age: student.age,
+            gender: student.gender,
+            medicalInformation: student.medicalInformation,
+          },
+        ],
+        parents,
+        emergency,
+      }
+      : {
+        id: null,
+        students: [
+          {
+            id: student.id,
+            studentFirstName: student.studentFirstName,
+            studentLastName: student.studentLastName,
+            dateOfBirth: student.dateOfBirth,
+            age: student.age,
+            gender: student.gender,
+            medicalInformation: student.medicalInformation,
+          },
+        ],
+        parents,
+        emergency,
+      };
+
+    return {
+      status: true,
+      message: "Student retrieved successfully",
+      data: { accountInformation },
+    };
+  } catch (error) {
+    console.error("❌ getStudentById Error:", error.message);
+    return { status: false, message: error.message };
+  }
+};
+
 exports.updateBookingInformationByTrialId = async (
   bookingTrialId,
   updateData

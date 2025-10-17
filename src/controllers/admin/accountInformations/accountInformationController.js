@@ -85,9 +85,9 @@ exports.getAllStudentsListing = async (req, res) => {
 
 exports.getStudentById = async (req, res) => {
   try {
-    const studentId = req.params.id;
-
-    const result = await AccountInformationService.getStudentById(studentId);
+    const bookingId = req.params.id;
+console.log(`bookingId - `, bookingId);
+    const result = await AccountInformationService.getStudentByBookingId(bookingId);
 
     if (!result.status) {
       await logActivity(
@@ -95,7 +95,7 @@ exports.getStudentById = async (req, res) => {
         PANEL,
         MODULE,
         "read",
-        { studentId, error: result.message },
+        { bookingId, error: result.message },
         false
       );
       return res.status(404).json({ status: false, message: result.message });
@@ -113,7 +113,7 @@ exports.getStudentById = async (req, res) => {
       PANEL,
       MODULE,
       "read",
-      { studentId, count: result.data.accountInformation.students.length },
+      { bookingId, count: result.data.accountInformation.students.length },
       true
     );
 
