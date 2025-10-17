@@ -18,7 +18,7 @@ exports.createFreezeBooking = async (req, res) => {
 
   // ✅ Validate request body
   const { isValid, error } = validateFormData(payload, {
-    requiredFields: ["bookingId", "freezeStartDate", "freezeDurationMonths"],
+    requiredFields: ["bookingId", "freezeStartDate", "freezeDurationMonths","reactivateOn"],
   });
 
   if (!isValid) {

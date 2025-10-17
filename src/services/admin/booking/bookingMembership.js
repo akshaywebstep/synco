@@ -1,5 +1,6 @@
 const {
   Booking,
+  FreezeBooking,
   BookingStudentMeta,
   BookingParentMeta,
   BookingEmergencyMeta,
@@ -33,6 +34,94 @@ function generateBookingId(length = 12) {
     result += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return result;
+}
+
+async function updateBookingStats() {
+  const debugData = [];
+
+  try {
+    const freezeBookings = await FreezeBooking.findAll();
+
+    if (!freezeBookings || freezeBookings.length === 0) {
+      console.log("⚠️ No freeze bookings found.");
+      return {
+        status: false,
+        message: "No freeze bookings found.",
+        data: debugData,
+      };
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // normalize to date-only
+
+    for (const freezeBooking of freezeBookings) {
+      const bookingId = freezeBooking.bookingId || freezeBooking.id; // use correct bookingId field
+      const freezeStartDate = new Date(freezeBooking.freezeStartDate);
+      const reactivateOn = new Date(freezeBooking.reactivateOn);
+
+      const bookingDebug = {
+        freezeBookingId: freezeBooking.id,
+        bookingId,
+        freezeStartDate,
+        reactivateOn,
+        actions: [],
+      };
+
+      console.log(`Booking ID: ${bookingId}`);
+      console.log(`  - Freeze Start Date: ${freezeStartDate}`);
+      console.log(`  - Reactivate On: ${reactivateOn}`);
+
+      // Freeze booking if freezeStartDate is today or in the past
+      if (freezeStartDate <= today) {
+        const booking = await Booking.findOne({ where: { id: bookingId } });
+
+        if (booking) {
+          await booking.update({ status: 'frozen' });
+          console.log(`  -> Booking status updated to FROZEN`);
+          bookingDebug.actions.push("status updated to frozen");
+        } else {
+          console.log(`  ⚠️ Booking not found for freezing`);
+          bookingDebug.actions.push("booking not found for frozen");
+        }
+      }
+
+      // Reactivate booking if reactivateOn is today or in the past
+      if (reactivateOn <= today) {
+        const booking = await Booking.findOne({ where: { id: bookingId } });
+
+        if (booking) {
+          await booking.update({ status: 'active' });
+          console.log(`  -> Booking status updated to ACTIVE`);
+          bookingDebug.actions.push("status updated to active");
+        } else {
+          console.log(`  ⚠️ Booking not found for reactivation`);
+          bookingDebug.actions.push("booking not found for active");
+        }
+
+        console.log(`  -> Deleting FreezeBooking entry ID: ${freezeBooking.id}`);
+        await freezeBooking.destroy();
+        bookingDebug.actions.push("freezeBooking entry deleted");
+      }
+
+      debugData.push(bookingDebug);
+    }
+
+    console.log("✅ Booking stats update completed.");
+
+    return {
+      status: true,
+      message: "Booking stats updated successfully.",
+      data: debugData,
+    };
+  } catch (error) {
+    console.error("❌ Error updating booking stats:", error);
+    return {
+      status: false,
+      message: "Error updating booking stats.",
+      error: error.message,
+      data: debugData,
+    };
+  }
 }
 
 exports.createBooking = async (data, options) => {
@@ -665,8 +754,10 @@ exports.createBooking = async (data, options) => {
   }
 };
 
-exports.getAllBookingsWithStats = async (bookedBy,filters = {}) => {
-   if (!bookedBy || isNaN(Number(bookedBy))) {
+exports.getAllBookingsWithStats = async (bookedBy, filters = {}) => {
+  await updateBookingStats();
+
+  if (!bookedBy || isNaN(Number(bookedBy))) {
     return {
       status: false,
       message: "No valid super admin found for this request.",
@@ -1048,7 +1139,9 @@ exports.getAllBookingsWithStats = async (bookedBy,filters = {}) => {
   }
 };
 
-exports.getActiveMembershipBookings = async (bookedBy,filters = {}) => {
+exports.getActiveMembershipBookings = async (bookedBy, filters = {}) => {
+  await updateBookingStats();
+  
   if (!bookedBy || isNaN(Number(bookedBy))) {
     return {
       status: false,
