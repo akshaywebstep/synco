@@ -1141,7 +1141,7 @@ exports.getAllBookingsWithStats = async (bookedBy, filters = {}) => {
 
 exports.getActiveMembershipBookings = async (bookedBy, filters = {}) => {
   await updateBookingStats();
-  
+
   if (!bookedBy || isNaN(Number(bookedBy))) {
     return {
       status: false,
@@ -2014,6 +2014,11 @@ exports.getBookingsById = async (bookingId) => {
           ],
           required: false,
         },
+        {
+          model: FreezeBooking,
+          as: "freezeBooking",
+          required: false,
+        },
       ],
     });
 
@@ -2097,6 +2102,7 @@ exports.getBookingsById = async (bookingId) => {
     const parsedBooking = {
       bookingId: booking.id,
       bookedId: booking.bookingId,
+      freezeBooking: booking.freezeBooking,
       status: booking.status,
       startDate: booking.startDate,
       dateBooked: booking.createdAt,
