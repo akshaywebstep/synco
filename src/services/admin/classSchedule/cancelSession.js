@@ -41,6 +41,22 @@ exports.createCancellationRecord = async (
       ],
     });
 
+    let sessionPlanId = 0;
+    // Step 4: Update only the target ClassScheduleTermMap
+    if (targetMapId) {
+      const mapEntry = await ClassScheduleTermMap.findByPk(targetMapId);
+
+      if (mapEntry) {
+        sessionPlanId = mapEntry.sessionPlanId;
+        await mapEntry.update({ status: "cancelled" });
+        console.log("✔️ ClassScheduleTermMap cancelled:", mapEntry.id);
+      } else {
+        console.log("⚠️ No ClassScheduleTermMap found for id:", targetMapId);
+      }
+    } else {
+      console.log("⚠️ No mapId provided in request");
+    }
+
     // Step 3: Save cancellation record (always)
     const cancelEntry = await CancelSession.create({
       classScheduleId,
@@ -51,23 +67,11 @@ exports.createCancellationRecord = async (
       notifyCoaches: cancelData.notifyCoaches,
       notifications: cancelData.notifications,
       mapId: targetMapId,
+      sessionPlanId,
       createdBy: adminId,
       cancelledAt: new Date(),
     });
 
-    // Step 4: Update only the target ClassScheduleTermMap
-    if (targetMapId) {
-      const mapEntry = await ClassScheduleTermMap.findByPk(targetMapId);
-
-      if (mapEntry) {
-        await mapEntry.update({ status: "cancelled" });
-        console.log("✔️ ClassScheduleTermMap cancelled:", mapEntry.id);
-      } else {
-        console.log("⚠️ No ClassScheduleTermMap found for id:", targetMapId);
-      }
-    } else {
-      console.log("⚠️ No mapId provided in request");
-    }
     // Step 5: If no bookings → skip emails
     if (!bookings.length) {
       return {
