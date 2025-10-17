@@ -244,3 +244,70 @@ exports.getCancelledSessionById = async (id) => {
     return { status: false, message: error.message };
   }
 };
+
+exports.getCancelledSessionBySessionPlanId = async (sessionPlanGroupId) => {
+  console.log(`🛠 Service: getCancelledSessionBySessionPlanId called for sessionPlanGroupId=${sessionPlanGroupId}`);
+
+  try {
+    if (!sessionPlanGroupId) {
+      console.warn("⚠️ No sessionPlanGroupId provided.");
+      return { status: false, message: "Session Plan Group ID is required." };
+    }
+
+    // ✅ Correct method: findOne with where condition
+    const session = await CancelSession.findOne({
+      where: { sessionPlanGroupId },
+      include: [
+        {
+          model: ClassSchedule,
+          as: "classSchedule",
+          include: [{ model: Venue, as: "venue" }],
+        },
+      ],
+    });
+
+    if (!session) {
+      console.warn(`⚠️ No cancelled session found for sessionPlanGroupId=${sessionPlanGroupId}`);
+      return { status: false, message: "Cancelled session not found." };
+    }
+
+    const json = session.toJSON();
+
+    // Safely parse notifications
+    let notificationsArray = [];
+    if (Array.isArray(json.notifications)) {
+      notificationsArray = json.notifications;
+    } else if (typeof json.notifications === "string") {
+      try {
+        notificationsArray = JSON.parse(json.notifications);
+      } catch {
+        notificationsArray = [];
+      }
+    }
+
+    const formattedData = {
+      id: json.id,
+      classScheduleId: json.classScheduleId,
+      reasonForCancelling: json.reasonForCancelling,
+      notifyMembers: json.notifyMembers,
+      creditMembers: json.creditMembers,
+      notifyTrialists: json.notifyTrialists,
+      notifyCoaches: json.notifyCoaches,
+      cancelledAt: json.cancelledAt,
+      createdBy: json.createdBy,
+      notifications: notificationsArray.map((n) => ({
+        role: n.role,
+        subjectLine: n.subjectLine,
+        emailBody: n.emailBody,
+        deliveryMethod: n.deliveryMethod,
+        templateKey: n.templateKey,
+      })),
+      classSchedule: json.classSchedule || null,
+    };
+
+    return { status: true, data: formattedData };
+  } catch (error) {
+    console.error(`❌ getCancelledSessionBySessionPlanId Error:`, error.message);
+    return { status: false, message: error.message };
+  }
+};

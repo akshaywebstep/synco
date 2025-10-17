@@ -1034,3 +1034,27 @@ exports.deleteClass = async (id, deletedBy) => {
     };
   }
 };
+
+exports.getClassScheduleTermMapById = async (id) => {
+  try {
+    console.log("🔹 Fetching ClassScheduleTermMap with ID:", id);
+
+    const mapEntry = await ClassScheduleTermMap.findByPk(id);
+
+    if (!mapEntry) {
+      console.log("⚠️ No ClassScheduleTermMap found for ID:", id);
+      return { status: false, message: "ClassScheduleTermMap not found." };
+    }
+
+    console.log("✔️ Found ClassScheduleTermMap:", mapEntry.id);
+    return { status: true, message: "ClassScheduleTermMap fetched successfully.", mapEntry };
+
+  } catch (error) {
+    console.error("❌ Error fetching ClassScheduleTermMap:", error);
+    return {
+      status: false,
+      message: "Something went wrong.",
+      error: error.message,
+    };
+  }
+};

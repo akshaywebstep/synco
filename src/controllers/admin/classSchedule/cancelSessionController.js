@@ -3,6 +3,7 @@ const {
   createNotification,
 } = require("../../../utils/admin/notificationHelper");
 const CancelClassService = require("../../../services/admin/classSchedule/cancelSession.js");
+const { getClassScheduleTermMapById } = require("../../../services/admin/classSchedule/classSchedule.js");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -47,6 +48,38 @@ exports.cancelClassSession = async (req, res) => {
       return res.status(400).json({
         status: false,
         message: "Missing required query parameter: mapId",
+      });
+    }
+
+    const classScheduleTermMapResult = await getClassScheduleTermMapById(mapId);
+    if (!classScheduleTermMapResult.status) {
+      await logActivity(
+        req,
+        PANEL,
+        MODULE,
+        "cancel",
+        { message: classScheduleTermMapResult.message },
+        false
+      );
+      return res.status(400).json({
+        status: false,
+        message: classScheduleTermMapResult.message
+      });
+    }
+
+    const cancelSessionPlanResult = await CancelClassService.getCancelledSessionBySessionPlanId();
+    if (cancelSessionPlanResult.status) {
+      await logActivity(
+        req,
+        PANEL,
+        MODULE,
+        "cancel",
+        { message: `Session Plan has already been cancelled.` },
+        false
+      );
+      return res.status(400).json({
+        status: false,
+        message: `Session Plan has already been cancelled.`
       });
     }
 
@@ -97,8 +130,7 @@ exports.cancelClassSession = async (req, res) => {
       await createNotification(
         req,
         "Class Session Cancelled",
-        `Class "${
-          cancelResult.data?.classSchedule?.className || "N/A"
+        `Class "${cancelResult.data?.classSchedule?.className || "N/A"
         }" has been cancelled.`,
         "Admins"
       );
