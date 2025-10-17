@@ -1,4 +1,5 @@
 const {
+  CancelSession,
   ClassSchedule,
   Venue,
   TermGroup,
@@ -254,6 +255,31 @@ exports.getAllClasses = async (adminId) => {
         data: [],
       };
     }
+
+    async function getCancelledSessionBySessionPlanId(sessionPlanId) {
+      try {
+        // Validate input
+        if (!sessionPlanId) {
+          return { status: false, message: "Session Plan ID is required." };
+        }
+
+        // Fetch the cancelled session by ID
+        const cancelSession = await CancelSession.findByPk(sessionPlanId);
+
+        // If not found
+        if (!cancelSession) {
+          return { status: false, message: "Cancelled session not found." };
+        }
+
+        // If found
+        return { status: true, cancelSession };
+
+      } catch (error) {
+        console.error("Error fetching cancelled session:", error);
+        return { status: false, message: "Something went wrong.", error: error.message };
+      }
+    }
+
     const classes = await ClassSchedule.findAll({
       where: { createdBy: Number(adminId) },
       order: [["id", "ASC"]],
@@ -489,15 +515,19 @@ exports.getAllClasses = async (adminId) => {
                     videoUploadedAgo,
                     ...(mapping
                       ? {
-                          mapId: mapping.id,
-                          classScheduleId: mapping.classScheduleId,
-                          termGroupId: mapping.termGroupId,
-                          termId: mapping.termId,
-                          sessionPlanId: mapping.sessionPlanId,
-                          status: mapping.status,
-                          createdAt: mapping.createdAt,
-                          updatedAt: mapping.updatedAt,
-                        }
+                        mapId: mapping.id,
+                        classScheduleId: mapping.classScheduleId,
+                        termGroupId: mapping.termGroupId,
+                        termId: mapping.termId,
+                        sessionPlanId: mapping.sessionPlanId,
+                        cancelSession: await (async () => {
+                          const cancelled = await getCancelledSessionBySessionPlanId(mapping.sessionPlanId);
+                          return cancelled?.status ? cancelled : {};
+                        })(),
+                        status: mapping.status,
+                        createdAt: mapping.createdAt,
+                        updatedAt: mapping.updatedAt,
+                      }
                       : {}),
                   };
                 } else {
@@ -913,15 +943,15 @@ exports.getClassByIdWithFullDetails = async (classId, createdBy) => {
                   videoUploadedAgo,
                   ...(mapping
                     ? {
-                        mapId: mapping.id,
-                        classScheduleId: mapping.classScheduleId,
-                        termGroupId: mapping.termGroupId,
-                        termId: mapping.termId,
-                        sessionPlanId: mapping.sessionPlanId,
-                        status: mapping.status,
-                        createdAt: mapping.createdAt,
-                        updatedAt: mapping.updatedAt,
-                      }
+                      mapId: mapping.id,
+                      classScheduleId: mapping.classScheduleId,
+                      termGroupId: mapping.termGroupId,
+                      termId: mapping.termId,
+                      sessionPlanId: mapping.sessionPlanId,
+                      status: mapping.status,
+                      createdAt: mapping.createdAt,
+                      updatedAt: mapping.updatedAt,
+                    }
                     : {}),
                 };
               } else {
