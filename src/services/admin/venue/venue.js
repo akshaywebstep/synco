@@ -199,6 +199,10 @@ exports.createVenue = async (data) => {
 
     // ✅ Geocode address
     const coords = await geocodeAddress(data.address, data.area);
+    if (!coords) {
+      throw new Error("Your address is incorrect. Please provide a valid address.");
+    }
+
     if (coords) {
       data.latitude = coords.latitude;
       data.longitude = coords.longitude;
@@ -376,6 +380,11 @@ exports.updateVenue = async (id, data) => {
         data.address || venue.address,
         data.area || venue.area
       );
+
+      if (!coords) {
+        throw new Error("Your address is incorrect. Please provide a valid address.");
+      }
+
       if (coords) {
         data.latitude = coords.latitude;
         data.longitude = coords.longitude;
