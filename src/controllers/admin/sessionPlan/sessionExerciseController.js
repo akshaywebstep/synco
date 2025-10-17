@@ -141,7 +141,7 @@ exports.createSessionExercise = async (req, res) => {
     const files = req.files || [];
 
     // ✅ Validate files
-    const allowedExtensions = ["jpg", "jpeg", "png", "webp"];
+    const allowedExtensions = ["jpg", "jpeg", "png", "webp", "svg"];
     for (const file of files) {
       const ext = path.extname(file.originalname).toLowerCase().slice(1);
       if (!allowedExtensions.includes(ext)) {
