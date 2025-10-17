@@ -29,6 +29,7 @@ exports.getRequestToCancel = async (req, res) => {
       fromDate,
       toDate,
       status,
+      bookedBy: req.user?.id
     });
 
     if (!result.status) {
