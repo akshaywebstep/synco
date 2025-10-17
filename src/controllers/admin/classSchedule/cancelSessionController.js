@@ -3,7 +3,7 @@ const {
   createNotification,
 } = require("../../../utils/admin/notificationHelper");
 const CancelClassService = require("../../../services/admin/classSchedule/cancelSession.js");
-const { getClassScheduleTermMapById } = require("../../../services/admin/classSchedule/classSchedule.js");
+const ClassScheduleService = require("../../../services/admin/classSchedule/classSchedule.js");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -51,7 +51,8 @@ exports.cancelClassSession = async (req, res) => {
       });
     }
 
-    const classScheduleTermMapResult = await getClassScheduleTermMapById(mapId);
+    const classScheduleTermMapResult = await ClassScheduleService.getClassScheduleTermMapById(mapId);
+    console.log(`classScheduleTermMapResult - `, classScheduleTermMapResult);
     if (!classScheduleTermMapResult.status) {
       await logActivity(
         req,
@@ -67,7 +68,9 @@ exports.cancelClassSession = async (req, res) => {
       });
     }
 
-    const cancelSessionPlanResult = await CancelClassService.getCancelledSessionBySessionPlanId();
+    const cancelSessionPlanResult = await CancelClassService.getCancelledSessionBySessionPlanId(classScheduleTermMapResult.mapEntry.sessionPlanId);
+    console.log(`cancelSessionPlanResult - `, cancelSessionPlanResult);
+    
     if (cancelSessionPlanResult.status) {
       await logActivity(
         req,
