@@ -348,7 +348,27 @@ exports.updateClassSchedule = async (req, res) => {
     let updatedTotalCapacity = existingClass.totalCapacity;
 
     if (req.body.capacity !== undefined) {
-      const diff = req.body.capacity - existingClass.capacity;
+      // Convert to number
+      const newCapacity = Number(req.body.capacity);
+
+      // Check for invalid or non-numeric input
+      if (isNaN(newCapacity)) {
+        return res.status(400).json({
+          status: false,
+          message: "Capacity must be a valid number.",
+        });
+      }
+
+      // Optional: ensure capacity is not negative
+      if (newCapacity < 0) {
+        return res.status(400).json({
+          status: false,
+          message: "Capacity cannot be negative.",
+        });
+      }
+
+      // Calculate difference and update values
+      const diff = newCapacity - existingClass.capacity;
 
       if (diff !== 0) {
         updatedCapacity += diff;
