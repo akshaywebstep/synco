@@ -1,6 +1,5 @@
 const {
   ClassSchedule,
-  CancelSession,
   Venue,
   TermGroup,
   Term,
@@ -258,14 +257,7 @@ exports.getAllClasses = async (adminId) => {
     const classes = await ClassSchedule.findAll({
       where: { createdBy: Number(adminId) },
       order: [["id", "ASC"]],
-      include: [
-        { model: Venue, as: "venue" },
-        {
-          model: CancelSession,
-          as: "cancelSessions", // must match ClassSchedule.hasMany alias
-          required: false, // includes classes even if no cancellations
-        },
-      ],
+      include: [{ model: Venue, as: "venue" }],
     });
 
     // Fetch all mappings once
@@ -497,15 +489,15 @@ exports.getAllClasses = async (adminId) => {
                     videoUploadedAgo,
                     ...(mapping
                       ? {
-                        mapId: mapping.id,
-                        classScheduleId: mapping.classScheduleId,
-                        termGroupId: mapping.termGroupId,
-                        termId: mapping.termId,
-                        sessionPlanId: mapping.sessionPlanId,
-                        status: mapping.status,
-                        createdAt: mapping.createdAt,
-                        updatedAt: mapping.updatedAt,
-                      }
+                          mapId: mapping.id,
+                          classScheduleId: mapping.classScheduleId,
+                          termGroupId: mapping.termGroupId,
+                          termId: mapping.termId,
+                          sessionPlanId: mapping.sessionPlanId,
+                          status: mapping.status,
+                          createdAt: mapping.createdAt,
+                          updatedAt: mapping.updatedAt,
+                        }
                       : {}),
                   };
                 } else {
@@ -921,15 +913,15 @@ exports.getClassByIdWithFullDetails = async (classId, createdBy) => {
                   videoUploadedAgo,
                   ...(mapping
                     ? {
-                      mapId: mapping.id,
-                      classScheduleId: mapping.classScheduleId,
-                      termGroupId: mapping.termGroupId,
-                      termId: mapping.termId,
-                      sessionPlanId: mapping.sessionPlanId,
-                      status: mapping.status,
-                      createdAt: mapping.createdAt,
-                      updatedAt: mapping.updatedAt,
-                    }
+                        mapId: mapping.id,
+                        classScheduleId: mapping.classScheduleId,
+                        termGroupId: mapping.termGroupId,
+                        termId: mapping.termId,
+                        sessionPlanId: mapping.sessionPlanId,
+                        status: mapping.status,
+                        createdAt: mapping.createdAt,
+                        updatedAt: mapping.updatedAt,
+                      }
                     : {}),
                 };
               } else {

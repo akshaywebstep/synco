@@ -50,6 +50,7 @@ exports.createCancellationRecord = async (
       notifyTrialists: cancelData.notifyTrialists,
       notifyCoaches: cancelData.notifyCoaches,
       notifications: cancelData.notifications,
+      mapId: targetMapId,
       createdBy: adminId,
       cancelledAt: new Date(),
     });

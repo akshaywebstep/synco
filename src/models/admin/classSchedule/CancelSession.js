@@ -14,6 +14,30 @@ const CancelSession = sequelize.define(
       allowNull: false,
     },
 
+    mapId: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true, // can be nullable if not linked
+      references: {
+        model: "class_schedule_term_maps", // table name
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "CASCADE",
+      comment: "Reference to ClassScheduleTermMap",
+    },
+
+    sessionPlanGroupId: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: "session_plan_groups", // table name
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "CASCADE",
+      comment: "Reference to SessionPlanGroup",
+    },
+
     // Common fields
     reasonForCancelling: {
       type: DataTypes.TEXT,
@@ -91,6 +115,20 @@ CancelSession.associate = (models) => {
   CancelSession.belongsTo(models.ClassSchedule, {
     foreignKey: "classScheduleId",
     as: "classSchedule", // this "as" must match the include in the query
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
+
+  CancelSession.belongsTo(models.ClassScheduleTermMap, {
+    foreignKey: "mapId",
+    as: "termMap", // use this alias when including
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
+
+  CancelSession.belongsTo(models.SessionPlanGroup, {
+    foreignKey: "sessionPlanGroupId",
+    as: "sessionPlanGroup", // alias to use in queries
     onDelete: "CASCADE",
     onUpdate: "CASCADE",
   });
