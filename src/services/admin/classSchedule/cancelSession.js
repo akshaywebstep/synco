@@ -245,18 +245,19 @@ exports.getCancelledSessionById = async (id) => {
   }
 };
 
-exports.getCancelledSessionBySessionPlanId = async (sessionPlanGroupId) => {
+exports.getCancelledSessionByMapIdSessionPlanId = async (mapId, sessionPlanGroupId) => {
   console.log(`🛠 Service: getCancelledSessionBySessionPlanId called for sessionPlanGroupId=${sessionPlanGroupId}`);
 
   try {
-    if (!sessionPlanGroupId) {
-      console.warn("⚠️ No sessionPlanGroupId provided.");
-      return { status: false, message: "Session Plan Group ID is required." };
+    // Validate inputs
+    if (!mapId || !sessionPlanGroupId) {
+      console.warn("⚠️ Both mapId and sessionPlanGroupId are required.");
+      return { status: false, message: "Both mapId and sessionPlanGroupId are required." };
     }
 
     // ✅ Correct method: findOne with where condition
     const session = await CancelSession.findOne({
-      where: { sessionPlanGroupId },
+      where: { mapId, sessionPlanGroupId },
       include: [
         {
           model: ClassSchedule,

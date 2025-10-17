@@ -256,32 +256,31 @@ exports.getAllClasses = async (adminId) => {
       };
     }
 
-    async function getCancelledSessionBySessionPlanId(sessionPlanId) {
+    async function getCancelledSessionBySessionPlanId(mapId, sessionPlanId) {
       try {
-        console.log("🔹 Function called with sessionPlanId:", sessionPlanId);
+        console.log("🔹 Function called with mapId:", mapId, "sessionPlanId:", sessionPlanId);
 
-        // Validate input
-        if (!sessionPlanId) {
-          console.log("⚠️ No sessionPlanId provided");
-          return { status: false, message: "Session Plan ID is required." };
+        // ✅ Validate input: both IDs are required
+        if (!mapId || !sessionPlanId) {
+          console.log("⚠️ mapId and sessionPlanId are required");
+          return { status: false, message: "Both mapId and sessionPlanId are required." };
         }
 
-        // Fetch only the first cancelled session for this sessionPlanGroupId
-        console.log("⏳ Fetching first CancelSession by sessionPlanGroupId...");
+        // Fetch only the first cancelled session matching both IDs
+        console.log("⏳ Fetching first CancelSession with mapId and sessionPlanId...");
         const cancelSession = await CancelSession.findOne({
           where: {
+            mapId,
             sessionPlanGroupId: sessionPlanId,
           },
-          order: [["cancelledAt", "ASC"]], // first cancelled session; change to DESC for latest
+          order: [["cancelledAt", "ASC"]], // earliest cancellation first
         });
 
-        // If not found
         if (!cancelSession) {
-          console.log("⚠️ No cancelled session found for sessionPlanGroupId:", sessionPlanId);
+          console.log(`⚠️ No cancelled session found for mapId=${mapId}, sessionPlanId=${sessionPlanId}`);
           return { status: false, message: "Cancelled session not found." };
         }
 
-        // If found
         console.log("✔️ Found cancelled session ID:", cancelSession.id);
         return { status: true, cancelSession };
 
@@ -532,7 +531,7 @@ exports.getAllClasses = async (adminId) => {
                         termId: mapping.termId,
                         sessionPlanId: mapping.sessionPlanId,
                         cancelSession: await (async () => {
-                          const cancelled = await getCancelledSessionBySessionPlanId(mapping.sessionPlanId);
+                          const cancelled = await getCancelledSessionBySessionPlanId(mapping.id, mapping.sessionPlanId);
                           return cancelled?.status ? cancelled.cancelSession : {};
                         })(),
                         status: mapping.status,
