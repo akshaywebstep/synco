@@ -264,7 +264,6 @@ exports.getAllClasses = async (adminId) => {
           model: CancelSession,
           as: "cancelSessions", // must match ClassSchedule.hasMany alias
           required: false, // includes classes even if no cancellations
-          attributes: ["id", "reasonForCancelling", "cancelledAt", "notifyMembers"],
         },
       ],
     });
