@@ -111,9 +111,18 @@ exports.getAccountProfile = async (req, res) => {
   // const adminId = req.admin?.id;
   if (DEBUG) console.log(`🔍 Fetching free trial booking ID: ${id}`);
 
-  const bookedBy = req.admin?.id;
-  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  let bookedBy;
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id, true);
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+
+  // ✅ Apply bookedBy filter
+  if (req.admin?.role?.toLowerCase() === 'super admin') {
+    const admins = mainSuperAdminResult?.admins || [];
+    bookedBy = admins.length > 0 ? admins.map(a => a.id) : [];
+  } else {
+    // Always assign bookedBy even if not in query
+    bookedBy = req.admin?.id || null;
+  }
 
   try {
     // const result = await BookingTrialService.getBookingById(id);
@@ -241,8 +250,7 @@ exports.updateBooking = async (req, res) => {
             .replace(/{{className}}/g, classSchedule?.className || "N/A")
             .replace(
               /{{classTime}}/g,
-              `${classSchedule?.startTime || ""} - ${
-                classSchedule?.endTime || ""
+              `${classSchedule?.startTime || ""} - ${classSchedule?.endTime || ""
               }`
             )
             .replace(/{{startDate}}/g, booking.startDate || "")

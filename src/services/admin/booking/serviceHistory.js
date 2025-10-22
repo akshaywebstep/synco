@@ -347,17 +347,23 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
 // };
 
 exports.getBookingById = async (id, adminId) => {
-  if (!adminId || isNaN(Number(adminId))) {
+  // Validate adminId
+  if (!adminId || (Array.isArray(adminId) ? false : isNaN(Number(adminId)))) {
     return {
       status: false,
       message: "No valid super admin found for this request.",
       data: [],
     };
   }
+
+  // Ensure bookedBy is always an array
+  const bookedByArray = Array.isArray(adminId) ? adminId : [adminId];
+  const bookedByWhere = { [Op.in]: bookedByArray };
+
   try {
     // 1️⃣ Fetch booking with related data
     const booking = await Booking.findOne({
-      where: { id, bookedBy: Number(adminId) },
+      where: { id, bookedBy: bookedByWhere },
       include: [
         {
           model: BookingStudentMeta,
@@ -784,10 +790,10 @@ exports.updateBooking = async (payload, adminId, id) => {
             txnStatus === "success"
               ? "paid"
               : txnStatus === "pending"
-              ? "pending"
-              : txnStatus === "declined"
-              ? "failed"
-              : "unknown";
+                ? "pending"
+                : txnStatus === "declined"
+                  ? "failed"
+                  : "unknown";
         } else if (paymentType === "bank") {
           // ⚠️ Fixed bug: replaced 'data' references with 'payload'
           const customerPayload = {
