@@ -1154,12 +1154,16 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
     if (filters.venueName) {
       whereVenue.name = { [Op.like]: `%${filters.venueName}%` };
     }
+
+    /*
     if (filters.bookedBy) {
       whereBooking[Op.or] = [
         { "$admin.firstName$": { [Op.like]: `%${filters.bookedBy}%` } },
         { "$admin.lastName$": { [Op.like]: `%${filters.bookedBy}%` } },
       ];
     }
+    */
+   
     if (filters.bookedBy) {
       // Ensure bookedBy is always an array
       const bookedByArray = Array.isArray(filters.bookedBy)
