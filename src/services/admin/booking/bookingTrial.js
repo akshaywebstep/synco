@@ -234,7 +234,6 @@ exports.getAllBookings = async (filters = {}) => {
   try {
     const trialWhere = {};
     const venueWhere = {};
-    // const whereBooking = {};
 
     // Filter by bookingType = 'free' only
     trialWhere.bookingType = "free";
@@ -248,7 +247,7 @@ exports.getAllBookings = async (filters = {}) => {
         ? filters.bookedBy
         : [filters.bookedBy];
 
-      whereBooking.bookedBy = { [Op.in]: bookedByArray };
+      trialWhere.bookedBy = { [Op.in]: bookedByArray };
     }
     if (filters.dateBooked) {
       const start = new Date(filters.dateBooked + " 00:00:00");
