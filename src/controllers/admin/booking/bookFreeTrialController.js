@@ -367,9 +367,10 @@ exports.createBooking = async (req, res) => {
  */
 exports.getAllBookFreeTrials = async (req, res) => {
   if (DEBUG) console.log("📥 Fetching all free trial bookings...");
+
   const bookedBy = req.admin?.id;
-  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id, true);
+  const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
 
   const filters = {
     studentName: req.query.studentName,
@@ -378,7 +379,6 @@ exports.getAllBookFreeTrials = async (req, res) => {
     venueId: req.query.venueId,
     venueName: req.query.venueName,
     // source: req.query.source,
-    bookedBy: req.query.bookedBy,
     dateTrialFrom: req.query.dateTrialFrom
       ? req.query.dateTrialFrom
       : undefined,
@@ -388,9 +388,16 @@ exports.getAllBookFreeTrials = async (req, res) => {
   };
 
   try {
+    // ✅ Apply bookedBy filter
+    if (req.admin?.role?.toLowerCase() === 'super admin') {
+      const admins = mainSuperAdminResult?.admins || [];
+      filters.bookedBy = admins.length > 0 ? admins.map(a => a.id) : [];
+    } else {
+      // Always assign bookedBy even if not in query
+      filters.bookedBy = bookedBy || null;
+    }
+
     const result = await BookingTrialService.getAllBookings(
-      superAdminId,
-      req.admin.id,
       filters
     );
 

@@ -782,7 +782,6 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
     if (filters.venueName)
       whereVenue.name = { [Op.like]: `%${filters.venueName}%` };
     if (filters.bookedBy) {
-      console.log(`Step - 1`);
       // Ensure bookedBy is always an array
       const bookedByArray = Array.isArray(filters.bookedBy)
         ? filters.bookedBy
@@ -816,8 +815,6 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
       const end = new Date(filters.toDate + " 23:59:59");
       whereBooking.createdAt = { [Op.lte]: end };
     }
-
-    console.log(`whereBooking - `, whereBooking);
 
     const bookings = await Booking.findAll({
       where: {
