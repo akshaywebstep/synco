@@ -39,11 +39,11 @@ const getVideoDurationInSeconds = async (videoUrl) => {
 
   try {
     if (DEBUG) console.log("Downloading video to temp file:", tempFile);
-    await downloadVideo(videoUrl, tempFile);
+    // await downloadVideo(videoUrl, tempFile);
 
     return await new Promise((resolve) => {
-      ffmpeg.ffprobe(tempFile, (err, metadata) => {
-        fs.unlink(tempFile, () => {}); // clean up temp file
+      ffmpeg.ffprobe(videoUrl, (err, metadata) => {
+        fs.unlink(videoUrl, () => {}); // clean up temp file
 
         if (err) {
           if (DEBUG) console.error("ffprobe error:", err);
