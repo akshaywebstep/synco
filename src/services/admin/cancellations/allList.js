@@ -133,12 +133,22 @@ exports.getFullCancelBooking = async ({
     let cancellationIds = [];
 
     if (bookedBy) {
+      let bookingWhere = {
+        status: {
+          [Op.in]: ['request_to_cancel', 'canceled']
+        }
+      };
+
+      // Ensure bookedBy is always an array
+      const bookedByArray = Array.isArray(bookedBy)
+        ? bookedBy
+        : [bookedBy];
+
+      bookingWhere.bookedBy = { [Op.in]: bookedByArray };
+
       const cancellations = await Booking.findAll({
         where: {
-          bookedBy,
-          status: {
-            [Op.in]: ['request_to_cancel', 'canceled']
-          }
+          ...bookingWhere
         },
         attributes: ['id'], // only fetch the ID column
         raw: true
