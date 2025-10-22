@@ -96,10 +96,10 @@ exports.createCancelBooking = async ({
   cancelReason,
   additionalNote,
   cancelDate = null, // null = immediate
-  cancellationType
+  cancellationType: rawCancellationType
 }) => {
   try {
-    console.log(`cancellationType - `, cancellationType);
+    console.log(`rawCancellationType - `, rawCancellationType);
     console.log(`cancelDate - `, cancelDate);
     const bookingType = "membership";
 
@@ -113,7 +113,7 @@ exports.createCancelBooking = async ({
     });
 
     // Determine cancellation type
-    const cancellationType = cancellationType ?? (cancelDate ? "scheduled" : "immediate");
+    const cancellationType = rawCancellationType ?? (cancelDate ? "scheduled" : "immediate");
 
     if (existingCancel) {
       // 🔹 Update only provided fields
