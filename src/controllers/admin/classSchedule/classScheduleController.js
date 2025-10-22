@@ -317,9 +317,12 @@ exports.getAllClassSchedules = async (req, res) => {
                       for (const level of levels) {
                         const videoUrl = plan[`${level}_video`];
                         if (videoUrl) {
+
+                          /*
                           const durationSec = await getVideoDurationInSeconds(videoUrl);
                           const durationFormatted = formatDuration(durationSec);
                           const uploadedAgo = getElapsedTime(plan.createdAt);
+                          */
 
                           videoInfo[`${level}_video_duration`] = durationFormatted;
                           videoInfo[`${level}_video_uploadedAgo`] = uploadedAgo;
