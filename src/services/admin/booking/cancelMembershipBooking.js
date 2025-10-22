@@ -96,8 +96,11 @@ exports.createCancelBooking = async ({
   cancelReason,
   additionalNote,
   cancelDate = null, // null = immediate
+  cancellationType
 }) => {
   try {
+    console.log(`cancellationType - `, cancellationType);
+    console.log(`cancelDate - `, cancelDate);
     const bookingType = "membership";
 
     // 🔹 Validate booking exists
@@ -110,7 +113,7 @@ exports.createCancelBooking = async ({
     });
 
     // Determine cancellation type
-    const cancellationType = cancelDate ? "scheduled" : "immediate";
+    const cancellationType = cancellationType ?? (cancelDate ? "scheduled" : "immediate");
 
     if (existingCancel) {
       // 🔹 Update only provided fields
@@ -123,6 +126,8 @@ exports.createCancelBooking = async ({
         },
         { returning: true }
       );
+
+      console.log(`cancellationType - `, cancellationType);
 
       // 🔹 Update booking status based on cancellation type
       if (cancellationType === "immediate") {

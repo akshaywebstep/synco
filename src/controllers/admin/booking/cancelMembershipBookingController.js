@@ -12,7 +12,8 @@ const MODULE = "cancel_membership";
 // ✅ Cancel a membership booking
 exports.createCancelBooking = async (req, res) => {
   const payload = req.body;
-  const cancellationType = payload.cancelDate ? "scheduled" : "immediate";
+  const cancellationType = (payload.cancellationType ?? (payload.cancelDate ? "scheduled" : "immediate"));
+
   if (DEBUG) console.log("🎯 Cancel Membership Payload:", payload);
 
   // ✅ Validate request body
