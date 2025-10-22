@@ -301,6 +301,59 @@ exports.getClassScheduleDetails = async (req, res) => {
       return res.status(404).json({ status: false, message: result.message });
     }
 
+    const group = result.data;
+    let parsedLevels = {};
+
+    try {
+      parsedLevels =
+        typeof group.levels === "string"
+          ? JSON.parse(group.levels)
+          : group.levels || {};
+    } catch (err) {
+      if (DEBUG) console.error("Failed to parse levels:", err);
+      parsedLevels = {};
+    }
+
+    // ✅ Helper to calculate elapsed time
+    const getElapsedTime = (createdAt) => {
+      const now = new Date();
+      const created = new Date(createdAt);
+      const diffMs = now - created;
+      const diffSeconds = Math.floor(diffMs / 1000);
+      const diffMinutes = Math.floor(diffSeconds / 60);
+      const diffHours = Math.floor(diffMinutes / 60);
+      const diffDays = Math.floor(diffHours / 24);
+
+      if (diffDays > 0) return `${diffDays} day(s) ago`;
+      if (diffHours > 0) return `${diffHours} hour(s) ago`;
+      if (diffMinutes > 0) return `${diffMinutes} minute(s) ago`;
+      return `${diffSeconds} second(s) ago`;
+    };
+
+    // ✅ Process all levels in parallel (faster)
+    const levels = ["beginner", "intermediate", "advanced", "pro"];
+    const videoInfo = {};
+
+    await Promise.all(
+      levels.map(async (level) => {
+        const videoUrl = group[`${level}_video`];
+        if (videoUrl) {
+          const durationSec = await getVideoDurationInSeconds(videoUrl);
+          const durationFormatted = formatDuration(durationSec);
+          const uploadedAgo = getElapsedTime(group.createdAt);
+
+          videoInfo[`${level}_video_duration`] = durationFormatted;
+          videoInfo[`${level}_video_uploadedAgo`] = uploadedAgo;
+        } else {
+          videoInfo[`${level}_video_duration`] = null;
+          videoInfo[`${level}_video_uploadedAgo`] = null;
+        }
+      })
+    );
+
+    if (DEBUG) console.log("Video info added to response:", videoInfo);
+
+
     if (DEBUG) console.log("✅ Data fetched successfully");
     await logActivity(
       req,
@@ -314,7 +367,11 @@ exports.getClassScheduleDetails = async (req, res) => {
     return res.status(200).json({
       status: true,
       message: "Class and venue fetched successfully.",
-      data: result.data,
+      data: {
+        ...group,
+        levels: parsedLevels,
+        ...videoInfo, // ✅ durations & uploadedAgo are flattened
+      },
     });
   } catch (error) {
     console.error("❌ Error fetching class schedule:", error);
