@@ -265,40 +265,35 @@ exports.createBooking = async (req, res) => {
 };
 
 exports.getAllPaidBookings = async (req, res) => {
-  if (DEBUG) console.log("📥 Fetching all free trial bookings...");
-  const bookedBy = req.admin?.id;
-  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id, true);
-  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
-
   try {
+    if (DEBUG) console.log("📥 Fetching all paid bookings...");
+
+    const bookedBy = req.admin?.id;
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id, true);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    // ✅ Build filters from query params
     const filters = {
       status: req.query.status,
       venueId: req.query.venueId,
       venueName: req.query.venueName,
       dateBooked: req.query.dateBooked,
       studentName: req.query.studentName,
-      dateFrom: req.query.dateFrom ? req.query.dateFrom : undefined,
-      dateTo: req.query.dateTo ? req.query.dateTo : undefined,
-      duration: req.query.duration
-        ? parseInt(req.query.duration, 10)
-        : undefined, // ✅ added
-      duration: req.query.duration
-        ? parseInt(req.query.duration, 10)
-        : undefined,
-      fromDate: req.query.fromDate ? req.query.fromDate : undefined, // ✅ added
-      toDate: req.query.toDate ? req.query.toDate : undefined, // ✅ added
+      dateFrom: req.query.fromDate || undefined,
+      dateTo: req.query.toDate || undefined,
+      duration: req.query.duration ? parseInt(req.query.duration, 10) : undefined,
     };
 
-    // ✅ Apply superAdmin filter if the logged-in admin is a super admin
+    // ✅ Apply bookedBy filter
     if (req.admin?.role?.toLowerCase() === 'super admin') {
       const admins = mainSuperAdminResult?.admins || [];
-      filters.bookedBy = admins.map(admin => admin.id);
+      filters.bookedBy = admins.length > 0 ? admins.map(a => a.id) : [];
     } else {
-      filters.bookedBy = req.query.bookedBy;
+      // Always assign bookedBy even if not in query
+      filters.bookedBy = bookedBy || null;
     }
 
     const result = await BookingMembershipService.getAllBookingsWithStats(
-      bookedBy,
       filters,
     );
 

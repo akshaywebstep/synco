@@ -754,7 +754,7 @@ exports.createBooking = async (data, options) => {
   }
 };
 
-exports.getAllBookingsWithStats = async (bookedBy, filters = {}) => {
+exports.getAllBookingsWithStats = async (filters = {}) => {
   await updateBookingStats();
 
   if (!bookedBy || isNaN(Number(bookedBy))) {
@@ -782,12 +782,14 @@ exports.getAllBookingsWithStats = async (bookedBy, filters = {}) => {
     };
     const whereVenue = {};
 
+    console.log(`filters - `, filters);
     // 🔹 Filters
     if (filters.status) whereBooking.status = filters.status;
     if (filters.venueId) whereBooking.venueId = filters.venueId;
     if (filters.venueName)
       whereVenue.name = { [Op.like]: `%${filters.venueName}%` };
     if (filters.bookedBy) {
+      console.log(`Step - 1`);
       // Ensure bookedBy is always an array
       const bookedByArray = Array.isArray(filters.bookedBy)
         ? filters.bookedBy
@@ -822,8 +824,9 @@ exports.getAllBookingsWithStats = async (bookedBy, filters = {}) => {
       whereBooking.createdAt = { [Op.lte]: end };
     }
 
+    console.log(`whereBooking - `, whereBooking);
+
     const bookings = await Booking.findAll({
-      where: whereBooking,
       where: {
         ...whereBooking, // spread the filters correctly
       },
