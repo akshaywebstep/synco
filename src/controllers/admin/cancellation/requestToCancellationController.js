@@ -21,16 +21,31 @@ exports.getRequestToCancel = async (req, res) => {
       status,
     } = req.query; // ✅ added status
 
-    const result = await CancellationService.getRequestToCancel({
+    const bookedBy = req.admin?.id;
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id, true);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    // ✅ Build filters from query params
+    const filters = {
       bookingType: "membership",
       cancellationType,
       venueName,
       studentName,
       fromDate,
       toDate,
-      status,
-      bookedBy: req.user?.id
-    });
+      status
+    };
+
+    // ✅ Apply bookedBy filter
+    if (req.admin?.role?.toLowerCase() === 'super admin') {
+      const admins = mainSuperAdminResult?.admins || [];
+      filters.bookedBy = admins.length > 0 ? admins.map(a => a.id) : [];
+    } else {
+      // Always assign bookedBy even if not in query
+      filters.bookedBy = bookedBy || null;
+    }
+
+    const result = await CancellationService.getRequestToCancel(filters);
 
     if (!result.status) {
       await logActivity(req, PANEL, MODULE, "read", result, false);

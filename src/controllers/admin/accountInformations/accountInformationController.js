@@ -20,6 +20,19 @@ exports.getAllStudentsListing = async (req, res) => {
       venueId: req.query.venueId || null,
     };
 
+    const bookedBy = req.admin?.id;
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id, true);
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+
+    // ✅ Apply bookedBy filter
+    if (req.admin?.role?.toLowerCase() === 'super admin') {
+      const admins = mainSuperAdminResult?.admins || [];
+      filters.bookedBy = admins.length > 0 ? admins.map(a => a.id) : [];
+    } else {
+      // Always assign bookedBy even if not in query
+      filters.bookedBy = bookedBy || null;
+    }
+    
     // 🧠 Call the service layer
     const result = await AccountInformationService.getAllStudentsListing(filters);
 

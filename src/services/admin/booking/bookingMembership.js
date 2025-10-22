@@ -1138,16 +1138,9 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
   }
 };
 
-exports.getActiveMembershipBookings = async (bookedBy, filters = {}) => {
+exports.getActiveMembershipBookings = async (filters = {}) => {
   await updateBookingStats();
 
-  if (!bookedBy || isNaN(Number(bookedBy))) {
-    return {
-      status: false,
-      message: "No valid super admin found for this request.",
-      data: [],
-    };
-  }
   try {
     console.log("🔹 Service start: getActiveMembershipBookings");
     console.log("🔹 Filters received in service:", filters);
@@ -1166,6 +1159,14 @@ exports.getActiveMembershipBookings = async (bookedBy, filters = {}) => {
         { "$admin.firstName$": { [Op.like]: `%${filters.bookedBy}%` } },
         { "$admin.lastName$": { [Op.like]: `%${filters.bookedBy}%` } },
       ];
+    }
+    if (filters.bookedBy) {
+      // Ensure bookedBy is always an array
+      const bookedByArray = Array.isArray(filters.bookedBy)
+        ? filters.bookedBy
+        : [filters.bookedBy];
+
+      whereBooking.bookedBy = { [Op.in]: bookedByArray };
     }
     if (filters.dateBooked) {
       const start = new Date(filters.dateBooked + " 00:00:00");
@@ -1216,7 +1217,6 @@ exports.getActiveMembershipBookings = async (bookedBy, filters = {}) => {
     // 🔹 Fetch bookings
     const bookings = await Booking.findAll({
       where: {
-        bookedBy: Number(bookedBy),
         ...whereBooking, // spread the filters correctly
       },
       // where: whereBooking,

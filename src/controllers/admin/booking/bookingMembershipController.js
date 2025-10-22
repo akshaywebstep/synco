@@ -382,7 +382,7 @@ exports.getAllPaidActiveBookings = async (req, res) => {
     console.log("🔹 Controller start: getAllPaidActiveBookings");
 
     const bookedBy = req.admin?.id;
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id, true);
     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
     // Step 1: Prepare filters
     const filters = {
@@ -394,7 +394,6 @@ exports.getAllPaidActiveBookings = async (req, res) => {
       planType: req.query.planType,
       // lifeCycle: req.query.lifeCycle,
       // flexiPlan: req.query.flexiPlan,
-      bookedBy: req.query.bookedBy,
       dateFrom: req.query.dateFrom ? req.query.dateFrom : undefined,
       dateTo: req.query.dateTo ? req.query.dateTo : undefined,
       fromDate: req.query.fromDate ? req.query.fromDate : undefined, // ✅ added
@@ -402,9 +401,17 @@ exports.getAllPaidActiveBookings = async (req, res) => {
     };
     console.log("🔹 Filters prepared:", filters);
 
+    // ✅ Apply bookedBy filter
+    if (req.admin?.role?.toLowerCase() === 'super admin') {
+      const admins = mainSuperAdminResult?.admins || [];
+      filters.bookedBy = admins.length > 0 ? admins.map(a => a.id) : [];
+    } else {
+      // Always assign bookedBy even if not in query
+      filters.bookedBy = bookedBy || null;
+    }
+
     // Step 2: Call service
     const result = await BookingMembershipService.getActiveMembershipBookings(
-      bookedBy,
       filters
     );
     console.log("🔹 Service result received:", result);

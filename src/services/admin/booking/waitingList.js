@@ -159,8 +159,8 @@ exports.createBooking = async (data, options) => {
           bookingStatus === "waiting list"
             ? "waiting list"
             : data.paymentPlanId
-            ? "paid"
-            : "free",
+              ? "paid"
+              : "free",
         className: data.className,
         classTime: data.classTime,
         // keyInformation: data.keyInformation,
@@ -282,14 +282,8 @@ exports.createBooking = async (data, options) => {
   }
 };
 
-exports.getWaitingList = async (bookedBy, filters = {}) => {
-  if (!bookedBy || isNaN(Number(bookedBy))) {
-    return {
-      status: false,
-      message: "No valid super admin found for this request.",
-      data: [],
-    };
-  }
+exports.getWaitingList = async (filters = {}) => {
+
   try {
     const trialWhere = {
       bookingType: "waiting list",
@@ -299,11 +293,23 @@ exports.getWaitingList = async (bookedBy, filters = {}) => {
     if (filters.interest) trialWhere.interest = filters.interest;
 
     const adminWhere = {};
+    /*
     if (filters.bookedBy) {
       adminWhere[Op.or] = [
         { firstName: { [Op.like]: `%${filters.bookedBy}%` } },
         { lastName: { [Op.like]: `%${filters.bookedBy}%` } },
       ];
+    }
+    */
+
+
+    if (filters.bookedBy) {
+      // Ensure bookedBy is always an array
+      const bookedByArray = Array.isArray(filters.bookedBy)
+        ? filters.bookedBy
+        : [filters.bookedBy];
+
+      trialWhere.bookedBy = { [Op.in]: bookedByArray };
     }
 
     // ---- Date filters ----
@@ -340,7 +346,6 @@ exports.getWaitingList = async (bookedBy, filters = {}) => {
     const bookings = await Booking.findAll({
       order: [["id", "DESC"]],
       where: {
-        bookedBy: Number(bookedBy),
         ...trialWhere,
       },
       // where: trialWhere,
@@ -476,23 +481,23 @@ exports.getWaitingList = async (bookedBy, filters = {}) => {
     const avgInterest =
       allInterests.length > 0
         ? (
-            allInterests.reduce((a, b) => a + b, 0) / allInterests.length
-          ).toFixed(2)
+          allInterests.reduce((a, b) => a + b, 0) / allInterests.length
+        ).toFixed(2)
         : 0;
 
     // Avg. days waiting (currentDate - createdAt)
     const avgDaysWaiting =
       parsedBookings.length > 0
         ? (
-            parsedBookings.reduce((sum, b) => {
-              const created = new Date(b.createdAt);
-              const now = new Date();
-              const diffDays = Math.floor(
-                (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)
-              );
-              return sum + diffDays;
-            }, 0) / parsedBookings.length
-          ).toFixed(0)
+          parsedBookings.reduce((sum, b) => {
+            const created = new Date(b.createdAt);
+            const now = new Date();
+            const diffDays = Math.floor(
+              (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)
+            );
+            return sum + diffDays;
+          }, 0) / parsedBookings.length
+        ).toFixed(0)
         : 0;
 
     // Top Referrer (admin with most bookings)
@@ -1268,9 +1273,8 @@ exports.convertToMembership = async (data, options) => {
 
           const billingRequestPayload = {
             customerId: createCustomerRes.customer.id,
-            description: `${venue?.name || "Venue"} - ${
-              classSchedule?.className || "Class"
-            }`,
+            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+              }`,
             amount: price,
             scheme: "faster_payments",
             currency: "GBP",
@@ -1308,9 +1312,8 @@ exports.convertToMembership = async (data, options) => {
               currency: "GBP",
               amount: price,
               merchantRef,
-              description: `${venue?.name || "Venue"} - ${
-                classSchedule?.className || "Class"
-              }`,
+              description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+                }`,
               commerceType: "ECOM",
             },
             paymentMethod: {
@@ -1371,8 +1374,7 @@ exports.convertToMembership = async (data, options) => {
               gatewayResponse?.transaction?.merchantRef || merchantRef,
             description:
               gatewayResponse?.transaction?.description ||
-              `${venue?.name || "Venue"} - ${
-                classSchedule?.className || "Class"
+              `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
               }`,
             commerceType: "ECOM",
             gatewayResponse,

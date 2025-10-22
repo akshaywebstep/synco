@@ -309,15 +309,26 @@ exports.createBooking = async (req, res) => {
 // 📌 Get All Waiting List Bookings
 exports.getAllWaitingListBookings = async (req, res) => {
   console.debug("🔹 getAllWaitingListBookings called with query:", req.query);
-  const bookedBy = req.admin?.id;
-  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
-
   try {
-    const result = await BookingTrialService.getWaitingList(
-      bookedBy,
-      req.query
-    );
+
+    const bookedBy = req.admin?.id;
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id, true);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    const filters = {
+      ...req.query,
+    };
+
+    // ✅ Apply bookedBy filter
+    if (req.admin?.role?.toLowerCase() === 'super admin') {
+      const admins = mainSuperAdminResult?.admins || [];
+      filters.bookedBy = admins.length > 0 ? admins.map(a => a.id) : [];
+    } else {
+      // Always assign bookedBy even if not in query
+      filters.bookedBy = bookedBy || null;
+    }
+
+    const result = await BookingTrialService.getWaitingList(filters);
 
     console.debug(
       "🔹 Result from getWaitingList:",
@@ -729,8 +740,7 @@ exports.convertToMembership = async (req, res) => {
               .replace(/{{studentLastName}}/g, student.studentLastName || "")
               .replace(
                 /{{studentName}}/g,
-                `${student.studentFirstName || ""} ${
-                  student.studentLastName || ""
+                `${student.studentFirstName || ""} ${student.studentLastName || ""
                 }`
               )
               .replace(/{{venueName}}/g, venueName)

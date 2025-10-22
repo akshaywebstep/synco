@@ -16,6 +16,29 @@ exports.getAllStudentsListing = async (filters = {}) => {
   try {
     const { bookedBy, paymentPlanId, classScheduleId } = filters;
 
+    // Base booking filters
+    let studentsWhere = {
+      bookingType: "paid"
+    };
+
+    // Apply filters if they exist
+    if (bookedBy) {
+      // Ensure bookedBy is always an array
+      const bookedByArray = Array.isArray(bookedBy)
+        ? bookedBy
+        : [filters.bookedBy];
+
+      studentsWhere.bookedBy = { [Op.in]: bookedByArray };
+    }
+
+    if (paymentPlanId) {
+      studentsWhere.paymentPlanId = paymentPlanId;
+    }
+
+    if (classScheduleId) {
+      studentsWhere.classScheduleId = classScheduleId;
+    }
+
     const students = await BookingStudentMeta.findAll({
       include: [
         {
@@ -42,10 +65,7 @@ exports.getAllStudentsListing = async (filters = {}) => {
             "updatedAt",
           ],
           where: {
-             bookingType: "paid",
-            ...(bookedBy !== undefined ? { bookedBy } : {}),
-            ...(paymentPlanId !== undefined ? { paymentPlanId } : {}),
-            ...(classScheduleId !== undefined ? { classScheduleId } : {}),
+            ...studentsWhere
           },
           include: [
             {
@@ -67,11 +87,11 @@ exports.getAllStudentsListing = async (filters = {}) => {
               ],
             },
             {
-          model: Venue, 
-          as: "venue",
-          required: false,
-        },
-            
+              model: Venue,
+              as: "venue",
+              required: false,
+            },
+
             {
               model: PaymentPlan,
               as: "paymentPlan",
@@ -107,7 +127,7 @@ exports.getAllStudentsListing = async (filters = {}) => {
           bookingId: booking.bookingId,
           leadId: booking.leadId,
           venueId: booking.venueId,
-          venue:  booking.venue || null,
+          venue: booking.venue || null,
           classScheduleId: booking.classScheduleId,
           classSchedule: booking.classSchedule || null,
           paymentPlanId: booking.paymentPlanId,
