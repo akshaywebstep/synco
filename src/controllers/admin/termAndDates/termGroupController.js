@@ -69,7 +69,7 @@ exports.getAllGroups = async (req, res) => {
   }
 
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
     const result = await TermGroupService.getAllGroups(superAdminId); // ✅ pass adminId
@@ -105,7 +105,7 @@ exports.getGroupById = async (req, res) => {
   }
 
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
     const result = await TermGroupService.getGroupById(id, superAdminId); // ✅ pass adminId

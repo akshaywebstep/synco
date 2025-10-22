@@ -311,7 +311,7 @@ exports.getAllWaitingListBookings = async (req, res) => {
   console.debug("🔹 getAllWaitingListBookings called with query:", req.query);
   const bookedBy = req.admin?.id;
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
     const result = await BookingTrialService.getWaitingList(
@@ -433,7 +433,7 @@ exports.getAccountProfile = async (req, res) => {
   if (DEBUG) console.log(`🔍 Fetching free trial booking ID: ${id}`);
   const bookedBy = req.admin?.id;
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
     const result = await BookingTrialService.getBookingById(

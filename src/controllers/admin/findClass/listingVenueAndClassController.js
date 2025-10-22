@@ -22,7 +22,7 @@ const parseBoolean = (value) => {
 // exports.findAClassListing = async (req, res) => {
 //   const adminId = req.admin?.id;
 //   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
-//   const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+//   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
 //   if (!superAdminId) {
 //     return res.status(400).json({
@@ -83,7 +83,7 @@ const parseBoolean = (value) => {
 exports.findAClassListing = async (req, res) => {
   const createdBy = req.admin?.id;
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
 
@@ -183,7 +183,7 @@ exports.getAllClassSchedules = async (req, res) => {
   try {
     const createdBy = req.admin?.id;
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
     if (DEBUG) {
       console.log("➡ Super admin check:", {
@@ -249,7 +249,7 @@ exports.getClassScheduleById = async (req, res) => {
   const { id } = req.params;
    const createdBy = req.admin?.id;
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
   if (DEBUG) console.log(`🔍 Fetching class + venue for class ID: ${id}`);
 
   try {

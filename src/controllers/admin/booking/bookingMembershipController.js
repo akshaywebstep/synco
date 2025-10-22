@@ -68,7 +68,7 @@ exports.createBooking = async (req, res) => {
     let skipped = [];
     const adminId = req.admin?.id;
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
     // 🔹 Attach payment gateway response so the service can save it
     // if (formData.paymentPlanId) {
 
@@ -268,7 +268,7 @@ exports.getAllPaidBookings = async (req, res) => {
   if (DEBUG) console.log("📥 Fetching all free trial bookings...");
   const bookedBy = req.admin?.id;
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
     const filters = {
@@ -291,8 +291,9 @@ exports.getAllPaidBookings = async (req, res) => {
 
     // ✅ Apply superAdmin filter if the logged-in admin is a super admin
     if (req.admin?.role?.toLowerCase() === 'super admin') {
-      filters.bookedByAdmin = { superAdminId };
-    }else{
+      const admins = mainSuperAdminResult?.admins || [];
+      filters.bookedBy = admins.map(admin => admin.id);
+    } else {
       filters.bookedBy = req.query.bookedBy;
     }
 
@@ -387,7 +388,7 @@ exports.getAllPaidActiveBookings = async (req, res) => {
 
     const bookedBy = req.admin?.id;
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
     // Step 1: Prepare filters
     const filters = {
       status: req.query.status,

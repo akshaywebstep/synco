@@ -243,7 +243,7 @@ exports.getAllClassSchedules = async (req, res) => {
   try {
     const adminId = req.admin?.id;
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
     const result = await ClassScheduleService.getAllClasses(superAdminId); // ✅ pass admin ID
 
@@ -291,7 +291,7 @@ exports.getClassScheduleDetails = async (req, res) => {
   try {
     // ✅ Get the top-level super admin for this admin
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(createdBy);
-    const superAdminId = mainSuperAdminResult?.superAdminId ?? createdBy;
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? createdBy;
 
     // ✅ Pass both classId and superAdminId to the service
     const result = await ClassScheduleService.getClassByIdWithFullDetails(id, superAdminId);

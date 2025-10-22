@@ -389,7 +389,7 @@ if (DEBUG)
 
   if (DEBUG) console.log("📥 Fetching all payment plans...");
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
     const result = await PaymentPlan.getAllPlans(superAdminId); // ✅ filtered by admin
@@ -440,7 +440,7 @@ exports.getPaymentPlanById = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id;
    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-      const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+      const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   if (DEBUG) console.log(`🔍 Fetching plan by ID: ${id}`);
 

@@ -219,7 +219,7 @@ exports.getSessionExerciseById = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id; // get adminId from auth middleware
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
   try {
     const result = await SessionExerciseService.getSessionExerciseById(
       id,
@@ -258,7 +258,7 @@ exports.getAllSessionExercises = async (req, res) => {
   try {
     const adminId = req.admin.id;
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
     const result = await SessionExerciseService.getAllSessionExercises(superAdminId);
 

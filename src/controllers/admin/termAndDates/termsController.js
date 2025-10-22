@@ -113,7 +113,7 @@ exports.getAllTerms = async (req, res) => {
     }
   
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
   
   try {
     const result = await TermService.getAllTerms(superAdminId);
@@ -148,7 +148,7 @@ exports.getTermById = async (req, res) => {
   }
 
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
     const result = await TermService.getTermById(id, superAdminId);

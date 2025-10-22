@@ -24,7 +24,7 @@ exports.getAllBookings = async (req, res) => {
 
   try {
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
     const result = await capacityService.getAllBookings(superAdminId, filters);
 

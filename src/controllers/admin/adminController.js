@@ -47,7 +47,7 @@ exports.createAdmin = async (req, res) => {
     if (DEBUG) console.log("📥 Received FormData:", formData);
 
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
     const email = formData.email;
     // const name = formData.name;
@@ -331,7 +331,7 @@ exports.createAdmin = async (req, res) => {
 exports.getAllAdmins = async (req, res) => {
   if (DEBUG) console.log("📋 Request received to list all admins");
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin?.id);
-  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
   try {
     const loggedInAdminId = req.admin?.id; // Get the current admin's ID
 

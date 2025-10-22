@@ -70,7 +70,7 @@ exports.getAllVenues = async (req, res) => {
   const createdBy = req.admin?.id;
 
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
     const result = await venueModel.getAllVenues(superAdminId);
@@ -107,7 +107,7 @@ exports.getVenueById = async (req, res) => {
   console.log("📥 Incoming request for venue ID:", id);
 
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
     const result = await venueModel.getVenueById(id, superAdminId); // 👈 Pass createdBy if required

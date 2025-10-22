@@ -174,7 +174,7 @@ exports.getAllPaymentGroups = async (req, res) => {
     console.log(`📦 Getting all payment groups for admin ID: ${adminId}`);
 
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
     const result = await paymentGroupModel.getAllPaymentGroups(superAdminId);
@@ -208,7 +208,7 @@ exports.getPaymentGroupById = async (req, res) => {
     console.log(`🔍 Fetching payment group by ID: ${id}, admin ID: ${adminId}`);
 
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
     const result = await paymentGroupModel.getPaymentGroupById(id, superAdminId);

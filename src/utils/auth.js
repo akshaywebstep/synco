@@ -35,7 +35,7 @@ const generatePasswordHint = (password, visibleStart = 2, visibleEnd = 2) => {
  *    data?: object
  *  }
  */
-const getMainSuperAdminOfAdmin = async (adminId) => {
+const getMainSuperAdminOfAdmin = async (adminId, includeSuperAdmin = false) => {
     try {
         const numericId = Number(adminId);
 
@@ -64,13 +64,19 @@ const getMainSuperAdminOfAdmin = async (adminId) => {
 
             // 🟢 Case 1: Current admin is super admin
             if (adminRole === "super admin") {
+                const allAdminsResult = await adminModel.getAllAdmins(id, includeSuperAdmin);
+
                 return {
                     status: true,
                     message: "Main super admin found.",
-                    superAdminId: admin.id,
-                    data: admin,
+                    superAdmin: {
+                        id: admin.id,
+                        details: admin,
+                    },
+                    admins: Array.isArray(allAdminsResult?.data) ? allAdminsResult.data : [],
                 };
             }
+
 
             // 🟢 Case 2: Admin has an explicitly linked super admin
             if (admin.superAdminId) {

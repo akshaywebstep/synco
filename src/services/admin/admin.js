@@ -184,7 +184,7 @@ exports.updateAdmin = async (adminId, updateData) => {
 };
 
 // Get all admins
-exports.getAllAdmins = async (superAdminId) => {
+exports.getAllAdmins = async (superAdminId, includeSuperAdmin = false) => {
   if (!superAdminId || isNaN(Number(superAdminId))) {
     return {
       status: false,
@@ -194,10 +194,19 @@ exports.getAllAdmins = async (superAdminId) => {
   }
 
   try {
+
+    const whereCondition = includeSuperAdmin
+      ? {
+        [Op.or]: [
+          { superAdminId: Number(superAdminId) },
+          { id: Number(superAdminId) }, // include the super admin themselves
+        ],
+      }
+      : { superAdminId: Number(superAdminId) };
+
+
     const admins = await Admin.findAll({
-      where: {
-        superAdminId: Number(superAdminId)
-      },
+      where: whereCondition,
       attributes: { exclude: ["password", "resetOtp", "resetOtpExpiry"] },
       include: [
         {

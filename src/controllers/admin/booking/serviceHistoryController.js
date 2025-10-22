@@ -113,7 +113,7 @@ exports.getAccountProfile = async (req, res) => {
 
   const bookedBy = req.admin?.id;
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
     // const result = await BookingTrialService.getBookingById(id);

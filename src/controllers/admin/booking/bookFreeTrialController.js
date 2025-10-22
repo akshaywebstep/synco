@@ -369,7 +369,7 @@ exports.getAllBookFreeTrials = async (req, res) => {
   if (DEBUG) console.log("📥 Fetching all free trial bookings...");
   const bookedBy = req.admin?.id;
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   const filters = {
     studentName: req.query.studentName,
@@ -437,7 +437,7 @@ exports.getBookFreeTrialDetails = async (req, res) => {
   if (DEBUG) console.log(`🔍 Fetching free trial booking ID: ${id}`);
   const bookedBy = req.admin?.id;
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
     // const result = await BookingTrialService.getBookingById(id);

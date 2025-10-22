@@ -787,7 +787,14 @@ exports.getAllBookingsWithStats = async (bookedBy, filters = {}) => {
     if (filters.venueId) whereBooking.venueId = filters.venueId;
     if (filters.venueName)
       whereVenue.name = { [Op.like]: `%${filters.venueName}%` };
-    if (filters.bookedBy) whereBooking.bookedBy = filters.bookedBy;
+    if (filters.bookedBy) {
+      // Ensure bookedBy is always an array
+      const bookedByArray = Array.isArray(filters.bookedBy)
+        ? filters.bookedBy
+        : [filters.bookedBy];
+
+      whereBooking.bookedBy = { [Op.in]: bookedByArray };
+    }
     if (filters.duration) {
       whereBooking["$paymentPlan.duration$"] = {
         [Op.like]: `%${filters.duration}%`,
@@ -813,12 +820,6 @@ exports.getAllBookingsWithStats = async (bookedBy, filters = {}) => {
     } else if (filters.toDate) {
       const end = new Date(filters.toDate + " 23:59:59");
       whereBooking.createdAt = { [Op.lte]: end };
-    }
-
-    let bookedByAdmin = {};
-
-    if (filters.bookedByAdmin && Object.keys(filters.bookedByAdmin).length > 0) {
-      bookedByAdmin = filters.bookedByAdmin;
     }
 
     const bookings = await Booking.findAll({
@@ -868,7 +869,6 @@ exports.getAllBookingsWithStats = async (bookedBy, filters = {}) => {
             "status",
             "profile",
           ],
-          where: bookedByAdmin,
           required: false,
         },
       ],

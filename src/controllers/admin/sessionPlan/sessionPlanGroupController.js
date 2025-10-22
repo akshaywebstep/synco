@@ -828,7 +828,7 @@ exports.getSessionPlanGroupDetails = async (req, res) => {
     const createdBy = req.admin?.id || req.user?.id;
 
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
     if (DEBUG)
       console.log("Fetching session plan group id:", id, "user:", createdBy);
@@ -927,7 +927,7 @@ exports.getAllSessionPlanGroups = async (req, res) => {
 
     // Get top-level super admin (if exists)
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdminId ?? createdBy;
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? createdBy;
 
     // Fetch session plan groups from service
     const result = await SessionPlanGroupService.getAllSessionPlanGroups({ createdBy });
