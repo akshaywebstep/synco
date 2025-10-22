@@ -757,13 +757,6 @@ exports.createBooking = async (data, options) => {
 exports.getAllBookingsWithStats = async (filters = {}) => {
   await updateBookingStats();
 
-  if (!bookedBy || isNaN(Number(bookedBy))) {
-    return {
-      status: false,
-      message: "No valid super admin found for this request.",
-      data: [],
-    };
-  }
   try {
     // const whereBooking = { bookingType: "paid" };
     const whereBooking = {
