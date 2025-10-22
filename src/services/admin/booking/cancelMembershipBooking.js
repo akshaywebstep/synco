@@ -99,8 +99,6 @@ exports.createCancelBooking = async ({
   cancellationType: rawCancellationType
 }) => {
   try {
-    console.log(`rawCancellationType - `, rawCancellationType);
-    console.log(`cancelDate - `, cancelDate);
     const bookingType = "membership";
 
     // 🔹 Validate booking exists
@@ -126,8 +124,6 @@ exports.createCancelBooking = async ({
         },
         { returning: true }
       );
-
-      console.log(`cancellationType - `, cancellationType);
 
       // 🔹 Update booking status based on cancellation type
       if (cancellationType === "immediate") {

@@ -528,7 +528,8 @@ exports.sendCancelBookingEmailToParents = async ({ bookingIds }) => {
 exports.getFullCancelBookingById = async (id, adminId) => {
   try {
     const booking = await Booking.findOne({
-      where: { id, bookingType: "paid" },
+      // where: { id, bookingType: "paid" },
+      where: { id },
       include: [
         {
           model: BookingStudentMeta,
