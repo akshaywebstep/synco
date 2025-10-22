@@ -267,7 +267,7 @@ exports.createBooking = async (req, res) => {
 exports.getAllPaidBookings = async (req, res) => {
   if (DEBUG) console.log("📥 Fetching all free trial bookings...");
   const bookedBy = req.admin?.id;
-  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id, true);
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
