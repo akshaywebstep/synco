@@ -236,6 +236,7 @@ exports.createClassSchedule = async (req, res) => {
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };
+
 // ✅ GET All Class Schedules
 exports.getAllClassSchedules = async (req, res) => {
   if (DEBUG) console.log("📥 Fetching all class schedules...");
@@ -243,7 +244,7 @@ exports.getAllClassSchedules = async (req, res) => {
   try {
     const adminId = req.admin?.id;
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
 
     const result = await ClassScheduleService.getAllClasses(superAdminId); // ✅ pass admin ID
 
@@ -263,11 +264,115 @@ exports.getAllClassSchedules = async (req, res) => {
       true
     );
 
+    const getElapsedTime = (createdAt) => {
+      const now = new Date();
+      const created = new Date(createdAt);
+      const diffMs = now - created;
+      const diffSeconds = Math.floor(diffMs / 1000);
+      const diffMinutes = Math.floor(diffSeconds / 60);
+      const diffHours = Math.floor(diffMinutes / 60);
+      const diffDays = Math.floor(diffHours / 24);
+
+      if (diffDays > 0) return `${diffDays} day(s) ago`;
+      if (diffHours > 0) return `${diffHours} hour(s) ago`;
+      if (diffMinutes > 0) return `${diffMinutes} minute(s) ago`;
+      return `${diffSeconds} second(s) ago`;
+    };
+
+    // Convert Sequelize instances to plain objects first
+    const plainData = result.data.map(item => item.get({ plain: true }));
+
+    const parsedLevels = [];
+
+    for (const item of plainData) {
+      const parsedTermGroups = [];
+
+      if (item.venue?.termGroups) {
+        for (const termGroup of item.venue.termGroups) {
+          const parsedTerms = [];
+
+          if (termGroup.terms) {
+            for (const term of termGroup.terms) {
+              const parsedSessionsMap = [];
+
+              if (term.sessionsMap) {
+                for (const session of term.sessionsMap) {
+
+                  const plainSession = session.get ? session.get({ plain: true }) : session;
+
+                  const parsedSessionPlan = [];
+
+                  if (plainSession.sessionPlan) {
+                    // Make sure it's an array
+                    const sessionPlans = Array.isArray(plainSession.sessionPlan)
+                      ? plainSession.sessionPlan
+                      : [plainSession.sessionPlan];
+
+                    for (const plan of sessionPlans) {
+
+                      // Video info processing
+                      const videoInfo = {};
+                      const levels = ["beginner", "intermediate", "advanced", "pro"];
+
+                      for (const level of levels) {
+                        const videoUrl = plan[`${level}_video`];
+                        if (videoUrl) {
+                          const durationSec = await getVideoDurationInSeconds(videoUrl);
+                          const durationFormatted = formatDuration(durationSec);
+                          const uploadedAgo = getElapsedTime(plan.createdAt);
+
+                          videoInfo[`${level}_video_duration`] = durationFormatted;
+                          videoInfo[`${level}_video_uploadedAgo`] = uploadedAgo;
+                        } else {
+                          videoInfo[`${level}_video_duration`] = null;
+                          videoInfo[`${level}_video_uploadedAgo`] = null;
+                        }
+                      }
+
+                      parsedSessionPlan.push({
+                        ...plan,
+                        ...videoInfo,
+                      });
+                    }
+                  }
+
+                  parsedSessionsMap.push({
+                    ...plainSession,
+                    sessionPlan: parsedSessionPlan,
+                  });
+                }
+              }
+
+              parsedTerms.push({
+                ...term,
+                sessionsMap: parsedSessionsMap,
+              });
+            }
+          }
+
+          parsedTermGroups.push({
+            ...termGroup,
+            terms: parsedTerms,
+          });
+        }
+      }
+
+      parsedLevels.push({
+        ...item,
+        venue: {
+          ...item.venue,
+          termGroups: parsedTermGroups,
+        },
+      });
+    }
+
     return res.status(200).json({
       status: true,
       message: "Fetched class schedules successfully.",
-      data: result.data,
+      data: parsedLevels,
     });
+
+
   } catch (error) {
     console.error("❌ Error fetching all class schedules:", error);
     await logActivity(
@@ -291,7 +396,7 @@ exports.getClassScheduleDetails = async (req, res) => {
   try {
     // ✅ Get the top-level super admin for this admin
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(createdBy);
-    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? createdBy;
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? createdBy;
 
     // ✅ Pass both classId and superAdminId to the service
     const result = await ClassScheduleService.getClassByIdWithFullDetails(id, superAdminId);
@@ -300,59 +405,6 @@ exports.getClassScheduleDetails = async (req, res) => {
       if (DEBUG) console.log("⚠️ Not found:", result.message);
       return res.status(404).json({ status: false, message: result.message });
     }
-
-    const group = result.data;
-    let parsedLevels = {};
-
-    try {
-      parsedLevels =
-        typeof group.levels === "string"
-          ? JSON.parse(group.levels)
-          : group.levels || {};
-    } catch (err) {
-      if (DEBUG) console.error("Failed to parse levels:", err);
-      parsedLevels = {};
-    }
-
-    // ✅ Helper to calculate elapsed time
-    const getElapsedTime = (createdAt) => {
-      const now = new Date();
-      const created = new Date(createdAt);
-      const diffMs = now - created;
-      const diffSeconds = Math.floor(diffMs / 1000);
-      const diffMinutes = Math.floor(diffSeconds / 60);
-      const diffHours = Math.floor(diffMinutes / 60);
-      const diffDays = Math.floor(diffHours / 24);
-
-      if (diffDays > 0) return `${diffDays} day(s) ago`;
-      if (diffHours > 0) return `${diffHours} hour(s) ago`;
-      if (diffMinutes > 0) return `${diffMinutes} minute(s) ago`;
-      return `${diffSeconds} second(s) ago`;
-    };
-
-    // ✅ Process all levels in parallel (faster)
-    const levels = ["beginner", "intermediate", "advanced", "pro"];
-    const videoInfo = {};
-
-    await Promise.all(
-      levels.map(async (level) => {
-        const videoUrl = group[`${level}_video`];
-        if (videoUrl) {
-          const durationSec = await getVideoDurationInSeconds(videoUrl);
-          const durationFormatted = formatDuration(durationSec);
-          const uploadedAgo = getElapsedTime(group.createdAt);
-
-          videoInfo[`${level}_video_duration`] = durationFormatted;
-          videoInfo[`${level}_video_uploadedAgo`] = uploadedAgo;
-        } else {
-          videoInfo[`${level}_video_duration`] = null;
-          videoInfo[`${level}_video_uploadedAgo`] = null;
-        }
-      })
-    );
-
-    if (DEBUG) console.log("Video info added to response:", videoInfo);
-
 
     if (DEBUG) console.log("✅ Data fetched successfully");
     await logActivity(
@@ -367,11 +419,7 @@ exports.getClassScheduleDetails = async (req, res) => {
     return res.status(200).json({
       status: true,
       message: "Class and venue fetched successfully.",
-      data: {
-        ...group,
-        levels: parsedLevels,
-        ...videoInfo, // ✅ durations & uploadedAgo are flattened
-      },
+      data: result.data,
     });
   } catch (error) {
     console.error("❌ Error fetching class schedule:", error);
