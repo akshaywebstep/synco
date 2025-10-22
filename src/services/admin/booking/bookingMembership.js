@@ -1,5 +1,6 @@
 const {
   Booking,
+  FreezeBooking,
   BookingStudentMeta,
   BookingParentMeta,
   BookingEmergencyMeta,
@@ -33,6 +34,94 @@ function generateBookingId(length = 12) {
     result += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return result;
+}
+
+async function updateBookingStats() {
+  const debugData = [];
+
+  try {
+    const freezeBookings = await FreezeBooking.findAll();
+
+    if (!freezeBookings || freezeBookings.length === 0) {
+      console.log("⚠️ No freeze bookings found.");
+      return {
+        status: false,
+        message: "No freeze bookings found.",
+        data: debugData,
+      };
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // normalize to date-only
+
+    for (const freezeBooking of freezeBookings) {
+      const bookingId = freezeBooking.bookingId || freezeBooking.id; // use correct bookingId field
+      const freezeStartDate = new Date(freezeBooking.freezeStartDate);
+      const reactivateOn = new Date(freezeBooking.reactivateOn);
+
+      const bookingDebug = {
+        freezeBookingId: freezeBooking.id,
+        bookingId,
+        freezeStartDate,
+        reactivateOn,
+        actions: [],
+      };
+
+      console.log(`Booking ID: ${bookingId}`);
+      console.log(`  - Freeze Start Date: ${freezeStartDate}`);
+      console.log(`  - Reactivate On: ${reactivateOn}`);
+
+      // Freeze booking if freezeStartDate is today or in the past
+      if (freezeStartDate <= today) {
+        const booking = await Booking.findOne({ where: { id: bookingId } });
+
+        if (booking) {
+          await booking.update({ status: 'frozen' });
+          console.log(`  -> Booking status updated to FROZEN`);
+          bookingDebug.actions.push("status updated to frozen");
+        } else {
+          console.log(`  ⚠️ Booking not found for freezing`);
+          bookingDebug.actions.push("booking not found for frozen");
+        }
+      }
+
+      // Reactivate booking if reactivateOn is today or in the past
+      if (reactivateOn <= today) {
+        const booking = await Booking.findOne({ where: { id: bookingId } });
+
+        if (booking) {
+          await booking.update({ status: 'active' });
+          console.log(`  -> Booking status updated to ACTIVE`);
+          bookingDebug.actions.push("status updated to active");
+        } else {
+          console.log(`  ⚠️ Booking not found for reactivation`);
+          bookingDebug.actions.push("booking not found for active");
+        }
+
+        console.log(`  -> Deleting FreezeBooking entry ID: ${freezeBooking.id}`);
+        await freezeBooking.destroy();
+        bookingDebug.actions.push("freezeBooking entry deleted");
+      }
+
+      debugData.push(bookingDebug);
+    }
+
+    console.log("✅ Booking stats update completed.");
+
+    return {
+      status: true,
+      message: "Booking stats updated successfully.",
+      data: debugData,
+    };
+  } catch (error) {
+    console.error("❌ Error updating booking stats:", error);
+    return {
+      status: false,
+      message: "Error updating booking stats.",
+      error: error.message,
+      data: debugData,
+    };
+  }
 }
 
 exports.createBooking = async (data, options) => {
@@ -481,14 +570,17 @@ exports.createBooking = async (data, options) => {
       const paymentType = data.payment.paymentType; // "bank" or "card"
       console.log("Step 5: Start payment process, paymentType:", paymentType);
 
+      console.log(`Step - 1`);
       let paymentStatusFromGateway = "pending";
       const firstStudentId = studentRecords[0]?.id;
+      console.log(`Step - 2`);
 
       try {
         // ✅ Fetch Payment Plan to get price
         const paymentPlan = await PaymentPlan.findByPk(booking.paymentPlanId, { transaction: t });
         if (!paymentPlan) throw new Error("Invalid payment plan selected.");
         const planPrice = paymentPlan.price || 0;
+        console.log(`Step - 3`);
 
         // Fetch venue & classSchedule info
         const venue = await Venue.findByPk(data.venueId, { transaction: t });
@@ -496,7 +588,9 @@ exports.createBooking = async (data, options) => {
 
         const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
         let gatewayResponse = null;
+        let response;
         let goCardlessCustomer, goCardlessBankAccount, goCardlessBillingRequest;
+        console.log(`Step - 4`);
 
         if (paymentType === "bank") {
           // ✅ Prepare GoCardless payload
@@ -539,6 +633,8 @@ exports.createBooking = async (data, options) => {
           goCardlessBankAccount = createCustomerRes.bankAccount;
           goCardlessBillingRequest = { ...createBillingRequestRes.billingRequest, planPrice }; // ✅ store plan price
         } else if (paymentType === "card") {
+          console.log(`Step - 5`);
+
           // Card payment
           const paymentPayload = {
             transaction: {
@@ -559,18 +655,33 @@ exports.createBooking = async (data, options) => {
           };
 
           const url = `https://api.mite.pay360.com/acceptor/rest/transactions/${process.env.PAY360_INST_ID}/payment`;
-          const authHeader = Buffer.from(`${process.env.PAY360_API_USERNAME}:${process.env.PAY360_API_PASSWORD}`).toString("base64");
 
-          const response = await axios.post(url, paymentPayload, {
-            headers: { "Content-Type": "application/json", Authorization: `Basic ${authHeader}` },
-          });
+          try {
+            const authHeader = Buffer.from(`${process.env.PAY360_API_USERNAME}:${process.env.PAY360_API_PASSWORD}`).toString("base64");
 
-          gatewayResponse = response.data;
-          const txnStatus = gatewayResponse?.transaction?.status?.toLowerCase();
+            response = await axios.post(url, paymentPayload, {
+              headers: { "Content-Type": "application/json", Authorization: `Basic ${authHeader}` },
+            });
+            // Log the full response if needed
+            console.log("🔍 [DEBUG] Full Axios response:", response);
+
+          } catch (err) {
+            console.error("❌ Axios request failed:", err.response?.data || err.message || err);
+          }
+
+          const gatewayResponse = response?.data;
+
+          // Safely check if transaction and status exist
+          const txnStatus = gatewayResponse?.transaction?.status
+            ? gatewayResponse.transaction.status.toLowerCase()
+            : null;
+
           paymentStatusFromGateway = txnStatus === "success" ? "paid" :
             txnStatus === "pending" ? "pending" :
               txnStatus === "declined" ? "failed" : txnStatus || "unknown";
         }
+
+        console.log("🔍 [DEBUG] Response data:", response?.data);
 
         // 🔹 Save BookingPayment
         await BookingPayment.create({
@@ -605,9 +716,16 @@ exports.createBooking = async (data, options) => {
         }, { transaction: t });
 
         if (paymentStatusFromGateway === "failed") throw new Error("Payment failed. Booking not created.");
+        if (DEBUG) {
+          console.log("🔍 [DEBUG] Extracted paymentStatusFromGateway:", paymentStatusFromGateway);
+        }
+
       } catch (err) {
         await t.rollback();
         return { status: false, message: err.message || "Payment failed" };
+        if (DEBUG) {
+          console.log("🔍 [DEBUG] Extracted message:", message);
+        }
       }
     }
 
@@ -636,7 +754,16 @@ exports.createBooking = async (data, options) => {
   }
 };
 
-exports.getAllBookingsWithStats = async (filters = {}) => {
+exports.getAllBookingsWithStats = async (bookedBy, filters = {}) => {
+  await updateBookingStats();
+
+  if (!bookedBy || isNaN(Number(bookedBy))) {
+    return {
+      status: false,
+      message: "No valid super admin found for this request.",
+      data: [],
+    };
+  }
   try {
     // const whereBooking = { bookingType: "paid" };
     const whereBooking = {
@@ -688,8 +815,17 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
       whereBooking.createdAt = { [Op.lte]: end };
     }
 
+    let bookedByAdmin = {};
+
+    if (filters.bookedByAdmin && Object.keys(filters.bookedByAdmin).length > 0) {
+      bookedByAdmin = filters.bookedByAdmin;
+    }
+
     const bookings = await Booking.findAll({
       where: whereBooking,
+      where: {
+        ...whereBooking, // spread the filters correctly
+      },
       order: [["id", "DESC"]],
       include: [
         {
@@ -732,6 +868,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
             "status",
             "profile",
           ],
+          where: bookedByAdmin,
           required: false,
         },
       ],
@@ -1008,7 +1145,16 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
   }
 };
 
-exports.getActiveMembershipBookings = async (filters = {}) => {
+exports.getActiveMembershipBookings = async (bookedBy, filters = {}) => {
+  await updateBookingStats();
+
+  if (!bookedBy || isNaN(Number(bookedBy))) {
+    return {
+      status: false,
+      message: "No valid super admin found for this request.",
+      data: [],
+    };
+  }
   try {
     console.log("🔹 Service start: getActiveMembershipBookings");
     console.log("🔹 Filters received in service:", filters);
@@ -1076,7 +1222,11 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
 
     // 🔹 Fetch bookings
     const bookings = await Booking.findAll({
-      where: whereBooking,
+      where: {
+        bookedBy: Number(bookedBy),
+        ...whereBooking, // spread the filters correctly
+      },
+      // where: whereBooking,
       order: [["id", "DESC"]],
       include: [
         {
@@ -1870,6 +2020,11 @@ exports.getBookingsById = async (bookingId) => {
           ],
           required: false,
         },
+        {
+          model: FreezeBooking,
+          as: "freezeBooking",
+          required: false,
+        },
       ],
     });
 
@@ -1953,6 +2108,7 @@ exports.getBookingsById = async (bookingId) => {
     const parsedBooking = {
       bookingId: booking.id,
       bookedId: booking.bookingId,
+      freezeBooking: booking.freezeBooking,
       status: booking.status,
       startDate: booking.startDate,
       dateBooked: booking.createdAt,

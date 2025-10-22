@@ -119,6 +119,13 @@ ClassScheduleTermMap.associate = function (models) {
     foreignKey: "sessionPlanId",
     as: "sessionPlan",
   });
+
+  ClassScheduleTermMap.hasMany(models.CancelSession, {
+    foreignKey: "mapId",      // must match CancelSession.mapId
+    as: "cancelSessions",     // alias to use in include queries
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
 };
 
 module.exports = ClassScheduleTermMap;

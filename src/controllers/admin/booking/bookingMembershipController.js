@@ -22,6 +22,7 @@ const {
   createNotification,
 } = require("../../../utils/admin/notificationHelper");
 const PaymentPlan = require("../../../services/admin/payment/paymentPlan");
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -65,14 +66,17 @@ exports.createBooking = async (req, res) => {
     // ✅ Inject venue
     formData.venueId = classData.venueId;
     let skipped = [];
+    const adminId = req.admin?.id;
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
     // 🔹 Attach payment gateway response so the service can save it
     // if (formData.paymentPlanId) {
 
     //   const planCheck = await PaymentPlan.getPlanById(paymentPlanId, createdBy); // ✅ add createdBy here
     const paymentPlanId = formData.paymentPlanId; // ✅ define it first
     if (paymentPlanId) {
-
-      const planCheck = await PaymentPlan.getPlanById(paymentPlanId, req.admin?.id);
+      const planCheck = await PaymentPlan.getPlanById(paymentPlanId, superAdminId);
+      console.log(`planCheck - `, planCheck);
       if (!planCheck.status) {
         skipped.push({ paymentPlanId, reason: "Plan does not exist" });
         if (DEBUG) {
@@ -261,6 +265,11 @@ exports.createBooking = async (req, res) => {
 };
 
 exports.getAllPaidBookings = async (req, res) => {
+  if (DEBUG) console.log("📥 Fetching all free trial bookings...");
+  const bookedBy = req.admin?.id;
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+
   try {
     const filters = {
       status: req.query.status,
@@ -270,7 +279,6 @@ exports.getAllPaidBookings = async (req, res) => {
       studentName: req.query.studentName,
       dateFrom: req.query.dateFrom ? req.query.dateFrom : undefined,
       dateTo: req.query.dateTo ? req.query.dateTo : undefined,
-      bookedBy: req.query.bookedBy,
       duration: req.query.duration
         ? parseInt(req.query.duration, 10)
         : undefined, // ✅ added
@@ -281,8 +289,16 @@ exports.getAllPaidBookings = async (req, res) => {
       toDate: req.query.toDate ? req.query.toDate : undefined, // ✅ added
     };
 
+    // ✅ Apply superAdmin filter if the logged-in admin is a super admin
+    if (req.admin?.role?.toLowerCase() === 'super admin') {
+      filters.bookedByAdmin = { superAdminId };
+    }else{
+      filters.bookedBy = req.query.bookedBy;
+    }
+
     const result = await BookingMembershipService.getAllBookingsWithStats(
-      filters
+      bookedBy,
+      filters,
     );
 
     if (!result.status) {
@@ -369,6 +385,9 @@ exports.getAllPaidActiveBookings = async (req, res) => {
   try {
     console.log("🔹 Controller start: getAllPaidActiveBookings");
 
+    const bookedBy = req.admin?.id;
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
     // Step 1: Prepare filters
     const filters = {
       status: req.query.status,
@@ -389,6 +408,7 @@ exports.getAllPaidActiveBookings = async (req, res) => {
 
     // Step 2: Call service
     const result = await BookingMembershipService.getActiveMembershipBookings(
+      bookedBy,
       filters
     );
     console.log("🔹 Service result received:", result);

@@ -32,7 +32,7 @@ exports.createRebooking = async ({
       return {
         status: false,
         message:
-          "Can only rebook after/on trial date or if booking is cancelled/not attended.",
+          "Rebooking is only allowed after the trial date has passed or if the booking is cancelled or not attended.",
       };
     }
 

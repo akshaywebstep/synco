@@ -3,7 +3,7 @@ const { logActivity } = require("../../../utils/admin/activityLogger");
 
 const TermService = require("../../../services/admin/termAndDates/term");
 const { Term } = require("../../../models"); // ✅ Required models
-
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 const {
   createNotification,
 } = require("../../../utils/admin/notificationHelper");
@@ -106,9 +106,17 @@ exports.createTerm = async (req, res) => {
 // ✅ GET ALL TERMS (admin-specific)
 exports.getAllTerms = async (req, res) => {
   const adminId = req.admin?.id;
-
+  if (!adminId) {
+      return res
+        .status(401)
+        .json({ status: false, message: "Unauthorized. Admin ID missing." });
+    }
+  
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+  
   try {
-    const result = await TermService.getAllTerms(adminId);
+    const result = await TermService.getAllTerms(superAdminId);
     await logActivity(req, PANEL, MODULE, "list", result, result.status);
     return res.status(result.status ? 200 : 500).json(result);
   } catch (error) {
@@ -133,9 +141,17 @@ exports.getTermById = async (req, res) => {
   if (!id) {
     return res.status(400).json({ status: false, message: "ID is required." });
   }
+  if (!adminId) {
+    return res
+      .status(401)
+      .json({ status: false, message: "Unauthorized. Admin ID missing." });
+  }
+
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
 
   try {
-    const result = await TermService.getTermById(id, adminId);
+    const result = await TermService.getTermById(id, superAdminId);
     await logActivity(req, PANEL, MODULE, "getById", result, result.status);
     return res.status(result.status ? 200 : 404).json(result);
   } catch (error) {

@@ -25,8 +25,16 @@ exports.createPaymentGroup = async ({ name, description, createdBy }) => {
 
 exports.getAllPaymentGroups = async (adminId) => {
   try {
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
+
     const groups = await PaymentGroup.findAll({
-      where: { createdBy: adminId },
+      where: { createdBy: Number(adminId) },
       include: [
         {
           model: PaymentPlan,
@@ -53,8 +61,16 @@ exports.getAllPaymentGroups = async (adminId) => {
 
 exports.getPaymentGroupById = async (id, adminId) => {
   try {
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
+
     const group = await PaymentGroup.findOne({
-      where: { id, createdBy: adminId },
+      where: { id, createdBy: Number(adminId) },
       include: [
         {
           model: PaymentPlan,

@@ -7,7 +7,7 @@ const { validateFormData } = require("../../../utils/validateFormData");
 const { saveFile } = require("../../../utils/fileHandler");
 const SessionExerciseService = require("../../../services/admin/sessionPlan/sessionExercise");
 const { logActivity } = require("../../../utils/admin/activityLogger");
-
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 const {
   createNotification,
 } = require("../../../utils/admin/notificationHelper");
@@ -141,7 +141,7 @@ exports.createSessionExercise = async (req, res) => {
     const files = req.files || [];
 
     // ✅ Validate files
-    const allowedExtensions = ["jpg", "jpeg", "png", "webp"];
+    const allowedExtensions = ["jpg", "jpeg", "png", "webp", "svg"];
     for (const file of files) {
       const ext = path.extname(file.originalname).toLowerCase().slice(1);
       if (!allowedExtensions.includes(ext)) {
@@ -218,11 +218,12 @@ exports.createSessionExercise = async (req, res) => {
 exports.getSessionExerciseById = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id; // get adminId from auth middleware
-
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
   try {
     const result = await SessionExerciseService.getSessionExerciseById(
       id,
-      adminId
+      superAdminId
     ); // pass adminId
 
     if (!result.status) {
@@ -256,8 +257,10 @@ exports.getAllSessionExercises = async (req, res) => {
 
   try {
     const adminId = req.admin.id;
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
 
-    const result = await SessionExerciseService.getAllSessionExercises(adminId);
+    const result = await SessionExerciseService.getAllSessionExercises(superAdminId);
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Fetch failed:", result.message);

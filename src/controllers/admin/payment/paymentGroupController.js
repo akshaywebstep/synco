@@ -7,6 +7,7 @@ const { logActivity } = require("../../../utils/admin/activityLogger");
 const {
   createNotification,
 } = require("../../../utils/admin/notificationHelper");
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -172,8 +173,11 @@ exports.getAllPaymentGroups = async (req, res) => {
   if (DEBUG)
     console.log(`📦 Getting all payment groups for admin ID: ${adminId}`);
 
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+
   try {
-    const result = await paymentGroupModel.getAllPaymentGroups(adminId);
+    const result = await paymentGroupModel.getAllPaymentGroups(superAdminId);
 
     await logActivity(req, PANEL, MODULE, "getAll", result, result.status);
 
@@ -203,8 +207,11 @@ exports.getPaymentGroupById = async (req, res) => {
   if (DEBUG)
     console.log(`🔍 Fetching payment group by ID: ${id}, admin ID: ${adminId}`);
 
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+
   try {
-    const result = await paymentGroupModel.getPaymentGroupById(id, adminId);
+    const result = await paymentGroupModel.getPaymentGroupById(id, superAdminId);
 
     await logActivity(req, PANEL, MODULE, "getById", result, result.status);
 

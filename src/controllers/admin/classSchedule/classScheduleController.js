@@ -2,7 +2,7 @@ const { validateFormData } = require("../../../utils/validateFormData");
 const ClassScheduleService = require("../../../services/admin/classSchedule/classSchedule");
 const { logActivity } = require("../../../utils/admin/activityLogger");
 const { getVideoDurationInSeconds, formatDuration, } = require("../../../utils/videoHelper");
-
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 const {
   Venue,
   TermGroup,
@@ -242,7 +242,10 @@ exports.getAllClassSchedules = async (req, res) => {
 
   try {
     const adminId = req.admin?.id;
-    const result = await ClassScheduleService.getAllClasses(adminId); // ✅ pass admin ID
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+
+    const result = await ClassScheduleService.getAllClasses(superAdminId); // ✅ pass admin ID
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Fetch failed:", result.message);
@@ -281,19 +284,24 @@ exports.getAllClassSchedules = async (req, res) => {
 
 // ✅ GET Class Schedule by ID with Venue
 exports.getClassScheduleDetails = async (req, res) => {
-  const { id } = req.params;
+  const { id } = req.params; // Class ID
+  const createdBy = req.admin?.id; // Current admin ID
   if (DEBUG) console.log(`🔍 Fetching class + venue for class ID: ${id}`);
 
   try {
-    // ✅ Call service with only classId (no adminId)
-    const result = await ClassScheduleService.getClassByIdWithFullDetails(id);
+    // ✅ Get the top-level super admin for this admin
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(createdBy);
+    const superAdminId = mainSuperAdminResult?.superAdminId ?? createdBy;
+
+    // ✅ Pass both classId and superAdminId to the service
+    const result = await ClassScheduleService.getClassByIdWithFullDetails(id, superAdminId);
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Not found:", result.message);
       return res.status(404).json({ status: false, message: result.message });
     }
 
-    if (DEBUG) console.log("✅ Data fetched:", result.data);
+    if (DEBUG) console.log("✅ Data fetched successfully");
     await logActivity(
       req,
       PANEL,
@@ -311,6 +319,112 @@ exports.getClassScheduleDetails = async (req, res) => {
   } catch (error) {
     console.error("❌ Error fetching class schedule:", error);
     return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
+
+exports.updateClassSchedule = async (req, res) => {
+  const { id } = req.params;
+  const adminId = req.admin?.id;
+
+  try {
+    const venue = await Venue.findByPk(req.body.venueId);
+    if (!venue) {
+      return res.status(404).json({
+        status: false,
+        message: "Venue not found. Please select a valid venue.",
+      });
+    }
+
+    const existingClass = await ClassSchedule.findByPk(id);
+    if (!existingClass) {
+      return res.status(404).json({
+        status: false,
+        message: "Class schedule not found.",
+      });
+    }
+
+    // ✅ Capacity logic
+    let updatedCapacity = existingClass.capacity;
+    let updatedTotalCapacity = existingClass.totalCapacity;
+
+    if (req.body.capacity !== undefined) {
+      // Convert to number
+      const newCapacity = Number(req.body.capacity);
+
+      // Check for invalid or non-numeric input
+      if (isNaN(newCapacity)) {
+        return res.status(400).json({
+          status: false,
+          message: "Capacity must be a valid number.",
+        });
+      }
+
+      // Optional: ensure capacity is not negative
+      if (newCapacity < 0) {
+        return res.status(400).json({
+          status: false,
+          message: "Capacity cannot be negative.",
+        });
+      }
+
+      // Calculate difference and update values
+      const diff = newCapacity - existingClass.capacity;
+
+      if (diff !== 0) {
+        updatedCapacity += diff;
+        updatedTotalCapacity += diff;
+      }
+    }
+
+    const result = await ClassScheduleService.updateClass(id, {
+      ...req.body,
+      capacity: updatedCapacity,
+      totalCapacity: updatedTotalCapacity,
+      createdBy: adminId,
+    });
+
+    if (!result.status) {
+      return res.status(400).json({ status: false, message: result.message || "Update failed" });
+    }
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "update",
+      { oneLineMessage: `Updated class schedule with ID: ${id}` },
+      true
+    );
+
+    await createNotification(
+      req,
+      "Class Schedule Updated",
+      `Class "${req.body.className}" was updated for ${req.body.day}, ${req.body.startTime} - ${req.body.endTime}.`,
+      "System"
+    );
+
+    return res.status(200).json({
+      status: true,
+      message: "Class schedule updated successfully.",
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ Error updating class schedule:", error);
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "update",
+      { oneLineMessage: error.message || "Unknown error" },
+      false
+    );
+
+    // ✅ Always return JSON object, never plain string
+    return res.status(500).json({
+      status: false,
+      message: "Server error: " + (error.message || "Something went wrong"),
+    });
   }
 };
 
@@ -441,122 +555,122 @@ exports.getClassScheduleDetails = async (req, res) => {
 //   }
 // };
 
-exports.updateClassSchedule = async (req, res) => {
-  const { id } = req.params;
-  const {
-    className,
-    capacity,
-    day,
-    startTime,
-    endTime,
-    allowFreeTrial,
-    facility,
-    venueId,
-  } = req.body;
+// exports.updateClassSchedule = async (req, res) => {
+//   const { id } = req.params;
+//   const {
+//     className,
+//     capacity,
+//     day,
+//     startTime,
+//     endTime,
+//     allowFreeTrial,
+//     facility,
+//     venueId,
+//   } = req.body;
 
-  const adminId = req.admin?.id;
+//   const adminId = req.admin?.id;
 
-  if (DEBUG) console.log(`✏️ Updating class schedule ID: ${id}`, req.body);
+//   if (DEBUG) console.log(`✏️ Updating class schedule ID: ${id}`, req.body);
 
-  const validation = validateFormData(req.body, {
-    requiredFields: ["className", "day", "startTime", "endTime", "venueId"],
-  });
+//   const validation = validateFormData(req.body, {
+//     requiredFields: ["className", "day", "startTime", "endTime", "venueId"],
+//   });
 
-  if (!validation.isValid) {
-    if (DEBUG) console.log("❌ Validation failed:", validation.error);
-    await logActivity(req, PANEL, MODULE, "update", validation.error, false);
-    return res.status(400).json({ status: false, ...validation });
-  }
+//   if (!validation.isValid) {
+//     if (DEBUG) console.log("❌ Validation failed:", validation.error);
+//     await logActivity(req, PANEL, MODULE, "update", validation.error, false);
+//     return res.status(400).json({ status: false, ...validation });
+//   }
 
-  const venue = await Venue.findByPk(venueId);
-  if (!venue) {
-    if (DEBUG) console.log("❌ Invalid venue ID:", venueId);
-    return res.status(404).json({
-      status: false,
-      message: "Venue not found. Please select a valid venue.",
-    });
-  }
+//   const venue = await Venue.findByPk(venueId);
+//   if (!venue) {
+//     if (DEBUG) console.log("❌ Invalid venue ID:", venueId);
+//     return res.status(404).json({
+//       status: false,
+//       message: "Venue not found. Please select a valid venue.",
+//     });
+//   }
 
-  try {
-    // ✅ Fetch existing record to apply capacity logic
-    const existingClass = await ClassSchedule.findByPk(id);
-    if (!existingClass) {
-      return res.status(404).json({
-        status: false,
-        message: "Class schedule not found.",
-      });
-    }
+//   try {
+//     // ✅ Fetch existing record to apply capacity logic
+//     const existingClass = await ClassSchedule.findByPk(id);
+//     if (!existingClass) {
+//       return res.status(404).json({
+//         status: false,
+//         message: "Class schedule not found.",
+//       });
+//     }
 
-    let updatedCapacity = existingClass.capacity;
-    let updatedTotalCapacity = existingClass.totalCapacity;
+//     let updatedCapacity = existingClass.capacity;
+//     let updatedTotalCapacity = existingClass.totalCapacity;
 
-    if (capacity !== undefined) {
-      if (capacity < existingClass.capacity) {
-        // 🔻 Decrease capacity → reduce only capacity
-        updatedCapacity = capacity;
-        updatedTotalCapacity = existingClass.totalCapacity;
-      } else if (capacity > existingClass.capacity) {
-        // 🔺 Increase capacity → increase totalCapacity, keep current capacity same
-        const diff = capacity - existingClass.capacity;
-        updatedTotalCapacity = existingClass.totalCapacity + diff;
-        updatedCapacity = existingClass.capacity;
-      }
-    }
+//     if (capacity !== undefined) {
+//       if (capacity < existingClass.capacity) {
+//         // 🔻 Decrease capacity → reduce only capacity
+//         updatedCapacity = capacity;
+//         updatedTotalCapacity = existingClass.totalCapacity;
+//       } else if (capacity > existingClass.capacity) {
+//         // 🔺 Increase capacity → increase totalCapacity, keep current capacity same
+//         const diff = capacity - existingClass.capacity;
+//         updatedTotalCapacity = existingClass.totalCapacity + diff;
+//         updatedCapacity = existingClass.capacity;
+//       }
+//     }
 
-    // ✅ Now call your service
-    const result = await ClassScheduleService.updateClass(id, {
-      className,
-      capacity: updatedCapacity,
-      totalCapacity: updatedTotalCapacity,
-      day,
-      startTime,
-      endTime,
-      allowFreeTrial,
-      facility,
-      venueId,
-      createdBy: adminId, // ✅ keep same variable
-    });
+//     // ✅ Now call your service
+//     const result = await ClassScheduleService.updateClass(id, {
+//       className,
+//       capacity: updatedCapacity,
+//       totalCapacity: updatedTotalCapacity,
+//       day,
+//       startTime,
+//       endTime,
+//       allowFreeTrial,
+//       facility,
+//       venueId,
+//       createdBy: adminId, // ✅ keep same variable
+//     });
 
-    if (!result.status) {
-      if (DEBUG) console.log("⚠️ Update failed:", result.message);
-      return res.status(404).json({ status: false, message: result.message });
-    }
+//     if (!result.status) {
+//       if (DEBUG) console.log("⚠️ Update failed:", result.message);
+//       return res.status(404).json({ status: false, message: result.message });
+//     }
 
-    if (DEBUG) console.log("✅ Class schedule updated:", result.data);
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "update",
-      { oneLineMessage: `Updated class schedule with ID: ${id}` },
-      true
-    );
+//     if (DEBUG) console.log("✅ Class schedule updated:", result.data);
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "update",
+//       { oneLineMessage: `Updated class schedule with ID: ${id}` },
+//       true
+//     );
 
-    await createNotification(
-      req,
-      "Class Schedule Updated",
-      `Class "${className}" was updated for ${day}, ${startTime} - ${endTime}.`,
-      "System"
-    );
+//     await createNotification(
+//       req,
+//       "Class Schedule Updated",
+//       `Class "${className}" was updated for ${day}, ${startTime} - ${endTime}.`,
+//       "System"
+//     );
 
-    return res.status(200).json({
-      status: true,
-      message: "Class schedule updated successfully.",
-      data: result.data,
-    });
-  } catch (error) {
-    console.error("❌ Error updating class schedule:", error);
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "update",
-      { oneLineMessage: error.message },
-      false
-    );
-    return res.status(500).json({ status: false, message: "Server error." });
-  }
-};
+//     return res.status(200).json({
+//       status: true,
+//       message: "Class schedule updated successfully.",
+//       data: result.data,
+//     });
+//   } catch (error) {
+//     console.error("❌ Error updating class schedule:", error);
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "update",
+//       { oneLineMessage: error.message },
+//       false
+//     );
+//     return res.status(500).json({ status: false, message: "Server error." });
+//   }
+// };
 
 // exports.updateClassSchedule = async (req, res) => {
 //   const { id } = req.params;

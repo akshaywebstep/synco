@@ -141,4 +141,11 @@ const Booking = sequelize.define(
   }
 );
 
+Booking.associate = (models) => {
+  Booking.hasOne(models.FreezeBooking, {
+    foreignKey: "bookingId",
+    as: "freezeBooking",
+  });
+};
+
 module.exports = Booking;

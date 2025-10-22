@@ -102,3 +102,12 @@ const SessionPlanGroup = sequelize.define(
 );
 
 module.exports = SessionPlanGroup;
+
+SessionPlanGroup.associate = (models) => {
+  SessionPlanGroup.hasMany(models.CancelSession, {
+    foreignKey: "sessionPlanGroupId",
+    as: "cancelSessions", // alias to use when including
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
+};

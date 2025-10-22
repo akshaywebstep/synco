@@ -1,6 +1,7 @@
 const { validateFormData } = require("../../../utils/validateFormData");
 const capacityService = require("../../../services/admin/booking/capacity");
 const { logActivity } = require("../../../utils/admin/activityLogger");
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -22,7 +23,10 @@ exports.getAllBookings = async (req, res) => {
   };
 
   try {
-    const result = await capacityService.getAllBookings(req.admin?.id, filters);
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
+
+    const result = await capacityService.getAllBookings(superAdminId, filters);
 
     if (!result.status) {
       await logActivity(req, PANEL, MODULE, "list", result, false);

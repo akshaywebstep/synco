@@ -1,12 +1,17 @@
 const { validateFormData } = require("../../../utils/validateFormData");
 // const {BookingTrialService, sequelize}  = require("../../../services/admin/booking/serviceHistory");
 const BookingTrialService = require("../../../services/admin/booking/serviceHistory");
-const { sequelize, Booking, BookingStudentMeta,
+const {
+  sequelize,
+  Booking,
+  BookingStudentMeta,
   BookingParentMeta,
-  BookingEmergencyMeta, } = require("../../../models"); // direct import
+  BookingEmergencyMeta,
+} = require("../../../models"); // direct import
 
 // const Admin = require("../../../services/admin/Admin");
 const { logActivity } = require("../../../utils/admin/activityLogger");
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 const emailModel = require("../../../services/email");
 const sendEmail = require("../../../utils/email/sendEmail");
 const {
@@ -28,25 +33,37 @@ exports.updateBookingStudents = async (req, res) => {
     const adminId = req.admin?.id;
 
     // ✅ Security check
-    if (!adminId) return res.status(401).json({ status: false, message: "Unauthorized" });
+    if (!adminId)
+      return res.status(401).json({ status: false, message: "Unauthorized" });
 
     // ✅ Validate bookingId
-    if (!bookingId) return res.status(400).json({ status: false, message: "Booking ID is required in URL" });
+    if (!bookingId)
+      return res
+        .status(400)
+        .json({ status: false, message: "Booking ID is required in URL" });
 
     // ✅ Validate payload
     if (!Array.isArray(studentsPayload) || studentsPayload.length === 0) {
-      return res.status(400).json({ status: false, message: "Students array is required and cannot be empty" });
+      return res.status(400).json({
+        status: false,
+        message: "Students array is required and cannot be empty",
+      });
     }
 
-    studentsPayload.forEach(student => {
+    studentsPayload.forEach((student) => {
       if (!student.id) throw new Error("Each student must have an ID");
       if (!Array.isArray(student.parents)) student.parents = [];
-      if (!Array.isArray(student.emergencyContacts)) student.emergencyContacts = [];
+      if (!Array.isArray(student.emergencyContacts))
+        student.emergencyContacts = [];
     });
 
     // 🔹 Transaction
     const t = await sequelize.transaction();
-    const result = await BookingTrialService.updateBookingStudents(bookingId, studentsPayload, t);
+    const result = await BookingTrialService.updateBookingStudents(
+      bookingId,
+      studentsPayload,
+      t
+    );
 
     if (!result.status) {
       await t.rollback();
@@ -62,7 +79,9 @@ exports.updateBookingStudents = async (req, res) => {
       PANEL,
       MODULE,
       "update",
-      { message: `Updated student, parent, and emergency data for booking ID: ${bookingId}` },
+      {
+        message: `Updated student, parent, and emergency data for booking ID: ${bookingId}`,
+      },
       true
     );
 
@@ -77,21 +96,28 @@ exports.updateBookingStudents = async (req, res) => {
     if (DEBUG) console.log("✅ Controller finished successfully");
 
     return res.status(200).json(result);
-
   } catch (error) {
-    if (DEBUG) console.error("❌ Controller updateBookingStudents Error:", error.message);
+    if (DEBUG)
+      console.error(
+        "❌ Controller updateBookingStudents Error:",
+        error.message
+      );
     return res.status(500).json({ status: false, message: error.message });
   }
 };
 
 exports.getAccountProfile = async (req, res) => {
   const { id } = req.params;
-  const adminId = req.admin?.id;
+  // const adminId = req.admin?.id;
   if (DEBUG) console.log(`🔍 Fetching free trial booking ID: ${id}`);
+
+  const bookedBy = req.admin?.id;
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdminId ?? null;
 
   try {
     // const result = await BookingTrialService.getBookingById(id);
-    const result = await BookingTrialService.getBookingById(id, adminId); // ✅ pass adminId
+    const result = await BookingTrialService.getBookingById(id, bookedBy); // ✅ pass adminId
 
     if (!result.status) {
       return res.status(404).json({ status: false, message: result.message });
@@ -145,13 +171,17 @@ exports.updateBooking = async (req, res) => {
     }
 
     // Step 2: Validate body fields
-    const { isValid, error } = validateFormData(payload, {
-      requiredFields: ["startDate", "totalStudents"], // adjust as needed
-    });
-    if (!isValid) {
-      console.log("❌ Validation failed:", error);
-      await logActivity(req, PANEL, MODULE, "update", error, false);
-      return res.status(400).json({ status: false, ...error });
+    const requiredFields = ["startDate", "totalStudents"];
+    for (const field of requiredFields) {
+      if (!payload[field]) {
+        const message = `${field} is required.`;
+        console.log("❌ Validation failed:", message);
+        await logActivity(req, PANEL, MODULE, "update", { message }, false);
+        return res.status(400).json({
+          status: false,
+          message,
+        });
+      }
     }
     console.log("✅ Step 2: Validation passed");
 
@@ -164,15 +194,17 @@ exports.updateBooking = async (req, res) => {
     );
 
     if (!result || result.status === false) {
-      console.log("❌ Booking update failed:", result?.message);
-      return res.status(404).json({
+      const message = result?.message || "Booking update failed.";
+      console.log("❌ Booking update failed:", message);
+      await logActivity(req, PANEL, MODULE, "update", { message }, false);
+      return res.status(400).json({
         status: false,
-        message: result?.message || "Booking update failed.",
+        message,
       });
     }
 
     const booking = result.data || result;
-    console.log("✅ Step 3: Booking updated successfully:", booking.id);
+    console.log("✅ Step 3: Booking updated successfully:", booking?.id || id);
 
     // Step 4: Email configuration fetch
     const classSchedule = booking.classSchedule;
@@ -209,7 +241,8 @@ exports.updateBooking = async (req, res) => {
             .replace(/{{className}}/g, classSchedule?.className || "N/A")
             .replace(
               /{{classTime}}/g,
-              `${classSchedule?.startTime || ""} - ${classSchedule?.endTime || ""
+              `${classSchedule?.startTime || ""} - ${
+                classSchedule?.endTime || ""
               }`
             )
             .replace(/{{startDate}}/g, booking.startDate || "")

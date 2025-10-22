@@ -13,8 +13,16 @@ exports.createGroup = async ({ name, createdBy }) => {
 // ✅ GET ALL - by admin
 exports.getAllGroups = async (adminId) => {
   try {
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
+    
     const groups = await TermGroup.findAll({
-      where: { createdBy: adminId },
+      where: { createdBy: Number(adminId) },
       order: [["createdAt", "DESC"]],
     });
     return { status: true, data: groups };
@@ -26,8 +34,17 @@ exports.getAllGroups = async (adminId) => {
 // ✅ GET BY ID - with admin ownership check
 exports.getGroupById = async (id, adminId) => {
   try {
+
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
+
     const group = await TermGroup.findOne({
-      where: { id, createdBy: adminId },
+      where: { id, createdBy: Number(adminId) },
     });
     if (!group) {
       return { status: false, message: "Group not found or unauthorized." };

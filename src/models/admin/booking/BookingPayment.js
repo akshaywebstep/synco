@@ -37,7 +37,7 @@ const BookingPayment = sequelize.define(
     },
     billingAddress: {
       type: DataTypes.TEXT,
-      allowNull: false,
+      allowNull: true,
     },
 
     // Card / Payment details

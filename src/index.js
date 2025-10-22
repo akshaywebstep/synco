@@ -9,9 +9,12 @@ require("dotenv").config();
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Middleware
+// ✅ Middleware
 app.use(cors());
-app.use(bodyParser.json());
+
+// ⚙️ Practically remove payload limit (1GB+)
+app.use(bodyParser.json({ limit: "1000mb" }));
+app.use(bodyParser.urlencoded({ limit: "1000mb", extended: true, parameterLimit: 1000000 }));
 
 // ✅ Serve static files from /uploads
 app.use("/uploads", express.static("uploads"));

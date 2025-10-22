@@ -184,9 +184,20 @@ exports.updateAdmin = async (adminId, updateData) => {
 };
 
 // Get all admins
-exports.getAllAdmins = async () => {
+exports.getAllAdmins = async (superAdminId) => {
+  if (!superAdminId || isNaN(Number(superAdminId))) {
+    return {
+      status: false,
+      message: "No valid parent or super admin found for this request.",
+      data: [],
+    };
+  }
+
   try {
     const admins = await Admin.findAll({
+      where: {
+        superAdminId: Number(superAdminId)
+      },
       attributes: { exclude: ["password", "resetOtp", "resetOtpExpiry"] },
       include: [
         {

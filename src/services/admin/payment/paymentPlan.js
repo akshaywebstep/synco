@@ -45,10 +45,17 @@ exports.createPlan = async (data) => {
 };
 
 // ✅ Get all payment plans for current admin
-exports.getAllPlans = async (createdBy) => {
+exports.getAllPlans = async (adminId) => {
   try {
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
     const plans = await PaymentPlan.findAll({
-      where: { createdBy },
+      where: { createdBy: Number(adminId) },
       order: [["createdAt", "DESC"]],
     });
 
@@ -66,16 +73,23 @@ exports.getAllPlans = async (createdBy) => {
 };
 
 // ✅ Get payment plan by ID and createdBy
-exports.getPlanById = async (id, createdBy) => {
+exports.getPlanById = async (id, adminId) => {
   try {
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
     const plan = await PaymentPlan.findOne({
-      where: { id, createdBy },
+      where: { id, createdBy: Number(adminId) },
     });
 
     if (!plan) {
       return {
         status: false,
-        message: "No payment plan found with the provided ID.",
+        message: "No payment plan found with the provided ID. (1)",
       };
     }
 

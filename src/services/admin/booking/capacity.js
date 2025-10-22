@@ -435,7 +435,7 @@ exports.getAllBookings = async (adminId, filters = {}) => {
   try {
     const trialWhere = {
       bookingType: { [Op.in]: ["free", "paid"] },
-      bookedBy: adminId, // ✅ only bookings created by this admin
+      // bookedBy: adminId, // ✅ only bookings created by this admin
     };
 
     if (filters.venueId) trialWhere.venueId = filters.venueId;

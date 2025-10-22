@@ -40,8 +40,15 @@ exports.createSessionExercise = async (data) => {
 // Get All
 exports.getAllSessionExercises = async (adminId) => {
   try {
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
     const exercises = await SessionExercise.findAll({
-      where: { createdBy: adminId },
+      where: { createdBy:  Number(adminId) },
       order: [["createdAt", "ASC"]],
     });
 
@@ -55,8 +62,15 @@ exports.getAllSessionExercises = async (adminId) => {
 // ✅ Get by ID
 exports.getSessionExerciseById = async (id, adminId) => {
   try {
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
     const exercise = await SessionExercise.findOne({
-      where: { id, createdBy: adminId },
+      where: { id, createdBy: Number(adminId) },
     });
 
     if (!exercise) {

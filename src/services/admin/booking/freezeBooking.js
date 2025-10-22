@@ -63,7 +63,7 @@ exports.createFreezeBooking = async ({
     );
 
     // 🔹 5. Update booking status
-    await booking.update({ status: "frozen" }, { transaction: t });
+    // await booking.update({ status: "frozen" }, { transaction: t });
 
     await t.commit();
     return {

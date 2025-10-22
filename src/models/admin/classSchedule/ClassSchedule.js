@@ -107,6 +107,13 @@ ClassSchedule.associate = function (models) {
     foreignKey: "venueId",
     as: "venue",
   });
+
+  ClassSchedule.hasMany(models.CancelSession, {
+    foreignKey: "classScheduleId",
+    as: "cancelSessions", // this is the name you will use in include
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
 };
 
 module.exports = ClassSchedule;

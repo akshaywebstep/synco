@@ -107,8 +107,16 @@ exports.getAllSessionPlanGroups = async ({
   createdBy,
 } = {}) => {
   try {
+    if (!createdBy || isNaN(Number(createdBy))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: { groups: [], exerciseMap: {} },
+      };
+    }
+
     const groups = await SessionPlanGroup.findAll({
-      where: { createdBy },
+      where: { createdBy: Number(createdBy) },
       order: [[orderBy, order]],
       attributes: [
         "id",
@@ -176,8 +184,17 @@ exports.getAllSessionPlanGroups = async ({
 
 exports.getSessionPlanGroupById = async (id, createdBy) => {
   try {
+
+    if (!createdBy || isNaN(Number(createdBy))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
+
     const group = await SessionPlanGroup.findOne({
-      where: { id, createdBy },
+      where: { id, createdBy: Number(createdBy) },
       attributes: [
         "id",
         "groupName",

@@ -102,6 +102,7 @@ exports.getFullCancelBooking = async ({
   fromDate,
   toDate,
   status,
+  bookedBy
 }) => {
   try {
     // Build where clause
@@ -120,6 +121,27 @@ exports.getFullCancelBooking = async ({
       whereClause.createdAt = { [Op.gte]: new Date(fromDate) };
     } else if (toDate) {
       whereClause.createdAt = { [Op.lte]: new Date(toDate) };
+    }
+
+    let cancellationIds = [];
+
+    if (bookedBy) {
+      const cancellations = await Booking.findAll({
+        where: {
+          bookedBy,
+          status: 'request_to_cancel'
+        },
+        attributes: ['id'], // only fetch the ID column
+        raw: true
+      });
+
+      // Extract the IDs into a plain array
+      cancellationIds = cancellations.map(c => c.id);
+    }
+
+    // Only add bookingId condition if there are IDs
+    if (cancellationIds.length > 0) {
+      whereClause.bookingId = { [Op.in]: cancellationIds };
     }
 
     // Define previous period (for trends)
