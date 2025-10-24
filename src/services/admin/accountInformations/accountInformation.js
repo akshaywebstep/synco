@@ -11,7 +11,7 @@ const {
   Feedback,
 } = require("../../../models");
 // const { Op } = require("sequelize");
-const { sequelize, op } = require("../../../models");
+const { sequelize, Op } = require("../../../models");
 
 
 exports.getAllStudentsListing = async (filters = {}) => {
