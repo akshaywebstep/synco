@@ -110,6 +110,16 @@ exports.getAllVenuesWithClasses = async ({
       typeof userLatitude === "number" && typeof userLongitude === "number";
 
     if (hasCoordinates) {
+      console.log("✅ User coordinates provided:", { userLatitude, userLongitude, searchRadiusMiles });
+    } else {
+      console.log("⚠️ User coordinates missing. Distance will not be calculated.");
+    }
+
+    // let venues;
+    // const hasCoordinates =
+    //   typeof userLatitude === "number" && typeof userLongitude === "number";
+
+    if (hasCoordinates) {
       const distanceFormula = Sequelize.literal(`
         3959 * acos(
           cos(radians(${userLatitude}))
@@ -269,17 +279,23 @@ exports.getAllVenuesWithClasses = async ({
 
         const venueLat = parseFloat(venue.latitude);
         const venueLng = parseFloat(venue.longitude);
+        // const distanceMiles =
+        //   hasCoordinates && !isNaN(venueLat) && !isNaN(venueLng)
+        //     ? parseFloat(
+        //       calculateDistance(
+        //         userLatitude,
+        //         userLongitude,
+        //         venueLat,
+        //         venueLng
+        //       ).toFixed(1)
+        //     )
+        //     : null;
+
         const distanceMiles =
           hasCoordinates && !isNaN(venueLat) && !isNaN(venueLng)
-            ? parseFloat(
-              calculateDistance(
-                userLatitude,
-                userLongitude,
-                venueLat,
-                venueLng
-              ).toFixed(1)
-            )
+            ? parseFloat(calculateDistance(userLatitude, userLongitude, venueLat, venueLng).toFixed(1))
             : null;
+
 
         return {
           venueId: venue.id,
@@ -897,7 +913,7 @@ exports.getAllClasses = async (adminId) => {
 exports.getClassById = async (classId, createdBy) => {
   try {
     const cls = await ClassSchedule.findOne({
-      where: { 
+      where: {
         id: classId,              // ✅ filter by class ID
         createdBy: Number(createdBy) // ✅ filter by admin/super admin
       },
@@ -926,7 +942,7 @@ exports.getClassById = async (classId, createdBy) => {
     let termGroups = [];
     if (termGroupIds.length) {
       termGroups = await TermGroup.findAll({
-        where: { 
+        where: {
           id: termGroupIds,
           createdBy: Number(createdBy) // ✅ filter by admin
         },
@@ -952,8 +968,8 @@ exports.getClassById = async (classId, createdBy) => {
             const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
               attributes: [
                 "id", "groupName", "levels",
-                "beginner_video","intermediate_video","advanced_video","pro_video",
-                "banner","player","beginner_upload","intermediate_upload","pro_upload","advanced_upload",
+                "beginner_video", "intermediate_video", "advanced_video", "pro_video",
+                "banner", "player", "beginner_upload", "intermediate_upload", "pro_upload", "advanced_upload",
               ],
             });
 
@@ -973,7 +989,7 @@ exports.getClassById = async (classId, createdBy) => {
     let paymentGroups = [];
     if (venue.paymentGroupId) {
       paymentGroups = await PaymentGroup.findAll({
-        where: { 
+        where: {
           id: venue.paymentGroupId,
           createdBy: Number(createdBy) // ✅ only super admin’s payment groups
         },
@@ -983,7 +999,7 @@ exports.getClassById = async (classId, createdBy) => {
             as: "paymentPlans",
             through: {
               model: PaymentGroupHasPlan,
-              attributes: ["id","payment_plan_id","payment_group_id","createdBy","createdAt","updatedAt"],
+              attributes: ["id", "payment_plan_id", "payment_group_id", "createdBy", "createdAt", "updatedAt"],
             },
           },
         ],
