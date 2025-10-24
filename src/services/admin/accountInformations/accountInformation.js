@@ -536,12 +536,12 @@ exports.updateBookingWithStudents = async (bookingId, payload, transaction) => {
       transaction,
     });
 
-    if (!booking) {
-      return { status: false, message: "Booking not found" };
-    }
+    if (!booking) return { status: false, message: "Booking not found" };
+
+    // const firstStudent = booking.students[0];
 
     // ======================
-    // 🟢 Update Students
+    // 🟢 Update / Add Students
     // ======================
     for (const student of students) {
       let studentRecord;
@@ -549,120 +549,96 @@ exports.updateBookingWithStudents = async (bookingId, payload, transaction) => {
       if (student.id) {
         studentRecord = booking.students.find(s => s.id === student.id);
         if (studentRecord) {
-          const studentFields = [
-            "studentFirstName",
-            "studentLastName",
-            "dateOfBirth",
-            "age",
-            "gender",
-            "medicalInformation",
-          ];
+          const studentFields = ["studentFirstName", "studentLastName", "dateOfBirth", "age", "gender", "medicalInformation"];
           for (const field of studentFields) {
             if (student[field] !== undefined) studentRecord[field] = student[field];
           }
           await studentRecord.save({ transaction });
         }
       } else {
-        // create new student if needed
         studentRecord = await BookingStudentMeta.create(
-          { bookingId, ...student },
+          { bookingId: booking.id, bookingTrialId: booking.id, ...student },
           { transaction }
         );
       }
 
-      // Nested parents (optional)
+      // ======================
+      // 🟢 Nested parents (per student)
+      // ======================
       if (Array.isArray(student.parents)) {
+        const existingParents = await studentRecord.getParents({ transaction });
+
         for (const parent of student.parents) {
           if (parent.id) {
-            const parentRecord = studentRecord.parents?.find(p => p.id === parent.id);
+            const parentRecord = existingParents.find(p => p.id === parent.id);
             if (parentRecord) {
-              const parentFields = [
-                "parentFirstName",
-                "parentLastName",
-                "parentEmail",
-                "parentPhoneNumber",
-                "relationToChild",
-                "howDidYouHear",
-              ];
+              const parentFields = ["parentFirstName", "parentLastName", "parentEmail", "parentPhoneNumber", "relationToChild", "howDidYouHear"];
               for (const f of parentFields) if (parent[f] !== undefined) parentRecord[f] = parent[f];
               await parentRecord.save({ transaction });
             }
           } else {
-            await BookingParentMeta.create(
-              { bookingStudentMetaId: studentRecord.id, ...parent },
-              { transaction }
-            );
-          }
-        }
-      }
-
-      // Nested emergencyContacts (optional)
-      if (Array.isArray(student.emergencyContacts)) {
-        for (const emergency of student.emergencyContacts) {
-          if (emergency.id) {
-            const emergencyRecord = studentRecord.emergencyContacts?.find(e => e.id === emergency.id);
-            if (emergencyRecord) {
-              const emergencyFields = [
-                "emergencyFirstName",
-                "emergencyLastName",
-                "emergencyPhoneNumber",
-                "emergencyRelation",
-              ];
-              for (const f of emergencyFields) if (emergency[f] !== undefined) emergencyRecord[f] = emergency[f];
-              await emergencyRecord.save({ transaction });
-            }
-          } else {
-            await BookingEmergencyMeta.create(
-              { bookingStudentMetaId: studentRecord.id, ...emergency },
-              { transaction }
-            );
+            await BookingParentMeta.create({ bookingStudentMetaId: studentRecord.id, ...parent }, { transaction });
           }
         }
       }
     }
 
     // ======================
-    // 🟡 Update Parents (top-level)
+    // 🟡 Top-level parents (linked to first student)
     // ======================
-    for (const parent of parents) {
-      if (!parent.id) continue;
 
-      const parentRecord = await BookingParentMeta.findByPk(parent.id, { transaction });
-      if (parentRecord) {
-        const parentFields = [
-          "parentFirstName",
-          "parentLastName",
-          "parentEmail",
-          "parentPhoneNumber",
-          "relationToChild",
-          "howDidYouHear",
-        ];
-        for (const f of parentFields) if (parent[f] !== undefined) parentRecord[f] = parent[f];
-        await parentRecord.save({ transaction });
+    let firstStudent = booking.students[0];
+
+    if (!firstStudent && students.length > 0) {
+      // If no students existed before, take the first from the payload and create it
+      firstStudent = await BookingStudentMeta.create(
+        { bookingId: booking.id, bookingTrialId: booking.id, ...students[0] },
+        { transaction }
+      );
+      // Also push it to booking.students to maintain consistency
+      booking.students.push(firstStudent);
+    }
+
+    if (Array.isArray(parents) && parents.length > 0) {
+      for (const parent of parents) {
+        if (parent.id) {
+          const parentRecord = await BookingParentMeta.findByPk(parent.id, { transaction });
+          if (parentRecord) {
+            const parentFields = [
+              "parentFirstName", "parentLastName", "parentEmail",
+              "parentPhoneNumber", "relationToChild", "howDidYouHear"
+            ];
+            for (const f of parentFields) if (parent[f] !== undefined) parentRecord[f] = parent[f];
+            await parentRecord.save({ transaction });
+          }
+        } else {
+          await BookingParentMeta.create(
+            { studentId: firstStudent.id, ...parent }, // ✅ link to first student
+            { transaction }
+          );
+        }
       }
     }
 
     // ======================
-    // 🔴 Update Emergency Contacts (top-level)
+    // 🔴 Emergency Contacts
     // ======================
     for (const emergency of emergencyContacts) {
-      if (!emergency.id) continue;
-
-      const emergencyRecord = await BookingEmergencyMeta.findByPk(emergency.id, { transaction });
-      if (emergencyRecord) {
-        const emergencyFields = [
-          "emergencyFirstName",
-          "emergencyLastName",
-          "emergencyPhoneNumber",
-          "emergencyRelation",
-        ];
-        for (const f of emergencyFields) if (emergency[f] !== undefined) emergencyRecord[f] = emergency[f];
-        await emergencyRecord.save({ transaction });
+      if (emergency.id) {
+        const emergencyRecord = await BookingEmergencyMeta.findByPk(emergency.id, { transaction });
+        if (emergencyRecord) {
+          const fields = ["emergencyFirstName", "emergencyLastName", "emergencyPhoneNumber", "emergencyRelation"];
+          for (const f of fields) if (emergency[f] !== undefined) emergencyRecord[f] = emergency[f];
+          await emergencyRecord.save({ transaction });
+        }
+      } else if (firstStudent) {
+        // Optionally create new emergency contact
+        await BookingEmergencyMeta.create({ bookingStudentMetaId: firstStudent.id, ...emergency }, { transaction });
       }
     }
 
     // ======================
-    // ✅ Return Updated Data
+    // ✅ Return updated booking
     // ======================
     const refreshedBooking = await Booking.findOne({
       where: { id: bookingId },
@@ -679,16 +655,14 @@ exports.updateBookingWithStudents = async (bookingId, payload, transaction) => {
       transaction,
     });
 
-    return {
-      status: true,
-      message: "Booking updated successfully",
-      data: refreshedBooking,
-    };
+    return { status: true, message: "Booking updated successfully", data: refreshedBooking };
+
   } catch (error) {
     console.error("❌ Service updateBookingWithStudents Error:", error);
     return { status: false, message: error.message };
   }
 };
+
 
 
 // AccountInformationService.getBookingsById
