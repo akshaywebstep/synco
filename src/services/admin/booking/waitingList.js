@@ -347,7 +347,7 @@ exports.getWaitingList = async (filters = {}) => {
       order: [["id", "DESC"]],
       where: {
         ...trialWhere, 
-        status: "waiting_list", 
+        status: "waiting list", 
       },
       // where: trialWhere,
       include: [
