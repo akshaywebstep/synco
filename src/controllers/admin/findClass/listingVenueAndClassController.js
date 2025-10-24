@@ -90,9 +90,18 @@ exports.findAClassListing = async (req, res) => {
     const { lat, lng, range } = req.query;
 
     // Safely parse coordinates and range
-    const userLatitude = lat ? parseFloat(lat) : null;
-    const userLongitude = lng ? parseFloat(lng) : null;
+    // const userLatitude = lat ? parseFloat(lat) : null;
+    // const userLongitude = lng ? parseFloat(lng) : null;
+    const userLatitude = lat && !isNaN(lat) ? parseFloat(lat) : null;
+    const userLongitude = lng && !isNaN(lng) ? parseFloat(lng) : null;
+
     const searchRadiusMiles = range ? parseFloat(range) : null;
+    console.log({
+      lat, lng, range,
+      userLatitude, userLongitude, searchRadiusMiles,
+      typeLat: typeof userLatitude,
+      typeLng: typeof userLongitude
+    });
 
     if (DEBUG) {
       console.log("📥 Fetching venue listings with classes");
@@ -247,14 +256,14 @@ exports.getAllClassSchedules = async (req, res) => {
 
 exports.getClassScheduleById = async (req, res) => {
   const { id } = req.params;
-   const createdBy = req.admin?.id;
+  const createdBy = req.admin?.id;
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
   if (DEBUG) console.log(`🔍 Fetching class + venue for class ID: ${id}`);
 
   try {
     // ✅ Call service with only classId (no adminId)
-    const result = await getClassById(id,superAdminId);
+    const result = await getClassById(id, superAdminId);
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Not found:", result.message);

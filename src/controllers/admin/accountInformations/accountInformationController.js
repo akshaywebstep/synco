@@ -9,7 +9,7 @@ const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "account_information";
 
-//  controller account information  iokjbre
+//  controller account information  
 exports.getAllStudentsListing = async (req, res) => {
   try {
     // 🧾 Extract filters from query params

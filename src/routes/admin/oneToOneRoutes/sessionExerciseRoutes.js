@@ -14,7 +14,8 @@ const {
     getSessionExerciseById,
     getAllSessionExercises,
     updateSessionExercise,
-    deleteSessionExercise
+    deleteSessionExercise,
+    duplicateSessionExercise
 } = require("../../../controllers/admin/oneToOne/sessionPlanLibrary/sessionExerciseController");
 
 // ✅ Get All Session Plan Groups
@@ -54,6 +55,14 @@ router.delete(
     authMiddleware,
     permissionMiddleware("session-exercise-one-to-one", "delete"),
     deleteSessionExercise
+);
+
+router.post(
+  "/session-exercise-struture/:id/duplicate",
+  authMiddleware,
+  upload.any(), // ✅ accept banner, video, AND dynamic recording_* fields
+  permissionMiddleware("session-exercise", "create"),
+  duplicateSessionExercise
 );
 
 module.exports = router;

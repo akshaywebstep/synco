@@ -60,7 +60,8 @@ exports.duplicateSessionPlanGroup = async (id, createdBy) => {
 
     // 3️⃣ Clone data (✅ include level-wise videos too)
     const newGroupData = {
-      groupName: group.groupName,
+      // groupName: group.groupName,
+       groupName: `${group.groupName} copy`,
       banner: group.banner,
       player: group.player,
       levels: parsedLevels, // store as object if DB supports JSON
