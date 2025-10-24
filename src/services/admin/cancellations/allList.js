@@ -195,8 +195,11 @@ exports.getFullCancelBooking = async ({
         {
           model: Booking,
           as: "booking",
-          where: status ? { status } : undefined, // ✅ filter by booking status
-
+          where: {
+            status: {
+              [Op.in]: ["request_to_cancel", "cancelled"], // ✅ show both
+            },
+          },
           attributes: [
             "id",
             "venueId",

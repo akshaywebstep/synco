@@ -346,7 +346,8 @@ exports.getWaitingList = async (filters = {}) => {
     const bookings = await Booking.findAll({
       order: [["id", "DESC"]],
       where: {
-        ...trialWhere,
+        ...trialWhere, 
+        status: "waiting_list", 
       },
       // where: trialWhere,
       include: [
