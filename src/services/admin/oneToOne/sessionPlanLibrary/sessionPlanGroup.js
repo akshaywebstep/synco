@@ -163,7 +163,7 @@ exports.getAllSessionPlanConfig = async ({
         "intermediate_upload",
         "pro_upload",
         "advanced_upload",
-        "pinned",
+        // "pinned",
         "createdAt",
         "updatedAt",
       ],
