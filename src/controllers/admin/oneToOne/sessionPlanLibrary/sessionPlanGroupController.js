@@ -292,20 +292,30 @@ exports.getSessionPlanGroupStructureById = async (req, res) => {
 exports.getAllSessionPlanGroupStructure = async (req, res) => {
   try {
     const createdBy = req.admin?.id || req.user?.id;
-    const { orderBy = "sortOrder", order = "ASC" } = req.query;
+    console.log("🟢 createdBy:", createdBy);
 
-    const result = await SessionPlanGroupService.getAllSessionPlanConfig({ orderBy, order, createdBy });
-    if (!result.status) return res.status(500).json({ status: false, message: result.message });
+    const result = await SessionPlanGroupService.getAllSessionPlanConfig({ createdBy });
+    if (!result.status) {
+      console.error("❌ Service returned an error:", result.message);
+      return res.status(500).json({ status: false, message: result.message });
+    }
 
-    const { groups, exerciseMap } = result.data;
+    const { configs, groups, exerciseMap } = result.data;
+    console.log("🟢 Number of configs:", configs.length);
 
-    // Enrich levels with exercises
-    const formattedData = groups.map(group => {
+    // Map configs to include their group and enrich levels with exercises
+    const formattedData = configs.map((config) => {
+      const group = groups.find(g => g.id === config.sessionPlanGroupId);
+      if (!group) return null; // Skip if group not found
+
       let parsedLevels = {};
       try {
         parsedLevels = typeof group.levels === "string" ? JSON.parse(group.levels) : group.levels || {};
-      } catch { parsedLevels = {}; }
+      } catch (err) {
+        console.error(`⚠️ Failed to parse levels for group ID ${group.id}`, err);
+      }
 
+      // Attach exercises to each level item
       Object.keys(parsedLevels).forEach(levelKey => {
         const items = Array.isArray(parsedLevels[levelKey]) ? parsedLevels[levelKey] : [parsedLevels[levelKey]];
         parsedLevels[levelKey] = items.map(item => ({
@@ -314,19 +324,34 @@ exports.getAllSessionPlanGroupStructure = async (req, res) => {
         }));
       });
 
-      return { ...group, levels: parsedLevels };
-    });
+      return {
+        id: config.id,
+        type: config.type,
+        pinned: config.pinned,
+        createdBy: config.createdBy,
+        createdAt: config.createdAt,
+        updatedAt: config.updatedAt,
+        group: {
+          ...group,
+          levels: parsedLevels,
+        },
+      };
+    }).filter(Boolean); // Remove nulls if any config's group not found
+
+    console.log("🟢 Formatted data ready:", formattedData.length);
 
     return res.status(200).json({
       status: true,
       message: "Fetched session plan groups with exercises successfully.",
       data: formattedData,
     });
+
   } catch (error) {
     console.error("❌ Controller Error:", error);
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };
+
 
 // exports.getSessionPlanGroupStructureById = async (req, res) => {
 //   try {
