@@ -127,7 +127,7 @@ exports.getFullCancelBooking = async ({
 
     if (bookedBy) {
       let cancellationsWhere = {
-        status: 'request_to_cancel'
+        status: 'cancelled'
       };
 
       // Ensure bookedBy is always an array
@@ -186,8 +186,10 @@ exports.getFullCancelBooking = async ({
         {
           model: Booking,
           as: "booking",
-          where: { status: "cancelled" }, // ✅ filter by booking status
-
+          where: {
+            status: "cancelled",
+            bookingType: "paid",
+          },
           attributes: [
             "id",
             "venueId",

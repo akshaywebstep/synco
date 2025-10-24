@@ -135,7 +135,7 @@ exports.getFullCancelBooking = async ({
     if (bookedBy) {
       let bookingWhere = {
         status: {
-          [Op.in]: ['request_to_cancel', 'canceled']
+          [Op.in]: ['request_to_cancel', 'cancelled']
         }
       };
 
