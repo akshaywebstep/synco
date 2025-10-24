@@ -6,7 +6,7 @@ const permissionMiddleware = require("../../middleware/admin/permission");
 const {
   getAllStudentsListing,
   getStudentById,
-  updateBookingInformationByTrialId,
+  updateBooking,
   getBookingsById,
   getVenuesWithClassesFromBookings,
   createFeedback,
@@ -31,10 +31,10 @@ router.get(
 );
 
 router.put(
-  "/",
+  "/:bookingId",
   authMiddleware,
   permissionMiddleware("account-information", "update"),
-  updateBookingInformationByTrialId
+  updateBooking
 );
 
 router.get(

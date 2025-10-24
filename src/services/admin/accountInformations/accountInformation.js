@@ -10,7 +10,9 @@ const {
   Admin,
   Feedback,
 } = require("../../../models");
-const { Op } = require("sequelize");
+// const { Op } = require("sequelize");
+const { sequelize, op } = require("../../../models");
+
 
 exports.getAllStudentsListing = async (filters = {}) => {
   try {
@@ -513,91 +515,182 @@ exports.getStudentByBookingId = async (bookingId) => {
   }
 };
 
-exports.updateBookingInformationByTrialId = async (
-  bookingTrialId,
-  updateData
-) => {
+exports.updateBookingWithStudents = async (bookingId, payload, transaction) => {
   try {
-    // 🔹 Fetch existing students
-    const existingStudents = await BookingStudentMeta.findAll({
-      where: { bookingTrialId },
+    const { students = [], parents = [], emergencyContacts = [] } = payload;
+
+    // Fetch booking and associations
+    const booking = await Booking.findOne({
+      where: { id: bookingId },
+      include: [
+        {
+          model: BookingStudentMeta,
+          as: "students",
+          include: [
+            { model: BookingParentMeta, as: "parents", required: false },
+            { model: BookingEmergencyMeta, as: "emergencyContacts", required: false },
+          ],
+          required: false,
+        },
+      ],
+      transaction,
     });
 
-    const existingStudentIds = existingStudents.map((s) => s.id);
-    const payloadStudentIds = (updateData.students || [])
-      .filter((s) => s.id)
-      .map((s) => s.id);
-
-    // 🔹 Remove students not included in payload (optional clean-up)
-    const toDelete = existingStudentIds.filter(
-      (id) => !payloadStudentIds.includes(id)
-    );
-    if (toDelete.length > 0) {
-      await BookingStudentMeta.destroy({ where: { id: toDelete } });
+    if (!booking) {
+      return { status: false, message: "Booking not found" };
     }
 
-    let firstStudentId = null;
+    // ======================
+    // 🟢 Update Students
+    // ======================
+    for (const student of students) {
+      let studentRecord;
 
-    // 🔹 Upsert Students
-    for (const [index, student] of (updateData.students || []).entries()) {
-      let studentId = student.id;
-
-      if (studentId) {
-        await BookingStudentMeta.update(student, { where: { id: studentId } });
+      if (student.id) {
+        studentRecord = booking.students.find(s => s.id === student.id);
+        if (studentRecord) {
+          const studentFields = [
+            "studentFirstName",
+            "studentLastName",
+            "dateOfBirth",
+            "age",
+            "gender",
+            "medicalInformation",
+          ];
+          for (const field of studentFields) {
+            if (student[field] !== undefined) studentRecord[field] = student[field];
+          }
+          await studentRecord.save({ transaction });
+        }
       } else {
-        const newStudent = await BookingStudentMeta.create({
-          ...student,
-          bookingTrialId, // ✅ ensure FK
-        });
-        studentId = newStudent.id;
+        // create new student if needed
+        studentRecord = await BookingStudentMeta.create(
+          { bookingId, ...student },
+          { transaction }
+        );
       }
 
-      if (index === 0) {
-        firstStudentId = studentId; // for emergencies
-      }
-
-      // 🔹 Parents (linked to each student)
-      if (updateData.parents) {
-        for (const parent of updateData.parents) {
+      // Nested parents (optional)
+      if (Array.isArray(student.parents)) {
+        for (const parent of student.parents) {
           if (parent.id) {
-            await BookingParentMeta.update(parent, {
-              where: { id: parent.id },
-            });
+            const parentRecord = studentRecord.parents?.find(p => p.id === parent.id);
+            if (parentRecord) {
+              const parentFields = [
+                "parentFirstName",
+                "parentLastName",
+                "parentEmail",
+                "parentPhoneNumber",
+                "relationToChild",
+                "howDidYouHear",
+              ];
+              for (const f of parentFields) if (parent[f] !== undefined) parentRecord[f] = parent[f];
+              await parentRecord.save({ transaction });
+            }
           } else {
-            await BookingParentMeta.create({
-              ...parent,
-              studentId,
-            });
+            await BookingParentMeta.create(
+              { bookingStudentMetaId: studentRecord.id, ...parent },
+              { transaction }
+            );
+          }
+        }
+      }
+
+      // Nested emergencyContacts (optional)
+      if (Array.isArray(student.emergencyContacts)) {
+        for (const emergency of student.emergencyContacts) {
+          if (emergency.id) {
+            const emergencyRecord = studentRecord.emergencyContacts?.find(e => e.id === emergency.id);
+            if (emergencyRecord) {
+              const emergencyFields = [
+                "emergencyFirstName",
+                "emergencyLastName",
+                "emergencyPhoneNumber",
+                "emergencyRelation",
+              ];
+              for (const f of emergencyFields) if (emergency[f] !== undefined) emergencyRecord[f] = emergency[f];
+              await emergencyRecord.save({ transaction });
+            }
+          } else {
+            await BookingEmergencyMeta.create(
+              { bookingStudentMetaId: studentRecord.id, ...emergency },
+              { transaction }
+            );
           }
         }
       }
     }
 
-    // 🔹 Emergency (linked only to first student of trial)
-    if (updateData.emergency && firstStudentId) {
-      for (const emergency of updateData.emergency) {
-        if (emergency.id) {
-          await BookingEmergencyMeta.update(emergency, {
-            where: { id: emergency.id },
-          });
-        } else {
-          await BookingEmergencyMeta.create({
-            ...emergency,
-            studentId: firstStudentId,
-          });
-        }
+    // ======================
+    // 🟡 Update Parents (top-level)
+    // ======================
+    for (const parent of parents) {
+      if (!parent.id) continue;
+
+      const parentRecord = await BookingParentMeta.findByPk(parent.id, { transaction });
+      if (parentRecord) {
+        const parentFields = [
+          "parentFirstName",
+          "parentLastName",
+          "parentEmail",
+          "parentPhoneNumber",
+          "relationToChild",
+          "howDidYouHear",
+        ];
+        for (const f of parentFields) if (parent[f] !== undefined) parentRecord[f] = parent[f];
+        await parentRecord.save({ transaction });
       }
     }
 
+    // ======================
+    // 🔴 Update Emergency Contacts (top-level)
+    // ======================
+    for (const emergency of emergencyContacts) {
+      if (!emergency.id) continue;
+
+      const emergencyRecord = await BookingEmergencyMeta.findByPk(emergency.id, { transaction });
+      if (emergencyRecord) {
+        const emergencyFields = [
+          "emergencyFirstName",
+          "emergencyLastName",
+          "emergencyPhoneNumber",
+          "emergencyRelation",
+        ];
+        for (const f of emergencyFields) if (emergency[f] !== undefined) emergencyRecord[f] = emergency[f];
+        await emergencyRecord.save({ transaction });
+      }
+    }
+
+    // ======================
+    // ✅ Return Updated Data
+    // ======================
+    const refreshedBooking = await Booking.findOne({
+      where: { id: bookingId },
+      include: [
+        {
+          model: BookingStudentMeta,
+          as: "students",
+          include: [
+            { model: BookingParentMeta, as: "parents" },
+            { model: BookingEmergencyMeta, as: "emergencyContacts" },
+          ],
+        },
+      ],
+      transaction,
+    });
+
     return {
       status: true,
-      message: "Account Information updated successfully",
+      message: "Booking updated successfully",
+      data: refreshedBooking,
     };
   } catch (error) {
-    console.error("❌ updateBookingTrialById Error:", error.message);
+    console.error("❌ Service updateBookingWithStudents Error:", error);
     return { status: false, message: error.message };
   }
 };
+
+
 // AccountInformationService.getBookingsById
 exports.getBookingsById = async (bookingId, filters = {}) => {
   try {

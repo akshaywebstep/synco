@@ -5,6 +5,10 @@ const {
 } = require("../../../utils/admin/notificationHelper");
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 
+const {
+  sequelize,
+} = require("../../../models");
+
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "account_information";
@@ -33,7 +37,7 @@ exports.getAllStudentsListing = async (req, res) => {
       // Always assign bookedBy even if not in query
       filters.bookedBy = bookedBy || null;
     }
-    
+
     // 🧠 Call the service layer
     const result = await AccountInformationService.getAllStudentsListing(filters);
 
@@ -100,7 +104,7 @@ exports.getAllStudentsListing = async (req, res) => {
 exports.getStudentById = async (req, res) => {
   try {
     const bookingId = req.params.id;
-console.log(`bookingId - `, bookingId);
+    console.log(`bookingId - `, bookingId);
     const result = await AccountInformationService.getStudentByBookingId(bookingId);
 
     if (!result.status) {
@@ -146,61 +150,80 @@ console.log(`bookingId - `, bookingId);
   }
 };
 
-exports.updateBookingInformationByTrialId = async (req, res) => {
+exports.updateBooking = async (req, res) => {
+  if (DEBUG) console.log("🔹 Step 0: Controller entered");
+
+  const bookingId = req.params?.bookingId;
+  const studentsPayload = req.body?.students || [];
+  const parentsPayload = req.body?.parents || [];
+  const emergenciesPayload = req.body?.emergencyContacts || [];
+  const adminId = req.admin?.id;
+
+  // ✅ Security check
+  if (!adminId) {
+    if (DEBUG) console.warn("❌ Unauthorized access attempt");
+    return res.status(401).json({ status: false, message: "Unauthorized" });
+  }
+
+  if (!bookingId) {
+    if (DEBUG) console.warn("❌ Booking ID missing in URL");
+    return res.status(400).json({
+      status: false,
+      message: "Booking ID is required in URL (params.bookingId).",
+    });
+  }
+
+  const t = await sequelize.transaction();
+
   try {
-    const { bookingTrialId, ...updateData } = req.body;
+    if (DEBUG) console.log("🔹 Step 1: Calling service to update booking + students");
 
-    if (!bookingTrialId) {
-      return res.status(400).json({
-        status: false,
-        message: "bookingTrialId is required in request body",
-      });
-    }
-
-    if (process.env.DEBUG) {
-      console.log("DEBUG: bookingTrialId:", bookingTrialId);
-    }
-
-    const result =
-      await AccountInformationService.updateBookingInformationByTrialId(
-        bookingTrialId,
-        updateData
-      );
-
-    if (!result.status) {
-      await logActivity(
-        req,
-        PANEL,
-        MODULE,
-        "update",
-        { bookingTrialId, error: result.message },
-        false
-      );
-      return res.status(400).json({ status: false, message: result.message });
-    }
-
-    if (DEBUG) {
-      console.log("DEBUG: Updated bookingTrialId:", bookingTrialId);
-    }
-    await createNotification(
-      req,
-      "Account Information Updated",
-      "System"
+    // Call service
+    const updateResult = await AccountInformationService.updateBookingWithStudents(
+      bookingId,
+      { students: studentsPayload, parents: parentsPayload, emergencyContacts: emergenciesPayload },
+      t
     );
-    await logActivity(req, PANEL, MODULE, "update", { bookingTrialId }, true);
 
-    return res.status(200).json(result);
-  } catch (error) {
-    console.error("❌ updateBookingTrial Error:", error.message);
+
+    await t.commit();
+    if (DEBUG) console.log("✅ Step 2: Transaction committed successfully");
+
+    // Log activity
+    if (DEBUG) console.log("🔹 Step 3: Logging activity");
     await logActivity(
       req,
-      PANEL,
-      MODULE,
+      "admin",
+      "book-membership",
       "update",
-      { error: error.message },
-      false
+      { message: `Updated student, parent, and emergency data for booking ID: ${bookingId}` },
+      true
     );
-    return res.status(500).json({ status: false, message: "Server error" });
+
+    // Create notification
+    if (DEBUG) console.log("🔹 Step 4: Creating notification");
+    await createNotification(
+      req,
+      "Booking Updated",
+      `Student, parent, and emergency data updated for booking ID: ${bookingId}.`,
+      "System"
+    );
+
+    if (DEBUG) console.log("✅ Step 5: Controller finished successfully");
+
+    return res.status(200).json({
+      status: updateResult.status,
+      message: updateResult.message,
+      data: updateResult.data || null,
+    });
+
+  } catch (error) {
+    if (!t.finished) await t.rollback();
+    if (DEBUG) console.error("❌ updateBooking Error:", error.message);
+    return res.status(500).json({
+      status: false,
+      message: error.message || "Failed to update booking",
+    });
   }
 };
 
