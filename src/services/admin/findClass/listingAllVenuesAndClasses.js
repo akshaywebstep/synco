@@ -292,10 +292,12 @@ exports.getAllVenuesWithClasses = async ({
         //     : null;
 
         const distanceMiles =
-          hasCoordinates && !isNaN(venueLat) && !isNaN(venueLng)
+          !isNaN(venueLat) &&
+            !isNaN(venueLng) &&
+            typeof userLatitude === "number" &&
+            typeof userLongitude === "number"
             ? parseFloat(calculateDistance(userLatitude, userLongitude, venueLat, venueLng).toFixed(1))
             : null;
-
 
         return {
           venueId: venue.id,

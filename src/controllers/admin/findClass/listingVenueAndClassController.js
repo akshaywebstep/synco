@@ -18,6 +18,59 @@ const parseBoolean = (value) => {
   return false;
 };
 
+exports.findAClassListing = async (req, res) => {
+  try {
+    const adminId = req.admin?.id;
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    if (!superAdminId) {
+      return res.status(403).json({ status: false, message: "No valid super admin found for this request." });
+    }
+
+    const { lat, lng, range } = req.query;
+
+    // Safely parse coordinates and range
+    const DEFAULT_LAT = -27.4756; // default reference point
+    const DEFAULT_LNG = 153.02;
+
+    const userLatitude = lat ? parseFloat(lat) : DEFAULT_LAT;
+    const userLongitude = lng ? parseFloat(lng) : DEFAULT_LNG;
+    // const userLatitude = lat ? parseFloat(lat) : null;
+    // const userLongitude = lng ? parseFloat(lng) : null;
+    const searchRadiusMiles = range ? parseFloat(range) : null;
+
+    if (DEBUG) {
+      console.log("📥 Fetching venue listings with classes");
+      console.log("➡ Filters:", { userLatitude, userLongitude, searchRadiusMiles, createdBy: superAdminId });
+    }
+
+    const result = await getAllVenuesWithClasses({
+      userLatitude,
+      userLongitude,
+      searchRadiusMiles,
+      createdBy: superAdminId,
+    });
+
+    if (!result.status) {
+      await logActivity(req, PANEL, MODULE, "list", result, false);
+      return res.status(500).json(result);
+    }
+
+    await logActivity(req, PANEL, MODULE, "list", { message: "Fetched class listings" }, true);
+
+    return res.status(200).json({
+      status: true,
+      message: "Class listings fetched successfully.",
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ findAClassListing Error:", error);
+    await logActivity(req, PANEL, MODULE, "list", { oneLineMessage: error.message }, false);
+    return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
+
 // ✅ ALL VENUES CONTROLLER
 // exports.findAClassListing = async (req, res) => {
 //   const adminId = req.admin?.id;
@@ -80,61 +133,7 @@ const parseBoolean = (value) => {
 //   }
 // };
 
-exports.findAClassListing = async (req, res) => {
-  const createdBy = req.admin?.id;
-  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
-  try {
-
-    const { lat, lng, range } = req.query;
-
-    // Safely parse coordinates and range
-    const userLatitude = lat ? parseFloat(lat) : null;
-    const userLongitude = lng ? parseFloat(lng) : null;
-    const searchRadiusMiles = range ? parseFloat(range) : null;
-
-    if (DEBUG) {
-      console.log("📥 Fetching venue listings with classes");
-      console.log("➡ Filters:", {
-        userLatitude,
-        userLongitude,
-        searchRadiusMiles,
-        createdBy: superAdminId,
-      });
-    }
-
-    const result = await getAllVenuesWithClasses({
-      userLatitude,
-      userLongitude,
-      searchRadiusMiles,
-      createdBy: superAdminId,
-      // ✅ use superAdminId instead of createdBy
-    });
-
-    if (!result.status) {
-      await logActivity(req, PANEL, MODULE, "list", result, false);
-      return res.status(500).json(result);
-    }
-
-    return res.status(200).json({
-      status: true,
-      message: "Class listings fetched successfully.",
-      data: result.data,
-    });
-  } catch (error) {
-    console.error("❌ findAClassListing Error:", error);
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "list",
-      { oneLineMessage: error.message },
-      false
-    );
-    return res.status(500).json({ status: false, message: "Server error." });
-  }
-};
 
 // exports.getAllClassSchedules = async (req, res) => {
 //   if (DEBUG) console.log("📥 Fetching all class schedules...");
@@ -247,14 +246,14 @@ exports.getAllClassSchedules = async (req, res) => {
 
 exports.getClassScheduleById = async (req, res) => {
   const { id } = req.params;
-   const createdBy = req.admin?.id;
+  const createdBy = req.admin?.id;
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
   if (DEBUG) console.log(`🔍 Fetching class + venue for class ID: ${id}`);
 
   try {
     // ✅ Call service with only classId (no adminId)
-    const result = await getClassById(id,superAdminId);
+    const result = await getClassById(id, superAdminId);
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Not found:", result.message);
