@@ -10,8 +10,8 @@ const {
   Admin,
   Feedback,
 } = require("../../../models");
-// const { Op } = require("sequelize");
-const { sequelize, Op } = require("../../../models");
+const { Op } = require("sequelize");
+const { sequelize } = require("../../../models");
 
 
 exports.getAllStudentsListing = async (filters = {}) => {
