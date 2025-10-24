@@ -113,6 +113,7 @@ exports.createBooking = async (data, options) => {
         classScheduleId: data.classScheduleId,
         trialDate: data.trialDate,
         className: data.className,
+        // serviceType: "weekly_class_trial",
         classTime: data.classTime,
         status: data.status || "pending",
         bookedBy: source === 'open' ? bookedByAdminId : adminId,
@@ -284,6 +285,7 @@ exports.getAllBookings = async (filters = {}) => {
     const bookings = await Booking.findAll({
       order: [["id", "DESC"]],
       where: {
+        // serviceType: "weekly_class_trial",
         ...trialWhere, // spread the filters correctly
       },
       include: [
