@@ -5,6 +5,7 @@ const http = require("http");
 const https = require("https");
 const ffmpeg = require("fluent-ffmpeg");
 const ffprobeStatic = require("ffprobe-static");
+const axios = require("axios");
 
 const DEBUG = true;
 
@@ -19,13 +20,15 @@ const downloadVideo = (videoUrl, tempFilePath) => {
     const client = videoUrl.startsWith("https") ? https : http;
     const file = fs.createWriteStream(tempFilePath);
 
-    client.get(videoUrl, (res) => {
-      res.pipe(file);
-      file.on("finish", () => file.close(resolve));
-    }).on("error", (err) => {
-      fs.unlink(tempFilePath, () => {}); // delete temp file on error
-      reject(err);
-    });
+    client
+      .get(videoUrl, (res) => {
+        res.pipe(file);
+        file.on("finish", () => file.close(resolve));
+      })
+      .on("error", (err) => {
+        fs.unlink(tempFilePath, () => {}); // delete temp file on error
+        reject(err);
+      });
   });
 };
 
@@ -38,26 +41,31 @@ const getVideoDurationInSeconds = async (videoUrl) => {
   const tempFile = path.join(os.tmpdir(), `${Date.now()}.mp4`);
 
   try {
-    if (DEBUG) console.log("Downloading video to temp file:", tempFile);
-    // await downloadVideo(videoUrl, tempFile);
+    if (DEBUG) console.log("Downloading video to:", tempFile);
 
-    return await new Promise((resolve) => {
-      ffmpeg.ffprobe(videoUrl, (err, metadata) => {
-        fs.unlink(videoUrl, () => {}); // clean up temp file
+    // Download video temporarily
+    const response = await axios.get(videoUrl, { responseType: "arraybuffer" });
+    fs.writeFileSync(tempFile, response.data);
 
+    // Probe local file
+    const duration = await new Promise((resolve) => {
+      ffmpeg.ffprobe(tempFile, (err, metadata) => {
         if (err) {
           if (DEBUG) console.error("ffprobe error:", err);
           return resolve(0);
         }
-
-        const duration = metadata.format.duration || 0;
-        if (DEBUG) console.log(`Duration for ${videoUrl}: ${duration} seconds`);
-        resolve(duration);
+        resolve(metadata.format.duration || 0);
       });
     });
+
+    if (DEBUG) console.log(`Duration for ${videoUrl}: ${duration} sec`);
+    return duration;
   } catch (err) {
-    if (DEBUG) console.error("Download or ffprobe error:", err);
+    if (DEBUG) console.error("Error getting video duration:", err);
     return 0;
+  } finally {
+    // Clean up
+    fs.unlink(tempFile, () => {});
   }
 };
 
