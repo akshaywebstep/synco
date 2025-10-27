@@ -281,6 +281,14 @@ exports.getAllReceivedCustomNotifications = async (
   category = null
 ) => {
   try {
+     if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
+
     const whereCondition = {};
 
     if (category) {

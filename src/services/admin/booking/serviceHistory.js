@@ -563,7 +563,7 @@ exports.getBookingById = async (id, adminId) => {
       id: booking.id,
       bookingId: booking.bookingId,
       classScheduleId: booking.classScheduleId,
-      serviceType:booking.serviceType,
+      serviceType: booking.serviceType,
       trialDate: booking.trialDate,
       bookedBy: booking.bookedByAdmin || null,
       className: booking.className,
@@ -663,8 +663,8 @@ exports.updateBooking = async (payload, adminId, id) => {
     booking.status = payload.status || booking.status || "active";
     booking.trialDate = null;
     booking.bookedBy = adminId || booking.bookedBy;
-    // ✅ Optional: Set default if not provided
-    if (!booking.serviceType) {
+
+    if (!booking.serviceType || booking.serviceType.trim() === "") {
       booking.serviceType = "weekly class membership";
     }
 

@@ -95,6 +95,14 @@ exports.getAllNotifications = async (
   options = {}
 ) => {
   try {
+
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
     // 1️⃣ Fetch logged-in admin info (id, roleId, name, email, profile)
     const admin = await Admin.findByPk(adminId, {
       attributes: ["id", "roleId", "firstName", "lastName", "email", "profile"],
@@ -119,8 +127,9 @@ exports.getAllNotifications = async (
       whereCondition.category = category;
     }
 
-    // ✅ Exclude own-created notifications
-    if (options.excludeOwn) {
+    // ✅ Exclude own-created notifications (safe even if options = null)
+    const safeOptions = options || {};
+    if (safeOptions.excludeOwn) {
       whereCondition.adminId = { [Op.ne]: adminId };
     }
 
@@ -153,12 +162,12 @@ exports.getAllNotifications = async (
       isRead: readIdsSet.has(n.id),
       admin: n.admin
         ? {
-            id: n.admin.id,
-            firstName: n.admin.firstName,
-            lastName: n.admin.lastName,
-            email: n.admin.email,
-            profile: n.admin.profile,
-          }
+          id: n.admin.id,
+          firstName: n.admin.firstName,
+          lastName: n.admin.lastName,
+          email: n.admin.email,
+          profile: n.admin.profile,
+        }
         : null,
     }));
 

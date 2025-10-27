@@ -2,6 +2,7 @@ const notificationModel = require("../../../services/admin/notification/notifica
 const { getAdminRoleById } = require("../../../services/admin/adminRole");
 const customNotificationModel = require("../../../services/admin/notification/customNotification");
 const { logActivity } = require("../../../utils/admin/activityLogger");
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 
 const validCategories = [
   "All",
@@ -210,6 +211,9 @@ exports.getAllNotifications = async (req, res) => {
   const adminId = req.admin?.id;
   const category = req.query?.category || null;
 
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+
   if (DEBUG) {
     console.log(`📨 Fetching notifications for Admin ID: ${adminId}`);
     console.log(`📂 Category filter: ${category}`);
@@ -219,6 +223,7 @@ exports.getAllNotifications = async (req, res) => {
   try {
     // ✅ For normal notifications, still exclude own-created if required
     const notificationResult = await notificationModel.getAllNotifications(
+      superAdminId,
       adminId,
       category,
       { excludeOwn: true }
