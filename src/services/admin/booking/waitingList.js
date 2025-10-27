@@ -152,6 +152,7 @@ exports.createBooking = async (data, options) => {
         venueId: data.venueId,
         bookingId: generateBookingId(12),
         leadId,
+        serviceType: "weekly class trial",
         totalStudents: data.totalStudents,
         startDate: data.startDate,
         classScheduleId: data.classScheduleId,
@@ -302,7 +303,6 @@ exports.getWaitingList = async (filters = {}) => {
     }
     */
 
-
     if (filters.bookedBy) {
       // Ensure bookedBy is always an array
       const bookedByArray = Array.isArray(filters.bookedBy)
@@ -346,8 +346,9 @@ exports.getWaitingList = async (filters = {}) => {
     const bookings = await Booking.findAll({
       order: [["id", "DESC"]],
       where: {
-        ...trialWhere, 
-        status: "waiting list", 
+        serviceType: "weekly class trial",
+        ...trialWhere,
+        status: "waiting list",
       },
       // where: trialWhere,
       include: [
@@ -574,6 +575,7 @@ exports.getBookingById = async (id, bookedBy, adminId) => {
         bookedBy: Number(bookedBy),
         id,
         bookingType: "waiting list",
+        serviceType: "weekly class trial"
       },
       include: [
         {
@@ -1094,6 +1096,7 @@ exports.convertToMembership = async (data, options) => {
       await booking.update(
         {
           totalStudents: data.totalStudents ?? booking.totalStudents,
+          serviceType: "weekly class membership",
           classScheduleId: data.classScheduleId ?? booking.classScheduleId,
           startDate: data.startDate ?? booking.startDate,
           trialDate: null,
@@ -1111,6 +1114,7 @@ exports.convertToMembership = async (data, options) => {
           bookingId: generateBookingId(12),
           totalStudents: data.totalStudents,
           classScheduleId: data.classScheduleId,
+          serviceType: "weekly class membership",
           startDate: data.startDate,
           trialDate: null,
           bookingType: data.paymentPlanId ? "paid" : "waiting list",

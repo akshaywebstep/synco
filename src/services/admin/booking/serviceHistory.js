@@ -651,6 +651,7 @@ exports.updateBooking = async (payload, adminId, id) => {
       "classScheduleId",
       "venueId",
       "status",
+      "serviceType",
     ];
 
     for (const field of updateFields) {
@@ -661,6 +662,10 @@ exports.updateBooking = async (payload, adminId, id) => {
     booking.status = payload.status || booking.status || "active";
     booking.trialDate = null;
     booking.bookedBy = adminId || booking.bookedBy;
+    // ✅ Optional: Set default if not provided
+    if (!booking.serviceType) {
+      booking.serviceType = "weekly class membership";
+    }
 
     await booking.save({ transaction: t });
 

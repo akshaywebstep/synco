@@ -231,6 +231,7 @@ exports.createBooking = async (data, options) => {
         totalStudents: data.totalStudents,
         classScheduleId: data.classScheduleId,
         startDate: data.startDate || null,
+        serviceType: "weekly class membership",
         // keyInformation: data.keyInformation || null,
         bookingType: data.paymentPlanId ? "paid" : "free",
         paymentPlanId: data.paymentPlanId || null,
@@ -881,6 +882,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
 
     const bookings = await Booking.findAll({
       where: {
+         serviceType: "weekly class membership",
         ...whereBooking, // spread the filters correctly
       },
       order: [["id", "DESC"]],
@@ -1284,6 +1286,7 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
     // 🔹 Fetch bookings
     const bookings = await Booking.findAll({
       where: {
+         serviceType: "weekly class membership",
         ...whereBooking, // spread the filters correctly
       },
       // where: whereBooking,
@@ -2006,6 +2009,7 @@ exports.addToWaitingListService = async (data, adminId) => {
       {
         bookingType: "waiting list",
         status: "waiting list",
+        serviceType: data.serviceType || "weekly class membership",
         venueId: data.venueId,
         classScheduleId: data.classScheduleId,
         startDate: data.startDate || booking.startDate,
@@ -2041,6 +2045,7 @@ exports.addToWaitingListService = async (data, adminId) => {
         bookingId: updatedBooking.id,
         bookingType: updatedBooking.bookingType,
         status: updatedBooking.status,
+         serviceType: updatedBooking.serviceType,
         paymentPlanId: updatedBooking.paymentPlanId, // will be null
         venueId: updatedBooking.venueId,
         classScheduleId: updatedBooking.classScheduleId,
@@ -2153,6 +2158,7 @@ exports.getBookingsById = async (bookingId) => {
   try {
     const booking = await Booking.findOne({
       where: {
+         serviceType: "weekly class membership",
         id: bookingId,
         bookingType: { [Op.or]: ["waiting list", "paid"] }, // <-- both types
       },
