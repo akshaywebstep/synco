@@ -1979,14 +1979,67 @@ exports.addToWaitingListService = async (data, adminId) => {
 
     if (!booking) throw new Error("Invalid booking selected.");
 
-    // 2️⃣ Ensure booking is active or paid before moving to waiting list
+    // 2️⃣ Handle "request to cancel" case
+    if (booking.status === "request_to_cancel") {
+      // 🔹 Remove entry from cancel booking table
+      const existingCancel = await CancelBooking.findOne({
+        where: { bookingId: booking.id },
+        transaction: t,
+      });
+
+      if (existingCancel) {
+        await CancelBooking.destroy({
+          where: { bookingId: booking.id },
+          transaction: t,
+        });
+        console.log("🧹 Removed cancel booking entry for:", booking.id);
+      }
+
+      // ✅ Update booking to waiting list
+      await booking.update(
+        {
+          bookingType: "waiting list",
+          status: "waiting list",
+          serviceType: data.serviceType || "weekly class trial",
+          venueId: data.venueId,
+          classScheduleId: data.classScheduleId,
+          startDate: null, // ⬅️ Force reset startDate
+          additionalNote: data.additionalNote || booking.additionalNote,
+          paymentPlanId: null, // ⬅️ Force remove payment plan link
+          bookedBy: adminId,
+        },
+        { transaction: t }
+      );
+
+      await t.commit();
+      const updatedBooking = await Booking.findByPk(booking.id, {
+        include: [
+          {
+            model: BookingStudentMeta,
+            as: "students",
+            include: [
+              { model: BookingParentMeta, as: "parents" },
+              { model: BookingEmergencyMeta, as: "emergencyContacts" },
+            ],
+          },
+        ],
+      });
+
+      return {
+        status: true,
+        message: "Booking moved from cancellation to waiting list successfully.",
+        data: updatedBooking,
+      };
+    }
+
+    // 3️⃣ For normal cases (active/paid bookings)
     if (!(booking.bookingType === "paid" && booking.status === "active")) {
       throw new Error(
         `Booking type=${booking.bookingType}, status=${booking.status}. Cannot move to waiting list.`
       );
     }
 
-    // 3️⃣ Validate venue and class schedule (optional)
+    // 4️⃣ Validate venue and class schedule (optional)
     const venue = await Venue.findByPk(data.venueId, { transaction: t });
     if (!venue) throw new Error("Venue is required.");
 
@@ -1995,7 +2048,7 @@ exports.addToWaitingListService = async (data, adminId) => {
     });
     if (!classSchedule) throw new Error("Class schedule is required.");
 
-    // 4️⃣ Delete existing payments
+    // 5️⃣ Delete existing payments
     if (booking.payments?.length) {
       const paymentIds = booking.payments.map((p) => p.id);
       await BookingPayment.destroy({
@@ -2004,7 +2057,7 @@ exports.addToWaitingListService = async (data, adminId) => {
       });
     }
 
-    // 5️⃣ Update booking fields to "waiting list" + clear paymentPlanId
+    // 6️⃣ Update booking to waiting list
     await booking.update(
       {
         bookingType: "waiting list",
@@ -2014,16 +2067,15 @@ exports.addToWaitingListService = async (data, adminId) => {
         classScheduleId: data.classScheduleId,
         startDate: data.startDate || booking.startDate,
         additionalNote: data.additionalNote || booking.additionalNote,
-        paymentPlanId: null, // ✅ remove payment plan link
+        paymentPlanId: null,
         updatedBy: adminId,
       },
       { transaction: t }
     );
 
-    // 6️⃣ Commit the transaction
     await t.commit();
 
-    // 7️⃣ Fetch updated booking (optional, for response)
+    // 7️⃣ Fetch updated booking
     const updatedBooking = await Booking.findByPk(booking.id, {
       include: [
         {
@@ -2037,29 +2089,10 @@ exports.addToWaitingListService = async (data, adminId) => {
       ],
     });
 
-    // 8️⃣ Return simplified response
     return {
       status: true,
       message: "Booking moved to waiting list successfully.",
-      data: {
-        bookingId: updatedBooking.id,
-        bookingType: updatedBooking.bookingType,
-        status: updatedBooking.status,
-        serviceType: updatedBooking.serviceType,
-        paymentPlanId: updatedBooking.paymentPlanId, // will be null
-        venueId: updatedBooking.venueId,
-        classScheduleId: updatedBooking.classScheduleId,
-        startDate: updatedBooking.startDate,
-        totalStudents: updatedBooking.totalStudents,
-        students: updatedBooking.students.map((s) => ({
-          studentFirstName: s.studentFirstName,
-          studentLastName: s.studentLastName,
-          dateOfBirth: s.dateOfBirth,
-          age: s.age,
-          gender: s.gender,
-          medicalInformation: s.medicalInformation,
-        })),
-      },
+      data: updatedBooking,
     };
   } catch (error) {
     await t.rollback();
