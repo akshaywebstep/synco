@@ -1,4 +1,5 @@
 const { logActivity } = require("../../utils/admin/activityLogger");
+const { getMainSuperAdminOfAdmin } = require("../../utils/auth");
 const {
   getDashboardStats,
   getWidgetsByAdmin,
@@ -14,6 +15,10 @@ const MODULE = "dashboard";
 exports.dashboardStats = async (req, res) => {
   try {
     const adminId = req.admin?.id;
+
+   // 🔹 Get Super Admin ID
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
     if (!adminId) {
       return res.status(401).json({
@@ -36,6 +41,7 @@ exports.dashboardStats = async (req, res) => {
     const parsedToDate = toDate ? new Date(toDate) : null;
 
     const result = await getDashboardStats(
+      superAdminId,
       adminId,
       filterType,
       parsedFromDate,

@@ -34,6 +34,14 @@ exports.getDashboardStats = async (
   toDate = null
 ) => {
   try {
+
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
     // --- Handle filterType logic only if no manual dates are provided
     if (filterType && !fromDate && !toDate) {
       const now = new Date();
@@ -138,7 +146,8 @@ exports.getDashboardStats = async (
 
     // Fetch widgets
     const widgets = await AdminDashboardWidget.findAll({
-      where: { adminId },
+      where: { adminId: Number(adminId)},
+      //  where: { createdBy: Number(createdBy) },
       order: [["order", "ASC"]],
     });
 
