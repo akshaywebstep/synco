@@ -462,6 +462,7 @@ exports.getStudentByBookingId = async (bookingId) => {
         venueId: booking.venueId,
         classScheduleId: booking.classScheduleId,
         classSchedule: booking.classSchedule || null,
+        serviceType:booking,serviceType,
         paymentPlanId: booking.paymentPlanId,
         paymentPlan: booking.paymentPlan || null,
         bookedBy: booking.bookedBy,

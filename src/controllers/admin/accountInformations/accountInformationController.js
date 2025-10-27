@@ -185,7 +185,6 @@ exports.updateBooking = async (req, res) => {
       t
     );
 
-
     await t.commit();
     if (DEBUG) console.log("✅ Step 2: Transaction committed successfully");
 

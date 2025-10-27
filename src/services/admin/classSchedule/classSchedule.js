@@ -378,18 +378,22 @@ exports.getAllClasses = async (adminId) => {
 
           venue.dataValues.termGroups = termGroups;
 
+          const filteredTermGroups = [];
+
           for (const termGroup of termGroups) {
+            const filteredTerms = [];
+
             for (const term of termGroup.terms || []) {
+              // Parse exclusionDates
               if (typeof term.exclusionDates === "string") {
                 try {
-                  term.dataValues.exclusionDates = JSON.parse(
-                    term.exclusionDates
-                  );
+                  term.dataValues.exclusionDates = JSON.parse(term.exclusionDates);
                 } catch {
                   term.dataValues.exclusionDates = [];
                 }
               }
 
+              // Parse sessionsMap
               let parsedSessionsMap = [];
               if (typeof term.sessionsMap === "string") {
                 try {
@@ -401,7 +405,6 @@ exports.getAllClasses = async (adminId) => {
                 parsedSessionsMap = term.sessionsMap || [];
               }
 
-              // ✅ New array to hold only sessions that exist in ClassScheduleTermMap
               const filteredSessions = [];
 
               for (let i = 0; i < parsedSessionsMap.length; i++) {
@@ -441,7 +444,7 @@ exports.getAllClasses = async (adminId) => {
 
                 if (relatedMappings.length === 0) continue; // skip sessions not mapped
 
-                // 🧩 Rest of your logic (unchanged)
+                // ✅ Parse levels safely
                 let levels = {};
                 try {
                   levels =
@@ -452,9 +455,11 @@ exports.getAllClasses = async (adminId) => {
                   levels = {};
                 }
 
+                // Load exercises
                 const allExercises = await SessionExercise.findAll({
                   where: { createdBy: spg.createdBy },
                 });
+
                 const exerciseMap = allExercises.reduce((acc, ex) => {
                   acc[ex.id] = ex;
                   return acc;
@@ -479,6 +484,7 @@ exports.getAllClasses = async (adminId) => {
                   }
                 }
 
+                // Helper for elapsed time
                 const getElapsedTime = (createdAt) => {
                   const now = new Date();
                   const created = new Date(createdAt);
@@ -495,11 +501,9 @@ exports.getAllClasses = async (adminId) => {
 
                 const videoUploadedAgo = {};
                 for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
-                  if (spg[`${level}_video`]) {
-                    videoUploadedAgo[`${level}_video`] = getElapsedTime(spg.createdAt);
-                  } else {
-                    videoUploadedAgo[`${level}_video`] = null;
-                  }
+                  videoUploadedAgo[`${level}_video`] = spg[`${level}_video`]
+                    ? getElapsedTime(spg.createdAt)
+                    : null;
                 }
 
                 const mapping = relatedMappings[i] || relatedMappings[0] || null;
@@ -536,15 +540,25 @@ exports.getAllClasses = async (adminId) => {
                     : {}),
                 };
 
-                // ✅ Only push if mapping exists
                 filteredSessions.push(entry);
               }
 
-              // ✅ Replace with filtered sessions only
-              term.dataValues.sessionsMap = filteredSessions;
+              // ✅ Only keep term if it has valid sessions
+              if (filteredSessions.length > 0) {
+                term.dataValues.sessionsMap = filteredSessions;
+                filteredTerms.push(term);
+              }
+            }
 
+            // ✅ Only keep termGroup if it has valid terms
+            if (filteredTerms.length > 0) {
+              termGroup.terms = filteredTerms;
+              filteredTermGroups.push(termGroup);
             }
           }
+
+          // ✅ Replace termGroups with fully filtered ones
+          termGroups = filteredTermGroups;
 
           venue.dataValues.termGroups = termGroups;
         }
