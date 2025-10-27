@@ -154,11 +154,18 @@ exports.reactivateBooking = async (
     }
 
     // 🔹 3. Check if booking can be reactivated
-    if (!freezeRecord && booking.status !== "frozen") {
+    // if (!freezeRecord && booking.status !== "frozen") {
+    //   await t.rollback();
+    //   return {
+    //     status: false,
+    //     message: "No active freeze found for this booking.",
+    //   };
+    // }
+    if (!freezeRecord && !["frozen", "cancelled"].includes(booking.status)) {
       await t.rollback();
       return {
         status: false,
-        message: "No active freeze found for this booking.",
+        message: "No active freeze or cancelled booking found for this booking.",
       };
     }
 
