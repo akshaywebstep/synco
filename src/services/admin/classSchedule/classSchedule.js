@@ -401,150 +401,148 @@ exports.getAllClasses = async (adminId) => {
                 parsedSessionsMap = term.sessionsMap || [];
               }
 
+              // ✅ New array to hold only sessions that exist in ClassScheduleTermMap
+              const filteredSessions = [];
+
               for (let i = 0; i < parsedSessionsMap.length; i++) {
                 const entry = parsedSessionsMap[i];
                 if (!entry.sessionPlanId) continue;
 
-                const spg = await SessionPlanGroup.findByPk(
-                  entry.sessionPlanId,
-                  {
-                    attributes: [
-                      "id",
-                      "groupName",
-                      "levels",
-                      "beginner_video",
-                      "intermediate_video",
-                      "advanced_video",
-                      "pro_video",
-                      "banner",
-                      "player",
-                      "beginner_upload",
-                      "intermediate_upload",
-                      "advanced_upload",
-                      "pro_upload",
-                      "createdBy",
-                      "createdAt",
-                    ],
-                  }
+                const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
+                  attributes: [
+                    "id",
+                    "groupName",
+                    "levels",
+                    "beginner_video",
+                    "intermediate_video",
+                    "advanced_video",
+                    "pro_video",
+                    "banner",
+                    "player",
+                    "beginner_upload",
+                    "intermediate_upload",
+                    "advanced_upload",
+                    "pro_upload",
+                    "createdBy",
+                    "createdAt",
+                  ],
+                });
+
+                if (!spg) continue;
+
+                // ✅ Check mapping first — only include sessions that exist in ClassScheduleTermMap
+                const relatedMappings = mappings.filter(
+                  (m) =>
+                    m.classScheduleId === cls.id &&
+                    m.termGroupId === termGroup.id &&
+                    m.termId === term.id &&
+                    m.sessionPlanId === spg.id
                 );
 
-                if (spg) {
-                  // Parse levels safely
-                  let levels = {};
-                  try {
-                    levels =
-                      typeof spg.levels === "string"
-                        ? JSON.parse(spg.levels)
-                        : spg.levels || {};
-                  } catch {
-                    levels = {};
-                  }
+                if (relatedMappings.length === 0) continue; // skip sessions not mapped
 
-                  // Fetch all exercises for this creator
-                  const allExercises = await SessionExercise.findAll({
-                    where: { createdBy: spg.createdBy },
-                  });
-                  const exerciseMap = allExercises.reduce((acc, ex) => {
-                    acc[ex.id] = ex;
-                    return acc;
-                  }, {});
-
-                  for (const levelKey of Object.keys(levels)) {
-                    for (const item of levels[levelKey]) {
-                      if (Array.isArray(item.sessionExerciseId)) {
-                        item.sessionExercises = item.sessionExerciseId
-                          .map((exId) => exerciseMap[exId])
-                          .filter(Boolean)
-                          .map((ex) => ({
-                            id: ex.id,
-                            title: ex.title,
-                            description: ex.description,
-                            duration: ex.duration,
-                            imageUrl: ex.imageUrl,
-                          }));
-                      } else {
-                        item.sessionExercises = [];
-                      }
-                    }
-                  }
-
-                  // Calculate how long ago videos were uploaded
-                  const getElapsedTime = (createdAt) => {
-                    const now = new Date();
-                    const created = new Date(createdAt);
-                    const diffMs = now - created;
-                    const diffSeconds = Math.floor(diffMs / 1000);
-                    const diffMinutes = Math.floor(diffSeconds / 60);
-                    const diffHours = Math.floor(diffMinutes / 60);
-                    const diffDays = Math.floor(diffHours / 24);
-
-                    if (diffDays > 0) return `${diffDays} day(s) ago`;
-                    if (diffHours > 0) return `${diffHours} hour(s) ago`;
-                    if (diffMinutes > 0) return `${diffMinutes} minute(s) ago`;
-                    return `${diffSeconds} second(s) ago`;
-                  };
-
-                  const videoUploadedAgo = {};
-                  for (const level of [
-                    "beginner",
-                    "intermediate",
-                    "advanced",
-                    "pro",
-                  ]) {
-                    if (spg[`${level}_video`]) {
-                      videoUploadedAgo[`${level}_video`] = getElapsedTime(
-                        spg.createdAt
-                      );
-                    } else {
-                      videoUploadedAgo[`${level}_video`] = null;
-                    }
-                  }
-
-                  // Fetch all possible mappings for this sessionPlan
-                  const relatedMappings = mappings.filter(
-                    (m) =>
-                      m.classScheduleId === cls.id &&
-                      m.termGroupId === termGroup.id &&
-                      m.termId === term.id &&
-                      m.sessionPlanId === spg.id
-                  );
-
-                  const mapping =
-                    relatedMappings[i] || relatedMappings[0] || null;
-
-                  entry.sessionPlan = {
-                    id: spg.id,
-                    groupName: spg.groupName,
-                    levels,
-                    beginner_video: spg.beginner_video,
-                    intermediate_video: spg.intermediate_video,
-                    advanced_video: spg.advanced_video,
-                    pro_video: spg.pro_video,
-                    banner: spg.banner,
-                    player: spg.player,
-                    videoUploadedAgo,
-                    ...(mapping
-                      ? {
-                        mapId: mapping.id,
-                        classScheduleId: mapping.classScheduleId,
-                        termGroupId: mapping.termGroupId,
-                        termId: mapping.termId,
-                        sessionPlanId: mapping.sessionPlanId,
-                        cancelSession: await (async () => {
-                          const cancelled = await getCancelledSessionBySessionPlanId(mapping.id, mapping.sessionPlanId);
-                          return cancelled?.status ? cancelled.cancelSession : {};
-                        })(),
-                        status: mapping.status,
-                        createdAt: mapping.createdAt,
-                        updatedAt: mapping.updatedAt,
-                      }
-                      : {}),
-                  };
-                } else {
-                  entry.sessionPlan = null;
+                // 🧩 Rest of your logic (unchanged)
+                let levels = {};
+                try {
+                  levels =
+                    typeof spg.levels === "string"
+                      ? JSON.parse(spg.levels)
+                      : spg.levels || {};
+                } catch {
+                  levels = {};
                 }
+
+                const allExercises = await SessionExercise.findAll({
+                  where: { createdBy: spg.createdBy },
+                });
+                const exerciseMap = allExercises.reduce((acc, ex) => {
+                  acc[ex.id] = ex;
+                  return acc;
+                }, {});
+
+                for (const levelKey of Object.keys(levels)) {
+                  for (const item of levels[levelKey]) {
+                    if (Array.isArray(item.sessionExerciseId)) {
+                      item.sessionExercises = item.sessionExerciseId
+                        .map((exId) => exerciseMap[exId])
+                        .filter(Boolean)
+                        .map((ex) => ({
+                          id: ex.id,
+                          title: ex.title,
+                          description: ex.description,
+                          duration: ex.duration,
+                          imageUrl: ex.imageUrl,
+                        }));
+                    } else {
+                      item.sessionExercises = [];
+                    }
+                  }
+                }
+
+                const getElapsedTime = (createdAt) => {
+                  const now = new Date();
+                  const created = new Date(createdAt);
+                  const diffMs = now - created;
+                  const diffSeconds = Math.floor(diffMs / 1000);
+                  const diffMinutes = Math.floor(diffSeconds / 60);
+                  const diffHours = Math.floor(diffMinutes / 60);
+                  const diffDays = Math.floor(diffHours / 24);
+                  if (diffDays > 0) return `${diffDays} day(s) ago`;
+                  if (diffHours > 0) return `${diffHours} hour(s) ago`;
+                  if (diffMinutes > 0) return `${diffMinutes} minute(s) ago`;
+                  return `${diffSeconds} second(s) ago`;
+                };
+
+                const videoUploadedAgo = {};
+                for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
+                  if (spg[`${level}_video`]) {
+                    videoUploadedAgo[`${level}_video`] = getElapsedTime(spg.createdAt);
+                  } else {
+                    videoUploadedAgo[`${level}_video`] = null;
+                  }
+                }
+
+                const mapping = relatedMappings[i] || relatedMappings[0] || null;
+
+                entry.sessionPlan = {
+                  id: spg.id,
+                  groupName: spg.groupName,
+                  levels,
+                  beginner_video: spg.beginner_video,
+                  intermediate_video: spg.intermediate_video,
+                  advanced_video: spg.advanced_video,
+                  pro_video: spg.pro_video,
+                  banner: spg.banner,
+                  player: spg.player,
+                  videoUploadedAgo,
+                  ...(mapping
+                    ? {
+                      mapId: mapping.id,
+                      classScheduleId: mapping.classScheduleId,
+                      termGroupId: mapping.termGroupId,
+                      termId: mapping.termId,
+                      sessionPlanId: mapping.sessionPlanId,
+                      cancelSession: await (async () => {
+                        const cancelled = await getCancelledSessionBySessionPlanId(
+                          mapping.id,
+                          mapping.sessionPlanId
+                        );
+                        return cancelled?.status ? cancelled.cancelSession : {};
+                      })(),
+                      status: mapping.status,
+                      createdAt: mapping.createdAt,
+                      updatedAt: mapping.updatedAt,
+                    }
+                    : {}),
+                };
+
+                // ✅ Only push if mapping exists
+                filteredSessions.push(entry);
               }
-              term.dataValues.sessionsMap = parsedSessionsMap;
+
+              // ✅ Replace with filtered sessions only
+              term.dataValues.sessionsMap = filteredSessions;
+
             }
           }
 
