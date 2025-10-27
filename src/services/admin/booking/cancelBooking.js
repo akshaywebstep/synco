@@ -62,13 +62,13 @@ exports.createCancelBooking = async ({ bookingId, cancelReason, additionalNote }
   try {
     const bookingType = "free"; // fixed for free trial
 
-    // Validate booking exists
+    // 1️⃣ Validate booking exists
     const booking = await Booking.findByPk(bookingId);
     if (!booking) {
       return { status: false, message: "Booking not found." };
     }
 
-    // Prevent duplicate cancellation
+    // 2️⃣ Prevent duplicate cancellation
     const existingCancel = await CancelBooking.findOne({
       where: { bookingId, bookingType },
     });
@@ -79,7 +79,14 @@ exports.createCancelBooking = async ({ bookingId, cancelReason, additionalNote }
       };
     }
 
-    // Record cancellation
+    // 3️⃣ Cleanup any previous rebooking info before cancelling
+    await booking.update({
+      reasonForNonAttendance: null,
+      additionalNote: null,
+      trialDate: booking.trialDate, // keep same date, or you can nullify if logic allows
+    });
+
+    // 4️⃣ Record new cancellation
     const cancelRequest = await CancelBooking.create({
       bookingId,
       bookingType,
@@ -87,20 +94,18 @@ exports.createCancelBooking = async ({ bookingId, cancelReason, additionalNote }
       additionalNote: additionalNote || null,
     });
 
-    // Update booking status to cancelled
+    // 5️⃣ Update booking status to cancelled
     await booking.update({ status: "cancelled" });
 
-    // ✅ Update class schedule capacity based on linked students
+    // 6️⃣ Update class schedule capacity based on linked students
     const studentMetaList = await BookingStudentMeta.findAll({
       where: { bookingTrialId: bookingId },
     });
 
     if (studentMetaList.length > 0) {
-      // Assuming booking has a classScheduleId
       const classSchedule = await ClassSchedule.findByPk(booking.classScheduleId);
 
       if (classSchedule) {
-        // Increase capacity by the number of students linked to this booking
         const incrementCapacity = studentMetaList.length;
         await classSchedule.update({
           capacity: classSchedule.capacity + incrementCapacity,
@@ -110,7 +115,7 @@ exports.createCancelBooking = async ({ bookingId, cancelReason, additionalNote }
 
     return {
       status: true,
-      message: "Free trial booking cancelled successfully.",
+      message: "Free trial booking cancelled successfully (with rebooking cleanup).",
       data: { cancelRequest, bookingDetails: booking },
     };
   } catch (error) {

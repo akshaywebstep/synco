@@ -4,6 +4,7 @@ const {
   BookingParentMeta,
   Venue,
   ClassSchedule,
+  CancelBooking,
 } = require("../../../models");
 const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
@@ -36,7 +37,7 @@ exports.createRebooking = async ({
       };
     }
 
-    // 3️⃣ Prevent duplicate rebooking (check if already has reasonForNonAttendance)
+    // 3️⃣ Prevent duplicate rebooking
     if (booking.reasonForNonAttendance) {
       return {
         status: false,
@@ -44,9 +45,14 @@ exports.createRebooking = async ({
       };
     }
 
-    // 4️⃣ Update booking with rebooking info
+    // 4️⃣ Delete entry from cancelBooking table (if exists)
+    await CancelBooking.destroy({
+      where: { bookingId },
+    });
+
+    // 5️⃣ Update booking with rebooking info
     await booking.update({
-      trialDate: trialDate,
+      trialDate,
       status: "rebooked",
       reasonForNonAttendance,
       additionalNote: additionalNote || null,
@@ -54,7 +60,7 @@ exports.createRebooking = async ({
 
     return {
       status: true,
-      message: "Booking updated with rebooking info successfully.",
+      message: "Booking updated and cancel record removed successfully.",
       data: booking,
     };
   } catch (error) {
