@@ -376,15 +376,8 @@ exports.getAllClasses = async (adminId) => {
             ],
           });
 
-          venue.dataValues.termGroups = termGroups;
-
-          const filteredTermGroups = [];
-
           for (const termGroup of termGroups) {
-            const filteredTerms = [];
-
             for (const term of termGroup.terms || []) {
-              // Parse exclusionDates
               if (typeof term.exclusionDates === "string") {
                 try {
                   term.dataValues.exclusionDates = JSON.parse(term.exclusionDates);
@@ -393,7 +386,6 @@ exports.getAllClasses = async (adminId) => {
                 }
               }
 
-              // Parse sessionsMap
               let parsedSessionsMap = [];
               if (typeof term.sessionsMap === "string") {
                 try {
@@ -405,6 +397,7 @@ exports.getAllClasses = async (adminId) => {
                 parsedSessionsMap = term.sessionsMap || [];
               }
 
+              // ✅ New array to hold only sessions that exist in ClassScheduleTermMap
               const filteredSessions = [];
 
               for (let i = 0; i < parsedSessionsMap.length; i++) {
@@ -444,7 +437,7 @@ exports.getAllClasses = async (adminId) => {
 
                 if (relatedMappings.length === 0) continue; // skip sessions not mapped
 
-                // ✅ Parse levels safely
+                // 🧩 Rest of your logic (unchanged)
                 let levels = {};
                 try {
                   levels =
@@ -455,11 +448,9 @@ exports.getAllClasses = async (adminId) => {
                   levels = {};
                 }
 
-                // Load exercises
                 const allExercises = await SessionExercise.findAll({
                   where: { createdBy: spg.createdBy },
                 });
-
                 const exerciseMap = allExercises.reduce((acc, ex) => {
                   acc[ex.id] = ex;
                   return acc;
@@ -484,7 +475,6 @@ exports.getAllClasses = async (adminId) => {
                   }
                 }
 
-                // Helper for elapsed time
                 const getElapsedTime = (createdAt) => {
                   const now = new Date();
                   const created = new Date(createdAt);
@@ -501,9 +491,11 @@ exports.getAllClasses = async (adminId) => {
 
                 const videoUploadedAgo = {};
                 for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
-                  videoUploadedAgo[`${level}_video`] = spg[`${level}_video`]
-                    ? getElapsedTime(spg.createdAt)
-                    : null;
+                  if (spg[`${level}_video`]) {
+                    videoUploadedAgo[`${level}_video`] = getElapsedTime(spg.createdAt);
+                  } else {
+                    videoUploadedAgo[`${level}_video`] = null;
+                  }
                 }
 
                 const mapping = relatedMappings[i] || relatedMappings[0] || null;
@@ -540,28 +532,28 @@ exports.getAllClasses = async (adminId) => {
                     : {}),
                 };
 
+                // ✅ Only push if mapping exists
                 filteredSessions.push(entry);
               }
 
-              // ✅ Only keep term if it has valid sessions
-              if (filteredSessions.length > 0) {
-                term.dataValues.sessionsMap = filteredSessions;
-                filteredTerms.push(term);
-              }
+              // ✅ Replace with filtered sessions only
+              term.dataValues.sessionsMap = filteredSessions;
             }
 
-            // ✅ Only keep termGroup if it has valid terms
-            if (filteredTerms.length > 0) {
-              termGroup.terms = filteredTerms;
-              filteredTermGroups.push(termGroup);
-            }
+            // ✅ Remove empty terms
+            termGroup.terms = termGroup.terms.filter(
+              (t) => (t.dataValues.sessionsMap || []).length > 0
+            );
           }
 
-          // ✅ Replace termGroups with fully filtered ones
-          termGroups = filteredTermGroups;
+          // ✅ Remove empty term groups
+          const filteredTermGroups = termGroups.filter(
+            (tg) => (tg.terms || []).length > 0
+          );
 
-          venue.dataValues.termGroups = termGroups;
+          venue.dataValues.termGroups = filteredTermGroups;
         }
+
       } else {
         // venue is null — avoid crash
         cls.dataValues.venue = null;
