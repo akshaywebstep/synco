@@ -158,6 +158,36 @@ exports.createBooking = async (req, res) => {
           message: "Parent email is required.",
         });
       }
+
+      const rawEmail = parent.parentEmail;
+      const emailvalid = rawEmail.trim().toLowerCase();
+
+      // 🚫 Check for spaces
+      if (/\s/.test(rawEmail)) {
+        return res.status(400).json({
+          status: false,
+          message: `Parent email "${rawEmail}" should not contain spaces.`,
+        });
+      }
+
+      // 🚫 Check for invalid characters
+      const invalidCharRegex = /[^a-zA-Z0-9@._\-+]/;
+      if (invalidCharRegex.test(emailvalid)) {
+        return res.status(400).json({
+          status: false,
+          message: `Parent email "${rawEmail}" contains invalid characters.`,
+        });
+      }
+
+      // 🚫 Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
+      if (!emailRegex.test(emailvalid)) {
+        return res.status(400).json({
+          status: false,
+          message: `Parent email "${rawEmail}" is not a valid email address format.`,
+        });
+      }
+
       if (!parent.parentPhoneNumber) {
         return res.status(400).json({
           status: false,
