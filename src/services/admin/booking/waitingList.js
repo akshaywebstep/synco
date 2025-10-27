@@ -1039,7 +1039,8 @@ exports.removeWaitingList = async ({ bookingId, reason, notes }) => {
     // 2. Update booking table -> status + bookingType
     booking.status = "removed";
     booking.bookingType = "removed";
-    await booking.save();
+    serviceType: "weekly class trial",
+      await booking.save();
 
     // 3. Insert record in CancelBooking
     await CancelBooking.create({
@@ -1056,6 +1057,7 @@ exports.removeWaitingList = async ({ bookingId, reason, notes }) => {
       data: {
         bookingId: booking.id,
         status: "removed",
+        serviceType: "weekly class trial",
         bookingType: "removed",
         removedReason: reason,
         removedNotes: notes || null,

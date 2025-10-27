@@ -882,8 +882,8 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
 
     const bookings = await Booking.findAll({
       where: {
-         serviceType: "weekly class membership",
         ...whereBooking, // spread the filters correctly
+        serviceType: "weekly class membership",
       },
       order: [["id", "DESC"]],
       include: [
@@ -1286,8 +1286,8 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
     // 🔹 Fetch bookings
     const bookings = await Booking.findAll({
       where: {
-         serviceType: "weekly class membership",
         ...whereBooking, // spread the filters correctly
+        serviceType: "weekly class membership",
       },
       // where: whereBooking,
       order: [["id", "DESC"]],
@@ -2009,7 +2009,7 @@ exports.addToWaitingListService = async (data, adminId) => {
       {
         bookingType: "waiting list",
         status: "waiting list",
-        serviceType: data.serviceType || "weekly class membership",
+        serviceType: data.serviceType || "weekly class trial",
         venueId: data.venueId,
         classScheduleId: data.classScheduleId,
         startDate: data.startDate || booking.startDate,
@@ -2158,9 +2158,9 @@ exports.getBookingsById = async (bookingId) => {
   try {
     const booking = await Booking.findOne({
       where: {
-         serviceType: "weekly class membership",
         id: bookingId,
         bookingType: { [Op.or]: ["waiting list", "paid"] }, // <-- both types
+        serviceType: "weekly class membership",
       },
       include: [
         {
@@ -2287,6 +2287,7 @@ exports.getBookingsById = async (bookingId) => {
       bookingId: booking.id,
       bookedId: booking.bookingId,
       freezeBooking: booking.freezeBooking,
+      serviceType:booking.serviceType,
       status: booking.status,
       startDate: booking.startDate,
       dateBooked: booking.createdAt,

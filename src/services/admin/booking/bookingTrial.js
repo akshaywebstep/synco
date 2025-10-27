@@ -285,8 +285,8 @@ exports.getAllBookings = async (filters = {}) => {
     const bookings = await Booking.findAll({
       order: [["id", "DESC"]],
       where: {
-        serviceType: "weekly class trial",
         ...trialWhere, // spread the filters correctly
+        serviceType: "weekly class trial",
       },
       include: [
         {
@@ -547,9 +547,9 @@ exports.getBookingById = async (id, bookedBy, adminId) => {
   try {
     const booking = await Booking.findOne({
       where: {
-         serviceType: "weekly class trial",
         bookedBy: Number(bookedBy),
         id, // spread the filters correctly
+        serviceType: "weekly class trial",
       },
       include: [
         {

@@ -676,6 +676,7 @@ exports.getFullCancelBookingById = async (id, adminId) => {
       bookingId: booking.bookingId,
       classScheduleId: booking.classScheduleId,
       startDate: booking.startDate,
+      serviceType:booking.serviceType,
       bookedBy: booking.bookedByAdmin || null,
       className: booking.className,
       classTime: booking.classTime,

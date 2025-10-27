@@ -13,7 +13,6 @@ const {
 const { Op } = require("sequelize");
 const { sequelize } = require("../../../models");
 
-
 exports.getAllStudentsListing = async (filters = {}) => {
   try {
     const { bookedBy, paymentPlanId, classScheduleId } = filters;
@@ -663,8 +662,6 @@ exports.updateBookingWithStudents = async (bookingId, payload, transaction) => {
   }
 };
 
-
-
 // AccountInformationService.getBookingsById
 exports.getBookingsById = async (bookingId, filters = {}) => {
   try {
@@ -809,6 +806,7 @@ exports.getBookingsById = async (bookingId, filters = {}) => {
         status: booking.status,
         startDate: booking.startDate,
         dateBooked: booking.createdAt,
+        serviceType: booking.serviceType,
         students,
         parents,
         emergency,
