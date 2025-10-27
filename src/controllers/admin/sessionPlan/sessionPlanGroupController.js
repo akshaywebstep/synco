@@ -347,6 +347,20 @@ exports.duplicateSessionPlanGroup = async (req, res) => {
       { banner, ...uploadFields },
       createdBy
     );
+    await createNotification(
+      req,
+      "Session Plan Group Duplicated",
+      `Session Plan Group '${group.groupName}' (New ID: ${newGroupId}) was duplicated by ${req?.admin?.firstName || "Admin"}.`,
+      "System"
+    );
+
+    await logActivity({
+      panel: PANEL,
+      module: MODULE,
+      adminId: createdBy,
+      action: "duplicate",
+      description: `Duplicated session plan group: ${group.groupName} (Old ID: ${id}, New ID: ${newGroupId})`,
+    });
 
     // STEP 4: Build response
     const responseData = {
@@ -503,6 +517,21 @@ exports.createSessionPlanGroup = async (req, res) => {
     const updatePayload = { banner, ...uploadFields };
     await SessionPlanGroupService.updateSessionPlanGroup(sessionPlanId, updatePayload, createdBy);
 
+    // ✅ NEW: Create notification & activity log
+    await createNotification(
+      req,
+      "Session Plan Group Created",
+      `A new Session Plan Group '${result.data.groupName}' (ID: ${sessionPlanId}) was created by ${req?.admin?.firstName || "Admin"}.`,
+      "System"
+    );
+
+    await logActivity({
+      panel: PANEL,
+      module: MODULE,
+      adminId: createdBy,
+      action: "create",
+      description: `Created new session plan group: ${result.data.groupName} (ID: ${sessionPlanId})`,
+    });
     // STEP 5: Build response
     const responseData = {
       id: sessionPlanId,
