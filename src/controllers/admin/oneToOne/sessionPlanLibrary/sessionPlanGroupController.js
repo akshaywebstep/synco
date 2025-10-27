@@ -196,7 +196,7 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
     try {
       await SessionPlanConfig.create({
         sessionPlanGroupId: sessionPlanId,
-        type: "one_to_one", // dynamic type if needed later
+        type: "one_to_one", 
         createdBy,
         pinned: 1,
       });
@@ -351,7 +351,6 @@ exports.getAllSessionPlanGroupStructure = async (req, res) => {
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };
-
 
 // exports.getSessionPlanGroupStructureById = async (req, res) => {
 //   try {

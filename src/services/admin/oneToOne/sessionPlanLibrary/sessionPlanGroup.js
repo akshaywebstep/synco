@@ -111,7 +111,6 @@ exports.getSessionPlanConfigById = async (id, createdBy) => {
   }
 };
 
-
 exports.getAllSessionPlanConfig = async ({
   order = "ASC",
   createdBy,
@@ -203,10 +202,6 @@ exports.getAllSessionPlanConfig = async ({
     return { status: false, message: error.message };
   }
 };
-
-
-
-
 
 exports.repinSessionPlanGroup = async (id, createdBy, pinned) => {
   const t = await SessionPlanGroup.sequelize.transaction();
