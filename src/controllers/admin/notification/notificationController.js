@@ -217,13 +217,13 @@ exports.getAllNotifications = async (req, res) => {
     console.log(`🔐 Admin Role: ${req.admin?.role}`);
   }
 
-  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
   try {
     // ✅ For normal notifications, still exclude own-created if required
     const notificationResult = await notificationModel.getAllNotifications(
-      superAdminId,
-      // adminId,
+      // superAdminId,
+      adminId,
       category,
       { excludeOwn: true }
     );

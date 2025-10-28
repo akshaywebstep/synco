@@ -592,6 +592,7 @@ exports.addToWaitingList = async (req, res) => {
     const adminId = req.admin?.id;
     const data = req.body;
 
+    // 🔹 Validate admin
     if (!adminId) {
       await t.rollback();
       console.warn("⚠️ [Controller] Admin not found in request");
@@ -600,6 +601,19 @@ exports.addToWaitingList = async (req, res) => {
         .json({ status: false, message: "Admin is required.", data: null });
     }
     console.log("✅ [Controller] Admin validated:", adminId);
+
+    // 🔹 Validate class schedule
+    if (!data.classScheduleId) {
+      await t.rollback();
+      console.warn("⚠️ [Controller] Missing classScheduleId in payload");
+      return res
+        .status(400)
+        .json({
+          status: false,
+          message: "Class schedule is required.",
+          data: null,
+        });
+    }
 
     // ✅ Call service to create waiting list booking
     console.log("🔍 [Controller] Calling service addToWaitingListService");

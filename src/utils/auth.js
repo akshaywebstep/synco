@@ -77,7 +77,6 @@ const getMainSuperAdminOfAdmin = async (adminId, includeSuperAdmin = false) => {
                 };
             }
 
-
             // 🟢 Case 2: Admin has an explicitly linked super admin
             if (admin.superAdminId) {
                 return await findSuperAdmin(admin.superAdminId, visited);
@@ -108,7 +107,20 @@ const getMainSuperAdminOfAdmin = async (adminId, includeSuperAdmin = false) => {
     }
 };
 
+// exports.getChildAdminIds = async (superAdminId) => {
+//   if (!superAdminId) return [];
+
+//   const children = await Admin.findAll({
+//     where: { parentAdminId: superAdminId }, // adjust field name if your column differs
+//     attributes: ['id'],
+//     raw: true,
+//   });
+
+//   return children.map((c) => c.id);
+// };
+
 module.exports = {
     generatePasswordHint,
-    getMainSuperAdminOfAdmin
+    getMainSuperAdminOfAdmin,
+    // getChildAdminIds,
 };

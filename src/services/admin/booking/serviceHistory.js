@@ -664,11 +664,20 @@ exports.updateBooking = async (payload, adminId, id) => {
     booking.trialDate = null;
     booking.bookedBy = adminId || booking.bookedBy;
 
-    if (!booking.serviceType || booking.serviceType.trim() === "") {
-      booking.serviceType = "weekly class membership";
+    if (!booking.serviceType || booking.serviceType.trim() === "weekly class trial") {
+      await booking.update(
+        { serviceType: "weekly class membership" },
+        { transaction: t }
+      );
     }
 
-    await booking.save({ transaction: t });
+    // 🔹 Convert "rebooked" bookings to "active" when upgraded to membership
+    const isMembership =
+      booking.paymentPlanId || booking.serviceType?.toLowerCase().includes("membership");
+
+    if (booking.status === "rebooked" && isMembership) {
+      booking.status = "active";
+    }
 
     // 🔹 Step 3: Update Students, Parents, and Emergency Contacts
     if (Array.isArray(payload.students)) {

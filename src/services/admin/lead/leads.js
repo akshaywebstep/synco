@@ -1106,11 +1106,18 @@ exports.getAllReferallLeads = async (filters = {}) => {
   }
 };
 
-exports.getAllOthersLeads = async (filters = {}) => {
+exports.getAllOthersLeads = async (assignedAgentId,filters = {}) => {
   try {
+     if (!assignedAgentId || isNaN(Number(assignedAgentId))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
     const allLeads = await Lead.findAll({
       order: [["createdAt", "ASC"]],
-      where: { status: "others" },
+      where: { assignedAgentId: Number(assignedAgentId),status: "others" },
       include: [
         {
           model: Admin,
@@ -1434,9 +1441,8 @@ exports.getAllOthersLeads = async (filters = {}) => {
 
     return {
       status: true,
-      message: "Leads with nearest venues retrieved",
-      data: leadsWithNearestVenue,
-      // allVenues,
+      message: "Other leads retrieved successfully",
+      data: formattedLeads,
       analytics,
     };
   } catch (error) {
@@ -1445,9 +1451,17 @@ exports.getAllOthersLeads = async (filters = {}) => {
   }
 };
 
-exports.getAllLeads = async (filters = {}) => {
+exports.getAllLeads = async (assignedAgentId, filters = {}) => {
   try {
+    if (!assignedAgentId || isNaN(Number(assignedAgentId))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
     const allLeads = await Lead.findAll({
+      where: { assignedAgentId: Number(assignedAgentId) },
       order: [["createdAt", "ASC"]],
       include: [
         {
@@ -1770,13 +1784,14 @@ exports.getAllLeads = async (filters = {}) => {
     // ✅ Return formatted leads
     const leadsWithNearestVenue = formattedLeads.filter((lead) => lead.nearestVenues.length > 0);
 
+    // ✅ Return all leads (even if nearestVenues is empty)
     return {
       status: true,
       message: "Leads with nearest venues retrieved",
-      data: leadsWithNearestVenue,
-      // allVenues,
+      data: formattedLeads,
       analytics,
     };
+
   } catch (error) {
     console.error("❌ getAllLeads Error:", error.message);
     return { status: false, message: error.message };
