@@ -536,6 +536,7 @@ exports.createSessionPlanGroup = async (req, res) => {
     const responseData = {
       id: sessionPlanId,
       groupName: result.data.groupName,
+      type: "weekly_classes",
       player: result.data.player,
       sortOrder: result.data.sortOrder || 0,
       createdAt: result.data.createdAt,

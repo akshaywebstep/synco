@@ -39,26 +39,15 @@ exports.createSessionPlanGroup = async (data) => {
 
 exports.getSessionPlanConfigById = async (id, createdBy) => {
   try {
-    console.log("🟢 Fetching SessionPlanConfig by ID:", id, "for createdBy:", createdBy);
+    console.log("🟢 Fetching SessionPlanGroup by ID:", id, "for createdBy:", createdBy);
 
-    // STEP 1 — Fetch the SessionPlanConfig record
-    const config = await SessionPlanConfig.findOne({
-      where: { id, createdBy },
-      attributes: ["id", "type", "pinned", "sessionPlanGroupId", "createdAt", "updatedAt"],
-    });
-
-    if (!config) {
-      console.warn(`⚠️ Session Plan Config not found for ID: ${id}`);
-      return { status: false, message: "Session Plan Config not found" };
-    }
-    console.log("🟢 Found config:", config.toJSON());
-
-    // STEP 2 — Fetch the related SessionPlanGroup
+    // STEP 1 — Fetch SessionPlanGroup directly (type = one_to_one)
     const group = await SessionPlanGroup.findOne({
-      where: { id: config.sessionPlanGroupId, createdBy },
+      where: { id, createdBy, type: "one_to_one" }, // ✅ filter directly by type
       attributes: [
         "id",
         "groupName",
+        "type",
         "banner",
         "beginner_video",
         "intermediate_video",
@@ -76,101 +65,80 @@ exports.getSessionPlanConfigById = async (id, createdBy) => {
     });
 
     if (!group) {
-      console.warn(`⚠️ Session Plan Group not found for config ID: ${id}`);
-      return { status: false, message: "Session Plan Group not found for this config" };
+      console.warn(`⚠️ Session Plan Group (type='one_to_one') not found for ID: ${id}`);
+      return {
+        status: false,
+        message: "Session Plan Group not found or not of type 'one_to_one'.",
+      };
     }
+
     console.log("🟢 Found group:", group.toJSON());
 
-    // STEP 3 — Parse levels JSON
+    // STEP 2 — Parse levels JSON safely
     let parsedLevels = {};
     try {
-      parsedLevels = typeof group.levels === "string" ? JSON.parse(group.levels) : group.levels || {};
+      parsedLevels =
+        typeof group.levels === "string"
+          ? JSON.parse(group.levels)
+          : group.levels || {};
     } catch (err) {
       console.warn("⚠️ Failed to parse levels JSON:", err.message);
       parsedLevels = {};
     }
-    console.log("🟢 Parsed levels:", parsedLevels);
 
-    // STEP 4 — Fetch exercises
+    // STEP 3 — Fetch all exercises created by this admin/user
     const exercises = await SessionExercise.findAll({ where: { createdBy } });
     console.log(`🟢 Fetched ${exercises.length} exercises`);
 
+    // STEP 4 — Create a quick lookup map for exercises
     const exerciseMap = exercises.reduce((acc, item) => {
       acc[item.id] = item.toJSON();
       return acc;
     }, {});
-    console.log("🟢 Created exerciseMap keys:", Object.keys(exerciseMap));
 
-    // STEP 5 — Enrich each level with full exercise data
+    // STEP 5 — Enrich each level with exercise details
     Object.keys(parsedLevels).forEach((levelKey) => {
       let levelArray = parsedLevels[levelKey];
       if (!Array.isArray(levelArray)) levelArray = levelArray ? [levelArray] : [];
 
       parsedLevels[levelKey] = levelArray.map((entry) => {
-        const ids = Array.isArray(entry.sessionExerciseId) ? entry.sessionExerciseId : [];
-        const sessionExercises = ids.map((id) => exerciseMap[id]).filter(Boolean);
-        console.log(`🟢 Level '${levelKey}' enriched with ${sessionExercises.length} exercises`);
-        return {
-          ...entry,
-          sessionExercises,
-        };
+        const ids = Array.isArray(entry.sessionExerciseId)
+          ? entry.sessionExerciseId
+          : [];
+        const sessionExercises = ids
+          .map((id) => exerciseMap[id])
+          .filter(Boolean);
+
+        return { ...entry, sessionExercises };
       });
     });
 
-    // ✅ Final response: attach enriched levels inside sessionPlanGroup
+    // ✅ STEP 6 — Build final response
     return {
       status: true,
       data: {
-        ...config.toJSON(),
-        group: {
-          ...group.toJSON(),
-          levels: parsedLevels,
-        },
+        ...group.toJSON(),
+        levels: parsedLevels,
       },
     };
   } catch (error) {
-    console.error("❌ Error fetching Session Plan Config with Group:", error);
+    console.error("❌ Error fetching Session Plan Group:", error);
     return { status: false, message: error.message };
   }
 };
 
-exports.getAllSessionPlanConfig = async ({
-  order = "ASC",
-  createdBy,
-} = {}) => {
+exports.getAllSessionPlanConfig = async ({ order = "ASC", createdBy } = {}) => {
   try {
-    console.log("🟢 Fetching session plan configs for createdBy:", createdBy);
+    console.log("🟢 Fetching all one_to_one SessionPlanGroups for createdBy:", createdBy);
 
-    // Fetch all session plan configs of type "one_to_one"
-    const configs = await SessionPlanConfig.findAll({
-      where: { createdBy, type: "one_to_one" },
-      attributes: [
-        "id",
-        "sessionPlanGroupId",
-        "type",
-        "createdBy",
-        "pinned",
-        "createdAt",
-        "updatedAt",
-      ],
-    });
-    console.log(`🟢 Fetched ${configs.length} one_to_one configs`);
-
-    if (!configs.length) {
-      console.log("⚠️ No configs found for this user");
-      return { status: true, data: { configs: [], groups: [], exerciseMap: {} } };
-    }
-
-    // Extract group IDs linked to the configs
-    const groupIds = configs.map((config) => config.sessionPlanGroupId);
-    console.log("🟢 Linked group IDs:", groupIds);
-
-    // Fetch only groups linked to these configs
+    // STEP 1 — Fetch all session plan groups with type = "one_to_one"
     const groups = await SessionPlanGroup.findAll({
-      where: { id: groupIds },
+      where: { createdBy, type: "one_to_one" },
+      order: [["createdAt", order.toUpperCase() === "DESC" ? "DESC" : "ASC"]],
       attributes: [
         "id",
         "groupName",
+        "type",
         "banner",
         "beginner_video",
         "intermediate_video",
@@ -182,76 +150,105 @@ exports.getAllSessionPlanConfig = async ({
         "intermediate_upload",
         "pro_upload",
         "advanced_upload",
+        "pinned",
         "createdAt",
         "updatedAt",
       ],
     });
-    console.log(`🟢 Fetched ${groups.length} groups linked to configs`);
 
-    // Fetch exercises
+    console.log(`🟢 Fetched ${groups.length} one_to_one SessionPlanGroups`);
+
+    if (!groups.length) {
+      return {
+        status: true,
+        data: { groups: [], exerciseMap: {} },
+      };
+    }
+
+    // STEP 2 — Fetch exercises created by the same user/admin
     const sessionExercises = await SessionExercise.findAll({ where: { createdBy } });
     console.log(`🟢 Fetched ${sessionExercises.length} exercises`);
 
+    // STEP 3 — Create a lookup map for exercises
     const exerciseMap = sessionExercises.reduce((acc, exercise) => {
       acc[exercise.id] = exercise.toJSON();
       return acc;
     }, {});
-    console.log("🟢 Created exerciseMap with keys:", Object.keys(exerciseMap));
+    console.log("🟢 Created exerciseMap keys:", Object.keys(exerciseMap));
 
-    // Parse group levels
+    // STEP 4 — Parse levels and enrich with exercise data
     const parsedGroups = groups.map((group) => {
       let parsedLevels = {};
-      if (group.levels) {
-        try {
-          parsedLevels = typeof group.levels === "string" ? JSON.parse(group.levels) : group.levels;
-        } catch (err) {
-          console.error(`⚠️ Failed to parse levels for group ID ${group.id}`, err);
-        }
+      try {
+        parsedLevels =
+          typeof group.levels === "string" ? JSON.parse(group.levels) : group.levels || {};
+      } catch (err) {
+        console.warn(`⚠️ Failed to parse levels for group ID ${group.id}:`, err.message);
+        parsedLevels = {};
       }
+
+      Object.keys(parsedLevels).forEach((levelKey) => {
+        let levelArray = parsedLevels[levelKey];
+        if (!Array.isArray(levelArray)) levelArray = levelArray ? [levelArray] : [];
+
+        parsedLevels[levelKey] = levelArray.map((entry) => {
+          const ids = Array.isArray(entry.sessionExerciseId)
+            ? entry.sessionExerciseId
+            : [];
+          const sessionExercises = ids.map((id) => exerciseMap[id]).filter(Boolean);
+          return { ...entry, sessionExercises };
+        });
+      });
+
       return { ...group.toJSON(), levels: parsedLevels };
     });
-    console.log("🟢 Parsed levels for all groups");
 
+    console.log("🟢 Parsed and enriched all levels for one_to_one groups");
+
+    // ✅ Final response
     return {
       status: true,
       data: {
-        configs,       // only "one_to_one" configs
-        groups: parsedGroups, // only groups linked to the configs
+        groups: parsedGroups,
         exerciseMap,
       },
     };
   } catch (error) {
-    console.error("❌ Fetch Error:", error);
+    console.error("❌ Error fetching one_to_one SessionPlanGroups:", error);
     return { status: false, message: error.message };
   }
 };
 
 exports.updateSessionPlanConfig = async (id, updatePayload, createdBy) => {
   try {
-    const sessionConfig = await SessionPlanConfig.findOne({
+    // STEP 1 — Find the session plan group by ID and createdBy
+    const sessionGroup = await SessionPlanGroup.findOne({
       where: { id, createdBy },
     });
 
-    if (!sessionConfig) {
+    if (!sessionGroup) {
       return { status: false, message: "Session Plan Group not found." };
     }
-    await sessionConfig.update(updatePayload);
 
+    // STEP 2 — Update the record
+    await sessionGroup.update(updatePayload);
+
+    // STEP 3 — Return the updated data
     return {
       status: true,
-      message: "Updated successfully",
+      message: "Session Plan Group updated successfully.",
       data: sessionGroup,
     };
   } catch (error) {
-    console.error("❌ Service update error:", error);
-    return { status: false, message: "Internal server error" };
+    console.error("❌ Error updating Session Plan Group:", error);
+    return { status: false, message: "Internal server error." };
   }
 };
 
 exports.deleteSessionPlanConfig = async (id, deletedBy) => {
   try {
     // ✅ Find group by ID (paranoid-enabled model)
-    const group = await SessionPlanConfig.findOne({
+    const group = await SessionPlanGroup.findOne({
       where: { id },
     });
 
@@ -274,7 +271,7 @@ exports.deleteSessionPlanConfig = async (id, deletedBy) => {
 
 exports.deleteLevelFromSessionPlanConfig = async (id, levelKey, createdBy) => {
   try {
-    const sessionGroup = await SessionPlanConfig.findOne({
+    const sessionGroup = await SessionPlanGroup.findOne({
       where: { id, createdBy },
       raw: true,
     });

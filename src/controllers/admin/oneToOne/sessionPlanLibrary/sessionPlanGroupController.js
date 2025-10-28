@@ -168,15 +168,14 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
 
     const uploadFields = await attachUploadsAndVideos();
 
-    // ===============================
-    // STEP 4: Create DB entry (no update)
-    // ===============================
+    // STEP 4: Create entry directly in SessionPlanGroup (no SessionPlanConfig)
     const payload = {
       groupName,
       levels: parsedLevels,
       player,
       createdBy,
       banner,
+      type: "one_to_one", // ✅ Save type directly
       ...uploadFields,
     };
 
@@ -185,31 +184,16 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
     if (!result.status)
       return res.status(400).json({
         status: false,
-        message:
-          result.message || "Failed to create session plan group.",
+        message: result.message || "Failed to create session plan group.",
       });
 
     const sessionPlanId = result.data.id;
 
-    // ✅ Create entry in SessionPlanConfig
-    const { SessionPlanConfig } = require("../../../../models");
-    try {
-      await SessionPlanConfig.create({
-        sessionPlanGroupId: sessionPlanId,
-        type: "one_to_one", 
-        createdBy,
-        pinned: 1,
-      });
-    } catch (err) {
-      console.error("Failed to create SessionPlanConfig:", err.message);
-    }
-
-    // ===============================
     // STEP 5: Response
-    // ===============================
     const responseData = {
       id: sessionPlanId,
       groupName: result.data.groupName,
+      type: result.data.type,
       player: result.data.player,
       sortOrder: result.data.sortOrder || 0,
       createdAt: result.data.createdAt,
@@ -225,7 +209,6 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
       pro_video: uploadFields.pro_video,
       levels: parsedLevels,
     };
-
     return res.status(201).json({
       status: true,
       message: "Session Plan Group created successfully.",
@@ -274,7 +257,7 @@ exports.getSessionPlanGroupStructureById = async (req, res) => {
     }
 
     // … rest of your code (exercise enrichment, video info, etc.)
-    
+
     return res.status(200).json({
       status: true,
       message: "Fetched session plan group successfully.",

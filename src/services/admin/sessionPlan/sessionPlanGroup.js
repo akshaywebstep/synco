@@ -117,14 +117,17 @@ exports.getAllSessionPlanGroups = async ({
     }
 
     const groups = await SessionPlanGroup.findAll({
-      where: { createdBy: Number(createdBy) },
+      where: { createdBy: Number(createdBy),
+         type: "weekly_classes",
+       },
       order: [[orderBy, order]],
       attributes: [
         "id",
         "groupName",
         "sortOrder",
         "banner",
-        // "pinned",
+        "pinned",
+        "type",
         "beginner_video",
         "intermediate_video",
         "pro_video",
@@ -195,12 +198,15 @@ exports.getSessionPlanGroupById = async (id, createdBy) => {
     }
 
     const group = await SessionPlanGroup.findOne({
-      where: { id, createdBy: Number(createdBy) },
+      where: { id, createdBy: Number(createdBy),
+         type: "weekly_classes",
+       },
       attributes: [
         "id",
         "groupName",
         "banner",
-        // "pinned",
+        "pinned",
+        "type",
         // "video",
         "beginner_video",
         "intermediate_video",

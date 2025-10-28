@@ -814,7 +814,7 @@ exports.getAllVenues = async (createdBy) => {
                     "advanced_video", "banner", "player", "beginner_upload",
                     "intermediate_upload",
                     "pro_upload",
-                    "advanced_upload",],
+                    "advanced_upload","type","pinned"],
                 });
 
                 if (spg) {
@@ -1297,7 +1297,7 @@ exports.getVenueById = async (id, createdBy) => {
                 "pro_video", "banner", "beginner_upload",
                 "intermediate_upload",
                 "pro_upload",
-                "advanced_upload", "player", "createdBy", "createdAt"],
+                "advanced_upload", "player","type","pinned", "createdBy", "createdAt"],
             });
 
             if (spg) {

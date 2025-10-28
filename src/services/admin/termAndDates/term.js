@@ -188,7 +188,7 @@ exports.getAllTerms = async (adminId) => {
       attributes: ["id", "groupName", "levels", "beginner_video",
         "intermediate_video",
         "pro_video",
-        "advanced_video", "banner", "player"],
+        "advanced_video", "banner", "player","type","pinned"],
       raw: true,
     });
 
@@ -306,7 +306,7 @@ exports.getTermById = async (id, adminId) => {
       attributes: ["id", "groupName", "levels", "beginner_video",
         "intermediate_video",
         "pro_video",
-        "advanced_video", "banner", "player"],
+        "advanced_video", "banner", "player","type","pinned"],
       raw: true,
     });
 

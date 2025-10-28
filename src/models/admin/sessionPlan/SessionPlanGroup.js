@@ -57,6 +57,15 @@ const SessionPlanGroup = sequelize.define(
       allowNull: false,
       defaultValue: 0,
     },
+    pinned: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    type: {
+      type: DataTypes.ENUM("weekly_classes","one_to_one", "birthday", "library"),
+      allowNull: false,
+      defaultValue: 'weekly_classes',
+    },
     // ✅ Foreign key to admins table for creation
     createdBy: {
       type: DataTypes.INTEGER.UNSIGNED,
@@ -86,13 +95,6 @@ const SessionPlanGroup = sequelize.define(
       onUpdate: "CASCADE",
       onDelete: "SET NULL",
     },
-
-    // add new feild for one to one ->
-    // pinned: {
-    //   type: DataTypes.BOOLEAN,
-    //   defaultValue: false,
-    // },
-
   },
   {
     tableName: "session_plan_groups",
