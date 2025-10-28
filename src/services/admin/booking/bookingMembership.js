@@ -831,6 +831,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
           "frozen",
           "waiting list",
           "request_to_cancel",
+          "	rebooked",
           "removed",], // only these statuses
       },
     };

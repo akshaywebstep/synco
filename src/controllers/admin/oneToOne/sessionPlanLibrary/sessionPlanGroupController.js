@@ -352,6 +352,201 @@ exports.getAllSessionPlanGroupStructure = async (req, res) => {
   }
 };
 
+exports.updateSessionPlanGroup = async (req, res) => {
+  const { id } = req.params;
+  const { groupName, levels, player } = req.body;
+  const adminId = req.admin?.id;
+  const files = req.files || {};
+
+  if (!adminId) {
+    return res.status(401).json({ status: false, message: "Unauthorized: Admin ID not found." });
+  }
+
+  console.log("STEP 1: Received request", { id, groupName, levels, player, files: Object.keys(files) });
+
+  try {
+    // STEP 2: Fetch existing group
+    const existingResult = await SessionPlanGroupService.getSessionPlanConfigById(id, adminId);
+    if (!existingResult.status || !existingResult.data) {
+      console.log("STEP 2: Session Plan Group not found");
+      return res.status(404).json({ status: false, message: "Session Plan Group not found" });
+    }
+    const existing = existingResult.data;
+    console.log("STEP 2: Existing group fetched:", existing);
+
+    // STEP 3: Parse & merge levels
+    let parsedLevels = existing.levels || {};
+    if (levels) {
+      parsedLevels = typeof levels === "string" ? JSON.parse(levels) : levels;
+      parsedLevels = { ...existing.levels, ...parsedLevels };
+    }
+    console.log("STEP 3: Parsed levels:", parsedLevels);
+
+    // STEP 4: Helper to save files
+    const saveFileIfExists = async (file, type, oldUrl = null, level = null) => {
+      if (!file) return oldUrl || null;
+
+      const path = require("path");
+      const fs = require("fs").promises;
+
+      const uniqueId = Date.now() + "_" + Math.floor(Math.random() * 1e9);
+      const ext = path.extname(file.originalname || "file");
+      const fileName = uniqueId + ext;
+
+      const localPath = path.join(
+        process.cwd(),
+        "uploads",
+        "temp",
+        "admin",
+        `${adminId}`,
+        "session-plan-group",
+        `${id}`,
+        type,
+        level || "",
+        fileName
+      );
+
+      await fs.mkdir(path.dirname(localPath), { recursive: true });
+      await saveFile(file, localPath);
+
+      let uploadedUrl = null;
+      try {
+        const relativeFtpPath = path.relative(path.join(process.cwd(), "uploads"), localPath).replace(/\\/g, "/");
+        uploadedUrl = await uploadToFTP(localPath, relativeFtpPath);
+      } catch (err) {
+        console.error(`Failed to upload ${type}/${level || ""}`, err);
+      } finally {
+        await fs.unlink(localPath).catch(() => { });
+      }
+
+      return uploadedUrl || oldUrl;
+    };
+
+    // STEP 5: Flatten files
+    const allFiles = Object.values(files).flat();
+    console.log("STEP 5: All uploaded files:", allFiles.map(f => f.fieldname || f.originalname));
+
+    // Banner
+    const bannerFile = allFiles.find(
+      f =>
+        f.fieldname?.toLowerCase().includes("banner") ||
+        f.originalname?.toLowerCase().includes("banner")
+    );
+    const banner = await saveFileIfExists(bannerFile, "banner", existing.banner);
+
+    // STEP 6: Handle uploads + videos for each level
+    const uploadFields = {};
+    const uploadedFiles = {};
+    (allFiles || []).forEach(f => {
+      uploadedFiles[f.fieldname] = f; // If multiple files with same fieldname, take the last one
+    });
+    for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
+      // Upload
+      let uploadFile = uploadedFiles[`${level}_upload`] || null;
+      if (uploadFile) {
+        uploadFields[`${level}_upload`] = await saveFileIfExists(
+          uploadFile,
+          "upload",
+          existing[`${level}_upload`],
+          level
+        );
+      } else {
+        uploadFields[`${level}_upload`] = existing[`${level}_upload`] || null;
+      }
+
+      // Video
+      let videoFile = uploadedFiles[`${level}_video`] || null;
+      if (videoFile) {
+        uploadFields[`${level}_video`] = await saveFileIfExists(
+          videoFile,
+          "video",
+          existing[`${level}_video`],
+          level
+        );
+      } else {
+        uploadFields[`${level}_video`] = existing[`${level}_video`] || null;
+      }
+
+      console.log(`STEP 6: uploadFields[${level}_upload] =`, uploadFields[`${level}_upload`]);
+      console.log(`STEP 6: uploadFields[${level}_video] =`, uploadFields[`${level}_video`]);
+    }
+
+    // Parse existing images
+    let existingImages = Array.isArray(existing.images) ? existing.images : [];
+    if (typeof existingImages === "string") {
+      try { existingImages = JSON.parse(existingImages); }
+      catch (e) { existingImages = []; }
+    }
+
+    // Collect new images from req.body (URLs)
+    let newImages = [];
+    if (req.body.images) {
+      const bodyImages = Array.isArray(req.body.images) ? req.body.images : [req.body.images];
+      newImages.push(...bodyImages);
+    }
+
+    // Collect new images from uploaded files (binary)
+    if (files.images) {
+      const fileImages = Array.isArray(files.images) ? files.images : [files.images];
+      for (const file of fileImages) {
+        const uploadedUrl = await saveFileIfExists(file, "sessionExercise", null);
+        if (uploadedUrl) newImages.push(uploadedUrl);
+      }
+    }
+
+    // Merge old + new images
+    const finalImages = [...existingImages, ...newImages];
+
+    // Update payload (store as array if JSON column, or stringify if TEXT)
+    const updatePayload = {
+      groupName: groupName?.trim() || existing.groupName,
+      levels: parsedLevels,
+      player: player || existing.player,
+      banner,
+      ...uploadFields,
+      images: finalImages
+    };
+    console.log("STEP 7: updatePayload =", updatePayload);
+
+    // STEP 8: Update DB
+    const updateResult = await SessionPlanGroupService.updateSessionPlanGroup(id, updatePayload, adminId);
+    if (!updateResult.status) {
+      console.log("STEP 8: DB update failed");
+      return res.status(500).json({ status: false, message: "Update failed." });
+    }
+    const updated = updateResult.data;
+
+    // STEP 9: Response
+    const responseData = {
+      id: updated.id,
+      groupName: updated.groupName,
+      player: updated.player,
+      banner: updated.banner,
+      levels: typeof updated.levels === "string" ? JSON.parse(updated.levels) : updated.levels,
+      beginner_upload: updated.beginner_upload,
+      intermediate_upload: updated.intermediate_upload,
+      advanced_upload: updated.advanced_upload,
+      pro_upload: updated.pro_upload,
+      beginner_video: updated.beginner_video,
+      intermediate_video: updated.intermediate_video,
+      advanced_video: updated.advanced_video,
+      pro_video: updated.pro_video,
+      createdAt: updated.createdAt,
+      updatedAt: updated.updatedAt,
+    };
+
+    console.log("STEP 9: Final responseData =", responseData);
+    return res.status(200).json({
+      status: true,
+      message: "Session Plan Group updated successfully.",
+      data: responseData,
+    });
+  } catch (error) {
+    console.error("STEP 10: Update error:", error);
+    return res.status(500).json({ status: false, message: "Failed to update Session Plan Group." });
+  }
+};
+
 // exports.getSessionPlanGroupStructureById = async (req, res) => {
 //   try {
 //     const createdBy = req.admin?.id || req.user?.id;

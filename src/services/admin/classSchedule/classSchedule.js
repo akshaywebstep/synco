@@ -427,15 +427,28 @@ exports.getAllClasses = async (adminId) => {
                 if (!spg) continue;
 
                 // ✅ Check mapping first — only include sessions that exist in ClassScheduleTermMap
+                // const relatedMappings = mappings.filter(
+                //   (m) =>
+                //     m.classScheduleId === cls.id &&
+                //     m.termGroupId === termGroup.id &&
+                //     m.termId === term.id &&
+                //     m.sessionPlanId === spg.id
+                // );
+
+                // if (relatedMappings.length === 0) continue; // skip sessions not mapped
+                // ✅ Only include sessions that already exist in ClassScheduleTermMap (based on sessionPlanId)
                 const relatedMappings = mappings.filter(
                   (m) =>
                     m.classScheduleId === cls.id &&
                     m.termGroupId === termGroup.id &&
                     m.termId === term.id &&
-                    m.sessionPlanId === spg.id
+                    m.sessionPlanId === entry.sessionPlanId // <-- match by sessionPlanId only
                 );
 
-                if (relatedMappings.length === 0) continue; // skip sessions not mapped
+                // 🧩 Skip sessions that were newly added in term.sessionMap (not in mapping yet)
+                if (relatedMappings.length === 0) {
+                  continue;
+                }
 
                 // 🧩 Rest of your logic (unchanged)
                 let levels = {};

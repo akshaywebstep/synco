@@ -203,6 +203,28 @@ exports.getAllSessionPlanConfig = async ({
   }
 };
 
+exports.updateSessionPlanGroup = async (id, updatePayload, createdBy) => {
+  try {
+    const sessionConfig = await SessionPlanConfig.findOne({
+      where: { id, createdBy },
+    });
+
+    if (!sessionConfig) {
+      return { status: false, message: "Session Plan Group not found." };
+    }
+    await sessionConfig.update(updatePayload);
+
+    return {
+      status: true,
+      message: "Updated successfully",
+      data: sessionGroup,
+    };
+  } catch (error) {
+    console.error("❌ Service update error:", error);
+    return { status: false, message: "Internal server error" };
+  }
+};
+
 exports.repinSessionPlanGroup = async (id, createdBy, pinned) => {
   const t = await SessionPlanGroup.sequelize.transaction();
 

@@ -133,8 +133,6 @@ exports.findAClassListing = async (req, res) => {
 //   }
 // };
 
-
-
 // exports.getAllClassSchedules = async (req, res) => {
 //   if (DEBUG) console.log("📥 Fetching all class schedules...");
 
