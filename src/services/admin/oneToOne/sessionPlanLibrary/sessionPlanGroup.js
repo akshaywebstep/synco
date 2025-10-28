@@ -4,6 +4,29 @@ const path = require("path");
 const { Readable } = require("stream");
 const fetch = require("node-fetch");
 
+function safeParseLevels(levelsRaw) {
+  if (!levelsRaw) return {};
+  let parsed = levelsRaw;
+
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return {};
+    }
+  }
+
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return {};
+    }
+  }
+
+  return parsed;
+}
+
 exports.createSessionPlanGroup = async (data) => {
   try {
     const created = await SessionPlanGroup.create(data);
@@ -203,7 +226,7 @@ exports.getAllSessionPlanConfig = async ({
   }
 };
 
-exports.updateSessionPlanGroup = async (id, updatePayload, createdBy) => {
+exports.updateSessionPlanConfig = async (id, updatePayload, createdBy) => {
   try {
     const sessionConfig = await SessionPlanConfig.findOne({
       where: { id, createdBy },
@@ -221,6 +244,93 @@ exports.updateSessionPlanGroup = async (id, updatePayload, createdBy) => {
     };
   } catch (error) {
     console.error("❌ Service update error:", error);
+    return { status: false, message: "Internal server error" };
+  }
+};
+
+exports.deleteSessionPlanConfig = async (id, deletedBy) => {
+  try {
+    // ✅ Find group by ID (paranoid-enabled model)
+    const group = await SessionPlanConfig.findOne({
+      where: { id },
+    });
+
+    if (!group) {
+      return { status: false, message: "Session Plan Group not found" };
+    }
+
+    // ✅ Set deletedBy before soft delete
+    await group.update({ deletedBy });
+
+    // ✅ Soft delete (sets deletedAt)
+    await group.destroy();
+
+    return { status: true, message: "Session Plan Group deleted successfully" };
+  } catch (error) {
+    console.error("❌ Delete Error:", error);
+    return { status: false, message: error.message };
+  }
+};
+
+exports.deleteLevelFromSessionPlanConfig = async (id, levelKey, createdBy) => {
+  try {
+    const sessionGroup = await SessionPlanConfig.findOne({
+      where: { id, createdBy },
+      raw: true,
+    });
+
+    if (!sessionGroup) {
+      return { status: false, message: "Session Plan Group not found." };
+    }
+
+    const existingLevels = safeParseLevels(sessionGroup.levels);
+    const normalizedKey = levelKey.toLowerCase();
+    const matchedKey = Object.keys(existingLevels).find(
+      (k) => k.toLowerCase() === normalizedKey
+    );
+
+    if (!matchedKey) {
+      return {
+        status: false,
+        message: `Level '${levelKey}' not found in this group.`,
+      };
+    }
+
+    delete existingLevels[matchedKey];
+
+    const bannerField = `${normalizedKey}_banner`;
+    const videoField = `${normalizedKey}_video`;
+
+    const updatePayload = {
+      levels: existingLevels,
+      [bannerField]: null,
+      [videoField]: null,
+    };
+
+    if (sessionGroup[bannerField]) {
+      const bannerPath = path.join(process.cwd(), sessionGroup[bannerField]);
+      await deleteFile(bannerPath);
+    }
+    if (sessionGroup[videoField]) {
+      const videoPath = path.join(process.cwd(), sessionGroup[videoField]);
+      await deleteFile(videoPath);
+    }
+
+    const result = await exports.updateSessionPlanConfig(
+      id,
+      updatePayload,
+      createdBy
+    );
+
+    if (!result.status) return result;
+
+    return {
+      status: true,
+      message: `Level '${matchedKey}' removed successfully`,
+      data: result.data,
+    };
+  } catch (error) {
+    console.error("❌ Service delete level error:", error);
     return { status: false, message: "Internal server error" };
   }
 };

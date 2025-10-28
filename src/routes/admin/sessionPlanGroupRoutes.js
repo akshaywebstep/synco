@@ -71,8 +71,7 @@ router.put(
 );
 
 // ✅ Delete Session Plan Group
-permissionMiddleware("session-plan-group", "delete"),
-  router.delete("/:id", authMiddleware, deleteSessionPlanGroup);
+router.delete("/:id", authMiddleware, permissionMiddleware("session-plan-group", "delete"), deleteSessionPlanGroup);
 
 router.delete(
   "/:id/level/:levelKey",

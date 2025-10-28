@@ -352,7 +352,7 @@ exports.getAllSessionPlanGroupStructure = async (req, res) => {
   }
 };
 
-exports.updateSessionPlanGroup = async (req, res) => {
+exports.updateSessionPlanConfig = async (req, res) => {
   const { id } = req.params;
   const { groupName, levels, player } = req.body;
   const adminId = req.admin?.id;
@@ -509,7 +509,7 @@ exports.updateSessionPlanGroup = async (req, res) => {
     console.log("STEP 7: updatePayload =", updatePayload);
 
     // STEP 8: Update DB
-    const updateResult = await SessionPlanGroupService.updateSessionPlanGroup(id, updatePayload, adminId);
+    const updateResult = await SessionPlanGroupService.updateSessionPlanConfig(id, updatePayload, adminId);
     if (!updateResult.status) {
       console.log("STEP 8: DB update failed");
       return res.status(500).json({ status: false, message: "Update failed." });
@@ -547,33 +547,163 @@ exports.updateSessionPlanGroup = async (req, res) => {
   }
 };
 
-// exports.getSessionPlanGroupStructureById = async (req, res) => {
-//   try {
-//     const createdBy = req.admin?.id || req.user?.id;
-//     const { id } = req.params;
+exports.deleteSessionPlanConfig = async (req, res) => {
+  const { id } = req.params;
+  const adminId = req.admin?.id; // ✅ track who deleted
 
-//     if (!id) {
-//       return res.status(400).json({
-//         status: false,
-//         message: "Missing required parameter: id",
-//       });
-//     }
+  if (DEBUG) console.log(`🗑️ Deleting Session Plan Group ID: ${id}`);
 
-//     const result = await SessionPlanGroupService.getSessionPlanGroupById(id, createdBy);
+  try {
+    // ✅ Check if group exists
+    const existingResult = await SessionPlanGroupService.getSessionPlanConfigById(id, adminId);
 
-//     if (!result.status) {
-//       return res.status(404).json(result);
-//     }
+    if (!existingResult.status || !existingResult.data) {
+      await logActivity(
+        req,
+        PANEL,
+        MODULE,
+        "delete",
+        { oneLineMessage: `Delete failed - Group ID ${id} not found` },
+        false
+      );
+      return res.status(404).json({
+        status: false,
+        message: existingResult.message || "Session Plan Group not found.",
+      });
+    }
 
-//     return res.status(200).json(result);
-//   } catch (error) {
-//     console.error("❌ Controller Error (getSessionPlanGroupById):", error);
-//     return res.status(500).json({
-//       status: false,
-//       message: "Server error while fetching session plan group.",
-//     });
-//   }
-// };
+    const existing = existingResult.data;
+
+    // ✅ Soft delete the group
+    const deleteResult = await SessionPlanGroupService.deleteSessionPlanConfig(
+      id,
+      adminId
+    );
+
+    if (!deleteResult.status) {
+      await logActivity(
+        req,
+        PANEL,
+        MODULE,
+        "delete",
+        { oneLineMessage: `Delete failed for Group ID ${id}` },
+        false
+      );
+      return res.status(400).json({
+        status: false,
+        message: deleteResult.message || "Failed to delete Session Plan Group.",
+      });
+    }
+
+    // ✅ Remove uploaded files if needed (optional)
+    const filePaths = [existing.banner, existing.video].filter(Boolean);
+    for (const filePath of filePaths) {
+      try {
+        await deleteFile(filePath);
+        if (DEBUG) console.log(`🗑️ Deleted associated file: ${filePath}`);
+      } catch (err) {
+        console.error(`⚠️ Failed to delete file ${filePath}:`, err.message);
+      }
+    }
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "delete",
+      { oneLineMessage: `Deleted Session Plan Group ID: ${id}` },
+      true
+    );
+
+    return res.status(200).json({
+      status: true,
+      message: "Session Plan Group deleted successfully.",
+      data: { id },
+    });
+  } catch (error) {
+    console.error("❌ Error during Session Plan Group deletion:", error);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "delete",
+      { oneLineMessage: error.message },
+      false
+    );
+    return res.status(500).json({
+      status: false,
+      message: "Server error occurred while deleting Session Plan Group.",
+    });
+  }
+};
+
+//Delete by level data
+exports.deleteSessionPlanConfigLevel = async (req, res) => {
+  const { id, levelKey } = req.params;
+  const adminId = req.admin?.id; // ✅
+
+  console.log("============================================");
+  console.log("📌 CONTROLLER: deleteSessionPlanGroupLevel");
+  console.log("📌 Incoming Params:", { id, levelKey });
+  console.log("➡️ Calling service.deleteLevelFromSessionPlanGroup...");
+
+  try {
+    const result =
+      await SessionPlanGroupService.deleteLevelFromSessionPlanConfig(
+        id,
+        levelKey,
+        adminId // ✅ pass createdBy
+      );
+
+    console.log("⬅️ Service returned:", result);
+
+    if (!result.status) {
+      return res.status(404).json({
+        status: false,
+        message: result.message || `Failed to delete '${levelKey}'`,
+      });
+    }
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "delete-level",
+      { oneLineMessage: `Deleted level '${levelKey}' for group ID: ${id}` },
+      true
+    );
+
+    await createNotification(
+      req,
+      "Session Plan Level Deleted",
+      `Level '${levelKey}' from Session Plan Group ID ${id} was deleted by ${req?.admin?.firstName || "Admin"
+      }.`,
+      "System"
+    );
+
+    return res.status(200).json({
+      status: true,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ CONTROLLER delete level error:", error);
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "delete-level",
+      { oneLineMessage: error.message },
+      false
+    );
+
+    return res.status(500).json({
+      status: false,
+      message: "Failed to delete level. Please try again later.",
+    });
+  }
+};
 
 exports.repinSessionPlanGroup = async (req, res) => {
   try {

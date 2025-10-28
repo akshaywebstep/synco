@@ -14,6 +14,10 @@ const {
   repinSessionPlanGroup,
   getSessionPlanGroupStructureById,
   createSessionPlanGroupStructure,
+  updateSessionPlanConfig,
+  deleteSessionPlanConfig,
+  deleteSessionPlanConfigLevel,
+
 } = require("../../../controllers/admin/oneToOne/sessionPlanLibrary/sessionPlanGroupController");
 
 // ✅ Create Session Plan Group with file uploads
@@ -39,6 +43,22 @@ router.get(
   authMiddleware,
   permissionMiddleware("session-plan-structure", "view-listing"),
   getSessionPlanGroupStructureById
+);
+
+router.put(
+  "/session-plan-structure/:id/",
+  authMiddleware,
+  permissionMiddleware("session-plan-structure", "update"),
+  updateSessionPlanConfig
+);
+
+router.delete("/session-plan-structure/delete/:id", authMiddleware, permissionMiddleware("session-plan-structure", "delete"), deleteSessionPlanConfig);
+
+router.delete(
+  "/session-plan-structure/:id/level/:levelKey",
+  authMiddleware,
+  permissionMiddleware("session-plan-structure", "delete"),
+  deleteSessionPlanConfigLevel
 );
 
 // ✅ Repin Session Plan Group
