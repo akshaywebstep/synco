@@ -184,9 +184,12 @@ exports.createLead = async (req, res) => {
 
 // 
 exports.getAllForFacebookLeads = async (req, res) => {
+  const adminId = req.admin?.id;
   try {
     if (DEBUG) console.log("📥 Fetching all leads");
-
+    
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
     // Extract filters from query parameters
     const filters = {
       name: req.query.name || null,
@@ -200,7 +203,7 @@ exports.getAllForFacebookLeads = async (req, res) => {
     };
 
     // Fetch leads from service
-    const result = await LeadService.getAllForFacebookLeads(filters);
+    const result = await LeadService.getAllForFacebookLeads(superAdminId,filters);
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Failed fetching leads:", result.message);
@@ -437,8 +440,12 @@ exports.syncFacebookLeads = async (req, res) => {
 };
 
 exports.getAllReferallLeads = async (req, res) => {
+  const adminId = req.admin?.id;
   try {
     if (DEBUG) console.log("📥 Fetching all leads");
+
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
     // Extract filters from query parameters
     const filters = {
@@ -453,7 +460,7 @@ exports.getAllReferallLeads = async (req, res) => {
     };
 
     // Fetch leads from service
-    const result = await LeadService.getAllForFacebookLeads(filters);
+    const result = await LeadService.getAllForFacebookLeads(superAdminId,filters);
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Failed fetching leads:", result.message);

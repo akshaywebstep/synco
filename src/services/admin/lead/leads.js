@@ -436,11 +436,20 @@ exports.createLead = async (payload) => {
 //     return { status: false, message: error.message };
 //   }
 // };
-exports.getAllForFacebookLeads = async (filters = {}) => {
+exports.getAllForFacebookLeads = async (assignedAgentId,filters = {}) => {
   try {
+
+    if (!assignedAgentId || isNaN(Number(assignedAgentId))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
     const allLeads = await Lead.findAll({
       order: [["createdAt", "ASC"]],
-      where: { status: "facebook" },
+      // where: { status: "facebook" },
+      where: { assignedAgentId: Number(assignedAgentId),status: "facebook" },
       include: [
         {
           model: Admin,
@@ -767,11 +776,19 @@ exports.getAllForFacebookLeads = async (filters = {}) => {
   }
 };
 
-exports.getAllReferallLeads = async (filters = {}) => {
+exports.getAllReferallLeads = async (assignedAgentId,filters = {}) => {
   try {
+    if (!assignedAgentId || isNaN(Number(assignedAgentId))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
     const allLeads = await Lead.findAll({
       order: [["createdAt", "ASC"]],
-      where: { status: "referall" },
+      // where: { status: "referall" },
+      where: { assignedAgentId: Number(assignedAgentId),status: "referall" },
       include: [
         {
           model: Admin,
