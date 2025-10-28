@@ -1,5 +1,6 @@
 const customNotificationModel = require("../../../services/admin/notification/customNotification");
 const adminModel = require("../../../services/admin/notification/customNotification");
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 
 const { logActivity } = require("../../../utils/admin/activityLogger");
 
@@ -199,8 +200,10 @@ exports.getAllCustomNotifications = async (req, res) => {
 
   try {
     const adminId = req.admin?.id;
+      const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+      const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
-    if (!adminId) {
+    if (!superAdminId) {
       return res.status(400).json({
         status: false,
         message: "Admin ID missing from request.",
@@ -208,7 +211,7 @@ exports.getAllCustomNotifications = async (req, res) => {
     }
 
     const result = await customNotificationModel.getAllCustomNotifications(
-      adminId
+      superAdminId
     );
 
     if (!result.status) {

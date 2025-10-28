@@ -211,20 +211,19 @@ exports.getAllNotifications = async (req, res) => {
   const adminId = req.admin?.id;
   const category = req.query?.category || null;
 
-  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
-
   if (DEBUG) {
-    console.log(`📨 Fetching notifications for Admin ID: ${adminId}`);
+    // console.log(`📨 Fetching notifications for Admin ID: ${superAdminId}`);
     console.log(`📂 Category filter: ${category}`);
     console.log(`🔐 Admin Role: ${req.admin?.role}`);
   }
 
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
   try {
     // ✅ For normal notifications, still exclude own-created if required
     const notificationResult = await notificationModel.getAllNotifications(
       superAdminId,
-      adminId,
+      // adminId,
       category,
       { excludeOwn: true }
     );
@@ -232,7 +231,8 @@ exports.getAllNotifications = async (req, res) => {
     // ✅ For custom notifications, DO NOT exclude own-created
     const customNotificationResult =
       await customNotificationModel.getAllReceivedCustomNotifications(
-        adminId,
+        superAdminId,
+        // adminId,
         category
       );
 

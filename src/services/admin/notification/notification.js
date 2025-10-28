@@ -89,13 +89,9 @@ exports.markAsRead = async (adminId) => {
   }
 };
 
-exports.getAllNotifications = async (
-  adminId,
-  category = null,
-  options = {}
-) => {
+exports.getAllNotifications = async (adminId, category = null, options = {}) => {
   try {
-
+    // 🧩 Validate adminId
     if (!adminId || isNaN(Number(adminId))) {
       return {
         status: false,
@@ -103,14 +99,15 @@ exports.getAllNotifications = async (
         data: [],
       };
     }
-    // 1️⃣ Fetch logged-in admin info (id, roleId, name, email, profile)
-    const admin = await Admin.findByPk(adminId, {
+
+    // 🧠 Fetch logged-in admin info
+    const admin = await Admin.findByPk(Number(adminId), {
       attributes: ["id", "roleId", "firstName", "lastName", "email", "profile"],
       include: [
         {
-          model: AdminRole, // join AdminRoles table
-          as: "role", // make sure association is defined as Admin.hasOne(AdminRoles, { as: 'role', foreignKey: 'id' })
-          attributes: ["id", "role"], // fetch role info
+          model: AdminRole,
+          as: "role",
+          attributes: ["id", "role"],
         },
       ],
     });
@@ -119,20 +116,16 @@ exports.getAllNotifications = async (
       return {
         status: false,
         message: "Admin not found.",
+        data: [],
       };
     }
+
+    // 🧮 Build filter condition
     const whereCondition = {};
+    if (category) whereCondition.category = category;
+    if (options.excludeOwn) whereCondition.adminId = { [Op.ne]: adminId };
 
-    if (category) {
-      whereCondition.category = category;
-    }
-
-    // ✅ Exclude own-created notifications (safe even if options = null)
-    const safeOptions = options || {};
-    if (safeOptions.excludeOwn) {
-      whereCondition.adminId = { [Op.ne]: adminId };
-    }
-
+    // 📦 Fetch notifications
     const notifications = await Notification.findAll({
       where: whereCondition,
       order: [["createdAt", "DESC"]],
@@ -145,39 +138,41 @@ exports.getAllNotifications = async (
       ],
     });
 
+    // 🔖 Fetch read notifications for the admin
     const readRecords = await NotificationRead.findAll({
       where: { adminId },
       attributes: ["notificationId"],
       raw: true,
     });
 
-    const readIdsSet = new Set(readRecords.map((r) => r.notificationId));
+    const readIds = new Set(readRecords.map((r) => r.notificationId));
 
-    const notificationList = notifications.map((n) => ({
+    // 🧩 Format response
+    const formattedNotifications = notifications.map((n) => ({
       id: n.id,
       title: n.title,
       description: n.description,
       category: n.category,
       createdAt: n.createdAt,
-      isRead: readIdsSet.has(n.id),
+      isRead: readIds.has(n.id),
       admin: n.admin
         ? {
-          id: n.admin.id,
-          firstName: n.admin.firstName,
-          lastName: n.admin.lastName,
-          email: n.admin.email,
-          profile: n.admin.profile,
-        }
+            id: n.admin.id,
+            firstName: n.admin.firstName,
+            lastName: n.admin.lastName,
+            email: n.admin.email,
+            profile: n.admin.profile,
+          }
         : null,
     }));
 
-    // 5️⃣ Final response
+    // ✅ Final structured response
     return {
       status: true,
       message: "Notifications fetched successfully.",
       data: {
         roleId: admin.roleId,
-        role: admin.role ? admin.role.role : null,
+        role: admin.role?.role || null,
         admin: {
           id: admin.id,
           firstName: admin.firstName,
@@ -185,16 +180,116 @@ exports.getAllNotifications = async (
           email: admin.email,
           profile: admin.profile,
         },
-        notifications: notificationList,
+        notifications: formattedNotifications,
       },
     };
   } catch (error) {
+    console.error("❌ Error in getAllNotifications:", error);
     return {
       status: false,
-      message: `Failed to retrieve notifications. ${error.message}`,
+      message: "Failed to fetch notifications.",
+      error: error.message,
     };
   }
 };
+
+// exports.getAllNotifications = async (
+//   adminId,
+//   category = null,
+//   options = {}
+// ) => {
+//   try {
+//     // 1️⃣ Fetch logged-in admin info (id, roleId, name, email, profile)
+//     const admin = await Admin.findByPk(adminId, {
+//       attributes: ["id", "roleId", "firstName", "lastName", "email", "profile"],
+//       include: [
+//         {
+//           model: AdminRole, // join AdminRoles table
+//           as: "role", // make sure association is defined as Admin.hasOne(AdminRoles, { as: 'role', foreignKey: 'id' })
+//           attributes: ["id", "role"], // fetch role info
+//         },
+//       ],
+//     });
+
+//     if (!admin) {
+//       return {
+//         status: false,
+//         message: "Admin not found.",
+//       };
+//     }
+//     const whereCondition = {};
+
+//     if (category) {
+//       whereCondition.category = category;
+//     }
+
+//     // ✅ Exclude own-created notifications
+//     if (options.excludeOwn) {
+//       whereCondition.adminId = { [Op.ne]: adminId };
+//     }
+
+//     const notifications = await Notification.findAll({
+//       where: whereCondition,
+//       order: [["createdAt", "DESC"]],
+//       include: [
+//         {
+//           model: Admin,
+//           as: "admin",
+//           attributes: ["id", "firstName", "lastName", "email", "profile"],
+//         },
+//       ],
+//     });
+
+//     const readRecords = await NotificationRead.findAll({
+//       where: { adminId },
+//       attributes: ["notificationId"],
+//       raw: true,
+//     });
+
+//     const readIdsSet = new Set(readRecords.map((r) => r.notificationId));
+
+//     const notificationList = notifications.map((n) => ({
+//       id: n.id,
+//       title: n.title,
+//       description: n.description,
+//       category: n.category,
+//       createdAt: n.createdAt,
+//       isRead: readIdsSet.has(n.id),
+//       admin: n.admin
+//         ? {
+//             id: n.admin.id,
+//             firstName: n.admin.firstName,
+//             lastName: n.admin.lastName,
+//             email: n.admin.email,
+//             profile: n.admin.profile,
+//           }
+//         : null,
+//     }));
+
+//     // 5️⃣ Final response
+//     return {
+//       status: true,
+//       message: "Notifications fetched successfully.",
+//       data: {
+//         roleId: admin.roleId,
+//         role: admin.role ? admin.role.role : null,
+//         admin: {
+//           id: admin.id,
+//           firstName: admin.firstName,
+//           lastName: admin.lastName,
+//           email: admin.email,
+//           profile: admin.profile,
+//         },
+//         notifications: notificationList,
+//       },
+//     };
+//   } catch (error) {
+//     return {
+//       status: false,
+//       message: `Failed to retrieve notifications. ${error.message}`,
+//     };
+//   }
+// };
 
 // exports.getAllNotifications = async (
 //   adminId,

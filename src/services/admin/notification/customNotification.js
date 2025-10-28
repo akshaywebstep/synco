@@ -198,6 +198,15 @@ exports.createCustomNotificationReads = async ({
 
 exports.getAllCustomNotifications = async (adminId, category = null) => {
   try {
+    // 🧩 Validate adminId
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
+
     const whereCondition = {};
     if (category) {
       whereCondition.category = category;
