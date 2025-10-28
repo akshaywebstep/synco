@@ -134,12 +134,18 @@ const Booking = sequelize.define(
       allowNull: true,
       comment: "Any extra notes for the booking",
     },
-     serviceType: {
-      type: DataTypes.ENUM("weekly class membership","weekly class trial", "one to one", "birthday party"),
-      allowNull: false,
-      defaultValue: "NULL",
+    serviceType: {
+      type: DataTypes.ENUM(
+        "weekly class membership",
+        "weekly class trial",
+        "one to one",
+        "birthday party"
+      ),
+      allowNull: true,         // ✅ allow nulls
+      defaultValue: null,      // ✅ default is actually NULL, not 'NULL'
       comment: "Type of service for the booking",
     },
+
   },
   {
     tableName: "booking",

@@ -28,11 +28,19 @@ const SessionPlanConfig = sequelize.define(
             allowNull: false,
         },
 
+        // Foreign key reference to Admins
         createdBy: {
             type: DataTypes.INTEGER.UNSIGNED,
-            allowNull: false,
+            allowNull: true, // ✅ must be true for SET NULL
+            references: {
+                model: "admins",
+                key: "id",
+            },
+            onDelete: "SET NULL",
+            onUpdate: "CASCADE",
         },
-        // add new feild for one to one ->
+
+        // For one-to-one
         pinned: {
             type: DataTypes.BOOLEAN,
             defaultValue: false,
@@ -43,5 +51,13 @@ const SessionPlanConfig = sequelize.define(
         timestamps: true,
     }
 );
+
+// ✅ Define association with Admin
+SessionPlanConfig.associate = (models) => {
+    SessionPlanConfig.belongsTo(models.Admin, {
+        foreignKey: "createdBy",
+        as: "creator",
+    });
+};
 
 module.exports = SessionPlanConfig;
