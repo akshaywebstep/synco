@@ -211,6 +211,22 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
       pro_video: uploadFields.pro_video,
       levels: parsedLevels,
     };
+    await createNotification(
+      req,
+      "Session Plan Group Created",
+      `The session plan group '${payload.groupName}' was updated by ${req?.admin?.firstName || "Admin"}.`,
+      "System"
+    );
+    await logActivity(
+      req,
+      "Admin", // PANEL name
+      "session-plan-structure", // MODULE name
+      "update", // Action type
+      {
+        oneLineMessage: `Session Plan Group '${payload.groupName}' (ID: ${id}) updated by ${req?.admin?.firstName || "Admin"}.`
+      },
+      true
+    );
     return res.status(201).json({
       status: true,
       message: "Session Plan Group created successfully.",
@@ -686,6 +702,25 @@ exports.updateSessionPlanConfig = async (req, res) => {
     };
 
     console.log("STEP 9: Final responseData =", responseData);
+    // STEP 9: Log and notify
+    await logActivity(
+      req,
+      "Admin Panel", // PANEL name
+      "Session Plan Group", // MODULE name
+      "update", // Action type
+      {
+        oneLineMessage: `Session Plan Group '${updatePayload.groupName}' (ID: ${id}) updated by ${req?.admin?.firstName || "Admin"}.`
+      },
+      true
+    );
+
+    await createNotification(
+      req,
+      "Session Plan Group Updated",
+      `The session plan group '${updatePayload.groupName}' (ID: ${id}) was updated by ${req?.admin?.firstName || "Admin"}.`,
+      "System"
+    );
+
     return res.status(200).json({
       status: true,
       message: "Session Plan Group updated successfully.",

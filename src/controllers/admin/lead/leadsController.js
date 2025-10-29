@@ -677,6 +677,45 @@ exports.getAllLeads = async (req, res) => {
     });
   }
 };
+exports.getLeadandBookingDatabyLeadId = async (req, res) => {
+  try {
+    const { leadId } = req.params;
+
+    if (!leadId) {
+      return res.status(400).json({
+        status: false,
+        message: "Lead ID is required.",
+      });
+    }
+
+    const result = await LeadService.getLeadandBookingDatabyLeadId(leadId);
+
+    if (!result.status) {
+      await logActivity(req, PANEL, MODULE, "read", result, false);
+      return res.status(404).json({
+        status: false,
+        message: result.message,
+      });
+    }
+
+    await logActivity(req, PANEL, MODULE, "read", result.data, true);
+
+    return res.status(200).json({
+      status: true,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ getLeadandBookingDatabyLeadId Controller Error:", error);
+    await logActivity(req, PANEL, MODULE, "read", { error: error.message }, false);
+
+    return res.status(500).json({
+      status: false,
+      message: "Server error.",
+      error: error.message,
+    });
+  }
+};
 
 exports.findAClass = async (req, res) => {
   try {

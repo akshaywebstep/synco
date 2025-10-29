@@ -522,7 +522,7 @@ exports.createSessionPlanGroup = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Group Created",
-      `A new Session Plan Group '${result.data.groupName}' (ID: ${sessionPlanId}) was created by ${req?.admin?.firstName || "Admin"}.`,
+      `A new Session Plan Group '${result.data.groupName}' was created by ${req?.admin?.firstName || "Admin"}.`,
       "System"
     );
 
@@ -531,7 +531,7 @@ exports.createSessionPlanGroup = async (req, res) => {
       module: MODULE,
       adminId: createdBy,
       action: "create",
-      description: `Created new session plan group: ${result.data.groupName} (ID: ${sessionPlanId})`,
+      description: `Created new session plan group: ${result.data.groupName}`,
     });
     // STEP 5: Build response
     const responseData = {
@@ -1518,6 +1518,25 @@ exports.updateSessionPlanGroup = async (req, res) => {
     };
 
     console.log("STEP 9: Final responseData =", responseData);
+    // STEP 9: Log and notify
+    await logActivity(
+      req,
+      "Admin", // PANEL name
+      "Session-Plan-Group", // MODULE name
+      "update", // Action type
+      {
+        oneLineMessage: `Session Plan Group '${updatePayload.groupName}' (ID: ${id}) updated by ${req?.admin?.firstName || "Admin"}.`
+      },
+      true
+    );
+
+    await createNotification(
+      req,
+      "Session Plan Group Updated",
+      `The session plan group '${updatePayload.groupName}' (ID: ${id}) was updated by ${req?.admin?.firstName || "Admin"}.`,
+      "System"
+    );
+
     return res.status(200).json({
       status: true,
       message: "Session Plan Group updated successfully.",

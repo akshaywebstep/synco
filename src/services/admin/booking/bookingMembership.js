@@ -822,7 +822,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
     // const whereBooking = { bookingType: "paid" };
     const whereBooking = {
       bookingType: {
-        [Op.in]: ["paid", "waiting list"],
+        [Op.in]: ["paid", "waiting list", "removed"],
       },
       status: {
         [Op.in]: [
@@ -840,7 +840,13 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
 
     console.log(`filters - `, filters);
     // 🔹 Filters
-    if (filters.status) whereBooking.status = filters.status;
+    // if (filters.status) whereBooking.status = filters.status;
+    if (filters.status) {
+      whereBooking.status = Array.isArray(filters.status)
+        ? { [Op.in]: filters.status }
+        : filters.status;
+    }
+
     if (filters.venueId) whereBooking.venueId = filters.venueId;
     if (filters.venueName)
       whereVenue.name = { [Op.like]: `%${filters.venueName}%` };

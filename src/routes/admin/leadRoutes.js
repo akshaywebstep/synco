@@ -13,6 +13,7 @@ const {
   getAllLeads,
   addCommentForLead,
   listCommentsForLead,
+  getLeadandBookingDatabyLeadId,
   // getAllWaitingListBookings,
   findAClass
 } = require("../../controllers/admin/lead/leadsController");
@@ -74,6 +75,13 @@ router.get(
   authMiddleware,
   permissionMiddleware("lead", "view-listing"),
   getAllLeads
+);
+
+router.get(
+  "/:leadId",
+  authMiddleware,
+  permissionMiddleware("lead", "view-listing"),
+  getLeadandBookingDatabyLeadId
 );
 
 router.get(

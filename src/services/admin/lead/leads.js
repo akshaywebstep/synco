@@ -1836,6 +1836,184 @@ exports.getAllLeads = async (assignedAgentId, filters = {}) => {
   }
 };
 
+exports.getLeadandBookingDatabyLeadId = async (leadId) => {
+  try {
+    if (!leadId || isNaN(Number(leadId))) {
+      return {
+        status: false,
+        message: "Invalid leadId provided.",
+        data: [],
+      };
+    }
+
+    // ✅ Fetch a single lead with full booking hierarchy
+    const lead = await Lead.findOne({
+      where: { id: Number(leadId) },
+      include: [
+        {
+          model: Admin,
+          as: "assignedAgent",
+          attributes: ["id", "firstName", "lastName", "email", "roleId"],
+        },
+        {
+          model: Booking,
+          as: "bookings",
+          include: [
+            { model: Venue, as: "venue" },
+            { model: ClassSchedule, as: "classSchedule" },
+            {
+              model: BookingStudentMeta,
+              as: "students",
+              attributes: [
+                "studentFirstName",
+                "studentLastName",
+                "dateOfBirth",
+                "age",
+                "gender",
+                "medicalInformation",
+              ],
+              include: [
+                {
+                  model: BookingParentMeta,
+                  as: "parents",
+                  attributes: [
+                    "parentFirstName",
+                    "parentLastName",
+                    "parentEmail",
+                    "parentPhoneNumber",
+                    "relationToChild",
+                    "howDidYouHear",
+                  ],
+                },
+                {
+                  model: BookingEmergencyMeta,
+                  as: "emergencyContacts",
+                  attributes: [
+                    "emergencyFirstName",
+                    "emergencyLastName",
+                    "emergencyPhoneNumber",
+                    "emergencyRelation",
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!lead) {
+      return {
+        status: false,
+        message: "Lead not found.",
+        data: [],
+      };
+    }
+
+    // ✅ Optional: Get nearest venues
+    let nearestVenues = [];
+    const allVenuesList = await Venue.findAll();
+
+    if (lead.postcode && allVenuesList.length > 0) {
+      const coords = await getCoordinatesFromPostcode(lead.postcode);
+      if (coords) {
+        nearestVenues = await Promise.all(
+          allVenuesList
+            .map((v) => ({
+              ...v.dataValues,
+              distance: Number(
+                calculateDistance(coords.latitude, coords.longitude, v.latitude, v.longitude).toFixed(2)
+              ),
+            }))
+            .sort((a, b) => a.distance - b.distance)
+            .slice(0, 5)
+            .map(async (venue) => {
+              const classSchedules = await ClassSchedule.findAll({ where: { venueId: venue.id } });
+
+              // Payment Groups
+              const paymentGroups =
+                venue.paymentGroupId != null
+                  ? await PaymentGroup.findAll({
+                      where: { id: venue.paymentGroupId },
+                      include: [
+                        {
+                          model: PaymentPlan,
+                          as: "paymentPlans",
+                          through: { model: PaymentGroupHasPlan },
+                        },
+                      ],
+                      order: [["createdAt", "DESC"]],
+                    })
+                  : [];
+
+              // Term Groups
+              let termGroupIds = [];
+              if (typeof venue.termGroupId === "string") {
+                try {
+                  termGroupIds = JSON.parse(venue.termGroupId);
+                } catch {
+                  termGroupIds = [];
+                }
+              } else if (Array.isArray(venue.termGroupId)) {
+                termGroupIds = venue.termGroupId;
+              }
+
+              const termGroups = termGroupIds.length
+                ? await TermGroup.findAll({ where: { id: termGroupIds } })
+                : [];
+
+              const terms = termGroupIds.length
+                ? await Term.findAll({
+                    where: { termGroupId: { [Op.in]: termGroupIds } },
+                  })
+                : [];
+
+              const parsedTerms = terms.map((t) => ({
+                id: t.id,
+                name: t.termName,
+                startDate: t.startDate,
+                endDate: t.endDate,
+                termGroupId: t.termGroupId,
+                exclusionDates:
+                  typeof t.exclusionDates === "string"
+                    ? JSON.parse(t.exclusionDates)
+                    : t.exclusionDates || [],
+                totalSessions: t.totalSessions,
+                sessionsMap:
+                  typeof t.sessionsMap === "string"
+                    ? JSON.parse(t.sessionsMap)
+                    : t.sessionsMap || [],
+              }));
+
+              return {
+                ...venue,
+                classSchedules: classSchedules.map((cs) => cs.dataValues),
+                paymentGroups,
+                termGroups: termGroups.map((tg) => ({
+                  ...tg.dataValues,
+                  terms: parsedTerms.filter((t) => t.termGroupId === tg.id),
+                })),
+              };
+            })
+        );
+      }
+    }
+
+    // ✅ Response
+    return {
+      status: true,
+      message: "Lead with full booking data and nearest venues retrieved successfully.",
+      data: {
+        ...lead.dataValues,
+        nearestVenues,
+      },
+    };
+  } catch (error) {
+    console.error("❌ getLeadandBookingDatabyLeadId Error:", error.message);
+    return { status: false, message: error.message };
+  }
+};
+
 exports.findAClass = async (filters = {}) => {
   try {
     const allLeads = await Lead.findAll({
