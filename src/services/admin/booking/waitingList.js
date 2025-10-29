@@ -17,6 +17,7 @@ const sendEmail = require("../../../utils/email/sendEmail");
 
 const bcrypt = require("bcrypt");
 const { Op } = require("sequelize");
+
 const axios = require("axios");
 
 function generateBookingId(length = 12) {
@@ -28,6 +29,286 @@ function generateBookingId(length = 12) {
   return result;
 }
 const DEBUG = process.env.DEBUG === "true";
+
+exports.getWaitingList = async (filters = {}) => {
+
+  try {
+    const trialWhere = {
+      // bookingType: "waiting list",
+      bookingType: { [Op.in]: ["waiting list", "paid"] },
+    };
+
+    if (filters.status) trialWhere.status = filters.status;
+    if (filters.interest) trialWhere.interest = filters.interest;
+
+    const adminWhere = {};
+    /*
+    if (filters.bookedBy) {
+      adminWhere[Op.or] = [
+        { firstName: { [Op.like]: `%${filters.bookedBy}%` } },
+        { lastName: { [Op.like]: `%${filters.bookedBy}%` } },
+      ];
+    }
+    */
+
+    if (filters.bookedBy) {
+      // Ensure bookedBy is always an array
+      const bookedByArray = Array.isArray(filters.bookedBy)
+        ? filters.bookedBy
+        : [filters.bookedBy];
+
+      trialWhere.bookedBy = { [Op.in]: bookedByArray };
+    }
+
+    // ---- Date filters ----
+    if (filters.dateBooked) {
+      const start = new Date(filters.dateBooked + " 00:00:00");
+      const end = new Date(filters.dateBooked + " 23:59:59");
+      trialWhere.createdAt = { [Op.between]: [start, end] };
+    } else if (filters.fromDate && filters.toDate) {
+      const start = new Date(filters.fromDate + " 00:00:00");
+      const end = new Date(filters.toDate + " 23:59:59");
+      trialWhere.createdAt = { [Op.between]: [start, end] };
+    } else if (filters.fromDate) {
+      const start = new Date(filters.fromDate + " 00:00:00");
+      trialWhere.createdAt = { [Op.gte]: start };
+    } else if (filters.toDate) {
+      const end = new Date(filters.toDate + " 23:59:59");
+      trialWhere.createdAt = { [Op.lte]: end };
+    }
+
+    if (filters.startDate) {
+      const start = new Date(filters.startDate + " 00:00:00");
+      const end = new Date(filters.startDate + " 23:59:59");
+      trialWhere.startDate = { [Op.between]: [start, end] };
+    }
+
+    const studentWhere = {};
+    if (filters.studentName) {
+      studentWhere[Op.or] = [
+        { studentFirstName: { [Op.like]: `%${filters.studentName}%` } },
+        { studentLastName: { [Op.like]: `%${filters.studentName}%` } },
+      ];
+    }
+
+    const bookings = await Booking.findAll({
+      order: [["id", "DESC"]],
+      where: {
+        // serviceType: "weekly class trial",
+        bookingType: { [Op.in]: ["waiting list", "paid"] },
+        ...trialWhere,
+        // status: "waiting list",
+        status: { [Op.in]: ["waiting list, paid"] },
+      },
+      // where: trialWhere,
+      include: [
+        {
+          model: BookingStudentMeta,
+          as: "students",
+          required: !!filters.studentName,
+          where: filters.studentName ? studentWhere : undefined,
+          include: [
+            { model: BookingParentMeta, as: "parents", required: false },
+            {
+              model: BookingEmergencyMeta,
+              as: "emergencyContacts",
+              required: false,
+            },
+          ],
+        },
+        {
+          model: ClassSchedule,
+          as: "classSchedule",
+          required: !!filters.venueName,
+          include: [
+            {
+              model: Venue,
+              as: "venue",
+              required: !!filters.venueName,
+              where: filters.venueName
+                ? { name: { [Op.like]: `%${filters.venueName}%` } }
+                : undefined,
+            },
+          ],
+        },
+        {
+          model: Admin,
+          as: "bookedByAdmin",
+          attributes: [
+            "id",
+            "firstName",
+            "lastName",
+            "email",
+            "roleId",
+            "status",
+            "profile",
+          ],
+          required: !!filters.bookedBy,
+          where: filters.bookedBy ? adminWhere : undefined,
+        },
+      ],
+    });
+
+    // ---- Transform Data ----
+    const parsedBookings = bookings.map((booking) => {
+      const students =
+        booking.students?.map((s) => ({
+          studentFirstName: s.studentFirstName,
+          studentLastName: s.studentLastName,
+          dateOfBirth: s.dateOfBirth,
+          age: s.age,
+          gender: s.gender,
+          medicalInformation: s.medicalInformation,
+          interest: s.interest,
+        })) || [];
+
+      const parents =
+        booking.students?.flatMap(
+          (s) =>
+            s.parents?.map((p) => ({
+              parentFirstName: p.parentFirstName,
+              parentLastName: p.parentLastName,
+              parentEmail: p.parentEmail,
+              parentPhoneNumber: p.parentPhoneNumber,
+              relationToChild: p.relationToChild,
+              howDidYouHear: p.howDidYouHear,
+            })) || []
+        ) || [];
+
+      const emergency =
+        booking.students?.flatMap(
+          (s) =>
+            s.emergencyContacts?.map((e) => ({
+              emergencyFirstName: e.emergencyFirstName,
+              emergencyLastName: e.emergencyLastName,
+              emergencyPhoneNumber: e.emergencyPhoneNumber,
+              emergencyRelation: e.emergencyRelation,
+            })) || []
+        )[0] || null;
+      // ---- Calculate waitingDays based on startDate ----
+      let waitingDays = null;
+      if (booking.startDate) {
+        const start = new Date(booking.startDate);
+        const now = new Date();
+        waitingDays = Math.ceil(
+          (start.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+        );
+      }
+
+      return {
+        ...booking.dataValues,
+        students,
+        parents,
+        emergency,
+        classSchedule: booking.classSchedule || null,
+        venue: booking.classSchedule?.venue || null,
+        bookedByAdmin: booking.bookedByAdmin || null,
+        waitingDays,
+      };
+    });
+
+    // ---- Extract unique Venues + Admins ----
+    const venues = [];
+    const bookedByAdmins = [];
+
+    parsedBookings.forEach((b) => {
+      if (b.venue && !venues.find((v) => v.id === b.venue.id)) {
+        venues.push(b.venue);
+      }
+      if (
+        b.bookedByAdmin &&
+        !bookedByAdmins.find((a) => a.id === b.bookedByAdmin.id)
+      ) {
+        bookedByAdmins.push(b.bookedByAdmin);
+      }
+    });
+
+    // ---- Stats Calculation ----
+    const totalOnWaitingList = parsedBookings.length;
+
+    // Avg. interest (based on students’ interest field)
+    const allInterests = parsedBookings.flatMap((b) =>
+      b.students.map((s) => parseInt(s.interest) || 0)
+    );
+    const avgInterest =
+      allInterests.length > 0
+        ? (
+          allInterests.reduce((a, b) => a + b, 0) / allInterests.length
+        ).toFixed(2)
+        : 0;
+
+    // Avg. days waiting (currentDate - createdAt)
+    const avgDaysWaiting =
+      parsedBookings.length > 0
+        ? (
+          parsedBookings.reduce((sum, b) => {
+            const created = new Date(b.createdAt);
+            const now = new Date();
+            const diffDays = Math.floor(
+              (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)
+            );
+            return sum + diffDays;
+          }, 0) / parsedBookings.length
+        ).toFixed(0)
+        : 0;
+
+    // Top Referrer (admin with most bookings)
+    const adminCount = {};
+    parsedBookings.forEach((b) => {
+      if (b.bookedByAdmin) {
+        const name = `${b.bookedByAdmin.firstName} ${b.bookedByAdmin.lastName}`;
+        adminCount[name] = (adminCount[name] || 0) + 1;
+      }
+    });
+    const topReferrer =
+      Object.entries(adminCount).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+
+    // Most Requested Venue
+    const venueCount = {};
+    parsedBookings.forEach((b) => {
+      if (b.venue) {
+        venueCount[b.venue.name] = (venueCount[b.venue.name] || 0) + 1;
+      }
+    });
+    const mostRequestedVenue =
+      Object.entries(venueCount).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+
+    return {
+      status: true,
+      message: "Waiting list bookings fetched successfully.",
+      data: {
+        waitingList: parsedBookings,
+        venue: venues,
+        bookedByAdmins,
+        stats: {
+          totalOnWaitingList,
+          avgInterest,
+          avgDaysWaiting,
+          topReferrer,
+          mostRequestedVenue,
+        },
+      },
+    };
+  } catch (error) {
+    console.error("❌ getWaitingList Error:", error);
+    return {
+      status: false,
+      message: error.message || "Failed to fetch waiting list",
+      data: {
+        waitingList: [],
+        venue: [],
+        bookedByAdmins: [],
+        stats: {
+          totalOnWaitingList: 0,
+          avgInterest: 0,
+          avgDaysWaiting: 0,
+          topReferrer: null,
+          mostRequestedVenue: null,
+        },
+      },
+    };
+  }
+};
 
 exports.createBooking = async (data, options) => {
   const t = await sequelize.transaction();
@@ -351,7 +632,7 @@ exports.getWaitingList = async (filters = {}) => {
         bookingType: { [Op.in]: ["waiting list", "paid"] },
         ...trialWhere,
         // status: "waiting list",
-        status: { [op.in]: ["waiting list, paid"]},
+        status: { [Op.in]: ["waiting list, paid"] },
       },
       // where: trialWhere,
       include: [
@@ -577,7 +858,7 @@ exports.getBookingById = async (id, bookedBy, adminId) => {
       where: {
         bookedBy: Number(bookedBy),
         id,
-        bookingType: "waiting list",
+        bookingType: { [Op.in]: ["waiting list", "paid"] },
         serviceType: "weekly class trial"
       },
       include: [
@@ -689,7 +970,7 @@ exports.getBookingById = async (id, bookedBy, adminId) => {
       bookingId: booking.bookingId,
       classScheduleId: booking.classScheduleId,
       startDate: booking.startDate,
-      serviceType:booking.serviceType,
+      serviceType: booking.serviceType,
       interest: booking.interest,
       bookedBy: booking.bookedByAdmin || null,
       className: booking.className,
