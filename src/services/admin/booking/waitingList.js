@@ -287,7 +287,8 @@ exports.getWaitingList = async (filters = {}) => {
 
   try {
     const trialWhere = {
-      bookingType: "waiting list",
+      // bookingType: "waiting list",
+      bookingType: { [Op.in]: ["waiting list", "paid"] },
     };
 
     if (filters.status) trialWhere.status = filters.status;
@@ -346,9 +347,11 @@ exports.getWaitingList = async (filters = {}) => {
     const bookings = await Booking.findAll({
       order: [["id", "DESC"]],
       where: {
-        serviceType: "weekly class trial",
+        // serviceType: "weekly class trial",
+        bookingType: { [Op.in]: ["waiting list", "paid"] },
         ...trialWhere,
-        status: "waiting list",
+        // status: "waiting list",
+        status: { [op.in]: ["waiting list, paid"]},
       },
       // where: trialWhere,
       include: [
@@ -1020,13 +1023,67 @@ exports.sendAllEmailToParents = async ({ bookingId }) => {
   }
 };
 
+// exports.removeWaitingList = async ({ bookingId, reason, notes }) => {
+//   try {
+//     // 1. Find the booking in waiting list
+//     const booking = await Booking.findOne({
+//       bookingType: {
+//       [Op.in]: ["waiting list", "paid"],
+//     },
+//     });
+
+//     if (!booking) {
+//       return {
+//         status: false,
+//         message: "Waiting list booking not found.",
+//       };
+//     }
+
+//     // 2. Update booking table -> status + bookingType
+//     booking.status = "active";
+//     booking.bookingType = "waiting list";
+//     serviceType: "weekly class membership",
+//       await booking.save();
+
+//     // 3. Insert record in CancelBooking
+//     await CancelBooking.create({
+//       bookingId: booking.id,
+//       bookingType: "removed",
+//       removedReason: reason,
+//       removedNotes: notes || null,
+//       // removedBy, // optional: who removed
+//     });
+
+//     return {
+//       status: true,
+//       message: "Booking removed from waiting list successfully.",
+//       data: {
+//         bookingId: booking.id,
+//         status: "removed",
+//         serviceType: "weekly class trial",
+//         bookingType: "removed",
+//         removedReason: reason,
+//         removedNotes: notes || null,
+//       },
+//     };
+//   } catch (error) {
+//     console.error("❌ removeWaitingList Error:", error.message);
+//     return {
+//       status: false,
+//       message: error.message || "Failed to remove from waiting list",
+//     };
+//   }
+// };
+
 exports.removeWaitingList = async ({ bookingId, reason, notes }) => {
   try {
-    // 1. Find the booking in waiting list
+    console.log("🚀 [Service] removeWaitingList started:", { bookingId, reason, notes });
+
+    // 1️⃣ Find the booking
     const booking = await Booking.findOne({
       where: {
         id: bookingId,
-        bookingType: "waiting list",
+        bookingType: { [Op.in]: ["waiting list", "paid"] },
       },
     });
 
@@ -1037,35 +1094,49 @@ exports.removeWaitingList = async ({ bookingId, reason, notes }) => {
       };
     }
 
-    // 2. Update booking table -> status + bookingType
-    booking.status = "removed";
-    booking.bookingType = "removed";
-    serviceType: "weekly class trial",
-      await booking.save();
+    // 2️⃣ Conditional updates based on bookingType
+    if (booking.bookingType === "paid") {
+      // If booking was paid, reactivate membership
+      await booking.update({
+        status: "active",
+        serviceType: "weekly class membership",
+      });
+    } else if (booking.bookingType === "waiting list") {
+      // If booking was on waiting list, mark as removed
+      await booking.update({
+        status: "removed",
+        serviceType: "weekly class trial",
+      });
+    } else {
+      return {
+        status: false,
+        message: `Unsupported bookingType: ${booking.bookingType}`,
+      };
+    }
 
-    // 3. Insert record in CancelBooking
+    // 3️⃣ Create CancelBooking record
     await CancelBooking.create({
       bookingId: booking.id,
       bookingType: "removed",
       removedReason: reason,
       removedNotes: notes || null,
-      // removedBy, // optional: who removed
     });
 
+    // 4️⃣ Return success
     return {
       status: true,
       message: "Booking removed from waiting list successfully.",
       data: {
         bookingId: booking.id,
-        status: "removed",
-        serviceType: "weekly class trial",
-        bookingType: "removed",
+        bookingType: booking.bookingType,
+        status: booking.status,
+        serviceType: booking.serviceType,
         removedReason: reason,
         removedNotes: notes || null,
       },
     };
   } catch (error) {
-    console.error("❌ removeWaitingList Error:", error.message);
+    console.error("❌ [Service] removeWaitingList error:", error);
     return {
       status: false,
       message: error.message || "Failed to remove from waiting list",

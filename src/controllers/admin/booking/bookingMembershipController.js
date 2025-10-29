@@ -584,7 +584,6 @@ exports.transferClass = async (req, res) => {
 };
 
 exports.addToWaitingList = async (req, res) => {
-  const t = await require("../../../models").sequelize.transaction();
   try {
     console.log("🚀 [Controller] addToWaitingList started");
 
@@ -593,7 +592,6 @@ exports.addToWaitingList = async (req, res) => {
 
     // 🔹 Validate admin
     if (!adminId) {
-      await t.rollback();
       console.warn("⚠️ [Controller] Admin not found in request");
       return res
         .status(400)
@@ -603,7 +601,6 @@ exports.addToWaitingList = async (req, res) => {
 
     // 🔹 Validate class schedule
     if (!data.classScheduleId) {
-      await t.rollback();
       console.warn("⚠️ [Controller] Missing classScheduleId in payload");
       return res
         .status(400)
@@ -614,7 +611,7 @@ exports.addToWaitingList = async (req, res) => {
         });
     }
 
-    // ✅ Call service to create waiting list booking
+    // ✅ Call service to update booking to waiting list
     console.log("🔍 [Controller] Calling service addToWaitingListService");
     const result = await BookingMembershipService.addToWaitingListService(
       data,
@@ -622,22 +619,20 @@ exports.addToWaitingList = async (req, res) => {
     );
 
     if (!result.status) {
-      await t.rollback();
       console.warn("⚠️ [Controller] Service failed:", result.message);
       return res.status(400).json(result);
     }
 
     const waitingBooking = result.data;
-    console.log("✅ [Controller] Service returned success:", waitingBooking.id);
+    console.log("✅ [Controller] Booking updated to waiting list:", waitingBooking.id);
 
-    // ✅ Create notification
+    // ✅ Create notification (outside of transaction)
     console.log("🔔 [Controller] Creating notification");
     await createNotification(
       req,
       "Booking Added to Waiting List",
       `Booking "${waitingBooking.bookingId}" added to waiting list for class ID: ${waitingBooking.classScheduleId}`,
-      "System",
-      t
+      "System"
     );
 
     // ✅ Log activity
@@ -648,18 +643,13 @@ exports.addToWaitingList = async (req, res) => {
       MODULE,
       "add_to_waiting_list",
       waitingBooking,
-      true,
-      t
+      true
     );
 
-    console.log("✅ [Controller] Notification & log created");
+    console.log("🎉 [Controller] Operation completed successfully");
+    return res.status(200).json(result);
 
-    await t.commit();
-    console.log("🎉 [Controller] Transaction committed successfully");
-
-    return res.status(201).json(result);
   } catch (error) {
-    await t.rollback();
     console.error("❌ [Controller] addToWaitingList error:", error);
     return res.status(500).json({
       status: false,
