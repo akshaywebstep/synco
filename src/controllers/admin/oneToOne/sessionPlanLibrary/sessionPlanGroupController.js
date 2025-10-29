@@ -367,13 +367,13 @@ exports.getSessionPlanGroupStructureById = async (req, res) => {
 
 exports.getAllSessionPlanGroupStructure = async (req, res) => {
   try {
+    const createdBy = req.admin?.id || req.user?.id;
     if (!createdBy) {
       return res.status(400).json({
         status: false,
         message: "Unauthorized request: missing admin or user ID.",
       });
     }
-    const createdBy = req.admin?.id || req.user?.id;
     console.log("🟢 createdBy:", createdBy);
 
     // Get top-level super admin (if exists)
