@@ -17,8 +17,16 @@ const {
   updateSessionPlanConfig,
   deleteSessionPlanConfig,
   deleteSessionPlanConfigLevel,
+  downloadSessionPlanConfigVideo,
 
 } = require("../../../controllers/admin/oneToOne/sessionPlanLibrary/sessionPlanGroupController");
+
+router.get(
+  "/:id/download-video", // example route: /session-plan-group/:id/download-video
+  authMiddleware,
+  permissionMiddleware("session-plan-group", "view-listing"),
+  downloadSessionPlanConfigVideo
+);
 
 // ✅ Create Session Plan Group with file uploads
 router.post(
@@ -46,7 +54,7 @@ router.get(
 );
 
 router.put(
-  "/session-plan-structure/:id/",
+  "/session-plan-structure/update/:id/",
   authMiddleware,
   permissionMiddleware("session-plan-structure", "update"),
   updateSessionPlanConfig

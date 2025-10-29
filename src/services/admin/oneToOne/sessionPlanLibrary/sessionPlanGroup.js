@@ -219,6 +219,43 @@ exports.getAllSessionPlanConfig = async ({ order = "ASC", createdBy } = {}) => {
   }
 };
 
+exports.getSessionPlanConfigVideoStream = async (id, createdBy, filename) => {
+  try {
+    // Fetch the group from DB
+    const group = await SessionPlanGroup.findOne({
+      where: { id, createdBy },
+      attributes: ["id", "groupName", "video"],
+    });
+
+    if (!group || !group.video) {
+      return { status: false, message: "Video not found" };
+    }
+
+    // Fetch the video URL
+    const response = await fetch(group.video);
+    if (!response.ok) {
+      return { status: false, message: `Failed to fetch video` };
+    }
+
+    // Node.js stream
+    const nodeStream =
+      typeof response.body.pipe === "function"
+        ? response.body
+        : Readable.fromWeb(response.body);
+
+    // Determine download filename
+    const finalFileName =
+      filename || // query parameter
+      (group.groupName
+        ? `${group.groupName.replace(/\s+/g, "_")}.mp4`
+        : path.basename(group.video));
+
+    return { status: true, stream: nodeStream, filename: finalFileName };
+  } catch (error) {
+    console.error("❌ Error fetching group video:", error);
+    return { status: false, message: error.message };
+  }
+};
 exports.updateSessionPlanConfig = async (id, updatePayload, createdBy) => {
   try {
     // STEP 1 — Find the session plan group by ID and createdBy

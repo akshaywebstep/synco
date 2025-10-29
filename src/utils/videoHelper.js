@@ -36,18 +36,19 @@ const downloadVideo = (videoUrl, tempFilePath) => {
  * Get video duration safely (downloads remote file first)
  */
 const getVideoDurationInSeconds = async (videoUrl) => {
-  if (!videoUrl) return 0;
+  if (!videoUrl || typeof videoUrl !== "string" || !videoUrl.trim().startsWith("http")) {
+    if (DEBUG) console.warn("⚠️ Skipping invalid video URL:", videoUrl);
+    return 0;
+  }
 
   const tempFile = path.join(os.tmpdir(), `${Date.now()}.mp4`);
 
   try {
     if (DEBUG) console.log("Downloading video to:", tempFile);
 
-    // Download video temporarily
-    const response = await axios.get(videoUrl, { responseType: "arraybuffer" });
+    const response = await axios.get(videoUrl.trim(), { responseType: "arraybuffer" });
     fs.writeFileSync(tempFile, response.data);
 
-    // Probe local file
     const duration = await new Promise((resolve) => {
       ffmpeg.ffprobe(tempFile, (err, metadata) => {
         if (err) {
@@ -64,7 +65,6 @@ const getVideoDurationInSeconds = async (videoUrl) => {
     if (DEBUG) console.error("Error getting video duration:", err);
     return 0;
   } finally {
-    // Clean up
     fs.unlink(tempFile, () => {});
   }
 };
