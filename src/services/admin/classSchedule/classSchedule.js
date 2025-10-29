@@ -376,6 +376,185 @@ exports.getAllClasses = async (adminId) => {
             ],
           });
 
+          // for (const termGroup of termGroups) {
+          //   for (const term of termGroup.terms || []) {
+          //     if (typeof term.exclusionDates === "string") {
+          //       try {
+          //         term.dataValues.exclusionDates = JSON.parse(term.exclusionDates);
+          //       } catch {
+          //         term.dataValues.exclusionDates = [];
+          //       }
+          //     }
+
+          //     let parsedSessionsMap = [];
+          //     if (typeof term.sessionsMap === "string") {
+          //       try {
+          //         parsedSessionsMap = JSON.parse(term.sessionsMap);
+          //       } catch {
+          //         parsedSessionsMap = [];
+          //       }
+          //     } else {
+          //       parsedSessionsMap = term.sessionsMap || [];
+          //     }
+
+          //     // ✅ New array to hold only sessions that exist in ClassScheduleTermMap
+          //     const filteredSessions = [];
+
+          //     for (let i = 0; i < parsedSessionsMap.length; i++) {
+          //       const entry = parsedSessionsMap[i];
+          //       if (!entry.sessionPlanId) continue;
+
+          //       const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
+          //         attributes: [
+          //           "id",
+          //           "groupName",
+          //           "levels",
+          //           "type",
+          //           "pinned",
+          //           "beginner_video",
+          //           "intermediate_video",
+          //           "advanced_video",
+          //           "pro_video",
+          //           "banner",
+          //           "player",
+          //           "beginner_upload",
+          //           "intermediate_upload",
+          //           "advanced_upload",
+          //           "pro_upload",
+          //           "createdBy",
+          //           "createdAt",
+          //         ],
+          //       });
+
+          //       if (!spg) continue;
+          //       // ✅ Only include sessions that already exist in ClassScheduleTermMap (based on sessionPlanId)
+          //       const relatedMappings = mappings.filter(
+          //         (m) =>
+          //           m.classScheduleId === cls.id &&
+          //           m.termGroupId === termGroup.id &&
+          //           m.termId === term.id &&
+          //           m.sessionPlanId === entry.sessionPlanId // <-- match by sessionPlanId only
+          //       );
+
+          //       // 🧩 Skip sessions that were newly added in term.sessionMap (not in mapping yet)
+          //       if (relatedMappings.length === 0) {
+          //         continue;
+          //       }
+
+          //       // 🧩 Rest of your logic (unchanged)
+          //       let levels = {};
+          //       try {
+          //         levels =
+          //           typeof spg.levels === "string"
+          //             ? JSON.parse(spg.levels)
+          //             : spg.levels || {};
+          //       } catch {
+          //         levels = {};
+          //       }
+
+          //       const allExercises = await SessionExercise.findAll({
+          //         where: { createdBy: spg.createdBy },
+          //       });
+          //       const exerciseMap = allExercises.reduce((acc, ex) => {
+          //         acc[ex.id] = ex;
+          //         return acc;
+          //       }, {});
+
+          //       for (const levelKey of Object.keys(levels)) {
+          //         for (const item of levels[levelKey]) {
+          //           if (Array.isArray(item.sessionExerciseId)) {
+          //             item.sessionExercises = item.sessionExerciseId
+          //               .map((exId) => exerciseMap[exId])
+          //               .filter(Boolean)
+          //               .map((ex) => ({
+          //                 id: ex.id,
+          //                 title: ex.title,
+          //                 description: ex.description,
+          //                 duration: ex.duration,
+          //                 imageUrl: ex.imageUrl,
+          //               }));
+          //           } else {
+          //             item.sessionExercises = [];
+          //           }
+          //         }
+          //       }
+
+          //       const getElapsedTime = (createdAt) => {
+          //         const now = new Date();
+          //         const created = new Date(createdAt);
+          //         const diffMs = now - created;
+          //         const diffSeconds = Math.floor(diffMs / 1000);
+          //         const diffMinutes = Math.floor(diffSeconds / 60);
+          //         const diffHours = Math.floor(diffMinutes / 60);
+          //         const diffDays = Math.floor(diffHours / 24);
+          //         if (diffDays > 0) return `${diffDays} day(s) ago`;
+          //         if (diffHours > 0) return `${diffHours} hour(s) ago`;
+          //         if (diffMinutes > 0) return `${diffMinutes} minute(s) ago`;
+          //         return `${diffSeconds} second(s) ago`;
+          //       };
+
+          //       const videoUploadedAgo = {};
+          //       for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
+          //         if (spg[`${level}_video`]) {
+          //           videoUploadedAgo[`${level}_video`] = getElapsedTime(spg.createdAt);
+          //         } else {
+          //           videoUploadedAgo[`${level}_video`] = null;
+          //         }
+          //       }
+
+          //       const mapping = relatedMappings[i] || relatedMappings[0] || null;
+
+          //       entry.sessionPlan = {
+          //         id: spg.id,
+          //         groupName: spg.groupName,
+          //         levels,
+          //         beginner_video: spg.beginner_video,
+          //         intermediate_video: spg.intermediate_video,
+          //         advanced_video: spg.advanced_video,
+          //         pro_video: spg.pro_video,
+          //         banner: spg.banner,
+          //         player: spg.player,
+          //         videoUploadedAgo,
+          //         ...(mapping
+          //           ? {
+          //             mapId: mapping.id,
+          //             classScheduleId: mapping.classScheduleId,
+          //             termGroupId: mapping.termGroupId,
+          //             termId: mapping.termId,
+          //             sessionPlanId: mapping.sessionPlanId,
+          //             cancelSession: await (async () => {
+          //               const cancelled = await getCancelledSessionBySessionPlanId(
+          //                 mapping.id,
+          //                 mapping.sessionPlanId
+          //               );
+          //               return cancelled?.status ? cancelled.cancelSession : {};
+          //             })(),
+          //             status: mapping.status,
+          //             createdAt: mapping.createdAt,
+          //             updatedAt: mapping.updatedAt,
+          //           }
+          //           : {}),
+          //       };
+
+          //       // ✅ Only push if mapping exists
+          //       filteredSessions.push(entry);
+          //     }
+
+          //     // ✅ Replace with filtered sessions only
+          //     term.dataValues.sessionsMap = filteredSessions;
+          //   }
+
+          //   // ✅ Remove empty terms
+          //   termGroup.terms = termGroup.terms.filter(
+          //     (t) => (t.dataValues.sessionsMap || []).length > 0
+          //   );
+          // }
+
+          // // ✅ Remove empty term groups
+          // const filteredTermGroups = termGroups.filter(
+          //   (tg) => (tg.terms || []).length > 0
+          // );
+
           for (const termGroup of termGroups) {
             for (const term of termGroup.terms || []) {
               if (typeof term.exclusionDates === "string") {
@@ -400,9 +579,24 @@ exports.getAllClasses = async (adminId) => {
               // ✅ New array to hold only sessions that exist in ClassScheduleTermMap
               const filteredSessions = [];
 
+              // ✅ Get all sessionPlanIds that already exist in mapping for this class + term
+              const existingSessionPlanIds = mappings
+                .filter(
+                  (m) =>
+                    m.classScheduleId === cls.id &&
+                    m.termGroupId === termGroup.id &&
+                    m.termId === term.id
+                )
+                .map((m) => m.sessionPlanId);
+
               for (let i = 0; i < parsedSessionsMap.length; i++) {
                 const entry = parsedSessionsMap[i];
                 if (!entry.sessionPlanId) continue;
+
+                // 🧩 Skip sessions that were newly added in term.sessionMap (not in mapping yet)
+                if (!existingSessionPlanIds.includes(entry.sessionPlanId)) {
+                  continue;
+                }
 
                 const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
                   attributes: [
@@ -428,31 +622,17 @@ exports.getAllClasses = async (adminId) => {
 
                 if (!spg) continue;
 
-                // ✅ Check mapping first — only include sessions that exist in ClassScheduleTermMap
-                // const relatedMappings = mappings.filter(
-                //   (m) =>
-                //     m.classScheduleId === cls.id &&
-                //     m.termGroupId === termGroup.id &&
-                //     m.termId === term.id &&
-                //     m.sessionPlanId === spg.id
-                // );
-
-                // if (relatedMappings.length === 0) continue; // skip sessions not mapped
-                // ✅ Only include sessions that already exist in ClassScheduleTermMap (based on sessionPlanId)
                 const relatedMappings = mappings.filter(
                   (m) =>
                     m.classScheduleId === cls.id &&
                     m.termGroupId === termGroup.id &&
                     m.termId === term.id &&
-                    m.sessionPlanId === entry.sessionPlanId // <-- match by sessionPlanId only
+                    m.sessionPlanId === entry.sessionPlanId
                 );
 
-                // 🧩 Skip sessions that were newly added in term.sessionMap (not in mapping yet)
-                if (relatedMappings.length === 0) {
-                  continue;
-                }
+                if (relatedMappings.length === 0) continue;
 
-                // 🧩 Rest of your logic (unchanged)
+                // 🧩 Parse levels safely
                 let levels = {};
                 try {
                   levels =
