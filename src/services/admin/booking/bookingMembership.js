@@ -2112,6 +2112,90 @@ exports.transferClass = async (data, options) => {
 //   }
 // };
 
+// exports.addToWaitingListService = async (data, adminId) => {
+//   const t = await sequelize.transaction();
+//   try {
+//     console.log("🚀 [Service] addToWaitingListService (simplified)", {
+//       data,
+//       adminId,
+//     });
+
+//     // 1️⃣ Fetch existing booking
+//     const booking = await Booking.findByPk(data.bookingId, {
+//       include: [
+//         { model: BookingStudentMeta, as: "students" },
+//         { model: BookingPayment, as: "payments" },
+//       ],
+//       transaction: t,
+//     });
+
+//     if (!booking) throw new Error("Invalid booking selected.");
+
+//     // 2️⃣ Validate normal case (only allow active/paid bookings)
+//     if (!(booking.bookingType === "paid" && booking.status === "active")) {
+//       throw new Error(
+//         `Booking type=${booking.bookingType}, status=${booking.status}. Cannot move to waiting list.`
+//       );
+//     }
+
+//     // 3️⃣ Validate class schedule if provided
+//     if (data.classScheduleId) {
+//       const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, {
+//         transaction: t,
+//       });
+//       if (!classSchedule) throw new Error("Class schedule is required.");
+//     }
+
+//     // 4️⃣ Only update required fields
+//     const updateFields = {
+//       status: "waiting list",
+//       serviceType: "weekly class trial",
+//       classScheduleId: data.classScheduleId || booking.classScheduleId,
+//       additionalNote: data.additionalNote || booking.additionalNote,
+//     };
+
+//     // 5️⃣ Conditionally update startDate
+//     if (data.preferedStartDate) {
+//       updateFields.startDate = data.preferedStartDate;
+//     } else if (data.startDate) {
+//       updateFields.startDate = data.startDate;
+//     }
+//     // else do not touch booking.startDate
+
+//     await booking.update(updateFields, { transaction: t });
+
+//     await t.commit();
+
+//     // 6️⃣ Fetch updated booking for return
+//     const updatedBooking = await Booking.findByPk(booking.id, {
+//       include: [
+//         {
+//           model: BookingStudentMeta,
+//           as: "students",
+//           include: [
+//             { model: BookingParentMeta, as: "parents" },
+//             { model: BookingEmergencyMeta, as: "emergencyContacts" },
+//           ],
+//         },
+//       ],
+//     });
+
+//     return {
+//       status: true,
+//       message: "Booking updated to waiting list successfully.",
+//       data: updatedBooking,
+//     };
+//   } catch (error) {
+//     await t.rollback();
+//     console.error("❌ [Service] addToWaitingListService error:", error);
+//     return {
+//       status: false,
+//       message: error.message || "Server error.",
+//       data: null,
+//     };
+//   }
+// };
+
 exports.addToWaitingListService = async (data, adminId) => {
   const t = await sequelize.transaction();
   try {
@@ -2131,8 +2215,14 @@ exports.addToWaitingListService = async (data, adminId) => {
 
     if (!booking) throw new Error("Invalid booking selected.");
 
-    // 2️⃣ Validate normal case (only allow active/paid bookings)
-    if (!(booking.bookingType === "paid" && booking.status === "active")) {
+    // 2️⃣ Validate normal case (allow active/paid bookings or cancelled/request_to_cancel)
+    const allowedStatuses = ["active", "cancelled", "request_to_cancel"];
+    if (
+      !(
+        booking.bookingType === "paid" &&
+        allowedStatuses.includes(booking.status)
+      )
+    ) {
       throw new Error(
         `Booking type=${booking.bookingType}, status=${booking.status}. Cannot move to waiting list.`
       );
@@ -2283,7 +2373,7 @@ exports.getBookingsById = async (bookingId) => {
     const booking = await Booking.findOne({
       where: {
         id: bookingId,
-        bookingType: { [Op.or]: ["waiting list", "paid","removed"], }, // <-- both types
+        bookingType: { [Op.or]: ["waiting list", "paid", "removed"], }, // <-- both types
         // serviceType: "weekly class membership",
         serviceType: {
           [Op.in]: ["weekly class membership", "weekly class trial"], // ✅ both types
