@@ -219,43 +219,55 @@ exports.getAllSessionPlanConfig = async ({ order = "ASC", createdBy } = {}) => {
   }
 };
 
-exports.getSessionPlanConfigVideoStream = async (id, createdBy, filename) => {
+exports.getSessionPlanConfigVideoStream = async (id, createdBy, level, filename) => {
   try {
-    // Fetch the group from DB
+    // ✅ Step 1: Validate level
+    const validLevels = ["beginner", "intermediate", "advanced", "pro"];
+    if (!validLevels.includes(level)) {
+      return { status: false, message: `Invalid level '${level}'. Must be one of: ${validLevels.join(", ")}.` };
+    }
+
+    const videoField = `${level}_video`; // e.g. beginner_video
+
+    // ✅ Step 2: Fetch from DB
     const group = await SessionPlanGroup.findOne({
       where: { id, createdBy },
-      attributes: ["id", "groupName", "video"],
+      attributes: ["id", "groupName", videoField],
     });
 
-    if (!group || !group.video) {
-      return { status: false, message: "Video not found" };
+    if (!group) {
+      return { status: false, message: "Session Plan Group not found." };
     }
 
-    // Fetch the video URL
-    const response = await fetch(group.video);
+    const videoUrl = group[videoField];
+    if (!videoUrl) {
+      return { status: false, message: `No ${level} video found.` };
+    }
+
+    // ✅ Step 3: Fetch the video file
+    const response = await fetch(videoUrl);
     if (!response.ok) {
-      return { status: false, message: `Failed to fetch video` };
+      return { status: false, message: `Failed to fetch ${level} video.` };
     }
 
-    // Node.js stream
+    // ✅ Step 4: Convert to Node.js-readable stream
     const nodeStream =
       typeof response.body.pipe === "function"
         ? response.body
         : Readable.fromWeb(response.body);
 
-    // Determine download filename
-    const finalFileName =
-      filename || // query parameter
-      (group.groupName
-        ? `${group.groupName.replace(/\s+/g, "_")}.mp4`
-        : path.basename(group.video));
+    // ✅ Step 5: Determine filename
+    const safeGroupName = (group.groupName || "session").replace(/\s+/g, "_");
+    const finalFileName = filename || `${safeGroupName}_${level}.mp4`;
 
+    // ✅ Step 6: Return
     return { status: true, stream: nodeStream, filename: finalFileName };
   } catch (error) {
-    console.error("❌ Error fetching group video:", error);
+    console.error("❌ Error fetching session plan config video:", error);
     return { status: false, message: error.message };
   }
 };
+
 exports.updateSessionPlanConfig = async (id, updatePayload, createdBy) => {
   try {
     // STEP 1 — Find the session plan group by ID and createdBy

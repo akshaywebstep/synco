@@ -7,6 +7,7 @@ const permissionMiddleware = require("../../../middleware/admin/permission");
 
 // ✅ Multer in-memory storage for banner & video uploads
 const upload = multer();
+const fs = require("fs");
 
 // Controllers
 const {
@@ -22,9 +23,9 @@ const {
 } = require("../../../controllers/admin/oneToOne/sessionPlanLibrary/sessionPlanGroupController");
 
 router.get(
-  "/:id/download-video", // example route: /session-plan-group/:id/download-video
+  "/session-plan-structure/:id/download-video", // example route: /session-plan-group/:id/download-video
   authMiddleware,
-  permissionMiddleware("session-plan-group", "view-listing"),
+  permissionMiddleware("session-plan-structure", "view-listing"),
   downloadSessionPlanConfigVideo
 );
 
@@ -56,6 +57,7 @@ router.get(
 router.put(
   "/session-plan-structure/update/:id/",
   authMiddleware,
+  upload.any(),
   permissionMiddleware("session-plan-structure", "update"),
   updateSessionPlanConfig
 );

@@ -4,12 +4,13 @@ const SessionExerciseService = require("../../../../services/admin/oneToOne/sess
 
 const { logActivity } = require("../../../../utils/admin/activityLogger");
 const { downloadFromFTP, uploadToFTP } = require("../../../../utils/uploadToFTP");
+const { Readable } = require("stream");
 
 const { getVideoDurationInSeconds, formatDuration, } = require("../../../../utils/videoHelper");
 const {
   createNotification,
 } = require("../../../../utils/admin/notificationHelper");
-const { SessionExercise, SessionPlanConfig } = require("../../../../models");
+const { SessionExercise, SessionPlanGroup } = require("../../../../models");
 const path = require("path");
 const { saveFile, deleteFile } = require("../../../../utils/fileHandler");
 const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
@@ -439,32 +440,65 @@ exports.getAllSessionPlanGroupStructure = async (req, res) => {
 };
 
 exports.downloadSessionPlanConfigVideo = async (req, res) => {
+  const { id } = req.params;
+  const { level } = req.query; // ?level=beginner
+  const adminId = req.admin?.id;
+
   try {
-    const { id } = req.params;
-    const filename = req.query.filename;
-    const createdBy = req.admin?.id || req.user?.id;
-
-    const result = await SessionPlanGroupService.getSessionPlanConfigVideoStream(
-      id,
-      createdBy,
-      filename
-    );
-
-    if (!result.status) {
-      return res.status(404).json({ status: false, message: result.message });
+    // STEP 1: Validate
+    const validLevels = ["beginner", "intermediate", "advanced", "pro"];
+    if (!level || !validLevels.includes(level)) {
+      return res.status(400).json({
+        status: false,
+        message: `Invalid or missing level. Must be one of: ${validLevels.join(", ")}.`,
+      });
     }
 
-    res.setHeader("Content-Type", "video/mp4");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${result.filename}"`
-    );
+    const videoField = `${level}_video`; // e.g., beginner_video
 
-    // Pipe stream to response
-    result.stream.pipe(res);
+    // STEP 2: Fetch group data
+    const group = await SessionPlanGroup.findOne({
+      where: { id, createdBy: adminId },
+      attributes: ["id", "groupName", videoField],
+    });
+
+    if (!group) {
+      return res.status(404).json({ status: false, message: "Session Plan Group not found." });
+    }
+
+    const videoUrl = group[videoField];
+    if (!videoUrl) {
+      return res.status(404).json({ status: false, message: `No ${level} video found.` });
+    }
+
+    // STEP 3: Fetch the video file
+    const response = await fetch(videoUrl);
+    if (!response.ok) {
+      return res.status(500).json({ status: false, message: `Failed to fetch video: ${response.statusText}` });
+    }
+
+    // STEP 4: Convert to Node.js readable stream
+    const nodeStream =
+      typeof response.body.pipe === "function"
+        ? response.body
+        : Readable.fromWeb(response.body);
+
+    // STEP 5: Set headers for download
+    const safeName = group.groupName?.replace(/\s+/g, "_") || "session";
+    const finalFileName = `${safeName}_${level}.mp4`;
+
+    res.setHeader("Content-Type", "video/mp4");
+    res.setHeader("Content-Disposition", `attachment; filename="${finalFileName}"`);
+
+    // STEP 6: Stream file
+    nodeStream.pipe(res);
   } catch (error) {
-    console.error("❌ Error in downloadSessionPlanGroupVideo:", error);
-    res.status(500).json({ status: false, message: "Server error." });
+    console.error("❌ Error downloading session plan group video:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Error downloading video.",
+      error: error.message,
+    });
   }
 };
 
