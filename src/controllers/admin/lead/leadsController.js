@@ -460,7 +460,8 @@ exports.getAllReferallLeads = async (req, res) => {
     };
 
     // Fetch leads from service
-    const result = await LeadService.getAllForFacebookLeads(superAdminId,filters);
+    // const result = await LeadService.getAllForFacebookLeads(superAdminId,filters);
+    const result = await LeadService.getAllReferallLeads(superAdminId, filters);
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Failed fetching leads:", result.message);

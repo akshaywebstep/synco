@@ -20,21 +20,29 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// Convert postcode to coordinates (UK example using Postcodes.io)
 async function getCoordinatesFromPostcode(postcode) {
+  if (!postcode || typeof postcode !== "string" || postcode.trim().length < 5) {
+    console.warn("⚠️ Skipping postcode lookup: invalid postcode", postcode);
+    return null;
+  }
+
   try {
     const res = await axios.get(
-      `https://api.postcodes.io/postcodes/${postcode}`
+      `https://api.postcodes.io/postcodes/${encodeURIComponent(postcode.trim())}`
     );
-    if (res.data.status === 200) {
+
+    if (res.data.status === 200 && res.data.result) {
       return {
         latitude: res.data.result.latitude,
         longitude: res.data.result.longitude,
       };
+    } else {
+      console.warn("⚠️ Postcode not found:", postcode);
     }
   } catch (err) {
-    console.error("❌ Postcode lookup error:", err.message);
+    console.error("❌ Postcode lookup error:", err.response?.data?.error || err.message);
   }
+
   return null;
 }
 
@@ -436,7 +444,7 @@ exports.createLead = async (payload) => {
 //     return { status: false, message: error.message };
 //   }
 // };
-exports.getAllForFacebookLeads = async (assignedAgentId,filters = {}) => {
+exports.getAllForFacebookLeads = async (assignedAgentId, filters = {}) => {
   try {
 
     if (!assignedAgentId || isNaN(Number(assignedAgentId))) {
@@ -449,7 +457,7 @@ exports.getAllForFacebookLeads = async (assignedAgentId,filters = {}) => {
     const allLeads = await Lead.findAll({
       order: [["createdAt", "ASC"]],
       // where: { status: "facebook" },
-      where: { assignedAgentId: Number(assignedAgentId),status: "facebook" },
+      where: { assignedAgentId: Number(assignedAgentId), status: "facebook" },
       include: [
         {
           model: Admin,
@@ -667,7 +675,10 @@ exports.getAllForFacebookLeads = async (assignedAgentId,filters = {}) => {
               allVenuesList
                 .map((v) => ({
                   ...v.dataValues,
-                  distance: calculateDistance(coords.latitude, coords.longitude, v.latitude, v.longitude),
+                  distance: Number(
+                    calculateDistance(coords.latitude, coords.longitude, v.latitude, v.longitude).toFixed(2)
+                  ),
+
                 }))
                 .sort((a, b) => a.distance - b.distance)
                 .slice(0, 5)
@@ -766,7 +777,7 @@ exports.getAllForFacebookLeads = async (assignedAgentId,filters = {}) => {
     return {
       status: true,
       message: "Leads with nearest venues retrieved",
-      data: leadsWithNearestVenue,
+      data: formattedLeads,
       // allVenues,
       analytics,
     };
@@ -776,7 +787,7 @@ exports.getAllForFacebookLeads = async (assignedAgentId,filters = {}) => {
   }
 };
 
-exports.getAllReferallLeads = async (assignedAgentId,filters = {}) => {
+exports.getAllReferallLeads = async (assignedAgentId, filters = {}) => {
   try {
     if (!assignedAgentId || isNaN(Number(assignedAgentId))) {
       return {
@@ -787,8 +798,7 @@ exports.getAllReferallLeads = async (assignedAgentId,filters = {}) => {
     }
     const allLeads = await Lead.findAll({
       order: [["createdAt", "ASC"]],
-      // where: { status: "referall" },
-      where: { assignedAgentId: Number(assignedAgentId),status: "referall" },
+      where: { assignedAgentId: Number(assignedAgentId), status: "referall" },
       include: [
         {
           model: Admin,
@@ -1014,7 +1024,10 @@ exports.getAllReferallLeads = async (assignedAgentId,filters = {}) => {
               allVenuesList
                 .map((v) => ({
                   ...v.dataValues,
-                  distance: calculateDistance(coords.latitude, coords.longitude, v.latitude, v.longitude),
+                  distance: Number(
+                    calculateDistance(coords.latitude, coords.longitude, v.latitude, v.longitude).toFixed(2)
+                  ),
+
                 }))
                 .sort((a, b) => a.distance - b.distance)
                 .slice(0, 5)
@@ -1113,7 +1126,7 @@ exports.getAllReferallLeads = async (assignedAgentId,filters = {}) => {
     return {
       status: true,
       message: "Leads with nearest venues retrieved",
-      data: leadsWithNearestVenue,
+      data: formattedLeads,
       // allVenues,
       analytics,
     };
@@ -1123,9 +1136,9 @@ exports.getAllReferallLeads = async (assignedAgentId,filters = {}) => {
   }
 };
 
-exports.getAllOthersLeads = async (assignedAgentId,filters = {}) => {
+exports.getAllOthersLeads = async (assignedAgentId, filters = {}) => {
   try {
-     if (!assignedAgentId || isNaN(Number(assignedAgentId))) {
+    if (!assignedAgentId || isNaN(Number(assignedAgentId))) {
       return {
         status: false,
         message: "No valid parent or super admin found for this request.",
@@ -1134,7 +1147,7 @@ exports.getAllOthersLeads = async (assignedAgentId,filters = {}) => {
     }
     const allLeads = await Lead.findAll({
       order: [["createdAt", "ASC"]],
-      where: { assignedAgentId: Number(assignedAgentId),status: "others" },
+      where: { assignedAgentId: Number(assignedAgentId), status: "others" },
       include: [
         {
           model: Admin,
@@ -1360,7 +1373,10 @@ exports.getAllOthersLeads = async (assignedAgentId,filters = {}) => {
               allVenuesList
                 .map((v) => ({
                   ...v.dataValues,
-                  distance: calculateDistance(coords.latitude, coords.longitude, v.latitude, v.longitude),
+                  distance: Number(
+                    calculateDistance(coords.latitude, coords.longitude, v.latitude, v.longitude).toFixed(2)
+                  ),
+
                 }))
                 .sort((a, b) => a.distance - b.distance)
                 .slice(0, 5)
@@ -1478,7 +1494,9 @@ exports.getAllLeads = async (assignedAgentId, filters = {}) => {
       };
     }
     const allLeads = await Lead.findAll({
-      where: { assignedAgentId: Number(assignedAgentId) },
+      where: {
+        assignedAgentId: Number(assignedAgentId),
+      },
       order: [["createdAt", "ASC"]],
       include: [
         {
@@ -1705,7 +1723,10 @@ exports.getAllLeads = async (assignedAgentId, filters = {}) => {
               allVenuesList
                 .map((v) => ({
                   ...v.dataValues,
-                  distance: calculateDistance(coords.latitude, coords.longitude, v.latitude, v.longitude),
+                  distance: Number(
+                    calculateDistance(coords.latitude, coords.longitude, v.latitude, v.longitude).toFixed(2)
+                  ),
+
                 }))
                 .sort((a, b) => a.distance - b.distance)
                 .slice(0, 5)
@@ -2002,7 +2023,10 @@ exports.findAClass = async (filters = {}) => {
               allVenuesList
                 .map((v) => ({
                   ...v.dataValues,
-                  distance: calculateDistance(coords.latitude, coords.longitude, v.latitude, v.longitude),
+                  distance: Number(
+                    calculateDistance(coords.latitude, coords.longitude, v.latitude, v.longitude).toFixed(2)
+                  ),
+
                 }))
                 .sort((a, b) => a.distance - b.distance)
                 .slice(0, 5)
