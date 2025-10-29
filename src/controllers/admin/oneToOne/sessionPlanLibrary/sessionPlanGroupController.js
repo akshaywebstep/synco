@@ -223,7 +223,7 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
       "session-plan-structure", // MODULE name
       "update", // Action type
       {
-        oneLineMessage: `Session Plan Group '${payload.groupName}' (ID: ${id}) updated by ${req?.admin?.firstName || "Admin"}.`
+        oneLineMessage: `Session Plan Group '${payload.groupName}'  created by ${req?.admin?.firstName || "Admin"}.`
       },
       true
     );
@@ -709,7 +709,7 @@ exports.updateSessionPlanConfig = async (req, res) => {
       "Session Plan Group", // MODULE name
       "update", // Action type
       {
-        oneLineMessage: `Session Plan Group '${updatePayload.groupName}' (ID: ${id}) updated by ${req?.admin?.firstName || "Admin"}.`
+        oneLineMessage: `Session Plan Group '${updatePayload.groupName}' updated by ${req?.admin?.firstName || "Admin"}.`
       },
       true
     );

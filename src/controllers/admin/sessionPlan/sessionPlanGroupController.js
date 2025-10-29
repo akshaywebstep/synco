@@ -1533,7 +1533,7 @@ exports.updateSessionPlanGroup = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Group Updated",
-      `The session plan group '${updatePayload.groupName}' (ID: ${id}) was updated by ${req?.admin?.firstName || "Admin"}.`,
+      `The session plan group '${updatePayload.groupName}' was updated by ${req?.admin?.firstName || "Admin"}.`,
       "System"
     );
 
