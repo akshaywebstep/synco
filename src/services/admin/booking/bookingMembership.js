@@ -860,22 +860,21 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
 
     // ✅ Date filters
     if (filters.dateBooked) {
-      const start = new Date(filters.dateBooked + " 00:00:00");
-      const end = new Date(filters.dateBooked + " 23:59:59");
+      const start = new Date(`${filters.dateBooked} 00:00:00`);
+      const end = new Date(`${filters.dateBooked} 23:59:59`);
       whereBooking.createdAt = { [Op.between]: [start, end] };
-    } else if (filters.fromDate && filters.toDate) {
-      const start = new Date(filters.fromDate + " 00:00:00");
-      const end = new Date(filters.toDate + " 23:59:59");
-      whereBooking.createdAt = { [Op.between]: [start, end] };
+
     } else if (filters.dateFrom && filters.dateTo) {
-      const start = new Date(filters.dateFrom + " 00:00:00");
-      const end = new Date(filters.dateTo + " 23:59:59");
-      whereBooking.startDate = { [Op.between]: [start, end] };
-    } else if (filters.fromDate) {
-      const start = new Date(filters.fromDate + " 00:00:00");
+      const start = new Date(`${filters.dateFrom} 00:00:00`);
+      const end = new Date(`${filters.dateTo} 23:59:59`);
+      whereBooking.createdAt = { [Op.between]: [start, end] };
+
+    } else if (filters.dateFrom) {
+      const start = new Date(`${filters.dateFrom} 00:00:00`);
       whereBooking.createdAt = { [Op.gte]: start };
-    } else if (filters.toDate) {
-      const end = new Date(filters.toDate + " 23:59:59");
+
+    } else if (filters.dateTo) {
+      const end = new Date(`${filters.dateTo} 23:59:59`);
       whereBooking.createdAt = { [Op.lte]: end };
     }
 
@@ -1982,7 +1981,7 @@ exports.addToWaitingListService = async (data, adminId) => {
     if (!booking) throw new Error("Invalid booking selected.");
 
     // 2️⃣ Handle "request to cancel" case
-   if (booking.status === "request_to_cancel" || booking.status === "cancelled") {
+    if (booking.status === "request_to_cancel" || booking.status === "cancelled") {
       // 🔹 Remove entry from cancel booking table
       const existingCancel = await CancelBooking.findOne({
         where: { bookingId: booking.id },

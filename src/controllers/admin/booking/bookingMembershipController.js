@@ -279,8 +279,8 @@ exports.getAllPaidBookings = async (req, res) => {
       venueName: req.query.venueName,
       dateBooked: req.query.dateBooked,
       studentName: req.query.studentName,
-      dateFrom: req.query.fromDate || undefined,
-      dateTo: req.query.toDate || undefined,
+      dateFrom: req.query.dateFrom || undefined,
+      dateTo: req.query.dateTo || undefined,
       duration: req.query.duration ? parseInt(req.query.duration, 10) : undefined,
     };
 
@@ -289,7 +289,6 @@ exports.getAllPaidBookings = async (req, res) => {
       const admins = mainSuperAdminResult?.admins || [];
       filters.bookedBy = admins.length > 0 ? admins.map(a => a.id) : [];
     } else {
-      // Always assign bookedBy even if not in query
       filters.bookedBy = bookedBy || null;
     }
 
