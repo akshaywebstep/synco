@@ -2216,7 +2216,7 @@ exports.addToWaitingListService = async (data, adminId) => {
     if (!booking) throw new Error("Invalid booking selected.");
 
     // 2️⃣ Validate normal case (allow active/paid bookings or cancelled/request_to_cancel)
-    const allowedStatuses = ["active", "cancelled", "request_to_cancel"];
+    const allowedStatuses = ["active", "cancelled", "request_to_cancel","frozen"];
     if (
       !(
         booking.bookingType === "paid" &&
