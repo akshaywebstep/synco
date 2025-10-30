@@ -120,7 +120,8 @@ exports.getAllSessionPlanGroups = async ({
       where: { createdBy: Number(createdBy),
          type: "weekly_classes",
        },
-      order: [[orderBy, order]],
+      // order: [[orderBy, order]],
+      order: [["sortOrder", "ASC"]],
       attributes: [
         "id",
         "groupName",

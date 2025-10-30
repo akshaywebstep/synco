@@ -351,7 +351,7 @@ exports.duplicateSessionPlanGroup = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Group Duplicated",
-      `Session Plan Group '${group.groupName}' (New ID: ${newGroupId}) was duplicated by ${req?.admin?.firstName || "Admin"}.`,
+      `Session Plan Group '${group.groupName}' was duplicated by ${req?.admin?.firstName || "Admin"}.`,
       "System"
     );
 
