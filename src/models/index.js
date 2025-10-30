@@ -75,6 +75,8 @@ const models = {
 
   SessionPlanConfig: require("./admin/oneToOne/SessionPlanConfig"),
 
+  oneToOneLeads: require("./admin/oneToOne/oneToOneLeads"),
+
 };
 
 // =================== Apply Model-Level Associations =================== //
@@ -131,6 +133,7 @@ const {
   KeyInformation,
 
   SessionPlanConfig,
+  oneToOneLeads
 } = models;
 
 // Many-to-Many
@@ -357,4 +360,5 @@ module.exports = {
   Lead,
   KeyInformation,
   SessionPlanConfig,
+  oneToOneLeads
 };
