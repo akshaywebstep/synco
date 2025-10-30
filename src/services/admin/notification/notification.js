@@ -89,8 +89,15 @@ exports.markAsRead = async (adminId) => {
   }
 };
 
-exports.getAllNotifications = async (adminId, category = null, options = {}) => {
+exports.getAllNotifications = async (adminId, category = null, options = {}, data = {}) => {
   try {
+
+    const {
+      isSuperAdmin = false,
+      superAdminId = null,
+      adminIds = []
+    } = data;
+
     // 🧩 Validate adminId
     if (!adminId || isNaN(Number(adminId))) {
       return {
@@ -122,8 +129,23 @@ exports.getAllNotifications = async (adminId, category = null, options = {}) => 
 
     // 🧮 Build filter condition
     const whereCondition = {};
+
     if (category) whereCondition.category = category;
-    if (options.excludeOwn) whereCondition.adminId = { [Op.ne]: adminId };
+
+    if (isSuperAdmin) {
+      // ✅ Super Admin → include all admins under them
+      whereCondition.adminId = { [Op.in]: adminIds };
+    } else if (!isSuperAdmin && superAdminId) {
+      // ✅ Normal Admin → show only their Super Admin’s notifications
+      whereCondition.adminId = superAdminId;
+    } else {
+      // ⚠️ No valid admin context found
+      return {
+        status: false,
+        message: "Invalid admin context: neither Super Admin nor linked Super Admin found.",
+        data: [],
+      };
+    }
 
     // 📦 Fetch notifications
     const notifications = await Notification.findAll({
@@ -138,9 +160,15 @@ exports.getAllNotifications = async (adminId, category = null, options = {}) => 
       ],
     });
 
+    // 🧾 Get IDs of fetched notifications
+    const notificationIds = notifications.map((n) => n.id);
+
     // 🔖 Fetch read notifications for the admin
     const readRecords = await NotificationRead.findAll({
-      where: { adminId },
+      where: {
+        // adminId,
+        notificationId: { [Op.in]: notificationIds }, // ✅ added condition
+      },
       attributes: ["notificationId"],
       raw: true,
     });
@@ -157,12 +185,12 @@ exports.getAllNotifications = async (adminId, category = null, options = {}) => 
       isRead: readIds.has(n.id),
       admin: n.admin
         ? {
-            id: n.admin.id,
-            firstName: n.admin.firstName,
-            lastName: n.admin.lastName,
-            email: n.admin.email,
-            profile: n.admin.profile,
-          }
+          id: n.admin.id,
+          firstName: n.admin.firstName,
+          lastName: n.admin.lastName,
+          email: n.admin.email,
+          profile: n.admin.profile,
+        }
         : null,
     }));
 

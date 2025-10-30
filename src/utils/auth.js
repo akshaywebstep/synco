@@ -91,8 +91,8 @@ const getMainSuperAdminOfAdmin = async (adminId, includeSuperAdmin = false) => {
             return {
                 status: false,
                 message: "Reached top of hierarchy — no super admin found.",
-                superAdminId: null,
-                data: admin,
+                superAdmin: null,
+                admins: [],
             };
         };
 

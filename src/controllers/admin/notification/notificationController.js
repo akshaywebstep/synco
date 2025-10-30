@@ -217,15 +217,30 @@ exports.getAllNotifications = async (req, res) => {
     console.log(`🔐 Admin Role: ${req.admin?.role}`);
   }
 
+  // ✅ Get Super Admin and related admins
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
-  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+  const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+  let adminIds = [];
+  const isSuperAdmin = req.admin?.role?.toLowerCase() === "super admin";
+
+  if (isSuperAdmin) {
+    const admins = mainSuperAdminResult?.admins || [];
+    adminIds = admins.length > 0 ? admins.map(a => a.id) : [];
+  }
+
   try {
     // ✅ For normal notifications, still exclude own-created if required
     const notificationResult = await notificationModel.getAllNotifications(
       // superAdminId,
       adminId,
       category,
-      { excludeOwn: true }
+      { excludeOwn: true },
+      {
+        isSuperAdmin,
+        superAdminId,
+        adminIds
+      }
     );
 
     // ✅ For custom notifications, DO NOT exclude own-created
