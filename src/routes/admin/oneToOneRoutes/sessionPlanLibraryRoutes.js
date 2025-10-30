@@ -72,7 +72,7 @@ router.delete(
 );
 
 // ✅ Repin Session Plan Group
-router.put(
+router.patch(
   "/session-plan-structure/:id/repin",
   authMiddleware,
   permissionMiddleware("session-plan-structure", "repin"),

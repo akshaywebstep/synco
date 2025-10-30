@@ -893,35 +893,83 @@ exports.deleteSessionPlanConfigLevel = async (req, res) => {
 exports.repinSessionPlanGroup = async (req, res) => {
   try {
     const createdBy = req.admin?.id || req.user?.id;
-    const { id } = req.params; // e.g. /130/repin
-    const { pinned } = req.body; // from payload
+    const { id } = req.params;          // e.g. PATCH /api/session-plans/130/repin
+    const { pinned } = req.body;        // e.g. { "pinned": 1 }
 
+    // 🔹 Validate required parameters
     if (!id) {
-      return res.status(400).json({ status: false, message: "Missing required parameter: id" });
+      return res.status(400).json({
+        status: false,
+        message: "Missing required parameter: id",
+      });
     }
 
     if (!createdBy) {
-      return res.status(400).json({ status: false, message: "Missing creator information (createdBy)." });
+      return res.status(400).json({
+        status: false,
+        message: "Missing creator information (createdBy).",
+      });
     }
 
-    if (pinned === undefined || ![0, 1].includes(Number(pinned))) {
-      return res.status(400).json({ status: false, message: "Invalid or missing pinned value (should be 0 or 1)." });
+    const pinnedValue = Number(pinned);
+    if (![0, 1].includes(pinnedValue)) {
+      return res.status(400).json({
+        status: false,
+        message: "Invalid or missing pinned value (should be 0 or 1).",
+      });
     }
 
     // 🔸 Delegate to service
-    const result = await SessionPlanGroupService.repinSessionPlanGroup(id, createdBy, Number(pinned));
+    const result = await SessionPlanGroupService.repinSessionPlanGroupService(
+      id,
+      createdBy,
+      pinnedValue
+    );
 
-    // 🔸 Handle response
+    // 🔸 If operation failed, log & return error
     if (!result.status) {
       await logActivity(req, PANEL, MODULE, "repin", result, false);
-      return res.status(400).json({ status: false, message: result.message });
+      return res.status(400).json({
+        status: false,
+        message: result.message || "Failed to repin session plan group.",
+      });
     }
 
+    // ✅ Create a notification
+    const action = pinnedValue === 1 ? "pinned" : "unpinned";
+    await createNotification({
+      userId: createdBy,
+      title: `Session Plan ${action}`,
+      message: `You have ${action} session plan group (ID: ${id}).`,
+      type: "session_plan",
+      metadata: {
+        groupId: id,
+        pinned: pinnedValue,
+      },
+    });
+
+    // ✅ Log activity
     await logActivity(req, PANEL, MODULE, "repin", result, true);
-    return res.status(200).json(result);
+
+    return res.status(200).json({
+      ...result,
+      notification: `Notification created for ${action} group.`,
+    });
   } catch (error) {
     console.error("❌ Controller Error (repinSessionPlanGroup):", error);
-    await logActivity(req, PANEL, MODULE, "repin", { message: error.message }, false);
-    return res.status(500).json({ status: false, message: "Server error while repinning session plan group." });
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "repin",
+      { message: error.message },
+      false
+    );
+
+    return res.status(500).json({
+      status: false,
+      message: "Server error while repinning session plan group.",
+    });
   }
 };

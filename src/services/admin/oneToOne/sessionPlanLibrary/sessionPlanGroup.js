@@ -134,7 +134,11 @@ exports.getAllSessionPlanConfig = async ({ order = "ASC", createdBy } = {}) => {
     // STEP 1 — Fetch all session plan groups with type = "one_to_one"
     const groups = await SessionPlanGroup.findAll({
       where: { createdBy, type: "one_to_one" },
-      order: [["createdAt", order.toUpperCase() === "DESC" ? "DESC" : "ASC"]],
+      // order: [["createdAt", order.toUpperCase() === "DESC" ? "DESC" : "ASC"]],
+      order: [
+        ["pinned", "DESC"], // 🔹 Show pinned ones first
+        ["createdAt", order.toUpperCase() === "DESC" ? "DESC" : "ASC"], // 🔹 Then sort by date
+      ],
       attributes: [
         "id",
         "groupName",
@@ -216,6 +220,49 @@ exports.getAllSessionPlanConfig = async ({ order = "ASC", createdBy } = {}) => {
   } catch (error) {
     console.error("❌ Error fetching one_to_one SessionPlanGroups:", error);
     return { status: false, message: error.message };
+  }
+};
+exports.repinSessionPlanGroupService = async (id, createdBy, pinned) => {
+  const t = await SessionPlanGroup.sequelize.transaction();
+
+  try {
+    // 🔹 Find the specific group by ID and creator
+    const targetGroup = await SessionPlanGroup.findOne({
+      where: { id, createdBy },
+      transaction: t,
+    });
+
+    if (!targetGroup) {
+      await t.rollback();
+      return { status: false, message: "Group not found or unauthorized." };
+    }
+
+    // 🔹 Update only this group’s pinned status (no changes to others)
+    await targetGroup.update(
+      { pinned: pinned === 1 || pinned === true },
+      { transaction: t }
+    );
+
+    await t.commit();
+
+    return {
+      status: true,
+      message: pinned
+        ? "Group pinned successfully."
+        : "Group unpinned successfully.",
+      data: {
+        id: targetGroup.id,
+        pinned: pinned ? 1 : 0,
+      },
+    };
+  } catch (error) {
+    await t.rollback();
+    console.error("❌ Error repinning session plan group (service):", error);
+    return {
+      status: false,
+      message:
+        error.message || "Failed to repin/unpin session plan group.",
+    };
   }
 };
 
