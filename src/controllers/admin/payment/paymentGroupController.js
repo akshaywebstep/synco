@@ -142,7 +142,7 @@ exports.createPaymentGroup = async (req, res) => {
       req,
       "Payment Group Created",
       msg,
-      "Payment Groups"
+      "Support"
     );
 
     return res.status(201).json({
@@ -361,6 +361,13 @@ exports.updatePaymentGroup = async (req, res) => {
       { oneLineMessage: `Updated payment group ID: ${id}` },
       true
     );
+    const msg = `Payment group "${name}" created successfully by Admin: ${req.admin?.name}`;
+    await createNotification(
+      req,
+      "Payment Group Updated",
+      msg,
+      "Support"
+    );
 
     return res.status(200).json({
       status: true,
@@ -508,7 +515,7 @@ exports.deletePaymentGroup = async (req, res) => {
       req,
       "Payment Group Deleted",
       successMsg,
-      "Payment Groups"
+      "Support"
     );
 
     return res.status(200).json({

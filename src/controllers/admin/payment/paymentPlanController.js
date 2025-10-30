@@ -2,6 +2,9 @@ const { validateFormData } = require("../../../utils/validateFormData");
 const PaymentPlan = require("../../../services/admin/payment/paymentPlan");
 const { logActivity } = require("../../../utils/admin/activityLogger");
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
+const {
+  createNotification,
+} = require("../../../utils/admin/notificationHelper");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -362,6 +365,15 @@ exports.createPaymentPlan = async (req, res) => {
     if (DEBUG) console.log("✅ STEP 4: Payment plan created:", result.data);
     await logActivity(req, PANEL, MODULE, "create", result, true);
 
+    const msg = `Payment plan "${title}" created successfully by Admin: ${req.admin?.name}`;
+
+    await createNotification(
+      req,
+      "Payment Plan Created",
+      msg,
+      "Support"
+    );
+
     return res.status(201).json({
       status: true,
       message: "Payment plan created successfully.",
@@ -384,7 +396,7 @@ exports.createPaymentPlan = async (req, res) => {
 // ✅ GET All Plans (by admin)
 exports.getAllPaymentPlans = async (req, res) => {
   const adminId = req.admin?.id;
-if (DEBUG)
+  if (DEBUG)
     console.log(`📦 Getting all payment groups for admin ID: ${adminId}`);
 
   if (DEBUG) console.log("📥 Fetching all payment plans...");
@@ -439,8 +451,8 @@ if (DEBUG)
 exports.getPaymentPlanById = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id;
-   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-      const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   if (DEBUG) console.log(`🔍 Fetching plan by ID: ${id}`);
 
@@ -545,6 +557,14 @@ exports.updatePaymentPlan = async (req, res) => {
       },
       true
     );
+    const msg = `Payment plan "${title}"  updated successfully by Admin: ${req.admin?.name}`;
+
+    await createNotification(
+      req,
+      "Payment Plan Updated",
+      msg,
+      "Support"
+    );
 
     return res.status(200).json({
       status: true,
@@ -620,13 +640,18 @@ exports.deletePaymentPlan = async (req, res) => {
     return res.status(400).json({ status: false, message: "Plan ID is required." });
   }
 
-  if (DEBUG) console.log(`🗑️deleting Payment Plan ID: ${id}`);
+  if (DEBUG) console.log(`🗑️ Deleting Payment Plan ID: ${id}`);
 
   try {
-    // ✅ Call service to soft delete plan
+    // ✅ Fetch plan before deletion
+    const plan = await PaymentPlan.getPlanById(id);
+    if (!plan) {
+      return res.status(404).json({ status: false, message: "Payment plan not found." });
+    }
+
+    // ✅ Perform soft delete
     const result = await PaymentPlan.deletePlan(id, adminId);
 
-    // ✅ Log the action
     await logActivity(req, PANEL, MODULE, "delete", result, result.status);
 
     if (!result.status) {
@@ -634,7 +659,15 @@ exports.deletePaymentPlan = async (req, res) => {
       return res.status(404).json({ status: false, message: result.message });
     }
 
-    // ✅ Send success notification if needed
+    const msg = `Payment plan deleted successfully by Admin: ${req.admin?.name}`;
+
+    await createNotification(
+      req,
+      "Payment Plan Deleted",
+      msg,
+      "Support"
+    );
+
     if (DEBUG) console.log("✅ Payment plan deleted successfully");
 
     return res.status(200).json({
@@ -643,14 +676,7 @@ exports.deletePaymentPlan = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error deleting payment plan:", error);
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "delete",
-      { oneLineMessage: error.message },
-      false
-    );
+    await logActivity(req, PANEL, MODULE, "delete", { oneLineMessage: error.message }, false);
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };
