@@ -69,19 +69,6 @@ const getVideoDurationInSeconds = async (videoUrl) => {
   }
 };
 
-/**
- * Convert seconds to HH:MM:SS
- */
-// const formatDuration = (totalSeconds) => {
-//   const hours = Math.floor(totalSeconds / 3600);
-//   const minutes = Math.floor((totalSeconds % 3600) / 60);
-//   const seconds = Math.floor(totalSeconds % 60);
-//   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-// };
-/**
- * Convert seconds to human readable format
- * Example: 18 -> "18 seconds", 125 -> "2 minutes 5 seconds", 3661 -> "1 hour 1 minute 1 second"
- */
 const formatDuration = (totalSeconds) => {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);

@@ -11,6 +11,8 @@ const {
   PaymentGroup,
 } = require("../../../models");
 
+const { getVideoDurationInSeconds, formatDuration, } = require("../../../utils/videoHelper");
+
 const parseSessionPlanGroupLevels = async (spg) => {
   if (!spg?.levels) return spg;
 
@@ -562,7 +564,7 @@ exports.getAllClasses = async (adminId) => {
               if (!termIds.includes(term.id)) {
                 continue
               };
-              
+
               if (typeof term.exclusionDates === "string") {
                 try {
                   term.dataValues.exclusionDates = JSON.parse(term.exclusionDates);
@@ -1134,12 +1136,32 @@ exports.getClassByIdWithFullDetails = async (classId, createdBy) => {
                 return `${diffSeconds} second(s) ago`;
               };
 
+              // Build combined video info (duration + uploadedAgo)
               const videoUploadedAgo = {};
+
               for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
-                if (spg[`${level}_video`]) {
-                  videoUploadedAgo[`${level}_video`] = getElapsedTime(spg.createdAt);
+                const video = spg[`${level}_video`];
+
+                const videoPath =
+                  typeof video === "string"
+                    ? video
+                    : video?.path || video?.url || null;
+
+                if (videoPath) {
+                  try {
+                    const durationInSeconds = await getVideoDurationInSeconds(videoPath);
+                    const formattedDuration = formatDuration(durationInSeconds);
+
+                    videoUploadedAgo[`${level}_video_duration`] = formattedDuration;
+                    videoUploadedAgo[`${level}_video_uploadedAgo`] = getElapsedTime(spg.createdAt);
+                  } catch (err) {
+                    console.error(`Error getting duration for ${level} video:`, err);
+                    videoUploadedAgo[`${level}_video_duration`] = null;
+                    videoUploadedAgo[`${level}_video_uploadedAgo`] = getElapsedTime(spg.createdAt);
+                  }
                 } else {
-                  videoUploadedAgo[`${level}_video`] = null;
+                  videoUploadedAgo[`${level}_video_duration`] = null;
+                  videoUploadedAgo[`${level}_video_uploadedAgo`] = null;
                 }
               }
 
