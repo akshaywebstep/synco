@@ -95,7 +95,7 @@ exports.getWaitingList = async (filters = {}) => {
       where: {
         serviceType: "weekly class trial",
         ...trialWhere,
-        // status: "waiting list",
+        status: "waiting list",
       },
       // where: trialWhere,
       include: [
