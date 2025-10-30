@@ -59,7 +59,14 @@ const ClassSchedule = sequelize.define(
       onUpdate: "CASCADE",
       onDelete: "CASCADE",
     },
-     // ✅ Foreign key to admins table for creation
+
+    termIds: {
+      type: DataTypes.TEXT("long"),
+      allowNull: true,
+      comment: "Selected term (stored as text instead of FK)",
+    },
+
+    // ✅ Foreign key to admins table for creation
     createdBy: {
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,

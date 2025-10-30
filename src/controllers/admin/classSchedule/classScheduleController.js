@@ -1,5 +1,6 @@
 const { validateFormData } = require("../../../utils/validateFormData");
 const ClassScheduleService = require("../../../services/admin/classSchedule/classSchedule");
+const TermService = require("../../../services/admin/termAndDates/term");
 const { logActivity } = require("../../../utils/admin/activityLogger");
 const { getVideoDurationInSeconds, formatDuration, } = require("../../../utils/videoHelper");
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
@@ -92,6 +93,12 @@ exports.createClassSchedule = async (req, res) => {
     });
   }
 
+  const termGroupIds = JSON.parse(venue.termGroupId || "[]").map(Number);
+  const termsRes = await TermService.getTermsByTermGroupId(termGroupIds);
+
+  const termIds = (termsRes.data || []).map(t => t.id);
+  const termIdsString = JSON.stringify(termIds);
+
   try {
     const result = await ClassScheduleService.createClass({
       className,
@@ -103,6 +110,7 @@ exports.createClassSchedule = async (req, res) => {
       allowFreeTrial,
       facility,
       venueId,
+      termIds: termIdsString,
       createdBy,
     });
 

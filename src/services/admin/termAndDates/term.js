@@ -375,6 +375,165 @@ exports.getTermById = async (id, adminId) => {
   }
 };
 
+// ✅ GET TERMS BY TERM GROUP ID
+exports.getTermsByTermGroupId = async (termGroupIds) => {
+  try {
+    // 🧩 Validate input
+    if (
+      !termGroupIds ||
+      !Array.isArray(termGroupIds) ||
+      termGroupIds.length === 0
+    ) {
+      return {
+        status: false,
+        message: "No valid term group IDs provided.",
+        data: [],
+      };
+    }
+
+    const terms = await Term.findAll({
+      where: { termGroupId: { [Op.in]: termGroupIds } },
+      include: [
+        {
+          model: TermGroup,
+          as: "termGroup",
+          attributes: ["id", "name", "createdAt", "createdBy"],
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+    });
+
+    const allSessionPlanIds = [];
+    const parsedTerms = terms.map((term) => {
+      let sessions = [];
+      let exclusions = [];
+
+      // Parse sessionsMap
+      try {
+        sessions =
+          typeof term.sessionsMap === "string"
+            ? JSON.parse(term.sessionsMap)
+            : term.sessionsMap;
+        if (Array.isArray(sessions)) {
+          allSessionPlanIds.push(...sessions.map((s) => s.sessionPlanId));
+        }
+      } catch (err) {
+        console.warn("Invalid sessionsMap:", err);
+      }
+
+      // Parse exclusionDates
+      try {
+        exclusions =
+          typeof term.exclusionDates === "string"
+            ? JSON.parse(term.exclusionDates)
+            : term.exclusionDates;
+      } catch (err) {
+        console.warn("Invalid exclusionDates:", err);
+      }
+
+      return {
+        ...term.toJSON(),
+        _parsedSessions: sessions,
+        _parsedExclusionDates: exclusions,
+      };
+    });
+
+    // Seasonal priority mapping
+    const seasonOrder = { autumn: 1, spring: 2, summer: 3 };
+    function getSeasonPriority(termName) {
+      if (!termName) return 99;
+      const lowerName = termName.toLowerCase();
+      if (lowerName.includes("autumn")) return seasonOrder.autumn;
+      if (lowerName.includes("spring")) return seasonOrder.spring;
+      if (lowerName.includes("summer")) return seasonOrder.summer;
+      return 99; // other terms come last
+    }
+
+    // Sort parsed terms by season first, then createdAt DESC
+    const sortedParsedTerms = parsedTerms.sort((a, b) => {
+      const aPriority = getSeasonPriority(a.termName);
+      const bPriority = getSeasonPriority(b.termName);
+
+      if (aPriority !== bPriority) return aPriority - bPriority;
+
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+
+    // Fetch Session Plan Groups
+    const sessionPlanGroups = await SessionPlanGroup.findAll({
+      where: { id: { [Op.in]: [...new Set(allSessionPlanIds)] } },
+      attributes: ["id", "groupName", "levels", "beginner_video",
+        "intermediate_video",
+        "pro_video",
+        "advanced_video", "banner", "player","type","pinned"],
+      raw: true,
+    });
+
+    // Parse levels and collect exercise IDs
+    const sessionPlanMap = {};
+    const allExerciseIds = new Set();
+
+    sessionPlanGroups.forEach((spg) => {
+      const levels = JSON.parse(spg.levels || "{}");
+
+      ["beginner", "intermediate", "advanced", "pro"].forEach((level) => {
+        if (Array.isArray(levels[level])) {
+          levels[level].forEach((entry) => {
+            (entry.sessionExerciseId || []).forEach((id) =>
+              allExerciseIds.add(id)
+            );
+          });
+        }
+      });
+
+      sessionPlanMap[spg.id] = { ...spg, levels }; // store parsed levels
+    });
+
+    // Fetch session exercises
+    const sessionExercises = await SessionExercise.findAll({
+      where: { id: { [Op.in]: Array.from(allExerciseIds) } },
+      raw: true,
+    });
+
+    const exerciseMap = {};
+    sessionExercises.forEach((ex) => {
+      exerciseMap[ex.id] = ex;
+    });
+
+    // Inject sessionExercises into levels
+    Object.values(sessionPlanMap).forEach((spg) => {
+      ["beginner", "intermediate", "advanced", "pro"].forEach((level) => {
+        if (Array.isArray(spg.levels[level])) {
+          spg.levels[level].forEach((entry) => {
+            entry.sessionExercises = (entry.sessionExerciseId || [])
+              .map((id) => exerciseMap[id])
+              .filter(Boolean);
+          });
+        }
+      });
+    });
+
+    // Construct final enriched response (omit _parsed fields)
+    const enrichedTerms = sortedParsedTerms.map(
+      ({ _parsedSessions, _parsedExclusionDates, ...rest }) => ({
+        ...rest,
+        exclusionDates: _parsedExclusionDates,
+        sessionsMap: Array.isArray(_parsedSessions)
+          ? _parsedSessions.map((s) => ({
+            sessionDate: s.sessionDate,
+            sessionPlanId: s.sessionPlanId,
+            sessionPlan: sessionPlanMap[s.sessionPlanId] || null,
+          }))
+          : [], // fallback empty array if not valid
+      })
+    );
+
+    return { status: true, data: enrichedTerms };
+  } catch (error) {
+    return { status: false, message: error.message };
+  }
+};
+
 // ✅ UPDATE
 // exports.updateTerm = async (id, data, adminId) => {
 //   try {

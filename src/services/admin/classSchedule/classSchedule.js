@@ -555,8 +555,14 @@ exports.getAllClasses = async (adminId) => {
           //   (tg) => (tg.terms || []).length > 0
           // );
 
+          const termIds = JSON.parse(cls.termIds || "[]").map(Number);
+
           for (const termGroup of termGroups) {
             for (const term of termGroup.terms || []) {
+              if (!termIds.includes(term.id)) {
+                continue
+              };
+              
               if (typeof term.exclusionDates === "string") {
                 try {
                   term.dataValues.exclusionDates = JSON.parse(term.exclusionDates);
