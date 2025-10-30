@@ -5,7 +5,7 @@ const Booking = sequelize.define(
   "Booking",
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       primaryKey: true,
       autoIncrement: true,
     },
@@ -24,7 +24,7 @@ const Booking = sequelize.define(
     },
     // ✅ NEW FIELD — FK → Leads.id
     leadId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
         model: "leads", // table name for leads
@@ -37,7 +37,7 @@ const Booking = sequelize.define(
 
     // ✅ FK → Venues.id
     venueId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "venues",
@@ -49,7 +49,7 @@ const Booking = sequelize.define(
 
     // ✅ FK → ClassSchedules.id
     classScheduleId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "class_schedules",
@@ -61,7 +61,7 @@ const Booking = sequelize.define(
 
     // ✅ FK → PaymentPlans.id
     paymentPlanId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
         model: "payment_plans",
@@ -102,7 +102,7 @@ const Booking = sequelize.define(
     },
 
     totalStudents: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
     },
     interest: {
@@ -114,7 +114,7 @@ const Booking = sequelize.define(
 
     // ✅ NEW FIELD — FK → Admins.id
     bookedBy: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "admins", // table name for admins

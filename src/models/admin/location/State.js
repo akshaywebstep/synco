@@ -4,7 +4,7 @@ const { sequelize } = require("../../../config/db");
 
 const State = sequelize.define("State", {
     id: {
-        type: DataTypes.INTEGER.UNSIGNED,
+        type: DataTypes.BIGINT.UNSIGNED,
         primaryKey: true,
         autoIncrement: true
     },
@@ -13,7 +13,7 @@ const State = sequelize.define("State", {
         allowNull: false
     },
     countryId: {
-        type: DataTypes.INTEGER.UNSIGNED,
+        type: DataTypes.BIGINT.UNSIGNED,
         allowNull: false
     },
     countryCode: {

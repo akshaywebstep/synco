@@ -6,13 +6,13 @@ const DiscountAppliesTo = sequelize.define(
     "DiscountAppliesTo",
     {
         id: {
-            type: DataTypes.INTEGER.UNSIGNED,
+            type: DataTypes.BIGINT.UNSIGNED,
             primaryKey: true,
             autoIncrement: true,
             comment: "Primary key"
         },
         discountId: {
-            type: DataTypes.INTEGER.UNSIGNED,
+            type: DataTypes.BIGINT.UNSIGNED,
             allowNull: false,
             field: "discount_id",
             comment: "Foreign key to discounts table",

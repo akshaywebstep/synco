@@ -34,7 +34,7 @@ const EmailConfig = sequelize.define(
       allowNull: false,
     },
     smtp_port: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
     },
     smtp_username: {

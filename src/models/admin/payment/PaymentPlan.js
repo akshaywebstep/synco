@@ -6,7 +6,7 @@ const PaymentPlan = sequelize.define(
   "PaymentPlan",
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       autoIncrement: true,
       primaryKey: true,
     },
@@ -32,12 +32,12 @@ const PaymentPlan = sequelize.define(
     },
 
     duration: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
     },
 
     students: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
     },
 
@@ -58,7 +58,7 @@ const PaymentPlan = sequelize.define(
 
     // ✅ Foreign key to admins table for creation
     createdBy: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "admins",
@@ -76,7 +76,7 @@ const PaymentPlan = sequelize.define(
 
     // ✅ Foreign key to admins table for deletion
     deletedBy: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
         model: "admins",
@@ -112,7 +112,7 @@ module.exports = PaymentPlan;
 //   "PaymentPlan",
 //   {
 //     id: {
-//       type: DataTypes.INTEGER.UNSIGNED,
+//       type: DataTypes.BIGINT.UNSIGNED,
 //       autoIncrement: true,
 //       primaryKey: true,
 //     },
@@ -133,11 +133,11 @@ module.exports = PaymentPlan;
 //       allowNull: false,
 //     },
 //     duration: {
-//       type: DataTypes.INTEGER.UNSIGNED,
+//       type: DataTypes.BIGINT.UNSIGNED,
 //       allowNull: false,
 //     },
 //     students: {
-//       type: DataTypes.INTEGER.UNSIGNED,
+//       type: DataTypes.BIGINT.UNSIGNED,
 //       allowNull: false,
 //     },
 //     joiningFee: {
@@ -153,7 +153,7 @@ module.exports = PaymentPlan;
 //       allowNull: true,
 //     },
 //     createdBy: {
-//       type: DataTypes.INTEGER.UNSIGNED,
+//       type: DataTypes.BIGINT.UNSIGNED,
 //       allowNull: false,
 //     },
 //   },

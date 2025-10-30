@@ -5,14 +5,14 @@ const Credit = sequelize.define(
   "Credit",
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       primaryKey: true,
       autoIncrement: true,
     },
 
     // ✅ FK → Booking.id
     bookingId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
         model: "booking",
@@ -25,7 +25,7 @@ const Credit = sequelize.define(
 
     // ✅ Credit amount (in units)
     creditAmount: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       defaultValue: 0,
       comment: "Number of credits issued",

@@ -10,12 +10,12 @@ const CancelSession = sequelize.define(
       primaryKey: true,
     },
     classScheduleId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
     },
 
     mapId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true, // can be nullable if not linked
       references: {
         model: "class_schedule_term_maps", // table name
@@ -27,7 +27,7 @@ const CancelSession = sequelize.define(
     },
 
     sessionPlanGroupId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
         model: "session_plan_groups", // table name
@@ -68,7 +68,7 @@ const CancelSession = sequelize.define(
 
     // ✅ Foreign key to admins table for creation
     createdBy: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "admins",
@@ -86,7 +86,7 @@ const CancelSession = sequelize.define(
 
     // ✅ Foreign key to admins table for deletion
     deletedBy: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
         model: "admins",

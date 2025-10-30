@@ -5,7 +5,7 @@ const Discount = sequelize.define(
   "Discount",
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       primaryKey: true,
       autoIncrement: true,
       comment: "Primary key: auto-incrementing ID",
@@ -40,13 +40,13 @@ const Discount = sequelize.define(
       comment: "Whether to apply discount only once per order",
     },
     limitTotalUses: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       field: "limit_total_uses",
       comment: "Total times this discount can be used (null = unlimited)",
     },
     limitPerCustomer: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       field: "limit_per_customer",
       comment: "Limit of usage per customer (null = unlimited)",

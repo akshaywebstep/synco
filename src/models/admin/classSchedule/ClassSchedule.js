@@ -5,7 +5,7 @@ const ClassSchedule = sequelize.define(
   "ClassSchedule",
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       autoIncrement: true,
       primaryKey: true,
     },
@@ -16,11 +16,11 @@ const ClassSchedule = sequelize.define(
     },
 
     capacity: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.BIGINT,
       allowNull: true,
     },
     totalCapacity: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.BIGINT,
       allowNull: true,
     },
 
@@ -50,7 +50,7 @@ const ClassSchedule = sequelize.define(
     },
 
     venueId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "venues", // ✅ Table name for Venue
@@ -61,7 +61,7 @@ const ClassSchedule = sequelize.define(
     },
      // ✅ Foreign key to admins table for creation
     createdBy: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "admins",
@@ -79,7 +79,7 @@ const ClassSchedule = sequelize.define(
 
     // ✅ Foreign key to admins table for deletion
     deletedBy: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
         model: "admins",

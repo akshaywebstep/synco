@@ -6,7 +6,7 @@ const Term = sequelize.define(
   "Term",
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       autoIncrement: true,
       primaryKey: true,
     },
@@ -38,7 +38,7 @@ const Term = sequelize.define(
     },
 
     totalSessions: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
     },
 
@@ -50,7 +50,7 @@ const Term = sequelize.define(
 
     // ✅ Foreign key to term_groups
     termGroupId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
         model: "term_groups",
@@ -62,7 +62,7 @@ const Term = sequelize.define(
 
     // ✅ Foreign key to admins table for creation
     createdBy: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "admins",
@@ -80,7 +80,7 @@ const Term = sequelize.define(
 
     // ✅ Foreign key to admins table for deletion
     deletedBy: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
         model: "admins",
@@ -106,7 +106,7 @@ module.exports = Term;
 //   "Term",
 //   {
 //     id: {
-//       type: DataTypes.INTEGER.UNSIGNED,
+//       type: DataTypes.BIGINT.UNSIGNED,
 //       autoIncrement: true,
 //       primaryKey: true,
 //     },
@@ -135,7 +135,7 @@ module.exports = Term;
 //     },
 
 //     totalSessions: {
-//       type: DataTypes.INTEGER.UNSIGNED,
+//       type: DataTypes.BIGINT.UNSIGNED,
 //       allowNull: true,
 //     },
 
@@ -146,7 +146,7 @@ module.exports = Term;
 //     },
 
 //     termGroupId: {
-//       type: DataTypes.INTEGER.UNSIGNED,
+//       type: DataTypes.BIGINT.UNSIGNED,
 //       allowNull: true,
 //       references: {
 //         model: "term_groups",
@@ -155,7 +155,7 @@ module.exports = Term;
 //     },
 
 //     createdBy: {
-//       type: DataTypes.INTEGER.UNSIGNED,
+//       type: DataTypes.BIGINT.UNSIGNED,
 //       allowNull: false,
 //     },
 //   },

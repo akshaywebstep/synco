@@ -8,13 +8,13 @@ const PaymentGroupHasPlan = sequelize.define(
   "PaymentGroupHasPlan",
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       autoIncrement: true,
       primaryKey: true,
     },
 
     payment_plan_id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "payment_plans",
@@ -25,7 +25,7 @@ const PaymentGroupHasPlan = sequelize.define(
     },
 
     payment_group_id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "payment_groups",
@@ -37,7 +37,7 @@ const PaymentGroupHasPlan = sequelize.define(
 
     // ✅ Foreign key to admins table for creation
     createdBy: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
         model: "admins",
@@ -55,7 +55,7 @@ const PaymentGroupHasPlan = sequelize.define(
 
     // ✅ Foreign key to admins table for deletion
     deletedBy: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
         model: "admins",
@@ -81,20 +81,20 @@ module.exports = PaymentGroupHasPlan;
 //   "PaymentGroupHasPlan",
 //   {
 //     id: {
-//       type: DataTypes.INTEGER.UNSIGNED,
+//       type: DataTypes.BIGINT.UNSIGNED,
 //       autoIncrement: true,
 //       primaryKey: true,
 //     },
 //     payment_plan_id: {
-//       type: DataTypes.INTEGER.UNSIGNED,
+//       type: DataTypes.BIGINT.UNSIGNED,
 //       allowNull: false,
 //     },
 //     payment_group_id: {
-//       type: DataTypes.INTEGER.UNSIGNED,
+//       type: DataTypes.BIGINT.UNSIGNED,
 //       allowNull: false,
 //     },
 //     createdBy: {
-//       type: DataTypes.INTEGER.UNSIGNED,
+//       type: DataTypes.BIGINT.UNSIGNED,
 //       allowNull: true,
 //     },
 //   },

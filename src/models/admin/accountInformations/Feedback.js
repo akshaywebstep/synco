@@ -5,14 +5,14 @@ const Feedback = sequelize.define(
   "Feedback",
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       primaryKey: true,
       autoIncrement: true,
     },
 
     // ✅ FK → Booking.id
     bookingId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "booking",
@@ -25,7 +25,7 @@ const Feedback = sequelize.define(
 
     // ✅ FK → ClassSchedules.id
     classScheduleId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "class_schedules", // make sure table is snake_case in DB
@@ -57,7 +57,7 @@ const Feedback = sequelize.define(
 
     // ✅ FK → Admins.id (agent assigned to resolve)
     agentAssigned: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
         model: "admins",

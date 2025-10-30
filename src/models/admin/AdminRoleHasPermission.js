@@ -5,12 +5,12 @@ const AdminRoleHasPermission = sequelize.define(
   "AdminRoleHasPermission",
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       autoIncrement: true,
       primaryKey: true,
     },
     roleId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "admin_roles",
@@ -18,7 +18,7 @@ const AdminRoleHasPermission = sequelize.define(
       },
     },
     permissionId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "admin_permissions",

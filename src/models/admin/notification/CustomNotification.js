@@ -6,7 +6,7 @@ const CustomNotification = sequelize.define(
   "CustomNotification",
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       primaryKey: true,
       autoIncrement: true,
     },
@@ -37,7 +37,7 @@ const CustomNotification = sequelize.define(
       allowNull: false,
     },
     adminId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
     },
     createdAt: {
@@ -53,7 +53,7 @@ const CustomNotification = sequelize.define(
 
     // ✅ Foreign key to admins table for deletion
     deletedBy: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
         model: "admins",

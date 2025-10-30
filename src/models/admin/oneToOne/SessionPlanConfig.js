@@ -5,14 +5,14 @@ const SessionPlanConfig = sequelize.define(
     "SessionPlanConfig",
     {
         id: {
-            type: DataTypes.INTEGER.UNSIGNED,
+            type: DataTypes.BIGINT.UNSIGNED,
             autoIncrement: true,
             primaryKey: true,
         },
 
         // Foreign key reference to SessionPlanGroup
         sessionPlanGroupId: {
-            type: DataTypes.INTEGER.UNSIGNED,
+            type: DataTypes.BIGINT.UNSIGNED,
             allowNull: false,
             references: {
                 model: "session_plan_groups", // table name of SessionPlanGroup
@@ -30,7 +30,7 @@ const SessionPlanConfig = sequelize.define(
 
         // Foreign key reference to Admins
         createdBy: {
-            type: DataTypes.INTEGER.UNSIGNED,
+            type: DataTypes.BIGINT.UNSIGNED,
             allowNull: true, // ✅ must be true for SET NULL
             references: {
                 model: "admins",

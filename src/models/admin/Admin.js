@@ -5,7 +5,7 @@ const Admin = sequelize.define(
   "Admin",
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       primaryKey: true,
       autoIncrement: true,
     },
@@ -23,23 +23,23 @@ const Admin = sequelize.define(
     position: { type: DataTypes.STRING, allowNull: true },
     phoneNumber: { type: DataTypes.STRING, allowNull: true },
     roleId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       references: { model: "admin_roles", key: "id" },
     },
     countryId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: { model: "countries", key: "id" },
       field: "country_id",
     },
     stateId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: { model: "states", key: "id" },
       field: "state_id",
     },
     cityId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: { model: "cities", key: "id" },
       field: "city_id",
@@ -66,7 +66,7 @@ const Admin = sequelize.define(
 
     // ✅ Foreign key to admins table for deletion
     deletedBy: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
         model: "admins",
@@ -78,7 +78,7 @@ const Admin = sequelize.define(
 
     // 🔹 Self-referencing foreign keys
     createdByAdmin: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       defaultValue: null,
       references: { model: "admins", key: "id" },
@@ -86,7 +86,7 @@ const Admin = sequelize.define(
       onDelete: "SET NULL",
     },
     superAdminId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       defaultValue: null,
       references: { model: "admins", key: "id" },

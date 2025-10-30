@@ -5,13 +5,13 @@ const ClassScheduleTermMap = sequelize.define(
   "ClassScheduleTermMap",
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       autoIncrement: true,
       primaryKey: true,
     },
 
     classScheduleId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "class_schedules", // make sure table is snake_case in DB
@@ -23,7 +23,7 @@ const ClassScheduleTermMap = sequelize.define(
     },
 
     termGroupId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "term_groups",
@@ -34,7 +34,7 @@ const ClassScheduleTermMap = sequelize.define(
     },
 
     termId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "terms",
@@ -45,7 +45,7 @@ const ClassScheduleTermMap = sequelize.define(
     },
 
     sessionPlanId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "session_plan_groups",
@@ -62,7 +62,7 @@ const ClassScheduleTermMap = sequelize.define(
     },
      // ✅ Foreign key to admins table for creation
     createdBy: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "admins",
@@ -80,7 +80,7 @@ const ClassScheduleTermMap = sequelize.define(
 
     // ✅ Foreign key to admins table for deletion
     deletedBy: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
         model: "admins",

@@ -5,14 +5,14 @@ const Comment = sequelize.define(
     "Comment",
     {
         id: {
-            type: DataTypes.INTEGER.UNSIGNED,
+            type: DataTypes.BIGINT.UNSIGNED,
             primaryKey: true,
             autoIncrement: true,
         },
 
         // ✅ Foreign key → admins.id (nullable if admin deleted)
         commentBy: {
-            type: DataTypes.INTEGER.UNSIGNED,
+            type: DataTypes.BIGINT.UNSIGNED,
             allowNull: true,
             references: {
                 model: "admins", // table name

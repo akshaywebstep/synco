@@ -7,13 +7,13 @@ const DiscountUsage = sequelize.define(
     "DiscountUsage",
     {
         id: {
-            type: DataTypes.INTEGER.UNSIGNED,
+            type: DataTypes.BIGINT.UNSIGNED,
             primaryKey: true,
             autoIncrement: true,
             comment: "Primary key"
         },
         discountId: {
-            type: DataTypes.INTEGER.UNSIGNED,
+            type: DataTypes.BIGINT.UNSIGNED,
             allowNull: false,
             field: "discount_id",
             comment: "Reference to discounts table",
@@ -24,7 +24,7 @@ const DiscountUsage = sequelize.define(
             onDelete: "CASCADE"
         },
         adminId: {
-            type: DataTypes.INTEGER.UNSIGNED,
+            type: DataTypes.BIGINT.UNSIGNED,
             allowNull: false,
             field: "admin_id",
             comment: "Reference to admins table",

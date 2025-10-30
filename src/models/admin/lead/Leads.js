@@ -5,7 +5,7 @@ const Lead = sequelize.define(
   "Lead",
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       primaryKey: true,
       autoIncrement: true,
     },
@@ -46,7 +46,7 @@ const Lead = sequelize.define(
 
     // Age of child
     childAge: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
     },
 
@@ -57,7 +57,7 @@ const Lead = sequelize.define(
       defaultValue: "others",
     },
     assignedAgentId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
     },
   },

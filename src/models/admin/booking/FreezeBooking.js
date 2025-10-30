@@ -6,13 +6,13 @@ const FreezeBooking = sequelize.define(
   "FreezeBooking",
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       autoIncrement: true,
       primaryKey: true,
     },
 
     bookingId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: Booking, // ✅ foreign key reference
@@ -28,7 +28,7 @@ const FreezeBooking = sequelize.define(
     },
 
     freezeDurationMonths: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
     },
 

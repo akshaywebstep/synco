@@ -5,12 +5,12 @@ const BookingStudentMeta = sequelize.define(
   "BookingStudentMeta",
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       primaryKey: true,
       autoIncrement: true,
     },
     bookingTrialId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "booking",
@@ -26,7 +26,7 @@ const BookingStudentMeta = sequelize.define(
     studentFirstName: DataTypes.STRING,
     studentLastName: DataTypes.STRING,
     dateOfBirth: DataTypes.DATEONLY,
-    age: DataTypes.INTEGER.UNSIGNED,
+    age: DataTypes.BIGINT.UNSIGNED,
     gender: DataTypes.STRING,
     medicalInformation: DataTypes.STRING,
   },

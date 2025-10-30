@@ -5,7 +5,7 @@ const KeyInformation = sequelize.define(
   "KeyInformation", // ✅ Model name should match export
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       primaryKey: true,
       autoIncrement: true,
     },

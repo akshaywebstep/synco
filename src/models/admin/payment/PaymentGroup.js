@@ -8,7 +8,7 @@ const PaymentGroup = sequelize.define(
   "PaymentGroup",
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       autoIncrement: true,
       primaryKey: true,
     },
@@ -22,7 +22,7 @@ const PaymentGroup = sequelize.define(
 
     // ✅ Foreign key to admins table for creation
     createdBy: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "admins",
@@ -40,7 +40,7 @@ const PaymentGroup = sequelize.define(
 
     // ✅ Foreign key to admins table for deletion
     deletedBy: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
         model: "admins",
@@ -77,7 +77,7 @@ module.exports = PaymentGroup;
 //   "PaymentGroup",
 //   {
 //     id: {
-//   type: DataTypes.INTEGER.UNSIGNED,
+//   type: DataTypes.BIGINT.UNSIGNED,
 //   autoIncrement: true,
 //   primaryKey: true,
 // },
@@ -88,7 +88,7 @@ module.exports = PaymentGroup;
 //     },
 //     description: DataTypes.TEXT,
 //     createdBy: {
-//       type: DataTypes.INTEGER.UNSIGNED,
+//       type: DataTypes.BIGINT.UNSIGNED,
 //       allowNull: false,
 //     },
 //   },

@@ -6,7 +6,7 @@ const TermGroup = sequelize.define(
   "TermGroup",
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       autoIncrement: true,
       primaryKey: true,
     },
@@ -18,7 +18,7 @@ const TermGroup = sequelize.define(
 
     // ✅ Foreign key to admins table for creation
     createdBy: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
         model: "admins",
@@ -36,7 +36,7 @@ const TermGroup = sequelize.define(
 
     // ✅ Foreign key to admins table for deletion
     deletedBy: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
         model: "admins",
@@ -62,7 +62,7 @@ module.exports = TermGroup;
 //   "TermGroup",
 //   {
 //     id: {
-//       type: DataTypes.INTEGER.UNSIGNED,
+//       type: DataTypes.BIGINT.UNSIGNED,
 //       autoIncrement: true,
 //       primaryKey: true,
 //     },
@@ -71,7 +71,7 @@ module.exports = TermGroup;
 //       allowNull: false,
 //     },
 //     createdBy: {
-//       type: DataTypes.INTEGER.UNSIGNED,
+//       type: DataTypes.BIGINT.UNSIGNED,
 //       allowNull: false,
 //     },
 //   },

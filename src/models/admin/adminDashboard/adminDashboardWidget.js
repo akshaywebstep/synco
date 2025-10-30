@@ -5,12 +5,12 @@ const AdminDashboardWidget = sequelize.define(
   "AdminDashboardWidget",
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       primaryKey: true,
       autoIncrement: true,
     },
     adminId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
     },
     key: {
@@ -18,7 +18,7 @@ const AdminDashboardWidget = sequelize.define(
       allowNull: false,
     },
     order: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       defaultValue: 0,
     },
