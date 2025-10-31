@@ -11,11 +11,12 @@ const {
 const { sequelize } = require("../../../../models");
 
 const stripe = require("../../../../utils/payment/pay360/stripe");
+const { createCustomer, createCardToken, addNewCard, createCharges } = require("../../../../controllers/test/payment/stripe/stripeController")
 
 exports.createOnetoOneBooking = async (data) => {
     const transaction = await sequelize.transaction();
     try {
-        // 1️⃣ Get payment plan and base amount
+        // 1️⃣ Calculate base amount & discount
         let paymentPlan = null;
         let baseAmount = 0;
 
@@ -25,7 +26,6 @@ exports.createOnetoOneBooking = async (data) => {
             baseAmount = paymentPlan.price || 0;
         }
 
-        // 2️⃣ Apply discount if any
         let discount = null;
         let discountAmount = 0;
         let finalAmount = baseAmount;
@@ -34,18 +34,16 @@ exports.createOnetoOneBooking = async (data) => {
             discount = await Discount.findByPk(data.discountId);
             if (!discount) throw new Error("Invalid discount ID");
 
-            // 💰 Apply discount based on type
             if (discount.value_type === "percentage") {
                 discountAmount = (baseAmount * discount.value) / 100;
             } else if (discount.value_type === "fixed") {
                 discountAmount = discount.value;
             }
 
-            // 🧮 Ensure final amount doesn’t go negative
             finalAmount = Math.max(baseAmount - discountAmount, 0);
         }
 
-        // 3️⃣ Create booking
+        // 2️⃣ Create booking
         const booking = await OneToOneBooking.create(
             {
                 leadId: data.leadId || null,
@@ -63,7 +61,7 @@ exports.createOnetoOneBooking = async (data) => {
             { transaction }
         );
 
-        // 4️⃣ Create students
+        // 3️⃣ Create students, parents, emergency
         const students = await Promise.all(
             (data.students || []).map((s) =>
                 OneToOneStudent.create(
@@ -81,10 +79,9 @@ exports.createOnetoOneBooking = async (data) => {
             )
         );
 
-        // 5️⃣ Link parents & emergency to first student
         const firstStudent = students[0];
         if (firstStudent) {
-            if (data.parents && data.parents.length > 0) {
+            if (data.parents?.length) {
                 await Promise.all(
                     data.parents.map((p) =>
                         OneToOneParent.create(
@@ -117,49 +114,67 @@ exports.createOnetoOneBooking = async (data) => {
             }
         }
 
-        // 6️⃣ Process Stripe payment
+        // 4️⃣ Stripe Payment Logic
         let paymentStatus = "failed";
-        let stripePaymentIntentId = null;
+        let stripeChargeId = null;
         let errorMessage = null;
 
         try {
-            const paymentMethod = await stripe.paymentMethods.create({
-                type: "card",
-                card: {
-                    number: data.payment.cardNumber,
-                    exp_month: data.payment.expiryMonth,
-                    exp_year: data.payment.expiryYear,
-                    cvc: data.payment.securityCode,
-                },
-                billing_details: {
-                    name: `${data.payment.firstName} ${data.payment.lastName}`,
-                    email: data.payment.email,
-                    address: { line1: data.payment.billingAddress },
+            let customerId = data.payment?.customer_id;
+            let cardId = data.payment?.card_id;
+
+            // 🧩 Step 1: Create Customer if not exists
+            if (!customerId) {
+                const customerRes = await createCustomer({
+                    body: {
+                        name: `${data.payment.firstName} ${data.payment.lastName}`,
+                        email: data.payment.email,
+                    },
+                });
+                customerId = customerRes.customer_id;
+            }
+
+            // 🧩 Step 2: Create Card Token and attach to Customer
+            if (!cardId) {
+                const cardTokenRes = await createCardToken({
+                    body: {
+                        cardNumber: data.payment.cardNumber,
+                        expiryMonth: data.payment.expiryMonth,
+                        expiryYear: data.payment.expiryYear,
+                        securityCode: data.payment.securityCode,
+                    },
+                });
+                const token_id = cardTokenRes.token_id;
+
+                const addCardRes = await addNewCard({
+                    body: {
+                        customer_id: customerId,
+                        card_token: token_id,
+                    },
+                });
+
+                cardId = addCardRes.card_id;
+            }
+
+            // 🧩 Step 3: Create Charge
+            const chargeRes = await createCharges({
+                body: {
+                    amount: finalAmount,
+                    customer_id: customerId,
+                    card_id: cardId,
                 },
             });
 
-            const paymentIntent = await stripe.paymentIntents.create({
-                amount: Math.round(finalAmount * 100),
-                currency: "usd",
-                payment_method: paymentMethod.id,
-                confirm: true,
-                description: `One-to-One Booking #${booking.id}`,
-                metadata: {
-                    bookingId: booking.id,
-                    leadId: data.leadId,
-                },
-            });
-
-            if (paymentIntent.status === "succeeded") {
+            if (chargeRes.status === "succeeded") {
                 paymentStatus = "paid";
-                stripePaymentIntentId = paymentIntent.id;
+                stripeChargeId = chargeRes.charge_id;
             }
         } catch (err) {
+            console.error("❌ Stripe Payment Error:", err.message);
             errorMessage = err.message;
-            console.error("❌ Stripe payment failed:", err);
         }
 
-        // 7️⃣ Save payment record
+        // 5️⃣ Record payment
         await OneToOnePayment.create(
             {
                 oneToOneBookingId: booking.id,
@@ -167,18 +182,17 @@ exports.createOnetoOneBooking = async (data) => {
                 discountAmount,
                 baseAmount,
                 paymentStatus,
-                stripePaymentIntentId,
+                stripePaymentIntentId: stripeChargeId,
                 paymentDate: new Date(),
                 failureReason: errorMessage,
             },
             { transaction }
         );
 
-        // 8️⃣ Update booking status
+        // 6️⃣ Update booking status
         booking.status = paymentStatus === "paid" ? "active" : "pending";
         await booking.save({ transaction });
 
-        // ✅ Commit
         await transaction.commit();
 
         return {
