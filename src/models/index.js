@@ -76,6 +76,10 @@ const models = {
   SessionPlanConfig: require("./admin/oneToOne/SessionPlanConfig"),
 
   oneToOneLeads: require("./admin/oneToOne/oneToOneLeads"),
+  OneToOneBooking:require("./admin/oneToOne/booking/OneToOneBooking"),
+  OneToOneStudent:require("./admin/oneToOne/booking/OneToOneStudent"),
+  OneToOneParent:require("./admin/oneToOne/booking/OneToOneParent"),
+  OneToOneEmergency:require("./admin/oneToOne/booking/OneToOneEmergency"),
 
 };
 
@@ -133,7 +137,11 @@ const {
   KeyInformation,
 
   SessionPlanConfig,
-  oneToOneLeads
+  oneToOneLeads,
+  OneToOneBooking,
+  OneToOneStudent,
+  OneToOneParent,
+  OneToOneEmergency,
 } = models;
 
 // Many-to-Many
@@ -360,5 +368,9 @@ module.exports = {
   Lead,
   KeyInformation,
   SessionPlanConfig,
-  oneToOneLeads
+  oneToOneLeads,
+  OneToOneBooking,
+  OneToOneStudent,
+  OneToOneParent,
+  OneToOneEmergency,
 };
