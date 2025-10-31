@@ -1,4 +1,6 @@
 node_modules
 uploads
 echo .env >> .gitignore
-git rm --cached .env
+git add .gitignore
+git commit -m "Ignore .env file"
+git push origin main
