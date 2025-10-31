@@ -11,6 +11,7 @@ const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "one-to-one-Booking";
 
+// create
 exports.createOnetoOneBooking = async (req, res) => {
     try {
         const adminId = req.user?.id || null;
