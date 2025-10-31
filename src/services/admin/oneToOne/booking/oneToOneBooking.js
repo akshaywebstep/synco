@@ -4,9 +4,12 @@ const {
     OneToOneStudent,
     OneToOneParent,
     OneToOneEmergency,
+    OneToOnePayment,
     PaymentPlan,
     Discount,
 } = require("../../../../models");
+const { sequelize } = require("../../../../models");
+
 const stripe = require("../../../../utils/payment/pay360/stripe");
 
 exports.createOnetoOneBooking = async (data) => {
@@ -30,19 +33,15 @@ exports.createOnetoOneBooking = async (data) => {
         if (data.discountId) {
             discount = await Discount.findByPk(data.discountId);
             if (!discount) throw new Error("Invalid discount ID");
-            if (!discount.isActive) throw new Error("Discount is inactive");
 
-            const today = new Date();
-            if (discount.expiryDate && new Date(discount.expiryDate) < today) {
-                throw new Error("Discount has expired");
-            }
-
-            if (discount.type === "percentage") {
+            // 💰 Apply discount based on type
+            if (discount.value_type === "percentage") {
                 discountAmount = (baseAmount * discount.value) / 100;
-            } else if (discount.type === "fixed") {
+            } else if (discount.value_type === "fixed") {
                 discountAmount = discount.value;
             }
 
+            // 🧮 Ensure final amount doesn’t go negative
             finalAmount = Math.max(baseAmount - discountAmount, 0);
         }
 

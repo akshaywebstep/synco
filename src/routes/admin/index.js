@@ -111,6 +111,7 @@ router.use("/lead", require("./leadRoutes"));
 router.use("/one-to-one", require("./oneToOneRoutes/sessionPlanLibraryRoutes"));
 router.use("/one-to-one", require("./oneToOneRoutes/sessionExerciseRoutes"));
 router.use("/one-to-one", require("./oneToOneRoutes/oneToOneLeadRoutes"));
+router.use("/one-to-one", require("./oneToOneRoutes/oneToOneBookingRoutes"));
 
 const {
   listComments,

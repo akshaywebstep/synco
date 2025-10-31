@@ -80,6 +80,7 @@ const models = {
   OneToOneStudent:require("./admin/oneToOne/booking/OneToOneStudent"),
   OneToOneParent:require("./admin/oneToOne/booking/OneToOneParent"),
   OneToOneEmergency:require("./admin/oneToOne/booking/OneToOneEmergency"),
+  OneToOnePayment:require("./admin/oneToOne/booking/OneToOnePayment"),
 
 };
 
@@ -142,6 +143,7 @@ const {
   OneToOneStudent,
   OneToOneParent,
   OneToOneEmergency,
+  OneToOnePayment,
 } = models;
 
 // Many-to-Many
@@ -373,4 +375,5 @@ module.exports = {
   OneToOneStudent,
   OneToOneParent,
   OneToOneEmergency,
+  OneToOnePayment,
 };

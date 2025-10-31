@@ -1,6 +1,6 @@
 
 const { validateFormData } = require("../../../../utils/validateFormData");
-const oneToOneLeadService = require("../../../../services/admin/oneToOne//oneToOneLeadsService");
+const oneToOneBookingService = require("../../../../services/admin/oneToOne/booking/oneToOneBooking");
 const { logActivity } = require("../../../../utils/admin/activityLogger");
 
 const {
@@ -99,7 +99,7 @@ exports.createOnetoOneBooking = async (req, res) => {
         }
 
         // ✅ Step 3: Create booking via service
-        const result = await oneToOneLeadService.createOnetoOneBooking(formData);
+        const result = await oneToOneBookingService.createOnetoOneBooking(formData);
 
         if (DEBUG) console.log("✅ Booking created successfully:", result);
 
