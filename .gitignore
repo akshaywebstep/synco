@@ -1,2 +1,4 @@
 node_modules
 uploads
+echo .env >> .gitignore
+git rm --cached .env
