@@ -5,6 +5,10 @@ const {
   BookingEmergencyMeta,
   ClassSchedule,
   PaymentPlan,
+  PaymentGroup,
+  PaymentGroupHasPlan,
+  TermGroup,
+  Term,
   Venue,
   Admin,
   CancelBooking,
@@ -306,6 +310,266 @@ exports.getWaitingList = async (filters = {}) => {
     };
   }
 };
+exports.getBookingById = async (id, adminId, superAdminId) => {
+  console.log("==============================================");
+  console.log("📘 [Service] getBookingById Started");
+  console.log("🔍 Incoming Params:", { id, adminId, superAdminId });
+  console.log("==============================================");
+
+  const whereClause = { id };
+  console.log("🧩 Step 1: Initial whereClause:", whereClause);
+
+  try {
+    // 🧭 Step 2: Auto-detect superAdminId if missing
+    if (!superAdminId && adminId) {
+      console.log("🧠 Auto-detecting superAdminId from Admin table...");
+      const adminData = await Admin.findOne({
+        where: { id: adminId },
+        attributes: ["superAdminId"],
+      });
+      superAdminId = adminData?.superAdminId || adminId;
+      console.log("🧠 Auto-detected superAdminId:", superAdminId);
+    }
+
+    // 🧩 Step 3: Access scope
+    if (superAdminId === adminId) {
+      // ✅ Super Admin → can see all bookings
+      console.log("🛡️ Step 3a: Super Admin detected — full access granted.");
+    } else {
+      // 👤 Normal Admin → see only their own bookings
+      whereClause.bookedBy = adminId;
+      console.log(
+        "👤 Step 3b: Normal admin — restricted to bookedBy =",
+        adminId
+      );
+    }
+
+    console.log(
+      "🚀 Step 4: Fetching booking from DB with whereClause:",
+      whereClause
+    );
+
+    // 🔍 Step 5: Fetch booking with associations
+    const booking = await Booking.findOne({
+      where: whereClause,
+      include: [
+        {
+          model: BookingStudentMeta,
+          as: "students",
+          required: false,
+          include: [
+            { model: BookingParentMeta, as: "parents", required: false },
+            {
+              model: BookingEmergencyMeta,
+              as: "emergencyContacts",
+              required: false,
+            },
+          ],
+        },
+        {
+          model: ClassSchedule,
+          as: "classSchedule",
+          required: false,
+          include: [{ model: Venue, as: "venue", required: false }],
+        },
+        {
+          model: Admin,
+          as: "bookedByAdmin",
+          attributes: [
+            "id",
+            "firstName",
+            "lastName",
+            "email",
+            "roleId",
+            "status",
+            "profile",
+            "superAdminId",
+          ],
+          required: false,
+        },
+      ],
+    });
+
+    if (!booking) {
+      console.warn(
+        "⚠️ Step 6: Booking not found or unauthorized:",
+        whereClause
+      );
+      return { status: false, message: "Booking not found or not authorized." };
+    }
+
+    console.log("✅ Step 7: Booking fetched successfully:", booking.id);
+
+    // 🧩 Step 8: Process related entities (venue, paymentGroups, terms, etc.)
+    const venue = booking.classSchedule?.venue;
+
+    // Handle Payment Groups
+    let paymentGroups = [];
+    if (venue?.paymentGroupId) {
+      console.log("💳 Step 9: Processing payment groups...");
+      let paymentGroupIds = [];
+
+      if (typeof venue.paymentGroupId === "string") {
+        try {
+          paymentGroupIds = JSON.parse(venue.paymentGroupId);
+        } catch {
+          console.warn("⚠️ Failed to parse venue.paymentGroupId");
+        }
+      } else if (Array.isArray(venue.paymentGroupId)) {
+        paymentGroupIds = venue.paymentGroupId;
+      } else {
+        paymentGroupIds = [venue.paymentGroupId];
+      }
+
+      if (paymentGroupIds.length > 0) {
+        paymentGroups = await PaymentGroup.findAll({
+          where: { id: { [Op.in]: paymentGroupIds } },
+          include: [
+            {
+              model: PaymentPlan,
+              as: "paymentPlans",
+              through: { model: PaymentGroupHasPlan },
+            },
+          ],
+          order: [["createdAt", "DESC"]],
+        });
+      }
+    }
+
+    // Handle Term Groups + Terms
+    console.log("📅 Step 10: Processing term groups and terms...");
+    let termGroupIds = [];
+
+    if (typeof venue?.termGroupId === "string") {
+      try {
+        termGroupIds = JSON.parse(venue.termGroupId);
+      } catch {
+        console.warn("⚠️ Failed to parse venue.termGroupId");
+      }
+    } else if (Array.isArray(venue?.termGroupId)) {
+      termGroupIds = venue.termGroupId;
+    } else if (typeof venue?.termGroupId === "number") {
+      termGroupIds = [venue.termGroupId];
+    }
+
+    const creatorId = venue?.createdBy ?? adminId;
+
+    const termGroups =
+      termGroupIds.length > 0
+        ? await TermGroup.findAll({
+            where: { id: termGroupIds, createdBy: creatorId },
+          })
+        : [];
+
+    const terms =
+      termGroupIds.length > 0
+        ? await Term.findAll({
+            where: {
+              termGroupId: { [Op.in]: termGroupIds },
+              createdBy: creatorId,
+            },
+            attributes: [
+              "id",
+              "termName",
+              "day",
+              "startDate",
+              "endDate",
+              "termGroupId",
+              "exclusionDates",
+              "totalSessions",
+              "sessionsMap",
+            ],
+          })
+        : [];
+
+    const parsedTerms = terms.map((t) => ({
+      id: t.id,
+      name: t.termName,
+      day: t.day,
+      startDate: t.startDate,
+      endDate: t.endDate,
+      termGroupId: t.termGroupId,
+      exclusionDates:
+        typeof t.exclusionDates === "string"
+          ? JSON.parse(t.exclusionDates || "[]")
+          : t.exclusionDates || [],
+      totalSessions: t.totalSessions,
+      sessionsMap:
+        typeof t.sessionsMap === "string"
+          ? JSON.parse(t.sessionsMap || "[]")
+          : t.sessionsMap || [],
+    }));
+
+    // 🧍 Step 11: Extract related student/parent/emergency data
+    console.log("👨‍👩‍👧 Step 11: Extracting related meta data...");
+    const students =
+      booking.students?.map((s) => ({
+        id: s.id,
+        studentFirstName: s.studentFirstName,
+        studentLastName: s.studentLastName,
+        dateOfBirth: s.dateOfBirth,
+        age: s.age,
+        gender: s.gender,
+      })) || [];
+
+    const parents =
+      booking.students
+        ?.flatMap((s) => s.parents || [])
+        .map((p) => ({
+          id: p.id,
+          parentFirstName: p.parentFirstName,
+          parentLastName: p.parentLastName,
+          parentEmail: p.parentEmail,
+          parentPhoneNumber: p.parentPhoneNumber,
+          relationToChild: p.relationToChild,
+        })) || [];
+
+    const emergency =
+      booking.students
+        ?.flatMap((s) => s.emergencyContacts || [])
+        .map((e) => ({
+          id: e.id,
+          emergencyFirstName: e.emergencyFirstName,
+          emergencyLastName: e.emergencyLastName,
+          emergencyPhoneNumber: e.emergencyPhoneNumber,
+          emergencyRelation: e.emergencyRelation,
+        })) || [];
+
+    // 🧾 Step 12: Build and return final response
+    console.log("🧾 Step 12: Preparing final response...");
+
+    const response = {
+      id: booking.id,
+      bookingId: booking.bookingId,
+      classScheduleId: booking.classScheduleId,
+      serviceType: booking.serviceType,
+      trialDate: booking.trialDate,
+      bookedBy: booking.bookedByAdmin || null,
+      className: booking.className,
+      venueId: booking.venueId,
+      status: booking.status,
+      totalStudents: booking.totalStudents,
+      createdAt: booking.createdAt,
+      students,
+      parents,
+      emergency,
+      classSchedule: booking.classSchedule || {},
+      paymentGroups,
+      termGroups: termGroups.map((tg) => ({ id: tg.id, name: tg.name })),
+      terms: parsedTerms,
+    };
+
+    console.log("✅ Step 13: Booking fetched successfully:", booking.id);
+    return {
+      status: true,
+      message: "Fetched booking details successfully.",
+      data: response,
+    };
+  } catch (error) {
+    console.error("❌ getBookingById Error:", error);
+    return { status: false, message: error.message || "Internal server error" };
+  }
+};
 
 exports.createBooking = async (data, options) => {
   const t = await sequelize.transaction();
@@ -557,446 +821,6 @@ exports.createBooking = async (data, options) => {
   } catch (error) {
     await t.rollback();
     console.error("❌ createBooking Error:", error);
-    return { status: false, message: error.message };
-  }
-};
-
-// exports.getWaitingList = async (filters = {}) => {
-
-//   try {
-//     const trialWhere = {
-//       // bookingType: "waiting list",
-//       bookingType: { [Op.in]: ["waiting list", "paid"] },
-//     };
-
-//     if (filters.status) trialWhere.status = filters.status;
-//     if (filters.interest) trialWhere.interest = filters.interest;
-
-//     const adminWhere = {};
-//     /*
-//     if (filters.bookedBy) {
-//       adminWhere[Op.or] = [
-//         { firstName: { [Op.like]: `%${filters.bookedBy}%` } },
-//         { lastName: { [Op.like]: `%${filters.bookedBy}%` } },
-//       ];
-//     }
-//     */
-
-//     if (filters.bookedBy) {
-//       // Ensure bookedBy is always an array
-//       const bookedByArray = Array.isArray(filters.bookedBy)
-//         ? filters.bookedBy
-//         : [filters.bookedBy];
-
-//       trialWhere.bookedBy = { [Op.in]: bookedByArray };
-//     }
-
-//     // ---- Date filters ----
-//     if (filters.dateBooked) {
-//       const start = new Date(filters.dateBooked + " 00:00:00");
-//       const end = new Date(filters.dateBooked + " 23:59:59");
-//       trialWhere.createdAt = { [Op.between]: [start, end] };
-//     } else if (filters.fromDate && filters.toDate) {
-//       const start = new Date(filters.fromDate + " 00:00:00");
-//       const end = new Date(filters.toDate + " 23:59:59");
-//       trialWhere.createdAt = { [Op.between]: [start, end] };
-//     } else if (filters.fromDate) {
-//       const start = new Date(filters.fromDate + " 00:00:00");
-//       trialWhere.createdAt = { [Op.gte]: start };
-//     } else if (filters.toDate) {
-//       const end = new Date(filters.toDate + " 23:59:59");
-//       trialWhere.createdAt = { [Op.lte]: end };
-//     }
-
-//     if (filters.startDate) {
-//       const start = new Date(filters.startDate + " 00:00:00");
-//       const end = new Date(filters.startDate + " 23:59:59");
-//       trialWhere.startDate = { [Op.between]: [start, end] };
-//     }
-
-//     const studentWhere = {};
-//     if (filters.studentName) {
-//       studentWhere[Op.or] = [
-//         { studentFirstName: { [Op.like]: `%${filters.studentName}%` } },
-//         { studentLastName: { [Op.like]: `%${filters.studentName}%` } },
-//       ];
-//     }
-
-//     const bookings = await Booking.findAll({
-//       order: [["id", "DESC"]],
-//       where: {
-//         // serviceType: "weekly class trial",
-//         bookingType: { [Op.in]: ["waiting list", "paid"] },
-//         ...trialWhere,
-//         // status: "waiting list",
-//         status: { [Op.in]: ["waiting list, paid"] },
-//       },
-//       // where: trialWhere,
-//       include: [
-//         {
-//           model: BookingStudentMeta,
-//           as: "students",
-//           required: !!filters.studentName,
-//           where: filters.studentName ? studentWhere : undefined,
-//           include: [
-//             { model: BookingParentMeta, as: "parents", required: false },
-//             {
-//               model: BookingEmergencyMeta,
-//               as: "emergencyContacts",
-//               required: false,
-//             },
-//           ],
-//         },
-//         {
-//           model: ClassSchedule,
-//           as: "classSchedule",
-//           required: !!filters.venueName,
-//           include: [
-//             {
-//               model: Venue,
-//               as: "venue",
-//               required: !!filters.venueName,
-//               where: filters.venueName
-//                 ? { name: { [Op.like]: `%${filters.venueName}%` } }
-//                 : undefined,
-//             },
-//           ],
-//         },
-//         {
-//           model: Admin,
-//           as: "bookedByAdmin",
-//           attributes: [
-//             "id",
-//             "firstName",
-//             "lastName",
-//             "email",
-//             "roleId",
-//             "status",
-//             "profile",
-//           ],
-//           required: !!filters.bookedBy,
-//           where: filters.bookedBy ? adminWhere : undefined,
-//         },
-//       ],
-//     });
-
-//     // ---- Transform Data ----
-//     const parsedBookings = bookings.map((booking) => {
-//       const students =
-//         booking.students?.map((s) => ({
-//           studentFirstName: s.studentFirstName,
-//           studentLastName: s.studentLastName,
-//           dateOfBirth: s.dateOfBirth,
-//           age: s.age,
-//           gender: s.gender,
-//           medicalInformation: s.medicalInformation,
-//           interest: s.interest,
-//         })) || [];
-
-//       const parents =
-//         booking.students?.flatMap(
-//           (s) =>
-//             s.parents?.map((p) => ({
-//               parentFirstName: p.parentFirstName,
-//               parentLastName: p.parentLastName,
-//               parentEmail: p.parentEmail,
-//               parentPhoneNumber: p.parentPhoneNumber,
-//               relationToChild: p.relationToChild,
-//               howDidYouHear: p.howDidYouHear,
-//             })) || []
-//         ) || [];
-
-//       const emergency =
-//         booking.students?.flatMap(
-//           (s) =>
-//             s.emergencyContacts?.map((e) => ({
-//               emergencyFirstName: e.emergencyFirstName,
-//               emergencyLastName: e.emergencyLastName,
-//               emergencyPhoneNumber: e.emergencyPhoneNumber,
-//               emergencyRelation: e.emergencyRelation,
-//             })) || []
-//         )[0] || null;
-//       // ---- Calculate waitingDays based on startDate ----
-//       let waitingDays = null;
-//       if (booking.startDate) {
-//         const start = new Date(booking.startDate);
-//         const now = new Date();
-//         waitingDays = Math.ceil(
-//           (start.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
-//         );
-//       }
-
-//       return {
-//         ...booking.dataValues,
-//         students,
-//         parents,
-//         emergency,
-//         classSchedule: booking.classSchedule || null,
-//         venue: booking.classSchedule?.venue || null,
-//         bookedByAdmin: booking.bookedByAdmin || null,
-//         waitingDays,
-//       };
-//     });
-
-//     // ---- Extract unique Venues + Admins ----
-//     const venues = [];
-//     const bookedByAdmins = [];
-
-//     parsedBookings.forEach((b) => {
-//       if (b.venue && !venues.find((v) => v.id === b.venue.id)) {
-//         venues.push(b.venue);
-//       }
-//       if (
-//         b.bookedByAdmin &&
-//         !bookedByAdmins.find((a) => a.id === b.bookedByAdmin.id)
-//       ) {
-//         bookedByAdmins.push(b.bookedByAdmin);
-//       }
-//     });
-
-//     // ---- Stats Calculation ----
-//     const totalOnWaitingList = parsedBookings.length;
-
-//     // Avg. interest (based on students’ interest field)
-//     const allInterests = parsedBookings.flatMap((b) =>
-//       b.students.map((s) => parseInt(s.interest) || 0)
-//     );
-//     const avgInterest =
-//       allInterests.length > 0
-//         ? (
-//           allInterests.reduce((a, b) => a + b, 0) / allInterests.length
-//         ).toFixed(2)
-//         : 0;
-
-//     // Avg. days waiting (currentDate - createdAt)
-//     const avgDaysWaiting =
-//       parsedBookings.length > 0
-//         ? (
-//           parsedBookings.reduce((sum, b) => {
-//             const created = new Date(b.createdAt);
-//             const now = new Date();
-//             const diffDays = Math.floor(
-//               (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)
-//             );
-//             return sum + diffDays;
-//           }, 0) / parsedBookings.length
-//         ).toFixed(0)
-//         : 0;
-
-//     // Top Referrer (admin with most bookings)
-//     const adminCount = {};
-//     parsedBookings.forEach((b) => {
-//       if (b.bookedByAdmin) {
-//         const name = `${b.bookedByAdmin.firstName} ${b.bookedByAdmin.lastName}`;
-//         adminCount[name] = (adminCount[name] || 0) + 1;
-//       }
-//     });
-//     const topReferrer =
-//       Object.entries(adminCount).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
-
-//     // Most Requested Venue
-//     const venueCount = {};
-//     parsedBookings.forEach((b) => {
-//       if (b.venue) {
-//         venueCount[b.venue.name] = (venueCount[b.venue.name] || 0) + 1;
-//       }
-//     });
-//     const mostRequestedVenue =
-//       Object.entries(venueCount).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
-
-//     return {
-//       status: true,
-//       message: "Waiting list bookings fetched successfully.",
-//       data: {
-//         waitingList: parsedBookings,
-//         venue: venues,
-//         bookedByAdmins,
-//         stats: {
-//           totalOnWaitingList,
-//           avgInterest,
-//           avgDaysWaiting,
-//           topReferrer,
-//           mostRequestedVenue,
-//         },
-//       },
-//     };
-//   } catch (error) {
-//     console.error("❌ getWaitingList Error:", error);
-//     return {
-//       status: false,
-//       message: error.message || "Failed to fetch waiting list",
-//       data: {
-//         waitingList: [],
-//         venue: [],
-//         bookedByAdmins: [],
-//         stats: {
-//           totalOnWaitingList: 0,
-//           avgInterest: 0,
-//           avgDaysWaiting: 0,
-//           topReferrer: null,
-//           mostRequestedVenue: null,
-//         },
-//       },
-//     };
-//   }
-// };
-
-exports.getBookingById = async (id, bookedBy, adminId) => {
-  if (!bookedBy || isNaN(Number(bookedBy))) {
-    return {
-      status: false,
-      message: "No valid super admin found for this request.",
-      data: [],
-    };
-  }
-
-  try {
-    const booking = await Booking.findOne({
-      bookedBy: Number(bookedBy),
-      id,
-      serviceType: "weekly class trial",
-      status: "waiting list", // ✅ ensure both cases appear
-      bookingType: {
-        [Op.in]: ["waiting list", "paid"],
-      },
-
-      include: [
-        {
-          model: BookingStudentMeta,
-          as: "students",
-          required: false,
-          include: [
-            { model: BookingParentMeta, as: "parents", required: false },
-            {
-              model: BookingEmergencyMeta,
-              as: "emergencyContacts",
-              required: false,
-            },
-          ],
-        },
-        {
-          model: ClassSchedule,
-          as: "classSchedule",
-          required: false,
-          include: [{ model: Venue, as: "venue", required: false }],
-        },
-        {
-          model: Admin,
-          as: "bookedByAdmin",
-          attributes: [
-            "id",
-            "firstName",
-            "lastName",
-            "email",
-            "roleId",
-            "status",
-            "profile",
-          ],
-          required: false,
-        },
-      ],
-    });
-
-    if (!booking) {
-      return {
-        status: false,
-        message: "Waiting list booking not found or not authorized.",
-      };
-    }
-
-    // Payment plan logic
-    let paymentPlans = [];
-    let paymentPlanIds = [];
-
-    const venue = booking.classSchedule?.venue;
-    if (venue?.paymentPlanId) {
-      if (typeof venue.paymentPlanId === "string") {
-        try {
-          paymentPlanIds = JSON.parse(venue.paymentPlanId);
-        } catch {
-          console.warn("⚠️ Failed to parse venue.paymentPlanId");
-        }
-      } else if (Array.isArray(venue.paymentPlanId)) {
-        paymentPlanIds = venue.paymentPlanId;
-      }
-
-      paymentPlanIds = paymentPlanIds
-        .map((id) => parseInt(id, 10))
-        .filter(Boolean);
-
-      if (paymentPlanIds.length) {
-        paymentPlans = await PaymentPlan.findAll({
-          where: { id: paymentPlanIds },
-        });
-      }
-    }
-
-    // Extract students, parents, emergency
-    const students =
-      booking.students?.map((s) => ({
-        id: s.id,
-        studentFirstName: s.studentFirstName,
-        studentLastName: s.studentLastName,
-        dateOfBirth: s.dateOfBirth,
-        age: s.age,
-        gender: s.gender,
-        medicalInformation: s.medicalInformation,
-      })) || [];
-
-    const parents =
-      booking.students?.[0]?.parents?.map((p) => ({
-        id: p.id,
-        parentFirstName: p.parentFirstName,
-        parentLastName: p.parentLastName,
-        parentEmail: p.parentEmail,
-        parentPhoneNumber: p.parentPhoneNumber,
-        relationToChild: p.relationToChild,
-        howDidYouHear: p.howDidYouHear,
-      })) || [];
-
-    const emergency =
-      booking.students?.[0]?.emergencyContacts?.map((e) => ({
-        id: e.id,
-        emergencyFirstName: e.emergencyFirstName,
-        emergencyLastName: e.emergencyLastName,
-        emergencyPhoneNumber: e.emergencyPhoneNumber,
-        emergencyRelation: e.emergencyRelation,
-      })) || [];
-
-    // Final response
-    const response = {
-      id: booking.id,
-      bookingId: booking.bookingId,
-      classScheduleId: booking.classScheduleId,
-      startDate: booking.startDate,
-      serviceType: booking.serviceType,
-      interest: booking.interest,
-      bookedBy: booking.bookedByAdmin || null,
-      className: booking.className,
-      classTime: booking.classTime,
-      venueId: booking.venueId,
-      status: booking.status,
-      // bookingType: booking.bookingType,
-      bookingType:
-        booking.bookingType === "paid" ? "waiting list" : booking.bookingType,
-      totalStudents: booking.totalStudents,
-      source: booking.source,
-      createdAt: booking.createdAt,
-      venue,
-      students,
-      parents,
-      emergency,
-      classSchedule: booking.classSchedule || {},
-      paymentPlans,
-    };
-
-    return {
-      status: true,
-      message: "Fetched waiting list booking successfully.",
-      data: response,
-    };
-  } catch (error) {
-    console.error("❌ getBookingById Error:", error.message);
     return { status: false, message: error.message };
   }
 };

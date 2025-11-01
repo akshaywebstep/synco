@@ -443,30 +443,67 @@ exports.sendEmail = async (req, res) => {
 exports.getAccountProfile = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id;
-  if (DEBUG) console.log(`🔍 Fetching free trial booking ID: ${id}`);
-  const bookedBy = req.admin?.id;
-  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+  const superAdminId = req.admin?.superAdminId || adminId; // ✅ Include superAdminId (fallback to self)
+
+  if (DEBUG) {
+    console.log("==============================================");
+    console.log("📘 [getAccountProfile] API Call Started");
+    console.log("🔍 Params:", { id });
+    console.log("👤 Admin Info:", {
+      adminId,
+      superAdminId,
+      email: req.admin?.email,
+      roleId: req.admin?.roleId,
+    });
+    console.log("==============================================");
+  }
 
   try {
+    // ✅ Pass both adminId and superAdminId to service
+    if (DEBUG) console.log("🚀 Calling BookingTrialService.getBookingById...");
     const result = await BookingTrialService.getBookingById(
       id,
-      bookedBy,
-      adminId
+      adminId,
+      superAdminId
     );
 
-    if (!result.status) {
-      return res.status(404).json({ status: false, message: result.message });
+    if (DEBUG) {
+      console.log("📦 Service Response:", JSON.stringify(result, null, 2));
     }
 
+    // ⚠️ If booking not found or unauthorized
+    if (!result.status) {
+      if (DEBUG) console.warn(`⚠️ Booking ID ${id} not found or unauthorized.`);
+
+      await logActivity(
+        req,
+        PANEL,
+        MODULE,
+        "getById",
+        { message: `Booking not found: ${id}`, adminId, superAdminId },
+        false
+      );
+
+      return res.status(404).json({
+        status: false,
+        message: result.message || "Booking not found or not authorized.",
+      });
+    }
+
+    // ✅ Log successful activity
     await logActivity(
       req,
       PANEL,
       MODULE,
       "getById",
-      { message: `Fetched booking ID: ${id}` },
+      { message: `Fetched booking ID: ${id}`, adminId, superAdminId },
       true
     );
+
+    if (DEBUG) {
+      console.log("✅ Booking fetched successfully from service.");
+      console.log("📤 Sending response to client...");
+    }
 
     return res.status(200).json({
       status: true,
@@ -474,16 +511,28 @@ exports.getAccountProfile = async (req, res) => {
       data: result.data,
     });
   } catch (error) {
-    console.error("❌ Error fetching booking:", error);
+    console.error("❌ Error in getAccountProfile:", error);
+
     await logActivity(
       req,
       PANEL,
       MODULE,
       "getById",
-      { error: error.message },
+      { error: error.message, stack: error.stack, adminId, superAdminId },
       false
     );
-    return res.status(500).json({ status: false, message: "Server error." });
+
+    if (DEBUG) {
+      console.error("💥 Detailed Error Trace:", error);
+    }
+
+    return res.status(500).json({
+      status: false,
+      message: "Server error while fetching booking.",
+      error: DEBUG ? error.message : undefined, // show error only in debug mode
+    });
+  } finally {
+    if (DEBUG) console.log("🏁 [getAccountProfile] Execution Completed\n");
   }
 };
 
