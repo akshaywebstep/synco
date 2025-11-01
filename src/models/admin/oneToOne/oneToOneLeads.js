@@ -45,9 +45,10 @@ const OneToOneLead = sequelize.define(
     source: {
       type: DataTypes.STRING,
       allowNull: true,
-      comment: "How the lead heard about us (e.g., social media, referral, etc.)",
+      comment:
+        "How the lead heard about us (e.g., social media, referral, etc.)",
     },
-    
+
     status: {
       type: DataTypes.STRING,
       allowNull: true,
@@ -103,6 +104,11 @@ OneToOneLead.associate = (models) => {
   OneToOneLead.belongsTo(models.Admin, {
     foreignKey: "deletedBy",
     as: "deleter",
+  });
+
+  OneToOneLead.hasOne(models.OneToOneBooking, {
+    foreignKey: "leadId",
+    as: "booking",
   });
 };
 

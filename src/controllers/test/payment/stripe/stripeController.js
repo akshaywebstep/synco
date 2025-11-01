@@ -84,7 +84,7 @@ const createCharges = async ({ body }) => {
 
     const charge = await stripe.charges.create({
       amount: parseInt(amount) * 100, // Stripe expects cents
-      currency: "usd",
+      currency: "gbp",
       customer: customer_id,
       source: card_id,
       description: "One-to-One Booking Payment",

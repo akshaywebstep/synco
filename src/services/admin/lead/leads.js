@@ -1,4 +1,19 @@
-const { Lead, Venue, Comment, Admin, ClassSchedule, Booking, BookingStudentMeta, BookingParentMeta, BookingEmergencyMeta, PaymentGroup, TermGroup, Term, PaymentPlan, PaymentGroupHasPlan } = require("../../../models");
+const {
+  Lead,
+  Venue,
+  Comment,
+  Admin,
+  ClassSchedule,
+  Booking,
+  BookingStudentMeta,
+  BookingParentMeta,
+  BookingEmergencyMeta,
+  PaymentGroup,
+  TermGroup,
+  Term,
+  PaymentPlan,
+  PaymentGroupHasPlan,
+} = require("../../../models");
 const axios = require("axios");
 const { Op } = require("sequelize");
 const { sequelize } = require("../../../models");
@@ -14,8 +29,8 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) *
-    Math.cos((lat2 * Math.PI) / 180) *
-    Math.sin(dLon / 2) ** 2;
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
@@ -28,7 +43,9 @@ async function getCoordinatesFromPostcode(postcode) {
 
   try {
     const res = await axios.get(
-      `https://api.postcodes.io/postcodes/${encodeURIComponent(postcode.trim())}`
+      `https://api.postcodes.io/postcodes/${encodeURIComponent(
+        postcode.trim()
+      )}`
     );
 
     if (res.data.status === 200 && res.data.result) {
@@ -40,7 +57,10 @@ async function getCoordinatesFromPostcode(postcode) {
       console.warn("⚠️ Postcode not found:", postcode);
     }
   } catch (err) {
-    console.error("❌ Postcode lookup error:", err.response?.data?.error || err.message);
+    console.error(
+      "❌ Postcode lookup error:",
+      err.response?.data?.error || err.message
+    );
   }
 
   return null;
@@ -66,12 +86,12 @@ exports.addCommentForLead = async ({
       if (!admin) {
         await t.rollback();
         if (DEBUG) {
-          ("❌ Admin not found:", commentBy);
+          "❌ Admin not found:", commentBy;
         }
         return { status: false, message: "❌ Admin not found." };
       }
       if (DEBUG) {
-        ("✅ Admin validated:", admin.id);
+        "✅ Admin validated:", admin.id;
       }
     }
 
@@ -85,8 +105,7 @@ exports.addCommentForLead = async ({
       { transaction: t }
     );
     if (DEBUG) {
-      ("✅ Comment created:", newComment.id);
-
+      "✅ Comment created:", newComment.id;
     }
 
     await t.commit();
@@ -104,7 +123,7 @@ exports.addCommentForLead = async ({
   } catch (error) {
     await t.rollback();
     if (DEBUG) {
-      ("❌ addCommentForLead Error:", error);
+      "❌ addCommentForLead Error:", error;
     }
     return { status: false, message: error.message };
   }
@@ -121,7 +140,15 @@ exports.listCommentsForLead = async ({ commentType = "lead" }) => {
         {
           model: Admin,
           as: "bookedByAdmin",
-          attributes: ["id", "firstName", "lastName", "email", "roleId", "status", "profile"],
+          attributes: [
+            "id",
+            "firstName",
+            "lastName",
+            "email",
+            "roleId",
+            "status",
+            "profile",
+          ],
           required: false,
         },
       ],
@@ -130,7 +157,7 @@ exports.listCommentsForLead = async ({ commentType = "lead" }) => {
     });
 
     if (DEBUG) {
-      (`✅ Found ${comments.length} comments`);
+      `✅ Found ${comments.length} comments`;
     }
     return {
       status: true,
@@ -139,7 +166,7 @@ exports.listCommentsForLead = async ({ commentType = "lead" }) => {
     };
   } catch (error) {
     if (DEBUG) {
-      ("❌ listComments Error:", error);
+      "❌ listComments Error:", error;
     }
     return { status: false, message: error.message };
   }
@@ -446,7 +473,6 @@ exports.createLead = async (payload) => {
 // };
 exports.getAllForFacebookLeads = async (assignedAgentId, filters = {}) => {
   try {
-
     if (!assignedAgentId || isNaN(Number(assignedAgentId))) {
       return {
         status: false,
@@ -519,13 +545,13 @@ exports.getAllForFacebookLeads = async (assignedAgentId, filters = {}) => {
     ).length;
 
     // ✅ Count leads that have at least one "free" booking
-    const leadsToTrialsCount = allLeads.filter(
-      (lead) => (lead.bookings || []).some((b) => b.bookingType === "free")
+    const leadsToTrialsCount = allLeads.filter((lead) =>
+      (lead.bookings || []).some((b) => b.bookingType === "free")
     ).length;
 
     // ✅ Count leads that have at least one "paid" booking
-    const leadsToSalesCount = allLeads.filter(
-      (lead) => (lead.bookings || []).some((b) => b.bookingType === "paid")
+    const leadsToSalesCount = allLeads.filter((lead) =>
+      (lead.bookings || []).some((b) => b.bookingType === "paid")
     ).length;
 
     const analytics = {
@@ -562,7 +588,10 @@ exports.getAllForFacebookLeads = async (assignedAgentId, filters = {}) => {
 
       filteredLeads = filteredLeads.filter((lead) => {
         const createdAt = new Date(lead.createdAt);
-        return (!fromDate || createdAt >= fromDate) && (!toDate || createdAt <= toDate);
+        return (
+          (!fromDate || createdAt >= fromDate) &&
+          (!toDate || createdAt <= toDate)
+        );
       });
     }
     if (filters.name) {
@@ -607,7 +636,9 @@ exports.getAllForFacebookLeads = async (assignedAgentId, filters = {}) => {
         // Keep only bookings where at least one student matches
         lead.bookings = (lead.bookings || []).filter((booking) =>
           (booking.students || []).some((student) => {
-            const fullName = `${student.studentFirstName || ""} ${student.studentLastName || ""}`.toLowerCase();
+            const fullName = `${student.studentFirstName || ""} ${
+              student.studentLastName || ""
+            }`.toLowerCase();
             return fullName.includes(studentLower);
           })
         );
@@ -616,7 +647,9 @@ exports.getAllForFacebookLeads = async (assignedAgentId, filters = {}) => {
         lead.bookings = lead.bookings.map((booking) => ({
           ...booking,
           students: (booking.students || []).filter((student) => {
-            const fullName = `${student.studentFirstName || ""} ${student.studentLastName || ""}`.toLowerCase();
+            const fullName = `${student.studentFirstName || ""} ${
+              student.studentLastName || ""
+            }`.toLowerCase();
             return fullName.includes(studentLower);
           }),
         }));
@@ -661,7 +694,12 @@ exports.getAllForFacebookLeads = async (assignedAgentId, filters = {}) => {
           );
 
           const { students: _, ...bookingWithoutStudents } = booking.dataValues;
-          return { ...bookingWithoutStudents, students, parents, emergencyContacts };
+          return {
+            ...bookingWithoutStudents,
+            students,
+            parents,
+            emergencyContacts,
+          };
         });
 
         const { bookings, ...leadWithoutBookings } = lead.dataValues;
@@ -676,33 +714,46 @@ exports.getAllForFacebookLeads = async (assignedAgentId, filters = {}) => {
                 .map((v) => ({
                   ...v.dataValues,
                   distance: Number(
-                    calculateDistance(coords.latitude, coords.longitude, v.latitude, v.longitude).toFixed(2)
+                    calculateDistance(
+                      coords.latitude,
+                      coords.longitude,
+                      v.latitude,
+                      v.longitude
+                    ).toFixed(2)
                   ),
-
                 }))
                 .sort((a, b) => a.distance - b.distance)
                 .slice(0, 5)
                 .map(async (venue) => {
                   // Class schedules
-                  const classSchedules = await ClassSchedule.findAll({ where: { venueId: venue.id } });
+                  const classSchedules = await ClassSchedule.findAll({
+                    where: { venueId: venue.id },
+                  });
 
                   // Payment Groups
                   const paymentGroups =
                     venue.paymentGroupId != null
                       ? await PaymentGroup.findAll({
-                        where: { id: venue.paymentGroupId },
-                        include: [
-                          {
-                            model: PaymentPlan,
-                            as: "paymentPlans",
-                            through: {
-                              model: PaymentGroupHasPlan,
-                              attributes: ["id", "payment_plan_id", "payment_group_id", "createdBy", "createdAt", "updatedAt"],
+                          where: { id: venue.paymentGroupId },
+                          include: [
+                            {
+                              model: PaymentPlan,
+                              as: "paymentPlans",
+                              through: {
+                                model: PaymentGroupHasPlan,
+                                attributes: [
+                                  "id",
+                                  "payment_plan_id",
+                                  "payment_group_id",
+                                  "createdBy",
+                                  "createdAt",
+                                  "updatedAt",
+                                ],
+                              },
                             },
-                          },
-                        ],
-                        order: [["createdAt", "DESC"]],
-                      })
+                          ],
+                          order: [["createdAt", "DESC"]],
+                        })
                       : [];
 
                   // Term Groups
@@ -723,18 +774,18 @@ exports.getAllForFacebookLeads = async (assignedAgentId, filters = {}) => {
 
                   const terms = termGroupIds.length
                     ? await Term.findAll({
-                      where: { termGroupId: { [Op.in]: termGroupIds } },
-                      attributes: [
-                        "id",
-                        "termName",
-                        "startDate",
-                        "endDate",
-                        "termGroupId",
-                        "exclusionDates",
-                        "totalSessions",
-                        "sessionsMap",
-                      ],
-                    })
+                        where: { termGroupId: { [Op.in]: termGroupIds } },
+                        attributes: [
+                          "id",
+                          "termName",
+                          "startDate",
+                          "endDate",
+                          "termGroupId",
+                          "exclusionDates",
+                          "totalSessions",
+                          "sessionsMap",
+                        ],
+                      })
                     : [];
 
                   const parsedTerms = terms.map((t) => ({
@@ -744,9 +795,14 @@ exports.getAllForFacebookLeads = async (assignedAgentId, filters = {}) => {
                     endDate: t.endDate,
                     termGroupId: t.termGroupId,
                     exclusionDates:
-                      typeof t.exclusionDates === "string" ? JSON.parse(t.exclusionDates) : t.exclusionDates || [],
+                      typeof t.exclusionDates === "string"
+                        ? JSON.parse(t.exclusionDates)
+                        : t.exclusionDates || [],
                     totalSessions: t.totalSessions,
-                    sessionsMap: typeof t.sessionsMap === "string" ? JSON.parse(t.sessionsMap) : t.sessionsMap || [],
+                    sessionsMap:
+                      typeof t.sessionsMap === "string"
+                        ? JSON.parse(t.sessionsMap)
+                        : t.sessionsMap || [],
                   }));
 
                   return {
@@ -765,14 +821,16 @@ exports.getAllForFacebookLeads = async (assignedAgentId, filters = {}) => {
 
         return {
           ...leadWithoutBookings,
-          bookingData,       // empty if no bookings
-          nearestVenues,     // empty if no nearby venues
+          bookingData, // empty if no bookings
+          nearestVenues, // empty if no nearby venues
         };
       })
     );
 
     // ✅ Return formatted leads
-    const leadsWithNearestVenue = formattedLeads.filter((lead) => lead.nearestVenues.length > 0);
+    const leadsWithNearestVenue = formattedLeads.filter(
+      (lead) => lead.nearestVenues.length > 0
+    );
 
     return {
       status: true,
@@ -860,13 +918,13 @@ exports.getAllReferallLeads = async (assignedAgentId, filters = {}) => {
     ).length;
 
     // ✅ Count leads that have at least one "free" booking
-    const leadsToTrialsCount = allLeads.filter(
-      (lead) => (lead.bookings || []).some((b) => b.bookingType === "free")
+    const leadsToTrialsCount = allLeads.filter((lead) =>
+      (lead.bookings || []).some((b) => b.bookingType === "free")
     ).length;
 
     // ✅ Count leads that have at least one "paid" booking
-    const leadsToSalesCount = allLeads.filter(
-      (lead) => (lead.bookings || []).some((b) => b.bookingType === "paid")
+    const leadsToSalesCount = allLeads.filter((lead) =>
+      (lead.bookings || []).some((b) => b.bookingType === "paid")
     ).length;
 
     const analytics = {
@@ -903,7 +961,10 @@ exports.getAllReferallLeads = async (assignedAgentId, filters = {}) => {
 
       filteredLeads = filteredLeads.filter((lead) => {
         const createdAt = new Date(lead.createdAt);
-        return (!fromDate || createdAt >= fromDate) && (!toDate || createdAt <= toDate);
+        return (
+          (!fromDate || createdAt >= fromDate) &&
+          (!toDate || createdAt <= toDate)
+        );
       });
     }
     if (filters.name) {
@@ -928,7 +989,8 @@ exports.getAllReferallLeads = async (assignedAgentId, filters = {}) => {
         (lead.bookings || []).some((booking) => {
           const bookingStatus = (booking.status || "").toLowerCase();
           return statusFilter === "request_to_cancel"
-            ? bookingStatus === "request_to_cancel" || bookingStatus === "cancelled"
+            ? bookingStatus === "request_to_cancel" ||
+                bookingStatus === "cancelled"
             : bookingStatus === statusFilter;
         })
       );
@@ -956,7 +1018,9 @@ exports.getAllReferallLeads = async (assignedAgentId, filters = {}) => {
         // Keep only bookings where at least one student matches
         lead.bookings = (lead.bookings || []).filter((booking) =>
           (booking.students || []).some((student) => {
-            const fullName = `${student.studentFirstName || ""} ${student.studentLastName || ""}`.toLowerCase();
+            const fullName = `${student.studentFirstName || ""} ${
+              student.studentLastName || ""
+            }`.toLowerCase();
             return fullName.includes(studentLower);
           })
         );
@@ -965,7 +1029,9 @@ exports.getAllReferallLeads = async (assignedAgentId, filters = {}) => {
         lead.bookings = lead.bookings.map((booking) => ({
           ...booking,
           students: (booking.students || []).filter((student) => {
-            const fullName = `${student.studentFirstName || ""} ${student.studentLastName || ""}`.toLowerCase();
+            const fullName = `${student.studentFirstName || ""} ${
+              student.studentLastName || ""
+            }`.toLowerCase();
             return fullName.includes(studentLower);
           }),
         }));
@@ -1010,7 +1076,12 @@ exports.getAllReferallLeads = async (assignedAgentId, filters = {}) => {
           );
 
           const { students: _, ...bookingWithoutStudents } = booking.dataValues;
-          return { ...bookingWithoutStudents, students, parents, emergencyContacts };
+          return {
+            ...bookingWithoutStudents,
+            students,
+            parents,
+            emergencyContacts,
+          };
         });
 
         const { bookings, ...leadWithoutBookings } = lead.dataValues;
@@ -1025,33 +1096,46 @@ exports.getAllReferallLeads = async (assignedAgentId, filters = {}) => {
                 .map((v) => ({
                   ...v.dataValues,
                   distance: Number(
-                    calculateDistance(coords.latitude, coords.longitude, v.latitude, v.longitude).toFixed(2)
+                    calculateDistance(
+                      coords.latitude,
+                      coords.longitude,
+                      v.latitude,
+                      v.longitude
+                    ).toFixed(2)
                   ),
-
                 }))
                 .sort((a, b) => a.distance - b.distance)
                 .slice(0, 5)
                 .map(async (venue) => {
                   // Class schedules
-                  const classSchedules = await ClassSchedule.findAll({ where: { venueId: venue.id } });
+                  const classSchedules = await ClassSchedule.findAll({
+                    where: { venueId: venue.id },
+                  });
 
                   // Payment Groups
                   const paymentGroups =
                     venue.paymentGroupId != null
                       ? await PaymentGroup.findAll({
-                        where: { id: venue.paymentGroupId },
-                        include: [
-                          {
-                            model: PaymentPlan,
-                            as: "paymentPlans",
-                            through: {
-                              model: PaymentGroupHasPlan,
-                              attributes: ["id", "payment_plan_id", "payment_group_id", "createdBy", "createdAt", "updatedAt"],
+                          where: { id: venue.paymentGroupId },
+                          include: [
+                            {
+                              model: PaymentPlan,
+                              as: "paymentPlans",
+                              through: {
+                                model: PaymentGroupHasPlan,
+                                attributes: [
+                                  "id",
+                                  "payment_plan_id",
+                                  "payment_group_id",
+                                  "createdBy",
+                                  "createdAt",
+                                  "updatedAt",
+                                ],
+                              },
                             },
-                          },
-                        ],
-                        order: [["createdAt", "DESC"]],
-                      })
+                          ],
+                          order: [["createdAt", "DESC"]],
+                        })
                       : [];
 
                   // Term Groups
@@ -1072,18 +1156,18 @@ exports.getAllReferallLeads = async (assignedAgentId, filters = {}) => {
 
                   const terms = termGroupIds.length
                     ? await Term.findAll({
-                      where: { termGroupId: { [Op.in]: termGroupIds } },
-                      attributes: [
-                        "id",
-                        "termName",
-                        "startDate",
-                        "endDate",
-                        "termGroupId",
-                        "exclusionDates",
-                        "totalSessions",
-                        "sessionsMap",
-                      ],
-                    })
+                        where: { termGroupId: { [Op.in]: termGroupIds } },
+                        attributes: [
+                          "id",
+                          "termName",
+                          "startDate",
+                          "endDate",
+                          "termGroupId",
+                          "exclusionDates",
+                          "totalSessions",
+                          "sessionsMap",
+                        ],
+                      })
                     : [];
 
                   const parsedTerms = terms.map((t) => ({
@@ -1093,9 +1177,14 @@ exports.getAllReferallLeads = async (assignedAgentId, filters = {}) => {
                     endDate: t.endDate,
                     termGroupId: t.termGroupId,
                     exclusionDates:
-                      typeof t.exclusionDates === "string" ? JSON.parse(t.exclusionDates) : t.exclusionDates || [],
+                      typeof t.exclusionDates === "string"
+                        ? JSON.parse(t.exclusionDates)
+                        : t.exclusionDates || [],
                     totalSessions: t.totalSessions,
-                    sessionsMap: typeof t.sessionsMap === "string" ? JSON.parse(t.sessionsMap) : t.sessionsMap || [],
+                    sessionsMap:
+                      typeof t.sessionsMap === "string"
+                        ? JSON.parse(t.sessionsMap)
+                        : t.sessionsMap || [],
                   }));
 
                   return {
@@ -1114,14 +1203,16 @@ exports.getAllReferallLeads = async (assignedAgentId, filters = {}) => {
 
         return {
           ...leadWithoutBookings,
-          bookingData,       // empty if no bookings
-          nearestVenues,     // empty if no nearby venues
+          bookingData, // empty if no bookings
+          nearestVenues, // empty if no nearby venues
         };
       })
     );
 
     // ✅ Return formatted leads
-    const leadsWithNearestVenue = formattedLeads.filter((lead) => lead.nearestVenues.length > 0);
+    const leadsWithNearestVenue = formattedLeads.filter(
+      (lead) => lead.nearestVenues.length > 0
+    );
 
     return {
       status: true,
@@ -1209,13 +1300,13 @@ exports.getAllOthersLeads = async (assignedAgentId, filters = {}) => {
     ).length;
 
     // ✅ Count leads that have at least one "free" booking
-    const leadsToTrialsCount = allLeads.filter(
-      (lead) => (lead.bookings || []).some((b) => b.bookingType === "free")
+    const leadsToTrialsCount = allLeads.filter((lead) =>
+      (lead.bookings || []).some((b) => b.bookingType === "free")
     ).length;
 
     // ✅ Count leads that have at least one "paid" booking
-    const leadsToSalesCount = allLeads.filter(
-      (lead) => (lead.bookings || []).some((b) => b.bookingType === "paid")
+    const leadsToSalesCount = allLeads.filter((lead) =>
+      (lead.bookings || []).some((b) => b.bookingType === "paid")
     ).length;
 
     const analytics = {
@@ -1252,7 +1343,10 @@ exports.getAllOthersLeads = async (assignedAgentId, filters = {}) => {
 
       filteredLeads = filteredLeads.filter((lead) => {
         const createdAt = new Date(lead.createdAt);
-        return (!fromDate || createdAt >= fromDate) && (!toDate || createdAt <= toDate);
+        return (
+          (!fromDate || createdAt >= fromDate) &&
+          (!toDate || createdAt <= toDate)
+        );
       });
     }
     if (filters.name) {
@@ -1277,7 +1371,8 @@ exports.getAllOthersLeads = async (assignedAgentId, filters = {}) => {
         (lead.bookings || []).some((booking) => {
           const bookingStatus = (booking.status || "").toLowerCase();
           return statusFilter === "request_to_cancel"
-            ? bookingStatus === "request_to_cancel" || bookingStatus === "cancelled"
+            ? bookingStatus === "request_to_cancel" ||
+                bookingStatus === "cancelled"
             : bookingStatus === statusFilter;
         })
       );
@@ -1305,7 +1400,9 @@ exports.getAllOthersLeads = async (assignedAgentId, filters = {}) => {
         // Keep only bookings where at least one student matches
         lead.bookings = (lead.bookings || []).filter((booking) =>
           (booking.students || []).some((student) => {
-            const fullName = `${student.studentFirstName || ""} ${student.studentLastName || ""}`.toLowerCase();
+            const fullName = `${student.studentFirstName || ""} ${
+              student.studentLastName || ""
+            }`.toLowerCase();
             return fullName.includes(studentLower);
           })
         );
@@ -1314,7 +1411,9 @@ exports.getAllOthersLeads = async (assignedAgentId, filters = {}) => {
         lead.bookings = lead.bookings.map((booking) => ({
           ...booking,
           students: (booking.students || []).filter((student) => {
-            const fullName = `${student.studentFirstName || ""} ${student.studentLastName || ""}`.toLowerCase();
+            const fullName = `${student.studentFirstName || ""} ${
+              student.studentLastName || ""
+            }`.toLowerCase();
             return fullName.includes(studentLower);
           }),
         }));
@@ -1359,7 +1458,12 @@ exports.getAllOthersLeads = async (assignedAgentId, filters = {}) => {
           );
 
           const { students: _, ...bookingWithoutStudents } = booking.dataValues;
-          return { ...bookingWithoutStudents, students, parents, emergencyContacts };
+          return {
+            ...bookingWithoutStudents,
+            students,
+            parents,
+            emergencyContacts,
+          };
         });
 
         const { bookings, ...leadWithoutBookings } = lead.dataValues;
@@ -1374,33 +1478,46 @@ exports.getAllOthersLeads = async (assignedAgentId, filters = {}) => {
                 .map((v) => ({
                   ...v.dataValues,
                   distance: Number(
-                    calculateDistance(coords.latitude, coords.longitude, v.latitude, v.longitude).toFixed(2)
+                    calculateDistance(
+                      coords.latitude,
+                      coords.longitude,
+                      v.latitude,
+                      v.longitude
+                    ).toFixed(2)
                   ),
-
                 }))
                 .sort((a, b) => a.distance - b.distance)
                 .slice(0, 5)
                 .map(async (venue) => {
                   // Class schedules
-                  const classSchedules = await ClassSchedule.findAll({ where: { venueId: venue.id } });
+                  const classSchedules = await ClassSchedule.findAll({
+                    where: { venueId: venue.id },
+                  });
 
                   // Payment Groups
                   const paymentGroups =
                     venue.paymentGroupId != null
                       ? await PaymentGroup.findAll({
-                        where: { id: venue.paymentGroupId },
-                        include: [
-                          {
-                            model: PaymentPlan,
-                            as: "paymentPlans",
-                            through: {
-                              model: PaymentGroupHasPlan,
-                              attributes: ["id", "payment_plan_id", "payment_group_id", "createdBy", "createdAt", "updatedAt"],
+                          where: { id: venue.paymentGroupId },
+                          include: [
+                            {
+                              model: PaymentPlan,
+                              as: "paymentPlans",
+                              through: {
+                                model: PaymentGroupHasPlan,
+                                attributes: [
+                                  "id",
+                                  "payment_plan_id",
+                                  "payment_group_id",
+                                  "createdBy",
+                                  "createdAt",
+                                  "updatedAt",
+                                ],
+                              },
                             },
-                          },
-                        ],
-                        order: [["createdAt", "DESC"]],
-                      })
+                          ],
+                          order: [["createdAt", "DESC"]],
+                        })
                       : [];
 
                   // Term Groups
@@ -1421,18 +1538,18 @@ exports.getAllOthersLeads = async (assignedAgentId, filters = {}) => {
 
                   const terms = termGroupIds.length
                     ? await Term.findAll({
-                      where: { termGroupId: { [Op.in]: termGroupIds } },
-                      attributes: [
-                        "id",
-                        "termName",
-                        "startDate",
-                        "endDate",
-                        "termGroupId",
-                        "exclusionDates",
-                        "totalSessions",
-                        "sessionsMap",
-                      ],
-                    })
+                        where: { termGroupId: { [Op.in]: termGroupIds } },
+                        attributes: [
+                          "id",
+                          "termName",
+                          "startDate",
+                          "endDate",
+                          "termGroupId",
+                          "exclusionDates",
+                          "totalSessions",
+                          "sessionsMap",
+                        ],
+                      })
                     : [];
 
                   const parsedTerms = terms.map((t) => ({
@@ -1442,9 +1559,14 @@ exports.getAllOthersLeads = async (assignedAgentId, filters = {}) => {
                     endDate: t.endDate,
                     termGroupId: t.termGroupId,
                     exclusionDates:
-                      typeof t.exclusionDates === "string" ? JSON.parse(t.exclusionDates) : t.exclusionDates || [],
+                      typeof t.exclusionDates === "string"
+                        ? JSON.parse(t.exclusionDates)
+                        : t.exclusionDates || [],
                     totalSessions: t.totalSessions,
-                    sessionsMap: typeof t.sessionsMap === "string" ? JSON.parse(t.sessionsMap) : t.sessionsMap || [],
+                    sessionsMap:
+                      typeof t.sessionsMap === "string"
+                        ? JSON.parse(t.sessionsMap)
+                        : t.sessionsMap || [],
                   }));
 
                   return {
@@ -1463,14 +1585,16 @@ exports.getAllOthersLeads = async (assignedAgentId, filters = {}) => {
 
         return {
           ...leadWithoutBookings,
-          bookingData,       // empty if no bookings
-          nearestVenues,     // empty if no nearby venues
+          bookingData, // empty if no bookings
+          nearestVenues, // empty if no nearby venues
         };
       })
     );
 
     // ✅ Return formatted leads
-    const leadsWithNearestVenue = formattedLeads.filter((lead) => lead.nearestVenues.length > 0);
+    const leadsWithNearestVenue = formattedLeads.filter(
+      (lead) => lead.nearestVenues.length > 0
+    );
 
     return {
       status: true,
@@ -1559,13 +1683,13 @@ exports.getAllLeads = async (assignedAgentId, filters = {}) => {
     ).length;
 
     // ✅ Count leads that have at least one "free" booking
-    const leadsToTrialsCount = allLeads.filter(
-      (lead) => (lead.bookings || []).some((b) => b.bookingType === "free")
+    const leadsToTrialsCount = allLeads.filter((lead) =>
+      (lead.bookings || []).some((b) => b.bookingType === "free")
     ).length;
 
     // ✅ Count leads that have at least one "paid" booking
-    const leadsToSalesCount = allLeads.filter(
-      (lead) => (lead.bookings || []).some((b) => b.bookingType === "paid")
+    const leadsToSalesCount = allLeads.filter((lead) =>
+      (lead.bookings || []).some((b) => b.bookingType === "paid")
     ).length;
 
     const analytics = {
@@ -1602,7 +1726,10 @@ exports.getAllLeads = async (assignedAgentId, filters = {}) => {
 
       filteredLeads = filteredLeads.filter((lead) => {
         const createdAt = new Date(lead.createdAt);
-        return (!fromDate || createdAt >= fromDate) && (!toDate || createdAt <= toDate);
+        return (
+          (!fromDate || createdAt >= fromDate) &&
+          (!toDate || createdAt <= toDate)
+        );
       });
     }
     if (filters.name) {
@@ -1627,7 +1754,8 @@ exports.getAllLeads = async (assignedAgentId, filters = {}) => {
         (lead.bookings || []).some((booking) => {
           const bookingStatus = (booking.status || "").toLowerCase();
           return statusFilter === "request_to_cancel"
-            ? bookingStatus === "request_to_cancel" || bookingStatus === "cancelled"
+            ? bookingStatus === "request_to_cancel" ||
+                bookingStatus === "cancelled"
             : bookingStatus === statusFilter;
         })
       );
@@ -1655,7 +1783,9 @@ exports.getAllLeads = async (assignedAgentId, filters = {}) => {
         // Keep only bookings where at least one student matches
         lead.bookings = (lead.bookings || []).filter((booking) =>
           (booking.students || []).some((student) => {
-            const fullName = `${student.studentFirstName || ""} ${student.studentLastName || ""}`.toLowerCase();
+            const fullName = `${student.studentFirstName || ""} ${
+              student.studentLastName || ""
+            }`.toLowerCase();
             return fullName.includes(studentLower);
           })
         );
@@ -1664,7 +1794,9 @@ exports.getAllLeads = async (assignedAgentId, filters = {}) => {
         lead.bookings = lead.bookings.map((booking) => ({
           ...booking,
           students: (booking.students || []).filter((student) => {
-            const fullName = `${student.studentFirstName || ""} ${student.studentLastName || ""}`.toLowerCase();
+            const fullName = `${student.studentFirstName || ""} ${
+              student.studentLastName || ""
+            }`.toLowerCase();
             return fullName.includes(studentLower);
           }),
         }));
@@ -1709,7 +1841,12 @@ exports.getAllLeads = async (assignedAgentId, filters = {}) => {
           );
 
           const { students: _, ...bookingWithoutStudents } = booking.dataValues;
-          return { ...bookingWithoutStudents, students, parents, emergencyContacts };
+          return {
+            ...bookingWithoutStudents,
+            students,
+            parents,
+            emergencyContacts,
+          };
         });
 
         const { bookings, ...leadWithoutBookings } = lead.dataValues;
@@ -1724,33 +1861,46 @@ exports.getAllLeads = async (assignedAgentId, filters = {}) => {
                 .map((v) => ({
                   ...v.dataValues,
                   distance: Number(
-                    calculateDistance(coords.latitude, coords.longitude, v.latitude, v.longitude).toFixed(2)
+                    calculateDistance(
+                      coords.latitude,
+                      coords.longitude,
+                      v.latitude,
+                      v.longitude
+                    ).toFixed(2)
                   ),
-
                 }))
                 .sort((a, b) => a.distance - b.distance)
                 .slice(0, 5)
                 .map(async (venue) => {
                   // Class schedules
-                  const classSchedules = await ClassSchedule.findAll({ where: { venueId: venue.id } });
+                  const classSchedules = await ClassSchedule.findAll({
+                    where: { venueId: venue.id },
+                  });
 
                   // Payment Groups
                   const paymentGroups =
                     venue.paymentGroupId != null
                       ? await PaymentGroup.findAll({
-                        where: { id: venue.paymentGroupId },
-                        include: [
-                          {
-                            model: PaymentPlan,
-                            as: "paymentPlans",
-                            through: {
-                              model: PaymentGroupHasPlan,
-                              attributes: ["id", "payment_plan_id", "payment_group_id", "createdBy", "createdAt", "updatedAt"],
+                          where: { id: venue.paymentGroupId },
+                          include: [
+                            {
+                              model: PaymentPlan,
+                              as: "paymentPlans",
+                              through: {
+                                model: PaymentGroupHasPlan,
+                                attributes: [
+                                  "id",
+                                  "payment_plan_id",
+                                  "payment_group_id",
+                                  "createdBy",
+                                  "createdAt",
+                                  "updatedAt",
+                                ],
+                              },
                             },
-                          },
-                        ],
-                        order: [["createdAt", "DESC"]],
-                      })
+                          ],
+                          order: [["createdAt", "DESC"]],
+                        })
                       : [];
 
                   // Term Groups
@@ -1771,18 +1921,18 @@ exports.getAllLeads = async (assignedAgentId, filters = {}) => {
 
                   const terms = termGroupIds.length
                     ? await Term.findAll({
-                      where: { termGroupId: { [Op.in]: termGroupIds } },
-                      attributes: [
-                        "id",
-                        "termName",
-                        "startDate",
-                        "endDate",
-                        "termGroupId",
-                        "exclusionDates",
-                        "totalSessions",
-                        "sessionsMap",
-                      ],
-                    })
+                        where: { termGroupId: { [Op.in]: termGroupIds } },
+                        attributes: [
+                          "id",
+                          "termName",
+                          "startDate",
+                          "endDate",
+                          "termGroupId",
+                          "exclusionDates",
+                          "totalSessions",
+                          "sessionsMap",
+                        ],
+                      })
                     : [];
 
                   const parsedTerms = terms.map((t) => ({
@@ -1792,9 +1942,14 @@ exports.getAllLeads = async (assignedAgentId, filters = {}) => {
                     endDate: t.endDate,
                     termGroupId: t.termGroupId,
                     exclusionDates:
-                      typeof t.exclusionDates === "string" ? JSON.parse(t.exclusionDates) : t.exclusionDates || [],
+                      typeof t.exclusionDates === "string"
+                        ? JSON.parse(t.exclusionDates)
+                        : t.exclusionDates || [],
                     totalSessions: t.totalSessions,
-                    sessionsMap: typeof t.sessionsMap === "string" ? JSON.parse(t.sessionsMap) : t.sessionsMap || [],
+                    sessionsMap:
+                      typeof t.sessionsMap === "string"
+                        ? JSON.parse(t.sessionsMap)
+                        : t.sessionsMap || [],
                   }));
 
                   return {
@@ -1813,14 +1968,16 @@ exports.getAllLeads = async (assignedAgentId, filters = {}) => {
 
         return {
           ...leadWithoutBookings,
-          bookingData,       // empty if no bookings
-          nearestVenues,     // empty if no nearby venues
+          bookingData, // empty if no bookings
+          nearestVenues, // empty if no nearby venues
         };
       })
     );
 
     // ✅ Return formatted leads
-    const leadsWithNearestVenue = formattedLeads.filter((lead) => lead.nearestVenues.length > 0);
+    const leadsWithNearestVenue = formattedLeads.filter(
+      (lead) => lead.nearestVenues.length > 0
+    );
 
     // ✅ Return all leads (even if nearestVenues is empty)
     return {
@@ -1829,7 +1986,6 @@ exports.getAllLeads = async (assignedAgentId, filters = {}) => {
       data: formattedLeads,
       analytics,
     };
-
   } catch (error) {
     console.error("❌ getAllLeads Error:", error.message);
     return { status: false, message: error.message };
@@ -1922,13 +2078,20 @@ exports.getLeadandBookingDatabyLeadId = async (leadId) => {
             .map((v) => ({
               ...v.dataValues,
               distance: Number(
-                calculateDistance(coords.latitude, coords.longitude, v.latitude, v.longitude).toFixed(2)
+                calculateDistance(
+                  coords.latitude,
+                  coords.longitude,
+                  v.latitude,
+                  v.longitude
+                ).toFixed(2)
               ),
             }))
             .sort((a, b) => a.distance - b.distance)
             .slice(0, 5)
             .map(async (venue) => {
-              const classSchedules = await ClassSchedule.findAll({ where: { venueId: venue.id } });
+              const classSchedules = await ClassSchedule.findAll({
+                where: { venueId: venue.id },
+              });
 
               // Payment Groups
               const paymentGroups =
@@ -2002,7 +2165,8 @@ exports.getLeadandBookingDatabyLeadId = async (leadId) => {
     // ✅ Response
     return {
       status: true,
-      message: "Lead with full booking data and nearest venues retrieved successfully.",
+      message:
+        "Lead with full booking data and nearest venues retrieved successfully.",
       data: {
         ...lead.dataValues,
         nearestVenues,
@@ -2074,15 +2238,36 @@ exports.findAClass = async (filters = {}) => {
     const totalLeads = allLeads.length;
 
     // Analytics
-    const newLeadsCount = allLeads.filter((lead) => !lead.bookings || lead.bookings.length === 0).length;
-    const leadsToTrialsCount = allLeads.filter((lead) => (lead.bookings || []).some(b => b.bookingType === "free")).length;
-    const leadsToSalesCount = allLeads.filter((lead) => (lead.bookings || []).some(b => b.bookingType === "paid")).length;
+    const newLeadsCount = allLeads.filter(
+      (lead) => !lead.bookings || lead.bookings.length === 0
+    ).length;
+    const leadsToTrialsCount = allLeads.filter((lead) =>
+      (lead.bookings || []).some((b) => b.bookingType === "free")
+    ).length;
+    const leadsToSalesCount = allLeads.filter((lead) =>
+      (lead.bookings || []).some((b) => b.bookingType === "paid")
+    ).length;
 
     const analytics = {
       totalLeads: { count: totalLeads, conversion: totalLeads ? "100%" : "0%" },
-      newLeads: { count: newLeadsCount, conversion: totalLeads ? ((newLeadsCount / totalLeads) * 100).toFixed(2) + "%" : "0.00%" },
-      leadsToTrials: { count: leadsToTrialsCount, conversion: totalLeads ? ((leadsToTrialsCount / totalLeads) * 100).toFixed(2) + "%" : "0.00%" },
-      leadsToSales: { count: leadsToSalesCount, conversion: totalLeads ? ((leadsToSalesCount / totalLeads) * 100).toFixed(2) + "%" : "0.00%" },
+      newLeads: {
+        count: newLeadsCount,
+        conversion: totalLeads
+          ? ((newLeadsCount / totalLeads) * 100).toFixed(2) + "%"
+          : "0.00%",
+      },
+      leadsToTrials: {
+        count: leadsToTrialsCount,
+        conversion: totalLeads
+          ? ((leadsToTrialsCount / totalLeads) * 100).toFixed(2) + "%"
+          : "0.00%",
+      },
+      leadsToSales: {
+        count: leadsToSalesCount,
+        conversion: totalLeads
+          ? ((leadsToSalesCount / totalLeads) * 100).toFixed(2) + "%"
+          : "0.00%",
+      },
     };
 
     // Filters
@@ -2095,7 +2280,10 @@ exports.findAClass = async (filters = {}) => {
 
       filteredLeads = filteredLeads.filter((lead) => {
         const createdAt = new Date(lead.createdAt);
-        return (!fromDate || createdAt >= fromDate) && (!toDate || createdAt <= toDate);
+        return (
+          (!fromDate || createdAt >= fromDate) &&
+          (!toDate || createdAt <= toDate)
+        );
       });
     }
 
@@ -2105,7 +2293,11 @@ exports.findAClass = async (filters = {}) => {
         const firstName = (l.firstName || "").toLowerCase();
         const lastName = (l.lastName || "").toLowerCase();
         const fullName = `${firstName} ${lastName}`.trim();
-        return firstName.includes(nameLower) || lastName.includes(nameLower) || fullName.includes(nameLower);
+        return (
+          firstName.includes(nameLower) ||
+          lastName.includes(nameLower) ||
+          fullName.includes(nameLower)
+        );
       });
     }
 
@@ -2115,7 +2307,8 @@ exports.findAClass = async (filters = {}) => {
         (lead.bookings || []).some((booking) => {
           const bookingStatus = (booking.status || "").toLowerCase();
           return statusFilter === "request_to_cancel"
-            ? bookingStatus === "request_to_cancel" || bookingStatus === "cancelled"
+            ? bookingStatus === "request_to_cancel" ||
+                bookingStatus === "cancelled"
             : bookingStatus === statusFilter;
         })
       );
@@ -2126,7 +2319,9 @@ exports.findAClass = async (filters = {}) => {
     if (filters.venueName) {
       const nameLower = filters.venueName.toLowerCase();
       filteredLeads = filteredLeads.filter((lead) => {
-        lead.bookings = (lead.bookings || []).filter((b) => b.venue?.name.toLowerCase().includes(nameLower));
+        lead.bookings = (lead.bookings || []).filter((b) =>
+          b.venue?.name.toLowerCase().includes(nameLower)
+        );
         return lead.bookings.length > 0;
       });
     }
@@ -2137,14 +2332,18 @@ exports.findAClass = async (filters = {}) => {
       filteredLeads = filteredLeads.filter((lead) => {
         lead.bookings = (lead.bookings || []).filter((booking) =>
           (booking.students || []).some((student) => {
-            const fullName = `${student.studentFirstName || ""} ${student.studentLastName || ""}`.toLowerCase();
+            const fullName = `${student.studentFirstName || ""} ${
+              student.studentLastName || ""
+            }`.toLowerCase();
             return fullName.includes(studentLower);
           })
         );
         lead.bookings = lead.bookings.map((booking) => ({
           ...booking,
           students: (booking.students || []).filter((student) => {
-            const fullName = `${student.studentFirstName || ""} ${student.studentLastName || ""}`.toLowerCase();
+            const fullName = `${student.studentFirstName || ""} ${
+              student.studentLastName || ""
+            }`.toLowerCase();
             return fullName.includes(studentLower);
           }),
         }));
@@ -2188,7 +2387,12 @@ exports.findAClass = async (filters = {}) => {
           );
 
           const { students: _, ...bookingWithoutStudents } = booking.dataValues;
-          return { ...bookingWithoutStudents, students, parents, emergencyContacts };
+          return {
+            ...bookingWithoutStudents,
+            students,
+            parents,
+            emergencyContacts,
+          };
         });
 
         const { bookings, ...leadWithoutBookings } = lead.dataValues;
@@ -2202,33 +2406,46 @@ exports.findAClass = async (filters = {}) => {
                 .map((v) => ({
                   ...v.dataValues,
                   distance: Number(
-                    calculateDistance(coords.latitude, coords.longitude, v.latitude, v.longitude).toFixed(2)
+                    calculateDistance(
+                      coords.latitude,
+                      coords.longitude,
+                      v.latitude,
+                      v.longitude
+                    ).toFixed(2)
                   ),
-
                 }))
                 .sort((a, b) => a.distance - b.distance)
                 .slice(0, 5)
                 .map(async (venue) => {
                   // Class schedules
-                  const classSchedules = await ClassSchedule.findAll({ where: { venueId: venue.id } });
+                  const classSchedules = await ClassSchedule.findAll({
+                    where: { venueId: venue.id },
+                  });
 
                   // Payment Groups
                   const paymentGroups =
                     venue.paymentGroupId != null
                       ? await PaymentGroup.findAll({
-                        where: { id: venue.paymentGroupId },
-                        include: [
-                          {
-                            model: PaymentPlan,
-                            as: "paymentPlans",
-                            through: {
-                              model: PaymentGroupHasPlan,
-                              attributes: ["id", "payment_plan_id", "payment_group_id", "createdBy", "createdAt", "updatedAt"],
+                          where: { id: venue.paymentGroupId },
+                          include: [
+                            {
+                              model: PaymentPlan,
+                              as: "paymentPlans",
+                              through: {
+                                model: PaymentGroupHasPlan,
+                                attributes: [
+                                  "id",
+                                  "payment_plan_id",
+                                  "payment_group_id",
+                                  "createdBy",
+                                  "createdAt",
+                                  "updatedAt",
+                                ],
+                              },
                             },
-                          },
-                        ],
-                        order: [["createdAt", "DESC"]],
-                      })
+                          ],
+                          order: [["createdAt", "DESC"]],
+                        })
                       : [];
 
                   // Term Groups
@@ -2249,18 +2466,18 @@ exports.findAClass = async (filters = {}) => {
 
                   const terms = termGroupIds.length
                     ? await Term.findAll({
-                      where: { termGroupId: { [Op.in]: termGroupIds } },
-                      attributes: [
-                        "id",
-                        "termName",
-                        "startDate",
-                        "endDate",
-                        "termGroupId",
-                        "exclusionDates",
-                        "totalSessions",
-                        "sessionsMap",
-                      ],
-                    })
+                        where: { termGroupId: { [Op.in]: termGroupIds } },
+                        attributes: [
+                          "id",
+                          "termName",
+                          "startDate",
+                          "endDate",
+                          "termGroupId",
+                          "exclusionDates",
+                          "totalSessions",
+                          "sessionsMap",
+                        ],
+                      })
                     : [];
 
                   const parsedTerms = terms.map((t) => ({
@@ -2270,9 +2487,14 @@ exports.findAClass = async (filters = {}) => {
                     endDate: t.endDate,
                     termGroupId: t.termGroupId,
                     exclusionDates:
-                      typeof t.exclusionDates === "string" ? JSON.parse(t.exclusionDates) : t.exclusionDates || [],
+                      typeof t.exclusionDates === "string"
+                        ? JSON.parse(t.exclusionDates)
+                        : t.exclusionDates || [],
                     totalSessions: t.totalSessions,
-                    sessionsMap: typeof t.sessionsMap === "string" ? JSON.parse(t.sessionsMap) : t.sessionsMap || [],
+                    sessionsMap:
+                      typeof t.sessionsMap === "string"
+                        ? JSON.parse(t.sessionsMap)
+                        : t.sessionsMap || [],
                   }));
 
                   return {
@@ -2291,15 +2513,22 @@ exports.findAClass = async (filters = {}) => {
 
         return {
           ...leadWithoutBookings,
-          bookingData,       // empty if no bookings
-          nearestVenues,     // empty if no nearby venues
+          bookingData, // empty if no bookings
+          nearestVenues, // empty if no nearby venues
         };
       })
     );
 
-    const leadsWithNearestVenue = formattedLeads.filter((lead) => lead.nearestVenues.length > 0);
+    const leadsWithNearestVenue = formattedLeads.filter(
+      (lead) => lead.nearestVenues.length > 0
+    );
 
-    return { status: true, message: "Leads with nearest venues retrieved", data: leadsWithNearestVenue, analytics };
+    return {
+      status: true,
+      message: "Leads with nearest venues retrieved",
+      data: leadsWithNearestVenue,
+      analytics,
+    };
   } catch (error) {
     console.error("❌ findAClass Error:", error.message);
     return { status: false, message: error.message };

@@ -35,9 +35,21 @@ const OneToOneBooking = sequelize.define(
     },
 
     status: {
-      type: DataTypes.ENUM("pending", "confirmed", "cancelled", "completed"),
+      type: DataTypes.ENUM(
+        "pending",
+        "active",
+        "confirmed",
+        "cancelled",
+        "completed"
+      ),
       allowNull: false,
       defaultValue: "pending",
+    },
+
+    type: {
+      type: DataTypes.ENUM("paid", "trial", "cancel"),
+      allowNull: false,
+      defaultValue: "paid",
     },
 
     location: {
@@ -109,6 +121,21 @@ OneToOneBooking.associate = (models) => {
   OneToOneBooking.hasMany(models.OneToOneStudent, {
     foreignKey: "oneToOneBookingId",
     as: "students",
+  });
+
+  OneToOneBooking.hasOne(models.OneToOnePayment, {
+    foreignKey: "oneToOneBookingId",
+    as: "payment",
+  });
+
+  OneToOneBooking.belongsTo(models.PaymentPlan, {
+    foreignKey: "paymentPlanId",
+    as: "paymentPlan",
+  });
+
+  OneToOneBooking.belongsTo(models.Admin, {
+    foreignKey: "coachId",
+    as: "coach", // ✅ this alias must match the include alias
   });
 };
 

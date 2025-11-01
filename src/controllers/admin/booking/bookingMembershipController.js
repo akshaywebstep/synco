@@ -15,7 +15,7 @@ const bookingService = require("../../../services/admin/booking/bookingMembershi
 
 // const { sequelize, Booking, BookingStudentMeta,
 //   BookingParentMeta,
-//   BookingEmergencyMeta, } = require("../../../models"); 
+//   BookingEmergencyMeta, } = require("../../../models");
 const emailModel = require("../../../services/email");
 const sendEmail = require("../../../utils/email/sendEmail");
 const {
@@ -75,13 +75,21 @@ exports.createBooking = async (req, res) => {
     //   const planCheck = await PaymentPlan.getPlanById(paymentPlanId, createdBy); // ✅ add createdBy here
     const paymentPlanId = formData.paymentPlanId; // ✅ define it first
     if (paymentPlanId) {
-      const planCheck = await PaymentPlan.getPlanById(paymentPlanId, superAdminId);
+      const planCheck = await PaymentPlan.getPlanById(
+        paymentPlanId,
+        superAdminId
+      );
       console.log(`planCheck - `, planCheck);
       if (!planCheck.status) {
         skipped.push({ paymentPlanId, reason: "Plan does not exist" });
         if (DEBUG) {
           console.log(`⛔ Skipped plan ID ${paymentPlanId}: Not found`);
-          console.log("🔍 Fetching payment plan:", paymentPlanId, "createdBy:", req.admin?.id);
+          console.log(
+            "🔍 Fetching payment plan:",
+            paymentPlanId,
+            "createdBy:",
+            req.admin?.id
+          );
         }
         return res
           .status(400)
@@ -99,7 +107,7 @@ exports.createBooking = async (req, res) => {
       ) {
         try {
           incomingGatewayResponse = JSON.parse(incomingGatewayResponse);
-        } catch (_) { }
+        } catch (_) {}
       }
 
       formData.paymentResponse = incomingGatewayResponse || null;
@@ -138,27 +146,27 @@ exports.createBooking = async (req, res) => {
 
     if (paymentPlan.interval.toLowerCase() === "month") {
       if (parseInt(paymentPlan.duration, 10) === 1) {
-        paymentPlanType = '1-month';
+        paymentPlanType = "1-month";
       } else if (parseInt(paymentPlan.duration, 10) === 6) {
-        paymentPlanType = '6-month';
+        paymentPlanType = "6-month";
       } else if (parseInt(paymentPlan.duration, 10) === 12) {
-        paymentPlanType = '12-month';
+        paymentPlanType = "12-month";
       }
     } else if (paymentPlan.interval.toLowerCase() === "quarter") {
       if (parseInt(paymentPlan.duration, 10) === 1) {
-        paymentPlanType = '1-quarter';
+        paymentPlanType = "1-quarter";
       } else if (parseInt(paymentPlan.duration, 10) === 6) {
-        paymentPlanType = '6-quarter';
+        paymentPlanType = "6-quarter";
       } else if (parseInt(paymentPlan.duration, 10) === 12) {
-        paymentPlanType = '12-quarter';
+        paymentPlanType = "12-quarter";
       }
     } else if (paymentPlan.interval.toLowerCase() === "year") {
       if (parseInt(paymentPlan.duration, 10) === 1) {
-        paymentPlanType = '1-year';
+        paymentPlanType = "1-year";
       } else if (parseInt(paymentPlan.duration, 10) === 6) {
-        paymentPlanType = '6-year';
+        paymentPlanType = "6-year";
       } else if (parseInt(paymentPlan.duration, 10) === 12) {
-        paymentPlanType = '12-year';
+        paymentPlanType = "12-year";
       }
     }
 
@@ -189,11 +197,15 @@ exports.createBooking = async (req, res) => {
                   /{{parentName}}/g,
                   `${p.parentFirstName} ${p.parentLastName}`
                 )
-                .replace(/{{studentFirstName}}/g, student.studentFirstName || "")
+                .replace(
+                  /{{studentFirstName}}/g,
+                  student.studentFirstName || ""
+                )
                 .replace(/{{studentLastName}}/g, student.studentLastName || "")
                 .replace(
                   /{{studentName}}/g,
-                  `${student.studentFirstName || ""} ${student.studentLastName || ""
+                  `${student.studentFirstName || ""} ${
+                    student.studentLastName || ""
                   }`
                 )
                 .replace(/{{venueName}}/g, venueName)
@@ -269,7 +281,10 @@ exports.getAllPaidBookings = async (req, res) => {
     if (DEBUG) console.log("📥 Fetching all paid bookings...");
 
     const bookedBy = req.admin?.id;
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id, true);
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(
+      req.admin.id,
+      true
+    );
     const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
 
     // ✅ Build filters from query params
@@ -281,19 +296,21 @@ exports.getAllPaidBookings = async (req, res) => {
       studentName: req.query.studentName,
       dateFrom: req.query.dateFrom || undefined,
       dateTo: req.query.dateTo || undefined,
-      duration: req.query.duration ? parseInt(req.query.duration, 10) : undefined,
+      duration: req.query.duration
+        ? parseInt(req.query.duration, 10)
+        : undefined,
     };
 
     // ✅ Apply bookedBy filter
-    if (req.admin?.role?.toLowerCase() === 'super admin') {
+    if (req.admin?.role?.toLowerCase() === "super admin") {
       const admins = mainSuperAdminResult?.admins || [];
-      filters.bookedBy = admins.length > 0 ? admins.map(a => a.id) : [];
+      filters.bookedBy = admins.length > 0 ? admins.map((a) => a.id) : [];
     } else {
       filters.bookedBy = bookedBy || null;
     }
 
     const result = await BookingMembershipService.getAllBookingsWithStats(
-      filters,
+      filters
     );
 
     if (!result.status) {
@@ -381,7 +398,10 @@ exports.getAllPaidActiveBookings = async (req, res) => {
     console.log("🔹 Controller start: getAllPaidActiveBookings");
 
     const bookedBy = req.admin?.id;
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id, true);
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(
+      req.admin.id,
+      true
+    );
     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
     // Step 1: Prepare filters
     const filters = {
@@ -401,9 +421,9 @@ exports.getAllPaidActiveBookings = async (req, res) => {
     console.log("🔹 Filters prepared:", filters);
 
     // ✅ Apply bookedBy filter
-    if (req.admin?.role?.toLowerCase() === 'super admin') {
+    if (req.admin?.role?.toLowerCase() === "super admin") {
       const admins = mainSuperAdminResult?.admins || [];
-      filters.bookedBy = admins.length > 0 ? admins.map(a => a.id) : [];
+      filters.bookedBy = admins.length > 0 ? admins.map((a) => a.id) : [];
     } else {
       // Always assign bookedBy even if not in query
       filters.bookedBy = bookedBy || null;
@@ -602,13 +622,11 @@ exports.addToWaitingList = async (req, res) => {
     // 🔹 Validate class schedule
     if (!data.classScheduleId) {
       console.warn("⚠️ [Controller] Missing classScheduleId in payload");
-      return res
-        .status(400)
-        .json({
-          status: false,
-          message: "Class schedule is required.",
-          data: null,
-        });
+      return res.status(400).json({
+        status: false,
+        message: "Class schedule is required.",
+        data: null,
+      });
     }
 
     // ✅ Call service to update booking to waiting list
@@ -624,14 +642,17 @@ exports.addToWaitingList = async (req, res) => {
     }
 
     const waitingBooking = result.data;
-    console.log("✅ [Controller] Booking updated to waiting list:", waitingBooking.id);
+    console.log(
+      "✅ [Controller] Booking updated to waiting list:",
+      waitingBooking.id
+    );
 
     // ✅ Create notification (outside of transaction)
     console.log("🔔 [Controller] Creating notification");
     await createNotification(
       req,
       "Booking Added to Waiting List",
-      `Booking "${waitingBooking.bookingId}" added to waiting list for class ID: ${waitingBooking.classScheduleId}`,
+      `Booking added to waiting list `,
       "System"
     );
 
@@ -648,7 +669,6 @@ exports.addToWaitingList = async (req, res) => {
 
     console.log("🎉 [Controller] Operation completed successfully");
     return res.status(200).json(result);
-
   } catch (error) {
     console.error("❌ [Controller] addToWaitingList error:", error);
     return res.status(500).json({
@@ -803,7 +823,8 @@ exports.updateBooking = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
-    if (DEBUG) console.log("🔹 Step 1: Calling service to update booking + students");
+    if (DEBUG)
+      console.log("🔹 Step 1: Calling service to update booking + students");
 
     // Call service
     const updateResult = await bookingService.updateBookingWithStudents(
@@ -822,7 +843,9 @@ exports.updateBooking = async (req, res) => {
       "admin",
       "book-membership",
       "update",
-      { message: `Updated student, parent, and emergency data for booking ID: ${bookingId}` },
+      {
+        message: `Updated student, parent, and emergency data for booking ID: ${bookingId}`,
+      },
       true
     );
 
@@ -831,7 +854,7 @@ exports.updateBooking = async (req, res) => {
     await createNotification(
       req,
       "Booking Updated",
-      `Student, parent, and emergency data updated for booking ID: ${bookingId}.`,
+      `Student, parent, and emergency data updated`,
       "System"
     );
 
@@ -842,7 +865,6 @@ exports.updateBooking = async (req, res) => {
       message: updateResult.message,
       data: updateResult.data || null,
     });
-
   } catch (error) {
     if (!t.finished) await t.rollback();
     if (DEBUG) console.error("❌ updateBooking Error:", error.message);

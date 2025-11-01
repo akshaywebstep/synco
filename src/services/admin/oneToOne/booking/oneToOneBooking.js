@@ -6,7 +6,12 @@ const {
   OneToOneEmergency,
   OneToOnePayment,
   PaymentPlan,
+  PaymentGroup,
   Discount,
+  DiscountAppliesTo,
+  PaymentGroupHasPlan,
+  Admin,
+  AdminRole,
 } = require("../../../../models");
 const { sequelize } = require("../../../../models");
 
@@ -18,6 +23,10 @@ const {
   createCharges,
   getStripePaymentDetails,
 } = require("../../../../controllers/test/payment/stripe/stripeController");
+const sendEmail = require("../../../../utils/email/sendEmail");
+const { getEmailConfig } = require("../../../email");
+const emailModel = require("../../../../services/email");
+const PANEL = "admin";
 
 exports.createOnetoOneBooking = async (data) => {
   const transaction = await sequelize.transaction();
@@ -81,6 +90,7 @@ exports.createOnetoOneBooking = async (data) => {
         paymentPlanId: data.paymentPlanId || null,
         discountId: data.discountId || null,
         status: "pending",
+        type: "paid",
       },
       { transaction }
     );
@@ -214,8 +224,7 @@ exports.createOnetoOneBooking = async (data) => {
     );
 
     booking.status = "pending";
-
-    await booking.save({ transaction });
+    (booking.type = "paid"), await booking.save({ transaction });
     console.log("🟡 Before save:", booking.status);
     await booking.save({ transaction });
     console.log("🟢 After save, re-fetching...");
@@ -232,6 +241,92 @@ exports.createOnetoOneBooking = async (data) => {
 
     await transaction.commit();
 
+    // ✅ Send confirmation email to first parent (only if payment succeeded)
+    try {
+      if (paymentStatus === "paid") {
+        const {
+          status: configStatus,
+          emailConfig,
+          htmlTemplate,
+          subject,
+        } = await emailModel.getEmailConfig(PANEL, "one-to-one-booking"); // from your DB
+
+        if (configStatus && htmlTemplate) {
+          const firstStudent = students?.[0];
+          const firstParent = data.parents?.[0];
+
+          if (firstStudent && firstParent?.parentEmail) {
+            // Build HTML email body using booking data
+            let htmlBody = htmlTemplate
+              .replace(
+                /{{parentName}}/g,
+                `${firstParent.parentFirstName} ${firstParent.parentLastName}`
+              )
+              .replace(
+                /{{studentFirstName}}/g,
+                firstStudent.studentFirstName || ""
+              )
+              .replace(
+                /{{studentLastName}}/g,
+                firstStudent.studentLastName || ""
+              )
+              .replace(
+                /{{studentName}}/g,
+                `${firstStudent.studentFirstName || ""} ${
+                  firstStudent.studentLastName || ""
+                }`
+              )
+              .replace(/{{location}}/g, data.location || "")
+              .replace(/{{age}}/g, data.age || "")
+              .replace(/{{gender}}/g, data.gender || "")
+              .replace(/{{relationChild}}/g, data.relationChild || "")
+              .replace(/{{phoneNumber}}/g, data.phoneNumber || "")
+              .replace(/{{className}}/g, "One to One Coaching")
+              .replace(/{{classTime}}/g, data.time || "")
+              .replace(/{{startDate}}/g, data.date || "")
+              .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
+              .replace(/{{parentPassword}}/g, "Synco123")
+              .replace(/{{appName}}/g, "Synco")
+              .replace(/{{year}}/g, new Date().getFullYear().toString())
+              .replace(
+                /{{logoUrl}}/g,
+                "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
+              )
+              .replace(
+                /{{kidsPlaying}}/g,
+                "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
+              );
+
+            await sendEmail(emailConfig, {
+              recipient: [
+                {
+                  name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
+                  email: firstParent.parentEmail,
+                },
+              ],
+              subject,
+              htmlBody,
+            });
+
+            console.log(
+              `📧 Confirmation email sent to ${firstParent.parentEmail}`
+            );
+          } else {
+            console.warn(
+              "⚠️ No parent email found for sending booking confirmation"
+            );
+          }
+        } else {
+          console.warn(
+            "⚠️ Email template config not found for 'book-paid-trial'"
+          );
+        }
+      } else {
+        console.log("ℹ️ Payment not successful — skipping email send.");
+      }
+    } catch (emailErr) {
+      console.error("❌ Error sending email to parent:", emailErr.message);
+    }
     // ✅ Return response including Stripe details
     return {
       success: true,
@@ -259,5 +354,131 @@ exports.createOnetoOneBooking = async (data) => {
     await transaction.rollback();
     console.error("❌ Error creating One-to-One booking:", error);
     throw error;
+  }
+};
+
+exports.getAdminsPaymentPlanDiscount = async ({
+  superAdminId,
+  includeSuperAdmin = false,
+}) => {
+  try {
+    // ✅ 1. Fetch admins under this super admin
+    const admins = await Admin.findAll({
+      where: {
+        superAdminId: Number(superAdminId),
+        deletedAt: null,
+      },
+      attributes: ["id", "firstName", "lastName", "email", "roleId"],
+      order: [["id", "ASC"]],
+    });
+
+    // ✅ 2. Optionally include the super admin
+    if (includeSuperAdmin) {
+      const superAdmin = await Admin.findByPk(superAdminId, {
+        attributes: ["id", "firstName", "lastName", "email", "roleId"],
+      });
+      if (superAdmin) admins.unshift(superAdmin);
+    }
+
+    const adminIds = admins.map((a) => a.id);
+
+    // ✅ 3. Get payment groups created by these admins (or super admin)
+    const paymentGroups = await PaymentGroup.findAll({
+      where: {
+        createdBy: { [Op.in]: adminIds },
+        deletedAt: null,
+      },
+      attributes: [
+        "id",
+        "name",
+        "createdBy",
+        "createdAt",
+        "updatedAt",
+        "deletedAt",
+        "deletedBy",
+      ],
+      include: [
+        {
+          model: PaymentPlan,
+          as: "paymentPlans",
+          required: false,
+          where: { deletedAt: null },
+          through: {
+            model: PaymentGroupHasPlan,
+            attributes: [
+              "id",
+              "payment_plan_id",
+              "payment_group_id",
+              "createdBy",
+              "deletedAt",
+              "deletedBy",
+              "createdAt",
+              "updatedAt",
+            ],
+          },
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+    });
+
+    // ✅ 4. Filter to show only groups that belong to valid admins
+    const filteredGroups = paymentGroups.filter((group) =>
+      adminIds.includes(group.createdBy)
+    );
+
+    // ✅ 5. Map groups by admin
+    const groupedByAdmin = filteredGroups.map((group) => {
+      const admin = admins.find((a) => a.id === group.createdBy);
+      return {
+        adminId: admin?.id || null,
+        adminName: `${admin?.firstName || ""} ${admin?.lastName || ""}`.trim(),
+        paymentPlans: group.paymentPlans || [],
+      };
+    });
+
+    // ✅ 6. Get all discounts + appliesTo
+    const discounts = await Discount.findAll({
+      include: [
+        {
+          model: DiscountAppliesTo,
+          as: "appliesTo",
+          attributes: ["id", "target"],
+          required: false,
+        },
+      ],
+      attributes: [
+        "id",
+        "type",
+        "code",
+        "valueType",
+        "value",
+        "applyOncePerOrder",
+        "limitTotalUses",
+        "limitPerCustomer",
+        "startDatetime",
+        "endDatetime",
+        "createdAt",
+        "updatedAt",
+      ],
+      order: [["createdAt", "DESC"]],
+    });
+
+    // ✅ 7. Return unified response
+    return {
+      status: true,
+      message: "Admins, payment plans, and discounts fetched successfully.",
+      data: {
+        admins,
+        paymentGroups: groupedByAdmin,
+        discounts,
+      },
+    };
+  } catch (error) {
+    console.error("❌ Error in getAdminsPaymentPlanDiscount:", error);
+    return {
+      status: false,
+      message:
+        error.message || "Failed to fetch admin payment plan discount data.",
+    };
   }
 };

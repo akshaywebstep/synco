@@ -99,7 +99,14 @@ exports.listCommentsForLead = async (req, res) => {
       return res.status(400).json({ status: false, message: result.message });
     }
 
-    await logActivity(req, PANEL, MODULE, "list", { message: "Comments listed successfully" }, true);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { message: "Comments listed successfully" },
+      true
+    );
 
     return res.status(200).json({
       status: true,
@@ -109,7 +116,14 @@ exports.listCommentsForLead = async (req, res) => {
   } catch (error) {
     console.error("❌ Error listing comments:", error);
 
-    await logActivity(req, PANEL, MODULE, "list", { error: error.message }, false);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { error: error.message },
+      false
+    );
 
     return res.status(500).json({ status: false, message: "Server error." });
   }
@@ -182,12 +196,12 @@ exports.createLead = async (req, res) => {
   }
 };
 
-// 
+//
 exports.getAllForFacebookLeads = async (req, res) => {
   const adminId = req.admin?.id;
   try {
     if (DEBUG) console.log("📥 Fetching all leads");
-    
+
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
     // Extract filters from query parameters
@@ -203,7 +217,10 @@ exports.getAllForFacebookLeads = async (req, res) => {
     };
 
     // Fetch leads from service
-    const result = await LeadService.getAllForFacebookLeads(superAdminId,filters);
+    const result = await LeadService.getAllForFacebookLeads(
+      superAdminId,
+      filters
+    );
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Failed fetching leads:", result.message);
@@ -241,7 +258,6 @@ exports.getAllForFacebookLeads = async (req, res) => {
       // allVenues: result.allVenues || [],
       analytics: result.analytics || {},
     });
-
   } catch (error) {
     console.error("❌ getAllForFacebookLeads Error:", error);
 
@@ -264,33 +280,37 @@ exports.getAllForFacebookLeads = async (req, res) => {
 
 exports.registerFacebookLeads = async (req, res) => {
   try {
-    console.log("📥 Facebook Webhook Verification Request:", JSON.stringify(req.query, null, 2));
+    console.log(
+      "📥 Facebook Webhook Verification Request:",
+      JSON.stringify(req.query, null, 2)
+    );
 
-    const {
-      FACEBOOK_VERIFY_TOKEN,
-    } = process.env;
+    const { FACEBOOK_VERIFY_TOKEN } = process.env;
 
     if (!FACEBOOK_VERIFY_TOKEN) {
       console.error("❌ Missing FACEBOOK_VERIFY_TOKEN in .env");
       return res.status(500).json({
         status: false,
-        message: "Facebook verify token not configured. Please check .env file.",
+        message:
+          "Facebook verify token not configured. Please check .env file.",
       });
     }
 
     // --- Extract verification parameters from query ---
-    const mode = req.query['hub.mode'] || req.query['hub_mode'];
-    const token = req.query['hub.verify_token'] || req.query['hub_verify_token'];
-    const challenge = req.query['hub.challenge'] || req.query['hub_challenge'];
+    const mode = req.query["hub.mode"] || req.query["hub_mode"];
+    const token =
+      req.query["hub.verify_token"] || req.query["hub_verify_token"];
+    const challenge = req.query["hub.challenge"] || req.query["hub_challenge"];
 
-    if (mode === 'subscribe' && token === FACEBOOK_VERIFY_TOKEN) {
+    if (mode === "subscribe" && token === FACEBOOK_VERIFY_TOKEN) {
       console.log("✅ Webhook verified successfully.");
       return res.status(200).send(challenge); // Respond with the challenge
     } else {
-      console.error(`❌ Webhook verification failed (mode=${mode}, token=${token})`);
+      console.error(
+        `❌ Webhook verification failed (mode=${mode}, token=${token})`
+      );
       return res.status(403).send("Verification failed.");
     }
-
   } catch (error) {
     console.error("❌ registerFacebookLeads Error:", error);
     return res.status(500).json({
@@ -304,7 +324,10 @@ exports.registerFacebookLeads = async (req, res) => {
 
 exports.syncFacebookLeads = async (req, res) => {
   try {
-    console.log("📥 Facebook Webhook Received:", JSON.stringify(req.body, null, 2));
+    console.log(
+      "📥 Facebook Webhook Received:",
+      JSON.stringify(req.body, null, 2)
+    );
 
     const {
       FACEBOOK_PAGE_ACCESS_TOKEN,
@@ -318,7 +341,8 @@ exports.syncFacebookLeads = async (req, res) => {
       await sendErrorEmail(`<p>${errMsg}</p>`);
       return res.status(500).json({
         status: false,
-        message: "Facebook Page Access Token not configured. Please check .env file.",
+        message:
+          "Facebook Page Access Token not configured. Please check .env file.",
       });
     }
 
@@ -342,8 +366,12 @@ exports.syncFacebookLeads = async (req, res) => {
     if (!leadgen_id) {
       const warningMsg = "⚠️ No leadgen_id found in webhook payload";
       console.log(warningMsg);
-      await sendErrorEmail(`<p>${warningMsg}</p><pre>${JSON.stringify(body, null, 2)}</pre>`);
-      return res.status(200).json({ status: false, message: "No lead ID found" });
+      await sendErrorEmail(
+        `<p>${warningMsg}</p><pre>${JSON.stringify(body, null, 2)}</pre>`
+      );
+      return res
+        .status(200)
+        .json({ status: false, message: "No lead ID found" });
     }
 
     console.log("🔗 Lead ID:", leadgen_id);
@@ -362,13 +390,17 @@ exports.syncFacebookLeads = async (req, res) => {
 
     if (!leadData.field_data) {
       const noFieldMsg = "⚠️ No field_data found in Facebook lead response";
-      await sendErrorEmail(`<p>${noFieldMsg}</p><pre>${JSON.stringify(leadData, null, 2)}</pre>`);
-      return res.status(200).json({ status: false, message: "No field_data found" });
+      await sendErrorEmail(
+        `<p>${noFieldMsg}</p><pre>${JSON.stringify(leadData, null, 2)}</pre>`
+      );
+      return res
+        .status(200)
+        .json({ status: false, message: "No field_data found" });
     }
 
     // --- STEP 3: Parse field_data into usable key-value pairs ---
     const parsedFields = {};
-    leadData.field_data.forEach(field => {
+    leadData.field_data.forEach((field) => {
       parsedFields[field.name] = Array.isArray(field.values)
         ? field.values.join(", ")
         : field.values || "";
@@ -384,13 +416,15 @@ exports.syncFacebookLeads = async (req, res) => {
       phone: parsedFields.phone_number || "",
       postcode: parsedFields.post_code || "",
       childAge: parsedFields.child_age || 6,
-      status: "Facebook"
+      status: "Facebook",
     });
 
     if (!result.status) {
       const failMsg = `❌ Lead creation failed: ${result.message}`;
       console.error(failMsg);
-      await sendErrorEmail(`<p>${failMsg}</p><pre>${JSON.stringify(parsedFields, null, 2)}</pre>`);
+      await sendErrorEmail(
+        `<p>${failMsg}</p><pre>${JSON.stringify(parsedFields, null, 2)}</pre>`
+      );
       return res.status(500).json({
         status: false,
         message: "Failed to create lead",
@@ -407,7 +441,6 @@ exports.syncFacebookLeads = async (req, res) => {
       leadId: leadgen_id,
       createdLead: result.data,
     });
-
   } catch (error) {
     console.error("❌ syncFacebookLeads Error:", error);
 
@@ -416,7 +449,8 @@ exports.syncFacebookLeads = async (req, res) => {
 
     let userMessage = "An unexpected error occurred while syncing leads.";
     if (isNetworkError)
-      userMessage = "Network issue while connecting to Facebook. Please try again.";
+      userMessage =
+        "Network issue while connecting to Facebook. Please try again.";
     if (isAuthError)
       userMessage = "Authentication failed. Please verify your Facebook token.";
 
@@ -499,7 +533,6 @@ exports.getAllReferallLeads = async (req, res) => {
       // allVenues: result.allVenues || [],
       analytics: result.analytics || {},
     });
-
   } catch (error) {
     console.error("❌ getAllReferallLeads Error:", error);
 
@@ -578,7 +611,6 @@ exports.getAllOthersLeads = async (req, res) => {
       // allVenues: result.allVenues || [],
       analytics: result.analytics || {},
     });
-
   } catch (error) {
     console.error("❌ getAllReferallLeads Error:", error);
 
@@ -657,7 +689,6 @@ exports.getAllLeads = async (req, res) => {
       // allVenues: result.allVenues || [],
       analytics: result.analytics || {},
     });
-
   } catch (error) {
     console.error("❌ getAllLeads Error:", error);
 
@@ -707,7 +738,14 @@ exports.getLeadandBookingDatabyLeadId = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ getLeadandBookingDatabyLeadId Controller Error:", error);
-    await logActivity(req, PANEL, MODULE, "read", { error: error.message }, false);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "read",
+      { error: error.message },
+      false
+    );
 
     return res.status(500).json({
       status: false,
@@ -772,7 +810,6 @@ exports.findAClass = async (req, res) => {
       // allVenues: result.allVenues || [],
       analytics: result.analytics || {},
     });
-
   } catch (error) {
     console.error("❌ findAClass Error:", error);
 

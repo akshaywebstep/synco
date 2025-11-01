@@ -5,32 +5,56 @@ const authMiddleware = require("../../../middleware/admin/authenticate");
 const permissionMiddleware = require("../../../middleware/admin/permission");
 
 const {
-    createOnetoOneLeads,
-    getAllOnetoOneLeads,
-    getOnetoOneLeadsById,
+  createOnetoOneLeads,
+  getAllOnetoOneLeads,
+  getOnetoOneLeadsById,
+  getAllOnetoOneLeadsSales,
+  getAllOnetoOneLeadsSalesAll,
+  updateOnetoOneLeadById,
 } = require("../../../controllers/admin/oneToOne/oneToOneLeadsController");
 
 // ✅ Get All Session Plan Groups
 
 router.post(
-    "/leads/create",
-    authMiddleware,
-    permissionMiddleware("one-to-one-lead", "create"),
-    createOnetoOneLeads
+  "/leads/create",
+  authMiddleware,
+  permissionMiddleware("one-to-one-lead", "create"),
+  createOnetoOneLeads
 );
 
 router.get(
-    "/leads/list",
-    authMiddleware,
-    permissionMiddleware("one-to-one-lead", "view-listing"),
-    getAllOnetoOneLeads
+  "/leads/list",
+  authMiddleware,
+  permissionMiddleware("one-to-one-lead", "view-listing"),
+  getAllOnetoOneLeads
 );
 
 router.get(
-    "/leads/list/:id",
-    authMiddleware,
-    permissionMiddleware("one-to-one-lead", "view-listing"),
-    getOnetoOneLeadsById
+  "/sales/list",
+  authMiddleware,
+  permissionMiddleware("one-to-one-lead", "view-listing"),
+  getAllOnetoOneLeadsSales
+);
+
+router.get(
+  "/all/list",
+  authMiddleware,
+  permissionMiddleware("one-to-one-lead", "view-listing"),
+  getAllOnetoOneLeadsSalesAll
+);
+
+router.put(
+  "/booking/update/:id",
+  authMiddleware,
+  permissionMiddleware("one-to-one-lead", "view-listing"),
+  updateOnetoOneLeadById
+);
+
+router.get(
+  "/leads/list/:id",
+  authMiddleware,
+  permissionMiddleware("one-to-one-lead", "view-listing"),
+  getOnetoOneLeadsById
 );
 
 module.exports = router;

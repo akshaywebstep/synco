@@ -310,9 +310,11 @@ exports.createBooking = async (req, res) => {
 exports.getAllWaitingListBookings = async (req, res) => {
   console.debug("🔹 getAllWaitingListBookings called with query:", req.query);
   try {
-
     const bookedBy = req.admin?.id;
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id, true);
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(
+      req.admin.id,
+      true
+    );
     const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
 
     const filters = {
@@ -320,9 +322,9 @@ exports.getAllWaitingListBookings = async (req, res) => {
     };
 
     // ✅ Apply bookedBy filter
-    if (req.admin?.role?.toLowerCase() === 'super admin') {
+    if (req.admin?.role?.toLowerCase() === "super admin") {
       const admins = mainSuperAdminResult?.admins || [];
-      filters.bookedBy = admins.length > 0 ? admins.map(a => a.id) : [];
+      filters.bookedBy = admins.length > 0 ? admins.map((a) => a.id) : [];
     } else {
       // Always assign bookedBy even if not in query
       filters.bookedBy = bookedBy || null;
@@ -607,7 +609,7 @@ exports.removeWaitingList = async (req, res) => {
     await createNotification(
       req,
       "Booking Removed From Waiting List",
-      `Booking #${bookingId} was removed from waiting list. Reason: ${removedReason}`,
+      `Booking  was removed from waiting list. Reason: ${removedReason}`,
       "System"
     );
 
@@ -740,7 +742,8 @@ exports.convertToMembership = async (req, res) => {
               .replace(/{{studentLastName}}/g, student.studentLastName || "")
               .replace(
                 /{{studentName}}/g,
-                `${student.studentFirstName || ""} ${student.studentLastName || ""
+                `${student.studentFirstName || ""} ${
+                  student.studentLastName || ""
                 }`
               )
               .replace(/{{venueName}}/g, venueName)
