@@ -125,37 +125,18 @@ exports.getBookingById = async (id, adminId, superAdminId) => {
     const venue = booking.classSchedule?.venue || null;
     console.log("📍 Step 8: Venue extracted:", venue ? venue.id : "No venue");
 
-    // 💳 Step 9: Fetch Payment Plans (if any)
+    // 💳 Step 9: Fetch Payment Plan (from booking.paymentPlanId)
     let paymentPlans = [];
-    if (venue?.paymentGroupId) {
-      console.log("💳 Step 9: Fetching related Payment Plans...");
+    if (booking.paymentPlanId) {
+      console.log(
+        "💳 Step 9: Fetching Payment Plan by booking.paymentPlanId:",
+        booking.paymentPlanId
+      );
 
-      let paymentGroupIds = [];
-      if (typeof venue.paymentGroupId === "string") {
-        try {
-          paymentGroupIds = JSON.parse(venue.paymentGroupId);
-        } catch {
-          console.warn("⚠️ Could not parse paymentGroupId string.");
-        }
-      } else if (Array.isArray(venue.paymentGroupId)) {
-        paymentGroupIds = venue.paymentGroupId;
-      } else {
-        paymentGroupIds = [venue.paymentGroupId];
-      }
-
-      if (paymentGroupIds.length > 0) {
-        const paymentGroups = await PaymentGroup.findAll({
-          where: { id: { [Op.in]: paymentGroupIds } },
-          include: [
-            {
-              model: PaymentPlan,
-              as: "paymentPlans",
-              through: { model: PaymentGroupHasPlan },
-            },
-          ],
-        });
-        paymentPlans = paymentGroups.flatMap((g) => g.paymentPlans || []);
-      }
+      paymentPlans = await PaymentPlan.findAll({
+        where: { id: booking.paymentPlanId },
+        order: [["createdAt", "DESC"]],
+      });
     }
 
     // 🧍 Step 10: Extract related data
@@ -203,6 +184,7 @@ exports.getBookingById = async (id, adminId, superAdminId) => {
       id: booking.id,
       bookingId: booking.bookingId,
       classScheduleId: booking.classScheduleId,
+      paymentPlanId: booking.paymentPlanId,
       startDate: booking.startDate,
       serviceType: booking.serviceType,
       interest: booking.interest,
