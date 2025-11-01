@@ -27,7 +27,7 @@ exports.createRebooking = async ({
     const canRebook =
       booking.trialDate <= today ||
       booking.status === "cancelled" ||
-      booking.status === "not attend";
+      booking.status === "not attended";
 
     if (!canRebook) {
       return {
