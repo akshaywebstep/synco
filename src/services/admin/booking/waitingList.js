@@ -852,12 +852,14 @@ exports.getBookingById = async (id, bookedBy, adminId) => {
 
   try {
     const booking = await Booking.findOne({
-      where: {
-        bookedBy: Number(bookedBy),
-        id,
-        bookingType: { [Op.in]: ["waiting list", "paid"] },
-        serviceType: "weekly class trial",
+      bookedBy: Number(bookedBy),
+      id,
+      serviceType: "weekly class trial",
+      status: "waiting list", // ✅ ensure both cases appear
+      bookingType: {
+        [Op.in]: ["waiting list", "paid"],
       },
+
       include: [
         {
           model: BookingStudentMeta,
@@ -974,7 +976,9 @@ exports.getBookingById = async (id, bookedBy, adminId) => {
       classTime: booking.classTime,
       venueId: booking.venueId,
       status: booking.status,
-      bookingType: booking.bookingType,
+      // bookingType: booking.bookingType,
+      bookingType:
+        booking.bookingType === "paid" ? "waiting list" : booking.bookingType,
       totalStudents: booking.totalStudents,
       source: booking.source,
       createdAt: booking.createdAt,
