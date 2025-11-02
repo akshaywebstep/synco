@@ -3,10 +3,16 @@ const SessionPlanGroupService = require("../../../../services/admin/oneToOne/ses
 const SessionExerciseService = require("../../../../services/admin/oneToOne/sessionPlanLibrary/sessionExercise");
 
 const { logActivity } = require("../../../../utils/admin/activityLogger");
-const { downloadFromFTP, uploadToFTP } = require("../../../../utils/uploadToFTP");
+const {
+  downloadFromFTP,
+  uploadToFTP,
+} = require("../../../../utils/uploadToFTP");
 const { Readable } = require("stream");
 
-const { getVideoDurationInSeconds, formatDuration, } = require("../../../../utils/videoHelper");
+const {
+  getVideoDurationInSeconds,
+  formatDuration,
+} = require("../../../../utils/videoHelper");
 const {
   createNotification,
 } = require("../../../../utils/admin/notificationHelper");
@@ -81,16 +87,13 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
 
     if (!validation.isValid) {
       const firstErrorMsg = Object.values(validation.error)[0];
-      return res
-        .status(400)
-        .json({ status: false, message: firstErrorMsg });
+      return res.status(400).json({ status: false, message: firstErrorMsg });
     }
 
     // Parse levels JSON
     let parsedLevels;
     try {
-      parsedLevels =
-        typeof levels === "string" ? JSON.parse(levels) : levels;
+      parsedLevels = typeof levels === "string" ? JSON.parse(levels) : levels;
     } catch {
       return res
         .status(400)
@@ -140,7 +143,7 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
       } catch (err) {
         console.error(`Failed to upload ${type}:`, err.message);
       } finally {
-        await fs.promises.unlink(localPath).catch(() => { });
+        await fs.promises.unlink(localPath).catch(() => {});
       }
 
       return uploadedPath;
@@ -181,7 +184,9 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
       ...uploadFields,
     };
 
-    const result = await SessionPlanGroupService.createSessionPlanGroup(payload);
+    const result = await SessionPlanGroupService.createSessionPlanGroup(
+      payload
+    );
 
     if (!result.status)
       return res.status(400).json({
@@ -214,7 +219,9 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Group Created",
-      `The session plan group '${payload.groupName}' was updated by ${req?.admin?.firstName || "Admin"}.`,
+      `The session plan group '${payload.groupName}' was updated by ${
+        req?.admin?.firstName || "Admin"
+      }.`,
       "System"
     );
     await logActivity(
@@ -223,7 +230,9 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
       "session-plan-structure", // MODULE name
       "update", // Action type
       {
-        oneLineMessage: `Session Plan Group '${payload.groupName}'  created by ${req?.admin?.firstName || "Admin"}.`
+        oneLineMessage: `Session Plan Group '${
+          payload.groupName
+        }'  created by ${req?.admin?.firstName || "Admin"}.`,
       },
       true
     );
@@ -236,8 +245,7 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
     console.error("Server error in createSessionPlanGroup:", error);
     return res.status(500).json({
       status: false,
-      message:
-        "Server error occurred while creating the session plan group.",
+      message: "Server error occurred while creating the session plan group.",
     });
   }
 };
@@ -293,15 +301,35 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
 exports.getSessionPlanGroupStructureById = async (req, res) => {
   try {
     const { id } = req.params;
-    const createdBy = req.admin?.id || req.user?.id;
+    const adminId = req.admin?.id || req.user?.id;
 
+    if (!adminId) {
+      return res.status(401).json({
+        status: false,
+        message: "Unauthorized request: missing admin or user ID.",
+      });
+    }
+
+    // 🔹 Fetch Super Admin of this Admin
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? adminId;
 
     if (DEBUG)
-      console.log("Fetching session plan group id:", id, "user:", createdBy);
+      console.log(
+        "Fetching session plan group id:",
+        id,
+        "adminId:",
+        adminId,
+        "superAdminId:",
+        superAdminId
+      );
 
-    const result = await SessionPlanGroupService.getSessionPlanConfigById(id, superAdminId);
+    // 🔹 Corrected service call (pass both IDs)
+    const result = await SessionPlanGroupService.getSessionPlanConfigById(
+      id,
+      adminId,
+      superAdminId
+    );
 
     if (!result.status) {
       if (DEBUG) console.warn("Session plan group not found:", id);
@@ -321,7 +349,11 @@ exports.getSessionPlanGroupStructureById = async (req, res) => {
       parsedLevels = {};
     }
 
-    const sessionExercises = await SessionExercise.findAll({ where: { createdBy } });
+    // 🔹 Fetch exercises for both admin & super admin (matching service)
+    const sessionExercises = await SessionExercise.findAll({
+      where: { createdBy: [adminId, superAdminId] },
+    });
+
     const exerciseMap = sessionExercises.reduce((acc, ex) => {
       acc[ex.id] = ex;
       return acc;
@@ -343,7 +375,7 @@ exports.getSessionPlanGroupStructureById = async (req, res) => {
       return `${diffSeconds} second(s) ago`;
     };
 
-    // ✅ Process all levels in parallel (faster)
+    // ✅ Process all levels in parallel (same as before)
     const levels = ["beginner", "intermediate", "advanced", "pro"];
     const videoInfo = {};
 
@@ -366,13 +398,14 @@ exports.getSessionPlanGroupStructureById = async (req, res) => {
 
     if (DEBUG) console.log("Video info added to response:", videoInfo);
 
+    // ✅ Response unchanged
     return res.status(200).json({
       status: true,
       message: "Fetched session plan group with video durations.",
       data: {
         ...group,
         levels: parsedLevels,
-        ...videoInfo, // ✅ durations & uploadedAgo are flattened
+        ...videoInfo, // durations & uploadedAgo flattened
       },
     });
   } catch (error) {
@@ -383,20 +416,26 @@ exports.getSessionPlanGroupStructureById = async (req, res) => {
 
 exports.getAllSessionPlanGroupStructure = async (req, res) => {
   try {
-    const createdBy = req.admin?.id || req.user?.id;
-    if (!createdBy) {
+    const adminId = req.admin?.id || req.user?.id;
+    if (!adminId) {
       return res.status(400).json({
         status: false,
         message: "Unauthorized request: missing admin or user ID.",
       });
     }
-    console.log("🟢 createdBy:", createdBy);
 
-    // Get top-level super admin (if exists)
+    console.log("🟢 adminId:", adminId);
+
+    // 🔹 Get top-level super admin (if exists)
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? createdBy;
-    // Fetch directly from SessionPlanGroup (type = one_to_one)
-    const result = await SessionPlanGroupService.getAllSessionPlanConfig({ createdBy });
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? adminId;
+
+    // 🔹 Fetch session plan config (now passing both IDs)
+    const result = await SessionPlanGroupService.getAllSessionPlanConfig({
+      adminId,
+      superAdminId,
+    });
+
     if (!result.status) {
       console.error("❌ Service returned an error:", result.message);
       return res.status(500).json({ status: false, message: result.message });
@@ -405,18 +444,26 @@ exports.getAllSessionPlanGroupStructure = async (req, res) => {
     const { groups, exerciseMap } = result.data || {};
     console.log("🟢 Number of groups:", groups?.length || 0);
 
-    // Map groups to include enriched levels
+    // 🔹 Map groups to include enriched levels (no structure changes)
     const formattedData = groups.map((group) => {
       let parsedLevels = {};
       try {
-        parsedLevels = typeof group.levels === "string" ? JSON.parse(group.levels) : group.levels || {};
+        parsedLevels =
+          typeof group.levels === "string"
+            ? JSON.parse(group.levels)
+            : group.levels || {};
       } catch (err) {
-        console.error(`⚠️ Failed to parse levels for group ID ${group.id}`, err);
+        console.error(
+          `⚠️ Failed to parse levels for group ID ${group.id}`,
+          err
+        );
       }
 
       // Attach exercises to each level item
       Object.keys(parsedLevels).forEach((levelKey) => {
-        const items = Array.isArray(parsedLevels[levelKey]) ? parsedLevels[levelKey] : [parsedLevels[levelKey]];
+        const items = Array.isArray(parsedLevels[levelKey])
+          ? parsedLevels[levelKey]
+          : [parsedLevels[levelKey]];
         parsedLevels[levelKey] = items.map((item) => ({
           ...item,
           sessionExercises: (item.sessionExerciseId || [])
@@ -441,6 +488,7 @@ exports.getAllSessionPlanGroupStructure = async (req, res) => {
 
     console.log("🟢 Formatted data ready:", formattedData.length);
 
+    // ✅ Response structure unchanged
     return res.status(200).json({
       status: true,
       message: "Fetched session plan groups with exercises successfully.",
@@ -466,7 +514,9 @@ exports.downloadSessionPlanConfigVideo = async (req, res) => {
     if (!level || !validLevels.includes(level)) {
       return res.status(400).json({
         status: false,
-        message: `Invalid or missing level. Must be one of: ${validLevels.join(", ")}.`,
+        message: `Invalid or missing level. Must be one of: ${validLevels.join(
+          ", "
+        )}.`,
       });
     }
 
@@ -479,18 +529,25 @@ exports.downloadSessionPlanConfigVideo = async (req, res) => {
     });
 
     if (!group) {
-      return res.status(404).json({ status: false, message: "Session Plan Group not found." });
+      return res
+        .status(404)
+        .json({ status: false, message: "Session Plan Group not found." });
     }
 
     const videoUrl = group[videoField];
     if (!videoUrl) {
-      return res.status(404).json({ status: false, message: `No ${level} video found.` });
+      return res
+        .status(404)
+        .json({ status: false, message: `No ${level} video found.` });
     }
 
     // STEP 3: Fetch the video file
     const response = await fetch(videoUrl);
     if (!response.ok) {
-      return res.status(500).json({ status: false, message: `Failed to fetch video: ${response.statusText}` });
+      return res.status(500).json({
+        status: false,
+        message: `Failed to fetch video: ${response.statusText}`,
+      });
     }
 
     // STEP 4: Convert to Node.js readable stream
@@ -504,7 +561,10 @@ exports.downloadSessionPlanConfigVideo = async (req, res) => {
     const finalFileName = `${safeName}_${level}.mp4`;
 
     res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Disposition", `attachment; filename="${finalFileName}"`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${finalFileName}"`
+    );
 
     // STEP 6: Stream file
     nodeStream.pipe(res);
@@ -525,17 +585,28 @@ exports.updateSessionPlanConfig = async (req, res) => {
   const files = req.files || {};
 
   if (!adminId) {
-    return res.status(401).json({ status: false, message: "Unauthorized: Admin ID not found." });
+    return res
+      .status(401)
+      .json({ status: false, message: "Unauthorized: Admin ID not found." });
   }
 
-  console.log("STEP 1: Received request", { id, groupName, levels, player, files: Object.keys(files) });
+  console.log("STEP 1: Received request", {
+    id,
+    groupName,
+    levels,
+    player,
+    files: Object.keys(files),
+  });
 
   try {
     // STEP 2: Fetch existing group
-    const existingResult = await SessionPlanGroupService.getSessionPlanConfigById(id, adminId);
+    const existingResult =
+      await SessionPlanGroupService.getSessionPlanConfigById(id, adminId);
     if (!existingResult.status || !existingResult.data) {
       console.log("STEP 2: Session Plan Group not found");
-      return res.status(404).json({ status: false, message: "Session Plan Group not found" });
+      return res
+        .status(404)
+        .json({ status: false, message: "Session Plan Group not found" });
     }
     const existing = existingResult.data;
     console.log("STEP 2: Existing group fetched:", existing);
@@ -549,7 +620,12 @@ exports.updateSessionPlanConfig = async (req, res) => {
     console.log("STEP 3: Parsed levels:", parsedLevels);
 
     // STEP 4: Helper to save files
-    const saveFileIfExists = async (file, type, oldUrl = null, level = null) => {
+    const saveFileIfExists = async (
+      file,
+      type,
+      oldUrl = null,
+      level = null
+    ) => {
       if (!file) return oldUrl || null;
 
       const path = require("path");
@@ -577,12 +653,14 @@ exports.updateSessionPlanConfig = async (req, res) => {
 
       let uploadedUrl = null;
       try {
-        const relativeFtpPath = path.relative(path.join(process.cwd(), "uploads"), localPath).replace(/\\/g, "/");
+        const relativeFtpPath = path
+          .relative(path.join(process.cwd(), "uploads"), localPath)
+          .replace(/\\/g, "/");
         uploadedUrl = await uploadToFTP(localPath, relativeFtpPath);
       } catch (err) {
         console.error(`Failed to upload ${type}/${level || ""}`, err);
       } finally {
-        await fs.unlink(localPath).catch(() => { });
+        await fs.unlink(localPath).catch(() => {});
       }
 
       return uploadedUrl || oldUrl;
@@ -590,20 +668,27 @@ exports.updateSessionPlanConfig = async (req, res) => {
 
     // STEP 5: Flatten files
     const allFiles = Object.values(files).flat();
-    console.log("STEP 5: All uploaded files:", allFiles.map(f => f.fieldname || f.originalname));
+    console.log(
+      "STEP 5: All uploaded files:",
+      allFiles.map((f) => f.fieldname || f.originalname)
+    );
 
     // Banner
     const bannerFile = allFiles.find(
-      f =>
+      (f) =>
         f.fieldname?.toLowerCase().includes("banner") ||
         f.originalname?.toLowerCase().includes("banner")
     );
-    const banner = await saveFileIfExists(bannerFile, "banner", existing.banner);
+    const banner = await saveFileIfExists(
+      bannerFile,
+      "banner",
+      existing.banner
+    );
 
     // STEP 6: Handle uploads + videos for each level
     const uploadFields = {};
     const uploadedFiles = {};
-    (allFiles || []).forEach(f => {
+    (allFiles || []).forEach((f) => {
       uploadedFiles[f.fieldname] = f; // If multiple files with same fieldname, take the last one
     });
     for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
@@ -633,29 +718,46 @@ exports.updateSessionPlanConfig = async (req, res) => {
         uploadFields[`${level}_video`] = existing[`${level}_video`] || null;
       }
 
-      console.log(`STEP 6: uploadFields[${level}_upload] =`, uploadFields[`${level}_upload`]);
-      console.log(`STEP 6: uploadFields[${level}_video] =`, uploadFields[`${level}_video`]);
+      console.log(
+        `STEP 6: uploadFields[${level}_upload] =`,
+        uploadFields[`${level}_upload`]
+      );
+      console.log(
+        `STEP 6: uploadFields[${level}_video] =`,
+        uploadFields[`${level}_video`]
+      );
     }
 
     // Parse existing images
     let existingImages = Array.isArray(existing.images) ? existing.images : [];
     if (typeof existingImages === "string") {
-      try { existingImages = JSON.parse(existingImages); }
-      catch (e) { existingImages = []; }
+      try {
+        existingImages = JSON.parse(existingImages);
+      } catch (e) {
+        existingImages = [];
+      }
     }
 
     // Collect new images from req.body (URLs)
     let newImages = [];
     if (req.body.images) {
-      const bodyImages = Array.isArray(req.body.images) ? req.body.images : [req.body.images];
+      const bodyImages = Array.isArray(req.body.images)
+        ? req.body.images
+        : [req.body.images];
       newImages.push(...bodyImages);
     }
 
     // Collect new images from uploaded files (binary)
     if (files.images) {
-      const fileImages = Array.isArray(files.images) ? files.images : [files.images];
+      const fileImages = Array.isArray(files.images)
+        ? files.images
+        : [files.images];
       for (const file of fileImages) {
-        const uploadedUrl = await saveFileIfExists(file, "sessionExercise", null);
+        const uploadedUrl = await saveFileIfExists(
+          file,
+          "sessionExercise",
+          null
+        );
         if (uploadedUrl) newImages.push(uploadedUrl);
       }
     }
@@ -670,12 +772,16 @@ exports.updateSessionPlanConfig = async (req, res) => {
       player: player || existing.player,
       banner,
       ...uploadFields,
-      images: finalImages
+      images: finalImages,
     };
     console.log("STEP 7: updatePayload =", updatePayload);
 
     // STEP 8: Update DB
-    const updateResult = await SessionPlanGroupService.updateSessionPlanConfig(id, updatePayload, adminId);
+    const updateResult = await SessionPlanGroupService.updateSessionPlanConfig(
+      id,
+      updatePayload,
+      adminId
+    );
     if (!updateResult.status) {
       console.log("STEP 8: DB update failed");
       return res.status(500).json({ status: false, message: "Update failed." });
@@ -688,7 +794,10 @@ exports.updateSessionPlanConfig = async (req, res) => {
       groupName: updated.groupName,
       player: updated.player,
       banner: updated.banner,
-      levels: typeof updated.levels === "string" ? JSON.parse(updated.levels) : updated.levels,
+      levels:
+        typeof updated.levels === "string"
+          ? JSON.parse(updated.levels)
+          : updated.levels,
       beginner_upload: updated.beginner_upload,
       intermediate_upload: updated.intermediate_upload,
       advanced_upload: updated.advanced_upload,
@@ -709,7 +818,9 @@ exports.updateSessionPlanConfig = async (req, res) => {
       "Session Plan Group", // MODULE name
       "update", // Action type
       {
-        oneLineMessage: `Session Plan Group '${updatePayload.groupName}' updated by ${req?.admin?.firstName || "Admin"}.`
+        oneLineMessage: `Session Plan Group '${
+          updatePayload.groupName
+        }' updated by ${req?.admin?.firstName || "Admin"}.`,
       },
       true
     );
@@ -717,7 +828,9 @@ exports.updateSessionPlanConfig = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Group Updated",
-      `The session plan group '${updatePayload.groupName}' (ID: ${id}) was updated by ${req?.admin?.firstName || "Admin"}.`,
+      `The session plan group '${
+        updatePayload.groupName
+      }' (ID: ${id}) was updated by ${req?.admin?.firstName || "Admin"}.`,
       "System"
     );
 
@@ -728,7 +841,9 @@ exports.updateSessionPlanConfig = async (req, res) => {
     });
   } catch (error) {
     console.error("STEP 10: Update error:", error);
-    return res.status(500).json({ status: false, message: "Failed to update Session Plan Group." });
+    return res
+      .status(500)
+      .json({ status: false, message: "Failed to update Session Plan Group." });
   }
 };
 
@@ -740,7 +855,8 @@ exports.deleteSessionPlanConfig = async (req, res) => {
 
   try {
     // ✅ Check if group exists
-    const existingResult = await SessionPlanGroupService.getSessionPlanConfigById(id, adminId);
+    const existingResult =
+      await SessionPlanGroupService.getSessionPlanConfigById(id, adminId);
 
     if (!existingResult.status || !existingResult.data) {
       await logActivity(
@@ -861,7 +977,8 @@ exports.deleteSessionPlanConfigLevel = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Level Deleted",
-      `Level '${levelKey}' from Session Plan Group ID ${id} was deleted by ${req?.admin?.firstName || "Admin"
+      `Level '${levelKey}' from Session Plan Group ID ${id} was deleted by ${
+        req?.admin?.firstName || "Admin"
       }.`,
       "System"
     );
@@ -893,8 +1010,8 @@ exports.deleteSessionPlanConfigLevel = async (req, res) => {
 exports.repinSessionPlanGroup = async (req, res) => {
   try {
     const createdBy = req.admin?.id || req.user?.id;
-    const { id } = req.params;          // e.g. PATCH /api/session-plans/130/repin
-    const { pinned } = req.body;        // e.g. { "pinned": 1 }
+    const { id } = req.params; // e.g. PATCH /api/session-plans/130/repin
+    const { pinned } = req.body; // e.g. { "pinned": 1 }
 
     // 🔹 Validate required parameters
     if (!id) {

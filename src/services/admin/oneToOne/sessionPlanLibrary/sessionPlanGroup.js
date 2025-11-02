@@ -1,4 +1,8 @@
-const { SessionPlanGroup, SessionExercise, SessionPlanConfig } = require("../../../../models");
+const {
+  SessionPlanGroup,
+  SessionExercise,
+  SessionPlanConfig,
+} = require("../../../../models");
 const { deleteFile } = require("../../../../utils/fileHandler");
 const path = require("path");
 const { Readable } = require("stream");
@@ -37,13 +41,36 @@ exports.createSessionPlanGroup = async (data) => {
   }
 };
 
-exports.getSessionPlanConfigById = async (id, createdBy) => {
+exports.getSessionPlanConfigById = async (id, adminId, superAdminId) => {
   try {
-    console.log("🟢 Fetching SessionPlanGroup by ID:", id, "for createdBy:", createdBy);
+    console.log(
+      "🟢 Fetching SessionPlanGroup by ID:",
+      id,
+      "for adminId:",
+      adminId
+    );
 
-    // STEP 1 — Fetch SessionPlanGroup directly (type = one_to_one)
+    // STEP 1 — Build where condition (support both admin + super admin)
+    const whereCondition = {
+      id,
+      type: "one_to_one",
+    };
+
+    // 🧠 Access rules
+    if (superAdminId && superAdminId === adminId) {
+      // Super Admin → can see all
+      console.log("🟢 Super Admin detected — full access");
+    } else if (superAdminId && adminId) {
+      // Admin → can see own + super admin data
+      whereCondition.createdBy = [adminId, superAdminId];
+    } else {
+      // Fallback → own only
+      whereCondition.createdBy = adminId;
+    }
+
+    // STEP 2 — Fetch group
     const group = await SessionPlanGroup.findOne({
-      where: { id, createdBy, type: "one_to_one" }, // ✅ filter directly by type
+      where: whereCondition,
       attributes: [
         "id",
         "groupName",
@@ -65,7 +92,7 @@ exports.getSessionPlanConfigById = async (id, createdBy) => {
     });
 
     if (!group) {
-      console.warn(`⚠️ Session Plan Group (type='one_to_one') not found for ID: ${id}`);
+      console.warn(`⚠️ Session Plan Group not found for ID: ${id}`);
       return {
         status: false,
         message: "Session Plan Group not found or not of type 'one_to_one'.",
@@ -74,7 +101,7 @@ exports.getSessionPlanConfigById = async (id, createdBy) => {
 
     console.log("🟢 Found group:", group.toJSON());
 
-    // STEP 2 — Parse levels JSON safely
+    // STEP 3 — Parse levels JSON safely
     let parsedLevels = {};
     try {
       parsedLevels =
@@ -86,20 +113,26 @@ exports.getSessionPlanConfigById = async (id, createdBy) => {
       parsedLevels = {};
     }
 
-    // STEP 3 — Fetch all exercises created by this admin/user
-    const exercises = await SessionExercise.findAll({ where: { createdBy } });
+    // STEP 4 — Fetch exercises created by admin or super admin
+    const exerciseWhere =
+      superAdminId && adminId
+        ? { createdBy: [adminId, superAdminId] }
+        : { createdBy: adminId };
+
+    const exercises = await SessionExercise.findAll({ where: exerciseWhere });
     console.log(`🟢 Fetched ${exercises.length} exercises`);
 
-    // STEP 4 — Create a quick lookup map for exercises
+    // STEP 5 — Create quick lookup map for exercises
     const exerciseMap = exercises.reduce((acc, item) => {
       acc[item.id] = item.toJSON();
       return acc;
     }, {});
 
-    // STEP 5 — Enrich each level with exercise details
+    // STEP 6 — Enrich each level with exercise details
     Object.keys(parsedLevels).forEach((levelKey) => {
       let levelArray = parsedLevels[levelKey];
-      if (!Array.isArray(levelArray)) levelArray = levelArray ? [levelArray] : [];
+      if (!Array.isArray(levelArray))
+        levelArray = levelArray ? [levelArray] : [];
 
       parsedLevels[levelKey] = levelArray.map((entry) => {
         const ids = Array.isArray(entry.sessionExerciseId)
@@ -113,7 +146,7 @@ exports.getSessionPlanConfigById = async (id, createdBy) => {
       });
     });
 
-    // ✅ STEP 6 — Build final response
+    // ✅ STEP 7 — Return identical structure
     return {
       status: true,
       data: {
@@ -127,17 +160,34 @@ exports.getSessionPlanConfigById = async (id, createdBy) => {
   }
 };
 
-exports.getAllSessionPlanConfig = async ({ order = "ASC", createdBy } = {}) => {
+exports.getAllSessionPlanConfig = async ({
+  order = "ASC",
+  adminId,
+  superAdminId,
+} = {}) => {
   try {
-    console.log("🟢 Fetching all one_to_one SessionPlanGroups for createdBy:", createdBy);
+    console.log(
+      "🟢 Fetching one_to_one SessionPlanGroups for adminId:",
+      adminId
+    );
 
-    // STEP 1 — Fetch all session plan groups with type = "one_to_one"
+    // 🔹 Determine what data to fetch
+    let whereCondition = { type: "one_to_one" };
+
+    if (superAdminId && superAdminId === adminId) {
+      console.log("🟢 Super Admin detected — fetching all SessionPlanGroups");
+    } else if (superAdminId && adminId) {
+      whereCondition.createdBy = [adminId, superAdminId];
+    } else {
+      whereCondition.createdBy = adminId;
+    }
+
+    // STEP 1 — Fetch all session plan groups
     const groups = await SessionPlanGroup.findAll({
-      where: { createdBy, type: "one_to_one" },
-      // order: [["createdAt", order.toUpperCase() === "DESC" ? "DESC" : "ASC"]],
+      where: whereCondition,
       order: [
-        ["pinned", "DESC"], // 🔹 Show pinned ones first
-        ["createdAt", order.toUpperCase() === "DESC" ? "DESC" : "ASC"], // 🔹 Then sort by date
+        ["pinned", "DESC"],
+        ["createdAt", order.toUpperCase() === "DESC" ? "DESC" : "ASC"],
       ],
       attributes: [
         "id",
@@ -155,6 +205,7 @@ exports.getAllSessionPlanConfig = async ({ order = "ASC", createdBy } = {}) => {
         "pro_upload",
         "advanced_upload",
         "pinned",
+        "createdBy",
         "createdAt",
         "updatedAt",
       ],
@@ -169,11 +220,15 @@ exports.getAllSessionPlanConfig = async ({ order = "ASC", createdBy } = {}) => {
       };
     }
 
-    // STEP 2 — Fetch exercises created by the same user/admin
-    const sessionExercises = await SessionExercise.findAll({ where: { createdBy } });
+    // STEP 2 — Fetch exercises
+    const sessionExercises = await SessionExercise.findAll({
+      where: whereCondition.createdBy
+        ? { createdBy: whereCondition.createdBy }
+        : {},
+    });
     console.log(`🟢 Fetched ${sessionExercises.length} exercises`);
 
-    // STEP 3 — Create a lookup map for exercises
+    // STEP 3 — Create exercise map
     const exerciseMap = sessionExercises.reduce((acc, exercise) => {
       acc[exercise.id] = exercise.toJSON();
       return acc;
@@ -185,21 +240,29 @@ exports.getAllSessionPlanConfig = async ({ order = "ASC", createdBy } = {}) => {
       let parsedLevels = {};
       try {
         parsedLevels =
-          typeof group.levels === "string" ? JSON.parse(group.levels) : group.levels || {};
+          typeof group.levels === "string"
+            ? JSON.parse(group.levels)
+            : group.levels || {};
       } catch (err) {
-        console.warn(`⚠️ Failed to parse levels for group ID ${group.id}:`, err.message);
+        console.warn(
+          `⚠️ Failed to parse levels for group ID ${group.id}:`,
+          err.message
+        );
         parsedLevels = {};
       }
 
       Object.keys(parsedLevels).forEach((levelKey) => {
         let levelArray = parsedLevels[levelKey];
-        if (!Array.isArray(levelArray)) levelArray = levelArray ? [levelArray] : [];
+        if (!Array.isArray(levelArray))
+          levelArray = levelArray ? [levelArray] : [];
 
         parsedLevels[levelKey] = levelArray.map((entry) => {
           const ids = Array.isArray(entry.sessionExerciseId)
             ? entry.sessionExerciseId
             : [];
-          const sessionExercises = ids.map((id) => exerciseMap[id]).filter(Boolean);
+          const sessionExercises = ids
+            .map((id) => exerciseMap[id])
+            .filter(Boolean);
           return { ...entry, sessionExercises };
         });
       });
@@ -222,6 +285,7 @@ exports.getAllSessionPlanConfig = async ({ order = "ASC", createdBy } = {}) => {
     return { status: false, message: error.message };
   }
 };
+
 exports.repinSessionPlanGroupService = async (id, createdBy, pinned) => {
   const t = await SessionPlanGroup.sequelize.transaction();
 
@@ -260,18 +324,27 @@ exports.repinSessionPlanGroupService = async (id, createdBy, pinned) => {
     console.error("❌ Error repinning session plan group (service):", error);
     return {
       status: false,
-      message:
-        error.message || "Failed to repin/unpin session plan group.",
+      message: error.message || "Failed to repin/unpin session plan group.",
     };
   }
 };
 
-exports.getSessionPlanConfigVideoStream = async (id, createdBy, level, filename) => {
+exports.getSessionPlanConfigVideoStream = async (
+  id,
+  createdBy,
+  level,
+  filename
+) => {
   try {
     // ✅ Step 1: Validate level
     const validLevels = ["beginner", "intermediate", "advanced", "pro"];
     if (!validLevels.includes(level)) {
-      return { status: false, message: `Invalid level '${level}'. Must be one of: ${validLevels.join(", ")}.` };
+      return {
+        status: false,
+        message: `Invalid level '${level}'. Must be one of: ${validLevels.join(
+          ", "
+        )}.`,
+      };
     }
 
     const videoField = `${level}_video`; // e.g. beginner_video
@@ -432,7 +505,10 @@ exports.repinSessionPlanGroup = async (id, createdBy, pinned) => {
   const t = await SessionPlanGroup.sequelize.transaction();
 
   try {
-    const targetGroup = await SessionPlanGroup.findOne({ where: { id, createdBy }, transaction: t });
+    const targetGroup = await SessionPlanGroup.findOne({
+      where: { id, createdBy },
+      transaction: t,
+    });
     if (!targetGroup) {
       await t.rollback();
       return { status: false, message: "Group not found or unauthorized." };
@@ -452,7 +528,10 @@ exports.repinSessionPlanGroup = async (id, createdBy, pinned) => {
 
     return {
       status: true,
-      message: pinned === 1 ? "Group pinned successfully." : "Group unpinned successfully.",
+      message:
+        pinned === 1
+          ? "Group pinned successfully."
+          : "Group unpinned successfully.",
       data: {
         id: targetGroup.id,
         pinned,
@@ -461,6 +540,9 @@ exports.repinSessionPlanGroup = async (id, createdBy, pinned) => {
   } catch (error) {
     await t.rollback();
     console.error("❌ Error repinning session plan group:", error);
-    return { status: false, message: error.message || "Failed to repin session plan group." };
+    return {
+      status: false,
+      message: error.message || "Failed to repin session plan group.",
+    };
   }
 };
