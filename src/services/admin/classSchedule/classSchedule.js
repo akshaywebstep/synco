@@ -395,6 +395,7 @@ exports.getAllClasses = async (adminId) => {
               },
             ],
           });
+
           const termIds = JSON.parse(cls.termIds || "[]").map(Number);
 
           for (const termGroup of termGroups) {
@@ -441,15 +442,8 @@ exports.getAllClasses = async (adminId) => {
                 const entry = parsedSessionsMap[i];
                 if (!entry.sessionPlanId) continue;
 
-                // ✅ Build unique key from id + date
-                const entryKey = `${entry.sessionPlanId}-${new Date(
-                  entry.sessionDate
-                )
-                  .toISOString()
-                  .slice(0, 10)}`;
-
-                // 🧩 Skip if this (id+date) combo didn't exist before
-                if (!existingSessionKeys.has(entryKey)) {
+                // 🧩 Skip sessions that were newly added in term.sessionMap (not in mapping yet)
+                if (!existingSessionPlanIds.includes(entry.sessionPlanId)) {
                   continue;
                 }
 

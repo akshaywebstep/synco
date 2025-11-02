@@ -28,14 +28,16 @@ const getPercentChange = (part, total) => {
 };
 
 exports.getDashboardStats = async (
+  superAdminId,
   adminId,
   filterType = null,
   fromDate = null,
   toDate = null
 ) => {
   try {
+    const effectiveAdminId = adminId || superAdminId;
 
-    if (!adminId || isNaN(Number(adminId))) {
+    if (!effectiveAdminId || isNaN(Number(effectiveAdminId))) {
       return {
         status: false,
         message: "No valid parent or super admin found for this request.",
@@ -86,7 +88,10 @@ exports.getDashboardStats = async (
 
     if (fromDate && toDate) {
       scheduleWhere.createdAt = {
-        [Op.between]: [new Date(fromDate), new Date(toDate)],
+        [Op.between]: [
+          new Date(fromDate.setHours(0, 0, 0, 0)),
+          new Date(toDate.setHours(23, 59, 59, 999)),
+        ],
       };
     }
 
@@ -146,7 +151,7 @@ exports.getDashboardStats = async (
 
     // Fetch widgets
     const widgets = await AdminDashboardWidget.findAll({
-      where: { adminId: Number(adminId)},
+      where: { adminId: Number(adminId) },
       //  where: { createdBy: Number(createdBy) },
       order: [["order", "ASC"]],
     });
@@ -180,14 +185,14 @@ exports.getDashboardStats = async (
 
     // If widgets exist, add them in their order
     if (widgets.length > 0) {
-      widgets.forEach(widget => {
+      widgets.forEach((widget) => {
         const key = widget.key;
         if (fullDashboardData[key]) {
           dashboardData[key] = fullDashboardData[key];
         }
       });
       // Add any missing blocks that were not in widgets
-      Object.keys(fullDashboardData).forEach(key => {
+      Object.keys(fullDashboardData).forEach((key) => {
         if (!dashboardData[key]) {
           dashboardData[key] = fullDashboardData[key];
         }
