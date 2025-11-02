@@ -11,7 +11,10 @@ const {
   PaymentGroup,
 } = require("../../../models");
 
-const { getVideoDurationInSeconds, formatDuration, } = require("../../../utils/videoHelper");
+const {
+  getVideoDurationInSeconds,
+  formatDuration,
+} = require("../../../utils/videoHelper");
 
 const parseSessionPlanGroupLevels = async (spg) => {
   if (!spg?.levels) return spg;
@@ -260,16 +263,26 @@ exports.getAllClasses = async (adminId) => {
 
     async function getCancelledSessionBySessionPlanId(mapId, sessionPlanId) {
       try {
-        console.log("🔹 Function called with mapId:", mapId, "sessionPlanId:", sessionPlanId);
+        console.log(
+          "🔹 Function called with mapId:",
+          mapId,
+          "sessionPlanId:",
+          sessionPlanId
+        );
 
         // ✅ Validate input: both IDs are required
         if (!mapId || !sessionPlanId) {
           console.log("⚠️ mapId and sessionPlanId are required");
-          return { status: false, message: "Both mapId and sessionPlanId are required." };
+          return {
+            status: false,
+            message: "Both mapId and sessionPlanId are required.",
+          };
         }
 
         // Fetch only the first cancelled session matching both IDs
-        console.log("⏳ Fetching first CancelSession with mapId and sessionPlanId...");
+        console.log(
+          "⏳ Fetching first CancelSession with mapId and sessionPlanId..."
+        );
         const cancelSession = await CancelSession.findOne({
           where: {
             mapId,
@@ -279,16 +292,21 @@ exports.getAllClasses = async (adminId) => {
         });
 
         if (!cancelSession) {
-          console.log(`⚠️ No cancelled session found for mapId=${mapId}, sessionPlanId=${sessionPlanId}`);
+          console.log(
+            `⚠️ No cancelled session found for mapId=${mapId}, sessionPlanId=${sessionPlanId}`
+          );
           return { status: false, message: "Cancelled session not found." };
         }
 
         console.log("✔️ Found cancelled session ID:", cancelSession.id);
         return { status: true, cancelSession };
-
       } catch (error) {
         console.error("❌ Error fetching cancelled session:", error);
-        return { status: false, message: "Something went wrong.", error: error.message };
+        return {
+          status: false,
+          message: "Something went wrong.",
+          error: error.message,
+        };
       }
     }
 
@@ -377,197 +395,19 @@ exports.getAllClasses = async (adminId) => {
               },
             ],
           });
-
-          // for (const termGroup of termGroups) {
-          //   for (const term of termGroup.terms || []) {
-          //     if (typeof term.exclusionDates === "string") {
-          //       try {
-          //         term.dataValues.exclusionDates = JSON.parse(term.exclusionDates);
-          //       } catch {
-          //         term.dataValues.exclusionDates = [];
-          //       }
-          //     }
-
-          //     let parsedSessionsMap = [];
-          //     if (typeof term.sessionsMap === "string") {
-          //       try {
-          //         parsedSessionsMap = JSON.parse(term.sessionsMap);
-          //       } catch {
-          //         parsedSessionsMap = [];
-          //       }
-          //     } else {
-          //       parsedSessionsMap = term.sessionsMap || [];
-          //     }
-
-          //     // ✅ New array to hold only sessions that exist in ClassScheduleTermMap
-          //     const filteredSessions = [];
-
-          //     for (let i = 0; i < parsedSessionsMap.length; i++) {
-          //       const entry = parsedSessionsMap[i];
-          //       if (!entry.sessionPlanId) continue;
-
-          //       const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
-          //         attributes: [
-          //           "id",
-          //           "groupName",
-          //           "levels",
-          //           "type",
-          //           "pinned",
-          //           "beginner_video",
-          //           "intermediate_video",
-          //           "advanced_video",
-          //           "pro_video",
-          //           "banner",
-          //           "player",
-          //           "beginner_upload",
-          //           "intermediate_upload",
-          //           "advanced_upload",
-          //           "pro_upload",
-          //           "createdBy",
-          //           "createdAt",
-          //         ],
-          //       });
-
-          //       if (!spg) continue;
-          //       // ✅ Only include sessions that already exist in ClassScheduleTermMap (based on sessionPlanId)
-          //       const relatedMappings = mappings.filter(
-          //         (m) =>
-          //           m.classScheduleId === cls.id &&
-          //           m.termGroupId === termGroup.id &&
-          //           m.termId === term.id &&
-          //           m.sessionPlanId === entry.sessionPlanId // <-- match by sessionPlanId only
-          //       );
-
-          //       // 🧩 Skip sessions that were newly added in term.sessionMap (not in mapping yet)
-          //       if (relatedMappings.length === 0) {
-          //         continue;
-          //       }
-
-          //       // 🧩 Rest of your logic (unchanged)
-          //       let levels = {};
-          //       try {
-          //         levels =
-          //           typeof spg.levels === "string"
-          //             ? JSON.parse(spg.levels)
-          //             : spg.levels || {};
-          //       } catch {
-          //         levels = {};
-          //       }
-
-          //       const allExercises = await SessionExercise.findAll({
-          //         where: { createdBy: spg.createdBy },
-          //       });
-          //       const exerciseMap = allExercises.reduce((acc, ex) => {
-          //         acc[ex.id] = ex;
-          //         return acc;
-          //       }, {});
-
-          //       for (const levelKey of Object.keys(levels)) {
-          //         for (const item of levels[levelKey]) {
-          //           if (Array.isArray(item.sessionExerciseId)) {
-          //             item.sessionExercises = item.sessionExerciseId
-          //               .map((exId) => exerciseMap[exId])
-          //               .filter(Boolean)
-          //               .map((ex) => ({
-          //                 id: ex.id,
-          //                 title: ex.title,
-          //                 description: ex.description,
-          //                 duration: ex.duration,
-          //                 imageUrl: ex.imageUrl,
-          //               }));
-          //           } else {
-          //             item.sessionExercises = [];
-          //           }
-          //         }
-          //       }
-
-          //       const getElapsedTime = (createdAt) => {
-          //         const now = new Date();
-          //         const created = new Date(createdAt);
-          //         const diffMs = now - created;
-          //         const diffSeconds = Math.floor(diffMs / 1000);
-          //         const diffMinutes = Math.floor(diffSeconds / 60);
-          //         const diffHours = Math.floor(diffMinutes / 60);
-          //         const diffDays = Math.floor(diffHours / 24);
-          //         if (diffDays > 0) return `${diffDays} day(s) ago`;
-          //         if (diffHours > 0) return `${diffHours} hour(s) ago`;
-          //         if (diffMinutes > 0) return `${diffMinutes} minute(s) ago`;
-          //         return `${diffSeconds} second(s) ago`;
-          //       };
-
-          //       const videoUploadedAgo = {};
-          //       for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
-          //         if (spg[`${level}_video`]) {
-          //           videoUploadedAgo[`${level}_video`] = getElapsedTime(spg.createdAt);
-          //         } else {
-          //           videoUploadedAgo[`${level}_video`] = null;
-          //         }
-          //       }
-
-          //       const mapping = relatedMappings[i] || relatedMappings[0] || null;
-
-          //       entry.sessionPlan = {
-          //         id: spg.id,
-          //         groupName: spg.groupName,
-          //         levels,
-          //         beginner_video: spg.beginner_video,
-          //         intermediate_video: spg.intermediate_video,
-          //         advanced_video: spg.advanced_video,
-          //         pro_video: spg.pro_video,
-          //         banner: spg.banner,
-          //         player: spg.player,
-          //         videoUploadedAgo,
-          //         ...(mapping
-          //           ? {
-          //             mapId: mapping.id,
-          //             classScheduleId: mapping.classScheduleId,
-          //             termGroupId: mapping.termGroupId,
-          //             termId: mapping.termId,
-          //             sessionPlanId: mapping.sessionPlanId,
-          //             cancelSession: await (async () => {
-          //               const cancelled = await getCancelledSessionBySessionPlanId(
-          //                 mapping.id,
-          //                 mapping.sessionPlanId
-          //               );
-          //               return cancelled?.status ? cancelled.cancelSession : {};
-          //             })(),
-          //             status: mapping.status,
-          //             createdAt: mapping.createdAt,
-          //             updatedAt: mapping.updatedAt,
-          //           }
-          //           : {}),
-          //       };
-
-          //       // ✅ Only push if mapping exists
-          //       filteredSessions.push(entry);
-          //     }
-
-          //     // ✅ Replace with filtered sessions only
-          //     term.dataValues.sessionsMap = filteredSessions;
-          //   }
-
-          //   // ✅ Remove empty terms
-          //   termGroup.terms = termGroup.terms.filter(
-          //     (t) => (t.dataValues.sessionsMap || []).length > 0
-          //   );
-          // }
-
-          // // ✅ Remove empty term groups
-          // const filteredTermGroups = termGroups.filter(
-          //   (tg) => (tg.terms || []).length > 0
-          // );
-
           const termIds = JSON.parse(cls.termIds || "[]").map(Number);
 
           for (const termGroup of termGroups) {
             for (const term of termGroup.terms || []) {
               if (!termIds.includes(term.id)) {
-                continue
-              };
+                continue;
+              }
 
               if (typeof term.exclusionDates === "string") {
                 try {
-                  term.dataValues.exclusionDates = JSON.parse(term.exclusionDates);
+                  term.dataValues.exclusionDates = JSON.parse(
+                    term.exclusionDates
+                  );
                 } catch {
                   term.dataValues.exclusionDates = [];
                 }
@@ -601,32 +441,42 @@ exports.getAllClasses = async (adminId) => {
                 const entry = parsedSessionsMap[i];
                 if (!entry.sessionPlanId) continue;
 
-                // 🧩 Skip sessions that were newly added in term.sessionMap (not in mapping yet)
-                if (!existingSessionPlanIds.includes(entry.sessionPlanId)) {
+                // ✅ Build unique key from id + date
+                const entryKey = `${entry.sessionPlanId}-${new Date(
+                  entry.sessionDate
+                )
+                  .toISOString()
+                  .slice(0, 10)}`;
+
+                // 🧩 Skip if this (id+date) combo didn't exist before
+                if (!existingSessionKeys.has(entryKey)) {
                   continue;
                 }
 
-                const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
-                  attributes: [
-                    "id",
-                    "groupName",
-                    "levels",
-                    "type",
-                    "pinned",
-                    "beginner_video",
-                    "intermediate_video",
-                    "advanced_video",
-                    "pro_video",
-                    "banner",
-                    "player",
-                    "beginner_upload",
-                    "intermediate_upload",
-                    "advanced_upload",
-                    "pro_upload",
-                    "createdBy",
-                    "createdAt",
-                  ],
-                });
+                const spg = await SessionPlanGroup.findByPk(
+                  entry.sessionPlanId,
+                  {
+                    attributes: [
+                      "id",
+                      "groupName",
+                      "levels",
+                      "type",
+                      "pinned",
+                      "beginner_video",
+                      "intermediate_video",
+                      "advanced_video",
+                      "pro_video",
+                      "banner",
+                      "player",
+                      "beginner_upload",
+                      "intermediate_upload",
+                      "advanced_upload",
+                      "pro_upload",
+                      "createdBy",
+                      "createdAt",
+                    ],
+                  }
+                );
 
                 if (!spg) continue;
 
@@ -693,15 +543,23 @@ exports.getAllClasses = async (adminId) => {
                 };
 
                 const videoUploadedAgo = {};
-                for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
+                for (const level of [
+                  "beginner",
+                  "intermediate",
+                  "advanced",
+                  "pro",
+                ]) {
                   if (spg[`${level}_video`]) {
-                    videoUploadedAgo[`${level}_video`] = getElapsedTime(spg.createdAt);
+                    videoUploadedAgo[`${level}_video`] = getElapsedTime(
+                      spg.createdAt
+                    );
                   } else {
                     videoUploadedAgo[`${level}_video`] = null;
                   }
                 }
 
-                const mapping = relatedMappings[i] || relatedMappings[0] || null;
+                const mapping =
+                  relatedMappings[i] || relatedMappings[0] || null;
 
                 entry.sessionPlan = {
                   id: spg.id,
@@ -716,22 +574,25 @@ exports.getAllClasses = async (adminId) => {
                   videoUploadedAgo,
                   ...(mapping
                     ? {
-                      mapId: mapping.id,
-                      classScheduleId: mapping.classScheduleId,
-                      termGroupId: mapping.termGroupId,
-                      termId: mapping.termId,
-                      sessionPlanId: mapping.sessionPlanId,
-                      cancelSession: await (async () => {
-                        const cancelled = await getCancelledSessionBySessionPlanId(
-                          mapping.id,
-                          mapping.sessionPlanId
-                        );
-                        return cancelled?.status ? cancelled.cancelSession : {};
-                      })(),
-                      status: mapping.status,
-                      createdAt: mapping.createdAt,
-                      updatedAt: mapping.updatedAt,
-                    }
+                        mapId: mapping.id,
+                        classScheduleId: mapping.classScheduleId,
+                        termGroupId: mapping.termGroupId,
+                        termId: mapping.termId,
+                        sessionPlanId: mapping.sessionPlanId,
+                        cancelSession: await (async () => {
+                          const cancelled =
+                            await getCancelledSessionBySessionPlanId(
+                              mapping.id,
+                              mapping.sessionPlanId
+                            );
+                          return cancelled?.status
+                            ? cancelled.cancelSession
+                            : {};
+                        })(),
+                        status: mapping.status,
+                        createdAt: mapping.createdAt,
+                        updatedAt: mapping.updatedAt,
+                      }
                     : {}),
                 };
 
@@ -756,7 +617,6 @@ exports.getAllClasses = async (adminId) => {
 
           venue.dataValues.termGroups = filteredTermGroups;
         }
-
       } else {
         // venue is null — avoid crash
         cls.dataValues.venue = null;
@@ -1139,7 +999,12 @@ exports.getClassByIdWithFullDetails = async (classId, createdBy) => {
               // Build combined video info (duration + uploadedAgo)
               const videoUploadedAgo = {};
 
-              for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
+              for (const level of [
+                "beginner",
+                "intermediate",
+                "advanced",
+                "pro",
+              ]) {
                 const video = spg[`${level}_video`];
 
                 const videoPath =
@@ -1149,15 +1014,23 @@ exports.getClassByIdWithFullDetails = async (classId, createdBy) => {
 
                 if (videoPath) {
                   try {
-                    const durationInSeconds = await getVideoDurationInSeconds(videoPath);
+                    const durationInSeconds = await getVideoDurationInSeconds(
+                      videoPath
+                    );
                     const formattedDuration = formatDuration(durationInSeconds);
 
-                    videoUploadedAgo[`${level}_video_duration`] = formattedDuration;
-                    videoUploadedAgo[`${level}_video_uploadedAgo`] = getElapsedTime(spg.createdAt);
+                    videoUploadedAgo[`${level}_video_duration`] =
+                      formattedDuration;
+                    videoUploadedAgo[`${level}_video_uploadedAgo`] =
+                      getElapsedTime(spg.createdAt);
                   } catch (err) {
-                    console.error(`Error getting duration for ${level} video:`, err);
+                    console.error(
+                      `Error getting duration for ${level} video:`,
+                      err
+                    );
                     videoUploadedAgo[`${level}_video_duration`] = null;
-                    videoUploadedAgo[`${level}_video_uploadedAgo`] = getElapsedTime(spg.createdAt);
+                    videoUploadedAgo[`${level}_video_uploadedAgo`] =
+                      getElapsedTime(spg.createdAt);
                   }
                 } else {
                   videoUploadedAgo[`${level}_video_duration`] = null;
@@ -1180,15 +1053,15 @@ exports.getClassByIdWithFullDetails = async (classId, createdBy) => {
                 videoUploadedAgo,
                 ...(mapping
                   ? {
-                    mapId: mapping.id,
-                    classScheduleId: mapping.classScheduleId,
-                    termGroupId: mapping.termGroupId,
-                    termId: mapping.termId,
-                    sessionPlanId: mapping.sessionPlanId,
-                    status: mapping.status,
-                    createdAt: mapping.createdAt,
-                    updatedAt: mapping.updatedAt,
-                  }
+                      mapId: mapping.id,
+                      classScheduleId: mapping.classScheduleId,
+                      termGroupId: mapping.termGroupId,
+                      termId: mapping.termId,
+                      sessionPlanId: mapping.sessionPlanId,
+                      status: mapping.status,
+                      createdAt: mapping.createdAt,
+                      updatedAt: mapping.updatedAt,
+                    }
                   : {}),
               };
 
@@ -1198,7 +1071,6 @@ exports.getClassByIdWithFullDetails = async (classId, createdBy) => {
 
             // ✅ Replace the old sessionsMap with filtered result
             term.dataValues.sessionsMap = filteredSessions;
-
           }
         }
 
@@ -1274,8 +1146,11 @@ exports.getClassScheduleTermMapById = async (id) => {
     }
 
     console.log("✔️ Found ClassScheduleTermMap:", mapEntry.id);
-    return { status: true, message: "ClassScheduleTermMap fetched successfully.", mapEntry };
-
+    return {
+      status: true,
+      message: "ClassScheduleTermMap fetched successfully.",
+      mapEntry,
+    };
   } catch (error) {
     console.error("❌ Error fetching ClassScheduleTermMap:", error);
     return {
