@@ -422,3 +422,75 @@ exports.updateOnetoOneLeadById = async (req, res) => {
     });
   }
 };
+
+// ✅ Get One-to-One Analytics
+exports.getAllOneToOneAnalytics = async (req, res) => {
+  const adminId = req.admin?.id;
+  if (DEBUG) console.log("📊 Fetching One-to-One analytics...");
+
+  try {
+    // 🧩 Validate admin
+    if (!adminId) {
+      return res.status(401).json({
+        status: false,
+        message: "Unauthorized: Admin ID not found.",
+      });
+    }
+
+    // 🧩 Identify Super Admin
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    // 🧩 Fetch analytics data
+    const result = await oneToOneLeadService.getAllOneToOneAnalytics(
+      superAdminId,
+      adminId
+    );
+
+    if (!result.status) {
+      if (DEBUG) console.log("⚠️ Fetch failed:", result.message);
+      await logActivity(req, PANEL, MODULE, "analytics_list", result, false);
+      return res.status(500).json({
+        status: false,
+        message: result.message || "Failed to fetch analytics.",
+      });
+    }
+
+    // 🧾 Log activity success
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "analytics_list",
+      {
+        oneLineMessage: `Fetched analytics summary for admin ${adminId}.`,
+      },
+      true
+    );
+
+    // ✅ Respond with structured analytics data
+    return res.status(200).json({
+      status: true,
+      message: "Fetched One-to-One analytics successfully.",
+      summary: result.summary,
+      charts: result.charts, // renamed from result.data
+    });
+  } catch (error) {
+    console.error("❌ Server error (getAllOneToOneAnalytics):", error);
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "analytics_list",
+      { oneLineMessage: error.message },
+      false
+    );
+
+    return res.status(500).json({
+      status: false,
+      message: "Server error while fetching analytics.",
+      error: DEBUG ? error.message : undefined,
+    });
+  }
+};

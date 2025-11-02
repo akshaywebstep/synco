@@ -9,7 +9,8 @@ const {
   Admin,
   sequelize,
 } = require("../../../models");
-const { Op } = require("sequelize");
+// const { Op } = require("sequelize");
+const { Op, fn, col, literal } = require("sequelize");
 const stripe = require("../../../utils/payment/pay360/stripe");
 const moment = require("moment");
 // ✅ Create
@@ -32,29 +33,28 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
 
     const { fromDate, toDate, type, studentName } = filters;
 
-    // const whereLead = {};
-    // const whereBooking = {};
+    const whereLead = { status: "pending" };
+    const whereBooking = { status: "pending" };
 
-    const whereLead = { status: "pending" }; // ✅ Only pending leads
-    const whereBooking = { status: "pending" }; // ✅ Only pending bookings
-
-    // ✅ If user is Super Admin — show all leads for their managed admins + self
-    if (superAdminId === adminId) {
-      // 🧩 Super Admin: fetch all admins under this super admin (including self)
+    // ✅ Build WHERE conditions for super admin vs admin
+    if (superAdminId && superAdminId === adminId) {
+      // 🟢 Super Admin → fetch all admins under them + self
       const managedAdmins = await Admin.findAll({
-        where: { superAdminId }, // ✅ correct column name
+        where: { superAdminId },
         attributes: ["id"],
       });
-
       const adminIds = managedAdmins.map((a) => a.id);
-      adminIds.push(superAdminId); // include the super admin themselves
-
+      adminIds.push(superAdminId);
       whereLead.createdBy = { [Op.in]: adminIds };
+    } else if (superAdminId && adminId) {
+      // 🟢 Admin → fetch own + super admin’s leads
+      whereLead.createdBy = { [Op.in]: [adminId, superAdminId] };
     } else {
-      // 🧩 Normal Admin: only see own leads
+      // 🟢 Fallback (in case no superAdminId found)
       whereLead.createdBy = adminId;
     }
 
+    // ✅ Date range filter
     if (fromDate && toDate) {
       whereLead.createdAt = {
         [Op.between]: [
@@ -64,25 +64,21 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
       };
     }
 
+    // ✅ Type filter (if provided)
     if (type) {
-      whereBooking.type = { [Op.eq]: type.toLowerCase() }; // makes it case-insensitive friendly
+      whereBooking.type = { [Op.eq]: type.toLowerCase() };
     }
 
+    // ✅ Fetch leads
     const leads = await oneToOneLeads.findAll({
-      where: {
-        ...whereLead,
-        status: "pending", // ✅ Leads with status = pending
-      },
+      where: whereLead,
       order: [["createdAt", "DESC"]],
       include: [
         {
           model: OneToOneBooking,
           as: "booking",
           required: !!type,
-          where: {
-            ...(Object.keys(whereBooking).length ? whereBooking : {}),
-            status: "pending", // ✅ Bookings with status = pending
-          },
+          where: whereBooking,
           include: [
             {
               model: OneToOneStudent,
@@ -98,7 +94,7 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
       ],
     });
 
-    // 🧠 Optional Student Name Filter
+    // ✅ Optional student name filter
     let filteredLeads = leads;
     if (studentName) {
       filteredLeads = leads.filter((lead) => {
@@ -114,7 +110,7 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
       });
     }
 
-    // 🧾 Format Data
+    // ✅ Format data
     const formattedData = await Promise.all(
       filteredLeads.map(async (lead) => {
         const leadPlain = lead.get({ plain: true });
@@ -122,7 +118,6 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
 
         if (!booking) return leadPlain;
 
-        // Students
         const students = (booking.students || []).map((s) => ({
           studentFirstName: s.studentFirstName,
           studentLastName: s.studentLastName,
@@ -132,7 +127,6 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
           medicalInfo: s.medicalInfo,
         }));
 
-        // Parents
         const parents = (booking.students || [])
           .map((s) => s.parentDetails)
           .filter(Boolean)
@@ -145,7 +139,6 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
             howDidHear: p.howDidHear,
           }));
 
-        // Emergency
         const emergencyObj =
           booking.students?.find((s) => s.emergencyDetails)?.emergencyDetails ||
           null;
@@ -158,7 +151,6 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
             }
           : null;
 
-        // Payment + Stripe charge details
         let paymentObj = null;
         if (booking.payment) {
           const stripeChargeId = booking.payment.stripePaymentIntentId;
@@ -169,7 +161,9 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
               if (stripeChargeId.startsWith("pi_")) {
                 const paymentIntent = await stripe.paymentIntents.retrieve(
                   stripeChargeId,
-                  { expand: ["latest_charge"] }
+                  {
+                    expand: ["latest_charge"],
+                  }
                 );
                 if (paymentIntent.latest_charge) {
                   stripeChargeDetails = await stripe.charges.retrieve(
@@ -235,24 +229,35 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
       })
     );
 
-    // ✅ Summary (only pending)
-    const totalLeads = await oneToOneLeads.count({
-      where: { createdBy: adminId, status: "pending" },
-    });
+    // ✅ Summary counts (super admin or admin scope)
+    const whereSummary = { status: "pending" };
+    if (superAdminId && superAdminId === adminId) {
+      // super admin → all admins + self
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id"],
+      });
+      const adminIds = managedAdmins.map((a) => a.id);
+      adminIds.push(superAdminId);
+      whereSummary.createdBy = { [Op.in]: adminIds };
+    } else {
+      whereSummary.createdBy = { [Op.in]: [adminId, superAdminId] };
+    }
+
+    const totalLeads = await oneToOneLeads.count({ where: whereSummary });
 
     const startOfMonth = moment().startOf("month").toDate();
     const endOfMonth = moment().endOf("month").toDate();
 
     const newLeads = await oneToOneLeads.count({
       where: {
-        createdBy: adminId,
-        status: "pending",
+        ...whereSummary,
         createdAt: { [Op.between]: [startOfMonth, endOfMonth] },
       },
     });
 
     const leadsWithBookings = await oneToOneLeads.count({
-      where: { createdBy: adminId, status: "pending" },
+      where: whereSummary,
       include: [
         {
           model: OneToOneBooking,
@@ -264,7 +269,7 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
     });
 
     const sourceCount = await oneToOneLeads.findAll({
-      where: { createdBy: adminId, status: "pending" },
+      where: whereSummary,
       attributes: [
         "source",
         [sequelize.fn("COUNT", sequelize.col("source")), "count"],
@@ -272,7 +277,6 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
       group: ["source"],
     });
 
-    // ✅ Final Response
     if (!filteredLeads.length) {
       return {
         status: true,
@@ -1262,6 +1266,164 @@ exports.updateOnetoOneLeadById = async (id, adminId, updateData) => {
   } catch (error) {
     await t.rollback();
     console.error("❌ Error updating one-to-one lead:", error);
+    return { status: false, message: error.message };
+  }
+};
+
+// Get All One-to-One Analytics
+exports.getAllOneToOneAnalytics = async (superAdminId, adminId) => {
+  try {
+    // 🗓️ Define date ranges
+    const startOfThisMonth = moment().startOf("month").toDate();
+    const endOfThisMonth = moment().endOf("month").toDate();
+    const startOfLastMonth = moment()
+      .subtract(1, "month")
+      .startOf("month")
+      .toDate();
+    const endOfLastMonth = moment()
+      .subtract(1, "month")
+      .endOf("month")
+      .toDate();
+
+    const whereThisMonth = {
+      createdBy: adminId,
+      createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
+    };
+    const whereLastMonth = {
+      createdBy: adminId,
+      createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
+    };
+
+    // ✅ Total Leads
+    const totalLeadsThisMonth = await oneToOneLeads.count({
+      where: whereThisMonth,
+    });
+    const totalLeadsLastMonth = await oneToOneLeads.count({
+      where: whereLastMonth,
+    });
+
+    // ✅ Number of Sales (active bookings only)
+    const salesThisMonth = await OneToOneBooking.count({
+      where: {
+        status: "active",
+        createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
+      },
+    });
+    const salesLastMonth = await OneToOneBooking.count({
+      where: {
+        status: "active",
+        createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
+      },
+    });
+
+    // ✅ Conversion Rate
+    const conversionThisMonth =
+      totalLeadsThisMonth > 0
+        ? ((salesThisMonth / totalLeadsThisMonth) * 100).toFixed(2)
+        : "0.00";
+    const conversionLastMonth =
+      totalLeadsLastMonth > 0
+        ? ((salesLastMonth / totalLeadsLastMonth) * 100).toFixed(2)
+        : "0.00";
+
+    // ✅ Revenue Generated
+    const paymentsThisMonth = await OneToOnePayment.findAll({
+      where: {
+        createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
+      },
+      attributes: [[fn("SUM", col("amount")), "total"]],
+      raw: true,
+    });
+    const paymentsLastMonth = await OneToOnePayment.findAll({
+      where: {
+        createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
+      },
+      attributes: [[fn("SUM", col("amount")), "total"]],
+      raw: true,
+    });
+
+    const revenueThisMonth = paymentsThisMonth[0].total || 0;
+    const revenueLastMonth = paymentsLastMonth[0].total || 0;
+
+    // ✅ Revenue by Package (Gold/Silver)
+    // const revenueByPackage = await OneToOnePayment.findAll({
+    //   attributes: ["planType", [fn("SUM", col("amount")), "total"]],
+    //   group: ["planType"],
+    //   raw: true,
+    // });
+
+    // ✅ Source Breakdown (Marketing)
+    const sourceBreakdown = await oneToOneLeads.findAll({
+      attributes: ["source", [fn("COUNT", col("source")), "count"]],
+      group: ["source"],
+      raw: true,
+    });
+
+    // ✅ Top Agents
+    const topAgents = await oneToOneLeads.findAll({
+      attributes: ["createdBy", [fn("COUNT", col("createdBy")), "leadCount"]],
+      group: ["createdBy"],
+      include: [
+        {
+          model: Admin,
+          as: "creator",
+          attributes: ["id", "firstName", "lastName"],
+        },
+      ],
+      order: [[literal("leadCount"), "DESC"]],
+      limit: 5,
+    });
+
+    // ✅ One-to-One Students (monthly trend)
+    const monthlyStudents = await OneToOneBooking.findAll({
+      attributes: [
+        [fn("MONTH", col("createdAt")), "month"],
+        [fn("COUNT", col("id")), "bookings"],
+      ],
+      group: ["month"],
+      raw: true,
+    });
+
+    // ✅ Renewal Breakdown (Gold/Silver example)
+    const renewalBreakdown = await OneToOneBooking.findAll({
+      attributes: ["type", [fn("COUNT", col("type")), "count"]],
+      where: { type: { [Op.in]: ["renewal", "gold", "silver"] } },
+      group: ["type"],
+      raw: true,
+    });
+
+    // ✅ Final Structured Response (matches Figma)
+    return {
+      status: true,
+      message: "Fetched One-to-One analytics successfully.",
+      summary: {
+        totalLeads: {
+          thisMonth: totalLeadsThisMonth,
+          previousMonth: totalLeadsLastMonth,
+        },
+        numberOfSales: {
+          thisMonth: salesThisMonth,
+          previousMonth: salesLastMonth,
+        },
+        conversionRate: {
+          thisMonth: `${conversionThisMonth}%`,
+          previousMonth: `${conversionLastMonth}%`,
+        },
+        revenueGenerated: {
+          thisMonth: revenueThisMonth,
+          previousMonth: revenueLastMonth,
+        },
+      },
+      charts: {
+        monthlyStudents, // for line chart
+        // revenueByPackage, // donut chart
+        sourceBreakdown, // marketing channels
+        topAgents, // top agents
+        renewalBreakdown, // renewal chart
+      },
+    };
+  } catch (error) {
+    console.error("❌ Error fetching One-to-One analytics:", error);
     return { status: false, message: error.message };
   }
 };

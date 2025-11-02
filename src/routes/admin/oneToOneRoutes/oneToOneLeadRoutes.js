@@ -11,6 +11,7 @@ const {
   getAllOnetoOneLeadsSales,
   getAllOnetoOneLeadsSalesAll,
   updateOnetoOneLeadById,
+  getAllOneToOneAnalytics,
 } = require("../../../controllers/admin/oneToOne/oneToOneLeadsController");
 
 // ✅ Get All Session Plan Groups
@@ -55,6 +56,13 @@ router.get(
   authMiddleware,
   permissionMiddleware("one-to-one-lead", "view-listing"),
   getOnetoOneLeadsById
+);
+
+router.get(
+  "/analytics",
+  authMiddleware,
+  permissionMiddleware("one-to-one-lead", "view-listing"),
+  getAllOneToOneAnalytics
 );
 
 module.exports = router;

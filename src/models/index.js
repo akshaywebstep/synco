@@ -76,12 +76,11 @@ const models = {
   SessionPlanConfig: require("./admin/oneToOne/SessionPlanConfig"),
 
   oneToOneLeads: require("./admin/oneToOne/oneToOneLeads"),
-  OneToOneBooking:require("./admin/oneToOne/booking/OneToOneBooking"),
-  OneToOneStudent:require("./admin/oneToOne/booking/OneToOneStudent"),
-  OneToOneParent:require("./admin/oneToOne/booking/OneToOneParent"),
-  OneToOneEmergency:require("./admin/oneToOne/booking/OneToOneEmergency"),
-  OneToOnePayment:require("./admin/oneToOne/booking/OneToOnePayment"),
-
+  OneToOneBooking: require("./admin/oneToOne/booking/OneToOneBooking"),
+  OneToOneStudent: require("./admin/oneToOne/booking/OneToOneStudent"),
+  OneToOneParent: require("./admin/oneToOne/booking/OneToOneParent"),
+  OneToOneEmergency: require("./admin/oneToOne/booking/OneToOneEmergency"),
+  OneToOnePayment: require("./admin/oneToOne/booking/OneToOnePayment"),
 };
 
 // =================== Apply Model-Level Associations =================== //
@@ -312,6 +311,11 @@ Booking.belongsTo(models.Lead, {
 Comment.belongsTo(models.Admin, {
   foreignKey: "commentBy",
   as: "bookedByAdmin",
+});
+
+OneToOneBooking.belongsTo(models.oneToOneLeads, {
+  foreignKey: "leadId",
+  as: "lead",
 });
 
 // ====================== 📦 Module Exports ====================== //
