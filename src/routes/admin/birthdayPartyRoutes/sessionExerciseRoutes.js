@@ -24,7 +24,7 @@ router.post(
     "/session-exercise/create",
     authMiddleware,
     upload.array("images", 10),
-    permissionMiddleware("session-exercise-one-to-one", "create"),
+    permissionMiddleware("session-exercise-birthdayParty", "create"),
     createSessionExercise
 );
 

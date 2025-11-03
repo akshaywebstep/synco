@@ -172,9 +172,8 @@ exports.createOnetoOneBooking = async (data) => {
       if (!cardId) {
         const cardTokenRes = await createCardToken({
           body: {
-            cardNumber: data.payment.cardNumber,
-            expiryMonth: data.payment.expiryMonth,
-            expiryYear: data.payment.expiryYear,
+            cardNumber: data.payment.cardNumber, 
+            expiryDate: data.payment.expiryDate,
             securityCode: data.payment.securityCode,
           },
         });
@@ -272,8 +271,7 @@ exports.createOnetoOneBooking = async (data) => {
               )
               .replace(
                 /{{studentName}}/g,
-                `${firstStudent.studentFirstName || ""} ${
-                  firstStudent.studentLastName || ""
+                `${firstStudent.studentFirstName || ""} ${firstStudent.studentLastName || ""
                 }`
               )
               .replace(/{{location}}/g, data.location || "")
@@ -338,16 +336,16 @@ exports.createOnetoOneBooking = async (data) => {
       finalAmount,
       stripeChargeDetails: stripeChargeDetails
         ? {
-            id: stripeChargeDetails.id,
-            amount: stripeChargeDetails.amount / 100,
-            currency: stripeChargeDetails.currency,
-            status: stripeChargeDetails.status,
-            paymentMethod:
-              stripeChargeDetails.payment_method_details?.card?.brand,
-            last4: stripeChargeDetails.payment_method_details?.card?.last4,
-            receiptUrl: stripeChargeDetails.receipt_url,
-            fullResponse: stripeChargeDetails,
-          }
+          id: stripeChargeDetails.id,
+          amount: stripeChargeDetails.amount / 100,
+          currency: stripeChargeDetails.currency,
+          status: stripeChargeDetails.status,
+          paymentMethod:
+            stripeChargeDetails.payment_method_details?.card?.brand,
+          last4: stripeChargeDetails.payment_method_details?.card?.last4,
+          receiptUrl: stripeChargeDetails.receipt_url,
+          fullResponse: stripeChargeDetails,
+        }
         : null,
     };
   } catch (error) {

@@ -25,8 +25,29 @@ const createCustomer = async ({ body }) => {
  */
 const createCardToken = async ({ body }) => {
   try {
+    const { cardNumber, expiryDate, securityCode } = body;
+
+    // 🧩 Parse expiryDate (e.g. "1226" → month=12, year=2026)
+    let expiryMonth = expiryDate?.slice(0, 2);
+    let expiryYear = expiryDate?.slice(2);
+
+    // normalize year (e.g. "26" -> "2026")
+    if (expiryYear?.length === 2) {
+      expiryYear = `20${expiryYear}`;
+    }
+
+    console.log("🔹 [Stripe] Creating card token →", {
+      cardNumber,
+      expiryMonth,
+      expiryYear,
+      securityCode,
+    });
+
+    // For test mode, we’ll still use Stripe’s test token
     console.log("🔹 [Stripe] Using test token 'tok_visa' (safe test mode)");
     return { success: true, token_id: "tok_visa" };
+
+    // ⚠️ (In real live mode, you'd call stripe.tokens.create({...}) here)
   } catch (error) {
     console.error("❌ [Stripe] createCardToken error:", error.message);
     return { success: false, msg: error.message };
