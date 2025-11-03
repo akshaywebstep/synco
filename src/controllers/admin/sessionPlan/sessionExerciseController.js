@@ -608,7 +608,7 @@ exports.deleteSessionExercise = async (req, res) => {
     await createNotification(
       req,
       "Session Exercise Deleted",
-      `Session Exercise ID '${id}' was deleted by ${req?.admin?.name || "Admin"}.`,
+      `Session Exercise was deleted by ${req?.admin?.name || "Admin"}.`,
       "System"
     );
 

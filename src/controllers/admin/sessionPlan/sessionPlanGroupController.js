@@ -1677,7 +1677,7 @@ exports.deleteSessionPlanGroupLevel = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Level Deleted",
-      `Level '${levelKey}' from Session Plan Group ID ${id} was deleted by ${req?.admin?.firstName || "Admin"
+      `Level '${levelKey}' from Session Plan Group was deleted by ${req?.admin?.firstName || "Admin"
       }.`,
       "System"
     );

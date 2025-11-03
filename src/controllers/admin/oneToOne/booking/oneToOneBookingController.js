@@ -154,13 +154,13 @@ exports.getAdminsPaymentPlanDiscount = async (req, res) => {
     const admin = req.admin || {};
     const adminId = admin.id || null;
 
-    // ✅ Automatically determine superAdminId from login
+    // ✅ Automatically determine superAdminId from logged-in admin
     const superAdminId =
-      admin.role === "Super Admin" || admin.superAdminId === null
+      admin.role === "Super Admin" || !admin.superAdminId
         ? admin.id
         : admin.superAdminId;
 
-    // Optionally, still allow manual override via query param
+    // ✅ Determine if we should include super admin data
     const includeSuperAdmin =
       req.query.includeSuperAdmin === "true" ||
       req.query.includeSuperAdmin === true;
@@ -174,17 +174,25 @@ exports.getAdminsPaymentPlanDiscount = async (req, res) => {
       });
     }
 
-    // ✅ Validate superAdminId
+    // ✅ Validate superAdminId and adminId
     if (!superAdminId || isNaN(Number(superAdminId))) {
       return res.status(400).json({
         success: false,
-        message: "Unable to detect valid superAdminId from logged-in admin.",
+        message: "Unable to detect a valid superAdminId from logged-in admin.",
       });
     }
 
-    // ✅ Call the service
+    if (!adminId || isNaN(Number(adminId))) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or missing adminId from session.",
+      });
+    }
+
+    // ✅ Call the service (pass both superAdminId and adminId)
     const result = await oneToOneBookingService.getAdminsPaymentPlanDiscount({
       superAdminId,
+      adminId,
       includeSuperAdmin,
     });
 
@@ -197,7 +205,7 @@ exports.getAdminsPaymentPlanDiscount = async (req, res) => {
 
     if (DEBUG) console.log("✅ Service result:", result);
 
-    // ✅ Log Activity
+    // ✅ Log the action for auditing
     await logActivity(
       req,
       PANEL,
@@ -207,7 +215,7 @@ exports.getAdminsPaymentPlanDiscount = async (req, res) => {
       true
     );
 
-    // ✅ Success Response
+    // ✅ Send final structured response (unchanged)
     return res.status(200).json({
       success: true,
       message: result.message,

@@ -360,29 +360,52 @@ exports.createOnetoOneBooking = async (data) => {
 exports.getAdminsPaymentPlanDiscount = async ({
   superAdminId,
   includeSuperAdmin = false,
+  adminId = null, // 👈 added to handle both super admin & admin views
 }) => {
   try {
-    // ✅ 1. Fetch admins under this super admin
+    // ✅ 1️⃣ Determine target admin IDs based on who is logged in
+    let adminIds = [];
+
+    if (superAdminId && adminId && superAdminId === adminId) {
+      // 🟢 Super Admin → include self + all admins under them
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId: Number(superAdminId), deletedAt: null },
+        attributes: ["id"],
+      });
+      adminIds = managedAdmins.map((a) => a.id);
+      adminIds.push(Number(superAdminId));
+    } else if (superAdminId && adminId) {
+      // 🟢 Admin → include self + their super admin
+      adminIds = [Number(adminId), Number(superAdminId)];
+    } else if (superAdminId) {
+      // 🟢 If only super admin provided
+      adminIds = [Number(superAdminId)];
+    } else if (adminId) {
+      // 🟢 Fallback: only the admin’s data
+      adminIds = [Number(adminId)];
+    } else {
+      return { status: false, message: "Invalid admin or super admin ID." };
+    }
+
+    // ✅ 2️⃣ Fetch admins based on resolved admin IDs
     const admins = await Admin.findAll({
       where: {
-        superAdminId: Number(superAdminId),
+        id: { [Op.in]: adminIds },
         deletedAt: null,
       },
       attributes: ["id", "firstName", "lastName", "email", "roleId"],
       order: [["id", "ASC"]],
     });
 
-    // ✅ 2. Optionally include the super admin
-    if (includeSuperAdmin) {
+    // ✅ 3️⃣ Optionally include the super admin if requested
+    if (includeSuperAdmin && superAdminId && !adminIds.includes(Number(superAdminId))) {
       const superAdmin = await Admin.findByPk(superAdminId, {
         attributes: ["id", "firstName", "lastName", "email", "roleId"],
       });
       if (superAdmin) admins.unshift(superAdmin);
     }
 
-    const adminIds = admins.map((a) => a.id);
-
-    // ✅ 3. Get payment groups created by these admins (or super admin)
+    // ✅ 4️⃣ Fetch payment groups created by these admins
     const paymentGroups = await PaymentGroup.findAll({
       where: {
         createdBy: { [Op.in]: adminIds },
@@ -421,12 +444,12 @@ exports.getAdminsPaymentPlanDiscount = async ({
       order: [["createdAt", "DESC"]],
     });
 
-    // ✅ 4. Filter to show only groups that belong to valid admins
+    // ✅ 5️⃣ Filter to show only valid admin-owned groups
     const filteredGroups = paymentGroups.filter((group) =>
       adminIds.includes(group.createdBy)
     );
 
-    // ✅ 5. Map groups by admin
+    // ✅ 6️⃣ Map groups by admin (keep same structure)
     const groupedByAdmin = filteredGroups.map((group) => {
       const admin = admins.find((a) => a.id === group.createdBy);
       return {
@@ -436,7 +459,7 @@ exports.getAdminsPaymentPlanDiscount = async ({
       };
     });
 
-    // ✅ 6. Get all discounts + appliesTo
+    // ✅ 7️⃣ Get all discounts + appliesTo (unchanged)
     const discounts = await Discount.findAll({
       include: [
         {
@@ -463,7 +486,7 @@ exports.getAdminsPaymentPlanDiscount = async ({
       order: [["createdAt", "DESC"]],
     });
 
-    // ✅ 7. Return unified response
+    // ✅ 8️⃣ Return unified response (keys preserved)
     return {
       status: true,
       message: "Admins, payment plans, and discounts fetched successfully.",

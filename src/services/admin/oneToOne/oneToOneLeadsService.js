@@ -144,11 +144,11 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
           null;
         const emergency = emergencyObj
           ? {
-              emergencyFirstName: emergencyObj.emergencyFirstName,
-              emergencyLastName: emergencyObj.emergencyLastName,
-              emergencyPhoneNumber: emergencyObj.phoneNumber,
-              emergencyRelation: emergencyObj.relationChild,
-            }
+            emergencyFirstName: emergencyObj.emergencyFirstName,
+            emergencyLastName: emergencyObj.emergencyLastName,
+            emergencyPhoneNumber: emergencyObj.phoneNumber,
+            emergencyRelation: emergencyObj.relationChild,
+          }
           : null;
 
         let paymentObj = null;
@@ -191,17 +191,17 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
             failureReason: booking.payment.failureReason,
             stripeChargeDetails: stripeChargeDetails
               ? {
-                  id: stripeChargeDetails.id,
-                  amount: stripeChargeDetails.amount / 100,
-                  currency: stripeChargeDetails.currency,
-                  status: stripeChargeDetails.status,
-                  paymentMethod:
-                    stripeChargeDetails.payment_method_details?.card?.brand,
-                  last4:
-                    stripeChargeDetails.payment_method_details?.card?.last4,
-                  receiptUrl: stripeChargeDetails.receipt_url,
-                  fullResponse: stripeChargeDetails,
-                }
+                id: stripeChargeDetails.id,
+                amount: stripeChargeDetails.amount / 100,
+                currency: stripeChargeDetails.currency,
+                status: stripeChargeDetails.status,
+                paymentMethod:
+                  stripeChargeDetails.payment_method_details?.card?.brand,
+                last4:
+                  stripeChargeDetails.payment_method_details?.card?.last4,
+                receiptUrl: stripeChargeDetails.receipt_url,
+                fullResponse: stripeChargeDetails,
+              }
               : null,
           };
         }
@@ -375,9 +375,9 @@ exports.getAllOnetoOneLeadsSales = async (
           required: !!type, // still only strict join when filtering by type
           where: !!type
             ? {
-                ...(Object.keys(whereBooking).length ? whereBooking : {}),
-                status: "active",
-              }
+              ...(Object.keys(whereBooking).length ? whereBooking : {}),
+              status: "active",
+            }
             : undefined, // <- important: no where when no type, keeps LEFT JOIN
           include: [
             {
@@ -448,11 +448,11 @@ exports.getAllOnetoOneLeadsSales = async (
           null;
         const emergency = emergencyObj
           ? {
-              emergencyFirstName: emergencyObj.emergencyFirstName,
-              emergencyLastName: emergencyObj.emergencyLastName,
-              emergencyPhoneNumber: emergencyObj.phoneNumber,
-              emergencyRelation: emergencyObj.relationChild,
-            }
+            emergencyFirstName: emergencyObj.emergencyFirstName,
+            emergencyLastName: emergencyObj.emergencyLastName,
+            emergencyPhoneNumber: emergencyObj.phoneNumber,
+            emergencyRelation: emergencyObj.relationChild,
+          }
           : null;
 
         // Payment + Stripe charge details
@@ -494,17 +494,17 @@ exports.getAllOnetoOneLeadsSales = async (
             failureReason: booking.payment.failureReason,
             stripeChargeDetails: stripeChargeDetails
               ? {
-                  id: stripeChargeDetails.id,
-                  amount: stripeChargeDetails.amount / 100,
-                  currency: stripeChargeDetails.currency,
-                  status: stripeChargeDetails.status,
-                  paymentMethod:
-                    stripeChargeDetails.payment_method_details?.card?.brand,
-                  last4:
-                    stripeChargeDetails.payment_method_details?.card?.last4,
-                  receiptUrl: stripeChargeDetails.receipt_url,
-                  fullResponse: stripeChargeDetails,
-                }
+                id: stripeChargeDetails.id,
+                amount: stripeChargeDetails.amount / 100,
+                currency: stripeChargeDetails.currency,
+                status: stripeChargeDetails.status,
+                paymentMethod:
+                  stripeChargeDetails.payment_method_details?.card?.brand,
+                last4:
+                  stripeChargeDetails.payment_method_details?.card?.last4,
+                receiptUrl: stripeChargeDetails.receipt_url,
+                fullResponse: stripeChargeDetails,
+              }
               : null,
           };
         }
@@ -678,8 +678,8 @@ exports.getAllOnetoOneLeadsSalesAll = async (
           required: !!type, // still only strict join when filtering by type
           where: !!type
             ? {
-                ...(Object.keys(whereBooking).length ? whereBooking : {}),
-              }
+              ...(Object.keys(whereBooking).length ? whereBooking : {}),
+            }
             : undefined, // <- important: no where when no type, keeps LEFT JOIN
           include: [
             {
@@ -750,11 +750,11 @@ exports.getAllOnetoOneLeadsSalesAll = async (
           null;
         const emergency = emergencyObj
           ? {
-              emergencyFirstName: emergencyObj.emergencyFirstName,
-              emergencyLastName: emergencyObj.emergencyLastName,
-              emergencyPhoneNumber: emergencyObj.phoneNumber,
-              emergencyRelation: emergencyObj.relationChild,
-            }
+            emergencyFirstName: emergencyObj.emergencyFirstName,
+            emergencyLastName: emergencyObj.emergencyLastName,
+            emergencyPhoneNumber: emergencyObj.phoneNumber,
+            emergencyRelation: emergencyObj.relationChild,
+          }
           : null;
 
         // Payment + Stripe charge details
@@ -796,17 +796,17 @@ exports.getAllOnetoOneLeadsSalesAll = async (
             failureReason: booking.payment.failureReason,
             stripeChargeDetails: stripeChargeDetails
               ? {
-                  id: stripeChargeDetails.id,
-                  amount: stripeChargeDetails.amount / 100,
-                  currency: stripeChargeDetails.currency,
-                  status: stripeChargeDetails.status,
-                  paymentMethod:
-                    stripeChargeDetails.payment_method_details?.card?.brand,
-                  last4:
-                    stripeChargeDetails.payment_method_details?.card?.last4,
-                  receiptUrl: stripeChargeDetails.receipt_url,
-                  fullResponse: stripeChargeDetails,
-                }
+                id: stripeChargeDetails.id,
+                amount: stripeChargeDetails.amount / 100,
+                currency: stripeChargeDetails.currency,
+                status: stripeChargeDetails.status,
+                paymentMethod:
+                  stripeChargeDetails.payment_method_details?.card?.brand,
+                last4:
+                  stripeChargeDetails.payment_method_details?.card?.last4,
+                receiptUrl: stripeChargeDetails.receipt_url,
+                fullResponse: stripeChargeDetails,
+              }
               : null,
           };
         }
@@ -989,12 +989,12 @@ exports.getOnetoOneLeadsById = async (id, adminId) => {
 
     const emergency = emergencyObj
       ? {
-          id: emergencyObj.id,
-          emergencyFirstName: emergencyObj.emergencyFirstName,
-          emergencyLastName: emergencyObj.emergencyLastName,
-          emergencyPhoneNumber: emergencyObj.phoneNumber,
-          emergencyRelation: emergencyObj.relationChild,
-        }
+        id: emergencyObj.id,
+        emergencyFirstName: emergencyObj.emergencyFirstName,
+        emergencyLastName: emergencyObj.emergencyLastName,
+        emergencyPhoneNumber: emergencyObj.phoneNumber,
+        emergencyRelation: emergencyObj.relationChild,
+      }
       : null;
 
     // 💳 Payment + Stripe details
@@ -1037,16 +1037,16 @@ exports.getOnetoOneLeadsById = async (id, adminId) => {
         // ✅ Include Stripe charge details
         stripeChargeDetails: stripeChargeDetails
           ? {
-              id: stripeChargeDetails.id,
-              amount: stripeChargeDetails.amount / 100,
-              currency: stripeChargeDetails.currency,
-              status: stripeChargeDetails.status,
-              paymentMethod:
-                stripeChargeDetails.payment_method_details?.card?.brand,
-              last4: stripeChargeDetails.payment_method_details?.card?.last4,
-              receiptUrl: stripeChargeDetails.receipt_url,
-              fullResponse: stripeChargeDetails,
-            }
+            id: stripeChargeDetails.id,
+            amount: stripeChargeDetails.amount / 100,
+            currency: stripeChargeDetails.currency,
+            status: stripeChargeDetails.status,
+            paymentMethod:
+              stripeChargeDetails.payment_method_details?.card?.brand,
+            last4: stripeChargeDetails.payment_method_details?.card?.last4,
+            receiptUrl: stripeChargeDetails.receipt_url,
+            fullResponse: stripeChargeDetails,
+          }
           : null,
       };
     }
@@ -1344,13 +1344,76 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId) => {
 
     const revenueThisMonth = paymentsThisMonth[0].total || 0;
     const revenueLastMonth = paymentsLastMonth[0].total || 0;
+    const packages = ["Gold", "Silver", "Platinum"];
 
-    // ✅ Revenue by Package (Gold/Silver)
-    // const revenueByPackage = await OneToOnePayment.findAll({
-    //   attributes: ["planType", [fn("SUM", col("amount")), "total"]],
-    //   group: ["planType"],
-    //   raw: true,
-    // });
+    // ✅ Fetch revenue by package (THIS MONTH)
+    const revenueThisMonthRaw = await OneToOnePayment.findAll({
+      attributes: [
+        [col("booking.lead.packageInterest"), "packageName"],
+        [fn("SUM", col("OneToOnePayment.amount")), "totalRevenue"],
+      ],
+      include: [
+        {
+          model: OneToOneBooking,
+          as: "booking",
+          attributes: [],
+          include: [
+            {
+              model: oneToOneLeads,
+              as: "lead",
+              attributes: [],
+              where: { packageInterest: { [Op.in]: packages } },
+              required: true,
+            },
+          ],
+          required: true,
+        },
+      ],
+      where: { createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] } },
+      group: ["booking.lead.packageInterest"],
+      raw: true,
+    });
+
+    // ✅ Fetch revenue by package (LAST MONTH)
+    const revenueLastMonthRaw = await OneToOnePayment.findAll({
+      attributes: [
+        [col("booking.lead.packageInterest"), "packageName"],
+        [fn("SUM", col("OneToOnePayment.amount")), "totalRevenue"],
+      ],
+      include: [
+        {
+          model: OneToOneBooking,
+          as: "booking",
+          attributes: [],
+          include: [
+            {
+              model: oneToOneLeads,
+              as: "lead",
+              attributes: [],
+              where: { packageInterest: { [Op.in]: packages } },
+              required: true,
+            },
+          ],
+          required: true,
+        },
+      ],
+      where: { createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] } },
+      group: ["booking.lead.packageInterest"],
+      raw: true,
+    });
+
+    // 🧮 Format into clean summary object
+    const revenueByPackageWise = packages.reduce((acc, pkgName) => {
+      const current = revenueThisMonthRaw.find(r => r.packageName === pkgName);
+      const last = revenueLastMonthRaw.find(r => r.packageName === pkgName);
+
+      acc[pkgName] = {
+        thisMonth: parseFloat(current?.totalRevenue || 0).toFixed(2),
+        previousMonth: parseFloat(last?.totalRevenue || 0).toFixed(2),
+      };
+
+      return acc;
+    }, {});
 
     // ✅ Source Breakdown (Marketing)
     const sourceBreakdown = await oneToOneLeads.findAll({
@@ -1374,22 +1437,244 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId) => {
       limit: 5,
     });
 
-    // ✅ One-to-One Students (monthly trend)
+    // ✅ One-to-One Students (monthly trend: current & last month)
     const monthlyStudents = await OneToOneBooking.findAll({
       attributes: [
-        [fn("MONTH", col("createdAt")), "month"],
-        [fn("COUNT", col("id")), "bookings"],
+        [fn("DATE_FORMAT", col("OneToOneBooking.createdAt"), "%M"), "month"], // e.g. "October"
+        [fn("COUNT", col("OneToOneBooking.id")), "bookings"], // total bookings
+        [fn("COUNT", fn("DISTINCT", col("students.id"))), "students"], // unique students linked to those bookings
       ],
-      group: ["month"],
+      include: [
+        {
+          model: OneToOneStudent,
+          as: "students", // ✅ this alias matches your model association
+          attributes: [],
+          required: true, // inner join ensures bookings with students only
+        },
+      ],
+      where: {
+        status: { [Op.in]: ["pending", "active"] },
+        createdAt: {
+          [Op.between]: [startOfLastMonth, endOfThisMonth],
+        },
+      },
+      group: [fn("MONTH", col("OneToOneBooking.createdAt"))],
+      order: [[fn("MONTH", col("OneToOneBooking.createdAt")), "ASC"]],
+      raw: true,
+    });
+    const packageBreakdown = await oneToOneLeads.findAll({
+      attributes: [
+        ["packageInterest", "packageName"], // e.g., Gold / Silver / Platinum
+        [fn("COUNT", col("packageInterest")), "count"],
+      ],
+      where: {
+        packageInterest: { [Op.in]: ["Gold", "Silver", "Platinum"] },
+      },
+      group: ["packageInterest"],
       raw: true,
     });
 
-    // ✅ Renewal Breakdown (Gold/Silver example)
-    const renewalBreakdown = await OneToOneBooking.findAll({
-      attributes: ["type", [fn("COUNT", col("type")), "count"]],
-      where: { type: { [Op.in]: ["renewal", "gold", "silver"] } },
-      group: ["type"],
+    // 🧮 Total Count (for percentages)
+    const totalPackages = packageBreakdown.reduce(
+      (sum, pkg) => sum + parseInt(pkg.count, 10),
+      0
+    );
+
+    // 🧠 Format data for frontend donut chart
+    const formattedPackages = packageBreakdown.map(pkg => {
+      const count = parseInt(pkg.count, 10);
+      const percentage = totalPackages > 0 ? ((count / totalPackages) * 100).toFixed(2) : 0;
+      return {
+        name: pkg.packageName,           // Gold / Silver / Platinum
+        value: parseFloat((count / 1000).toFixed(3)), // e.g. 1.235 (mock scaling)
+        percentage: parseFloat(percentage),           // e.g. 25.00
+      };
+    });
+
+    // 🧩 Add booking data to the same months for comparison
+    const monthlyBookings = await OneToOneBooking.findAll({
+      attributes: [
+        [fn("DATE_FORMAT", col("createdAt"), "%M"), "month"],
+        [fn("COUNT", col("id")), "bookings"],
+      ],
+      where: {
+        createdAt: {
+          [Op.between]: [startOfLastMonth, endOfThisMonth],
+        },
+      },
+      group: [fn("MONTH", col("createdAt"))],
       raw: true,
+    });
+
+    // 🧠 Merge students and bookings into one unified array
+    const mergedMonthlyData = ["lastMonth", "thisMonth"]
+      .map((_, i) => {
+        const monthName = moment().subtract(1 - i, "month").format("MMMM");
+        const studentData = monthlyStudents.find((s) => s.month === monthName);
+        const bookingData = monthlyBookings.find((b) => b.month === monthName);
+        return {
+          month: monthName,
+          students: studentData ? parseInt(studentData.students) : 0,
+          bookings: bookingData ? parseInt(bookingData.bookings) : 0,
+        };
+      });
+
+    // ✅ Renewal Breakdown (Gold, Silver, Platinum)
+    const renewalBreakdownRaw = await OneToOneBooking.findAll({
+      attributes: [
+        [col("lead.packageInterest"), "packageName"], // join with lead’s package
+        [fn("COUNT", col("OneToOneBooking.id")), "count"],
+      ],
+      include: [
+        {
+          model: oneToOneLeads,
+          as: "lead", // 👈 must match association alias in OneToOneBooking model
+          attributes: [],
+          where: {
+            packageInterest: { [Op.in]: ["Gold", "Silver", "Platinum"] },
+          },
+          required: true,
+        },
+      ],
+      group: ["lead.packageInterest"],
+      raw: true,
+    });
+
+    // 🧮 Calculate total renewals
+    const totalRenewals = renewalBreakdownRaw.reduce(
+      (sum, r) => sum + parseInt(r.count, 10),
+      0
+    );
+
+    // 🧠 Format for frontend (progress bar chart)
+    const renewalBreakdown = ["Gold", "Silver", "Platinum"].map(pkgName => {
+      const found = renewalBreakdownRaw.find(r => r.packageName === pkgName);
+      const count = found ? parseInt(found.count, 10) : 0;
+      const percentage =
+        totalRenewals > 0 ? ((count / totalRenewals) * 100).toFixed(2) : 0;
+
+      return {
+        name: pkgName,
+        count,
+        percentage: parseFloat(percentage),
+      };
+    });
+
+    // ✅ Revenue by Package (Current Month)
+    const revenueByPackageRaw = await OneToOnePayment.findAll({
+      attributes: [
+        [col("booking->lead.packageInterest"), "packageName"],
+        [fn("SUM", col("OneToOnePayment.amount")), "totalRevenue"],
+      ],
+      include: [
+        {
+          model: OneToOneBooking,
+          as: "booking", // must match your OneToOnePayment association
+          attributes: [],
+          include: [
+            {
+              model: oneToOneLeads,
+              as: "lead", // must match your OneToOneBooking association alias
+              attributes: [],
+              where: {
+                packageInterest: { [Op.in]: ["Gold", "Silver", "Platinum"] },
+              },
+              required: true,
+            },
+          ],
+          required: true,
+        },
+      ],
+      where: {
+        createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
+      },
+      group: ["booking->lead.packageInterest"],
+      raw: true,
+    });
+
+    // ✅ Revenue by Package (Last Month)
+    const revenueByPackageLastMonth = await OneToOnePayment.findAll({
+      attributes: [
+        [col("booking->lead.packageInterest"), "packageName"],
+        [fn("SUM", col("OneToOnePayment.amount")), "totalRevenue"],
+      ],
+      include: [
+        {
+          model: OneToOneBooking,
+          as: "booking",
+          attributes: [],
+          include: [
+            {
+              model: oneToOneLeads,
+              as: "lead",
+              attributes: [],
+              where: {
+                packageInterest: { [Op.in]: ["Gold", "Silver", "Platinum"] },
+              },
+              required: true,
+            },
+          ],
+          required: true,
+        },
+      ],
+      where: {
+        createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
+      },
+      group: ["booking->lead.packageInterest"],
+      raw: true,
+    });
+
+    // 🧮 Combine and calculate growth %
+    const revenueByPackage = ["Gold", "Silver", "Platinum"].map(pkgName => {
+      const current = revenueByPackageRaw.find(r => r.packageName === pkgName);
+      const last = revenueByPackageLastMonth.find(r => r.packageName === pkgName);
+
+      const currentRevenue = current ? parseFloat(current.totalRevenue || 0) : 0;
+      const lastRevenue = last ? parseFloat(last.totalRevenue || 0) : 0;
+
+      const growth =
+        lastRevenue > 0
+          ? (((currentRevenue - lastRevenue) / lastRevenue) * 100).toFixed(2)
+          : currentRevenue > 0
+            ? 100
+            : 0;
+
+      return {
+        name: pkgName,
+        currentRevenue,
+        lastRevenue,
+        revenueGrowth: parseFloat(growth),
+      };
+    });
+    // ✅ Marketing Channel Performance
+    const marketChannelRaw = await oneToOneLeads.findAll({
+      attributes: [
+        "source",
+        [fn("COUNT", col("source")), "count"],
+      ],
+      where: {
+        source: { [Op.ne]: null }, // exclude leads without source
+      },
+      group: ["source"],
+      raw: true,
+    });
+
+    // 🧮 Calculate total leads for percentage
+    const totalSources = marketChannelRaw.reduce(
+      (sum, s) => sum + parseInt(s.count, 10),
+      0
+    );
+
+    // 🧠 Format data for frontend (progress bar UI)
+    const marketChannelPerformance = marketChannelRaw.map(s => {
+      const count = parseInt(s.count, 10);
+      const percentage = totalSources > 0 ? ((count / totalSources) * 100).toFixed(2) : 0;
+
+      return {
+        name: s.source,           // e.g. "Facebook"
+        count,                    // e.g. 23456
+        percentage: parseFloat(percentage), // e.g. 50.00
+      };
     });
 
     // ✅ Final Structured Response (matches Figma)
@@ -1415,11 +1700,14 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId) => {
         },
       },
       charts: {
-        monthlyStudents, // for line chart
+        monthlyStudents: mergedMonthlyData, // for line chart
         // revenueByPackage, // donut chart
+        marketChannelPerformance,
         sourceBreakdown, // marketing channels
         topAgents, // top agents
         renewalBreakdown, // renewal chart
+        packageBreakdown: formattedPackages,
+        revenueByPackage
       },
     };
   } catch (error) {
