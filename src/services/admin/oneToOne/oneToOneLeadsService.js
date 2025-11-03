@@ -65,8 +65,25 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
     }
 
     // ✅ Type filter (if provided)
-    if (type) {
-      whereBooking.type = { [Op.eq]: type.toLowerCase() };
+    // if (type) {
+    //   whereBooking.type = { [Op.eq]: type.toLowerCase() };
+    // }
+
+    // ✅ Support multiple types (e.g. "paid,trial" or array)
+     if (type) {
+      let types = [];
+
+      if (Array.isArray(type)) {
+        // e.g. type=['paid','trial']
+        types = type.map((t) => t.toLowerCase());
+      } else if (typeof type === "string") {
+        // e.g. type='paid'
+        types = [type.toLowerCase()];
+      }
+
+      if (types.length > 0) {
+        whereBooking.type = { [Op.in]: types };
+      }
     }
 
     // ✅ Fetch leads
