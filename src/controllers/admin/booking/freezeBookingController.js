@@ -61,7 +61,7 @@ exports.createFreezeBooking = async (req, res) => {
     await createNotification(
       req,
       "Booking Frozen",
-      `${frozenBy} froze booking #${payload.bookingId}.`,
+      `${frozenBy} froze booking`,
       "System"
     );
 
@@ -176,7 +176,7 @@ exports.reactivateBooking = async (req, res) => {
     await createNotification(
       req,
       "Booking Reactivated",
-      `${reactivatedBy} reactivated booking #${payload.bookingId}.`,
+      `${reactivatedBy} reactivated booking.`,
       "System"
     );
 
