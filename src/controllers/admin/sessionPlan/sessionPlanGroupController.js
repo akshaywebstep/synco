@@ -522,7 +522,7 @@ exports.createSessionPlanGroup = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Group Created",
-      `A new Session Plan Group '${result.data.groupName}' was created by ${req?.admin?.firstName || "Admin"}.`,
+      `A new Session Plan Group '${result.data.groupName}' was created by ${req?.admin ? `${req.admin.firstName} ${req.admin.lastName}`.trim() : "Admin"}.`,
       "System"
     );
 
@@ -1533,7 +1533,7 @@ exports.updateSessionPlanGroup = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Group Updated",
-      `The session plan group '${updatePayload.groupName}' was updated by ${req?.admin?.firstName || "Admin"}.`,
+     `The session plan group '${updatePayload.groupName}' was updated by ${req?.admin ? `${req.admin.firstName} ${req.admin.lastName}`.trim() : "Admin"}.`,
       "System"
     );
 
@@ -1615,11 +1615,10 @@ exports.deleteSessionPlanGroup = async (req, res) => {
       { oneLineMessage: `Deleted Session Plan Group ID: ${id}` },
       true
     );
-     await createNotification(
+    await createNotification(
       req,
-      "Session Plan Level Deleted",
-      `Session Plan Group was deleted by ${req?.admin?.firstName || "Admin"
-      }.`,
+      "Session Plan Group Deleted",
+     `Session Plan Group "${existing.groupName}" was deleted by ${req?.admin ? `${req.admin.firstName} ${req.admin.lastName}`.trim() : "Admin"}.`,
       "System"
     );
 
@@ -1684,8 +1683,7 @@ exports.deleteSessionPlanGroupLevel = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Level Deleted",
-      `Level '${levelKey}' from Session Plan Group was deleted by ${req?.admin?.firstName || "Admin"
-      }.`,
+     `Level '${levelKey}' from Session Plan Group was deleted by ${req?.admin ? `${req.admin.firstName} ${req.admin.lastName}`.trim() : "Admin"}.`,
       "System"
     );
 

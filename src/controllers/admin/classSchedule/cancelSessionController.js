@@ -70,7 +70,7 @@ exports.cancelClassSession = async (req, res) => {
 
     const cancelSessionPlanResult = await CancelClassService.getCancelledSessionByMapIdSessionPlanId(classScheduleTermMapResult.mapEntry.sessionPlanId);
     console.log(`cancelSessionPlanResult - `, cancelSessionPlanResult);
-    
+
     if (cancelSessionPlanResult.status) {
       await logActivity(
         req,
@@ -130,10 +130,20 @@ exports.cancelClassSession = async (req, res) => {
     await logActivity(req, PANEL, MODULE, "cancel", cancelResult, hasSuccess);
 
     if (hasSuccess) {
+      // Fetch class details to get class name
+      const classDetails = await ClassScheduleService.getClassScheduleById(classScheduleId);
+      const className = classDetails?.data?.className || "Unknown Class";
+
+      // Get admin name (first + last, or fallback to "Admin")
+      const cancelledBy = req?.admin
+        ? `${req.admin.firstName} ${req.admin.lastName}`.trim()
+        : "Admin";
+
+      // Create notification with dynamic details
       await createNotification(
         req,
         "Class Session Cancelled",
-        `Class has been cancelled.`,
+        `Class "${className}" was cancelled by ${cancelledBy}.`,
         "Admins"
       );
     }
