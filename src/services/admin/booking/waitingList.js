@@ -150,6 +150,7 @@ exports.getBookingById = async (id, adminId, superAdminId) => {
         studentFirstName: s.studentFirstName,
         studentLastName: s.studentLastName,
         dateOfBirth: s.dateOfBirth,
+        medicalInformation: s.medicalInformation,
         age: s.age,
         gender: s.gender,
       })) || [];
@@ -164,6 +165,7 @@ exports.getBookingById = async (id, adminId, superAdminId) => {
           parentEmail: p.parentEmail,
           parentPhoneNumber: p.parentPhoneNumber,
           relationToChild: p.relationToChild,
+          howDidYouHear: p.howDidYouHear,
         })) || [];
 
     const emergency =

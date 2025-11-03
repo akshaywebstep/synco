@@ -133,8 +133,7 @@ exports.cancelClassSession = async (req, res) => {
       await createNotification(
         req,
         "Class Session Cancelled",
-        `Class "${cancelResult.data?.classSchedule?.className || "N/A"
-        }" has been cancelled.`,
+        `Class has been cancelled.`,
         "Admins"
       );
     }
