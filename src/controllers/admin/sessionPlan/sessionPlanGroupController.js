@@ -1615,6 +1615,13 @@ exports.deleteSessionPlanGroup = async (req, res) => {
       { oneLineMessage: `Deleted Session Plan Group ID: ${id}` },
       true
     );
+     await createNotification(
+      req,
+      "Session Plan Level Deleted",
+      `Session Plan Group was deleted by ${req?.admin?.firstName || "Admin"
+      }.`,
+      "System"
+    );
 
     return res.status(200).json({
       status: true,
