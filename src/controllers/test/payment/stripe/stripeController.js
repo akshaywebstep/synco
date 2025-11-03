@@ -1,4 +1,21 @@
-const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+const { AppConfig } = require("../../../../models"); // ✅ Added import for AppConfig
+const stripePackage = require("stripe");
+
+/**
+ * 🔐 Get Stripe instance using key from AppConfig
+ */
+let stripe;
+async function getStripeInstance() {
+  if (stripe) return stripe; // reuse if already loaded
+
+  const config = await AppConfig.findOne({ where: { key: "STRIPE_SECRET_KEY" } });
+  if (!config || !config.value) {
+    throw new Error("Missing STRIPE_SECRET_KEY in AppConfig.");
+  }
+
+  stripe = stripePackage(config.value);
+  return stripe;
+}
 
 /**
  * 🧾 Create Stripe Customer
@@ -6,6 +23,7 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
  */
 const createCustomer = async ({ body }) => {
   try {
+    const stripe = await getStripeInstance();
     const { name, email } = body;
     console.log("🔹 [Stripe] Creating Customer →", { name, email });
 
@@ -31,7 +49,6 @@ const createCardToken = async ({ body }) => {
     let expiryMonth = expiryDate?.slice(0, 2);
     let expiryYear = expiryDate?.slice(2);
 
-    // normalize year (e.g. "26" -> "2026")
     if (expiryYear?.length === 2) {
       expiryYear = `20${expiryYear}`;
     }
@@ -43,11 +60,9 @@ const createCardToken = async ({ body }) => {
       securityCode,
     });
 
-    // For test mode, we’ll still use Stripe’s test token
+    // ✅ Using Stripe’s test token safely
     console.log("🔹 [Stripe] Using test token 'tok_visa' (safe test mode)");
     return { success: true, token_id: "tok_visa" };
-
-    // ⚠️ (In real live mode, you'd call stripe.tokens.create({...}) here)
   } catch (error) {
     console.error("❌ [Stripe] createCardToken error:", error.message);
     return { success: false, msg: error.message };
@@ -60,6 +75,7 @@ const createCardToken = async ({ body }) => {
  */
 const addNewCard = async ({ body }) => {
   try {
+    const stripe = await getStripeInstance();
     const { customer_id, card_token } = body;
     console.log("🔹 [Stripe] Adding new card →", { customer_id, card_token });
 
@@ -96,6 +112,7 @@ const addNewCard = async ({ body }) => {
  */
 const createCharges = async ({ body }) => {
   try {
+    const stripe = await getStripeInstance();
     const { amount, customer_id, card_id, email } = body;
     console.log("🔹 [Stripe] Creating charge →", {
       amount,
@@ -112,12 +129,7 @@ const createCharges = async ({ body }) => {
       receipt_email: email || "test@example.com",
     });
 
-    console.log(
-      "✅ [Stripe] Charge Successful:",
-      charge.id,
-      "Status:",
-      charge.status
-    );
+    console.log("✅ [Stripe] Charge Successful:", charge.id, "Status:", charge.status);
 
     return {
       success: true,
@@ -132,6 +144,7 @@ const createCharges = async ({ body }) => {
 
 const getStripePaymentDetails = async (req, res) => {
   try {
+    const stripe = await getStripeInstance();
     const { chargeId } = req.params;
 
     if (!chargeId) {
@@ -148,14 +161,14 @@ const getStripePaymentDetails = async (req, res) => {
     return res.status(200).json({
       success: true,
       chargeId: charge.id,
-      amount: charge.amount / 100, // convert cents to dollars
+      amount: charge.amount / 100,
       currency: charge.currency,
       status: charge.status,
       customer: charge.customer,
       paymentMethod: charge.payment_method_details?.card?.brand,
       last4: charge.payment_method_details?.card?.last4,
       receiptUrl: charge.receipt_url,
-      fullResponse: charge, // optional full Stripe object
+      fullResponse: charge,
     });
   } catch (error) {
     console.error("❌ Error fetching Stripe charge:", error.message);

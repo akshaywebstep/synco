@@ -419,23 +419,23 @@ exports.getWaitingList = async (filters = {}) => {
     const avgInterest =
       allInterests.length > 0
         ? (
-            allInterests.reduce((a, b) => a + b, 0) / allInterests.length
-          ).toFixed(2)
+          allInterests.reduce((a, b) => a + b, 0) / allInterests.length
+        ).toFixed(2)
         : 0;
 
     // Avg. days waiting (currentDate - createdAt)
     const avgDaysWaiting =
       parsedBookings.length > 0
         ? (
-            parsedBookings.reduce((sum, b) => {
-              const created = new Date(b.createdAt);
-              const now = new Date();
-              const diffDays = Math.floor(
-                (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)
-              );
-              return sum + diffDays;
-            }, 0) / parsedBookings.length
-          ).toFixed(0)
+          parsedBookings.reduce((sum, b) => {
+            const created = new Date(b.createdAt);
+            const now = new Date();
+            const diffDays = Math.floor(
+              (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)
+            );
+            return sum + diffDays;
+          }, 0) / parsedBookings.length
+        ).toFixed(0)
         : 0;
 
     // Top Referrer (admin with most bookings)
@@ -627,8 +627,8 @@ exports.createBooking = async (data, options) => {
           bookingStatus === "waiting list"
             ? "waiting list"
             : data.paymentPlanId
-            ? "paid"
-            : "free",
+              ? "paid"
+              : "free",
         className: data.className,
         classTime: data.classTime,
         // keyInformation: data.keyInformation,
@@ -1387,9 +1387,8 @@ exports.convertToMembership = async (data, options) => {
 
           const billingRequestPayload = {
             customerId: createCustomerRes.customer.id,
-            description: `${venue?.name || "Venue"} - ${
-              classSchedule?.className || "Class"
-            }`,
+            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+              }`,
             amount: price,
             scheme: "faster_payments",
             currency: "GBP",
@@ -1415,21 +1414,28 @@ exports.convertToMembership = async (data, options) => {
           goCardlessBillingRequest = createBillingRequestRes.billingRequest;
         } else if (paymentType === "card") {
           // Pay360 card payment
-          if (
-            !process.env.PAY360_INST_ID ||
-            !process.env.PAY360_API_USERNAME ||
-            !process.env.PAY360_API_PASSWORD
-          )
-            throw new Error("Pay360 credentials not set.");
+
+          // ✅ Fetch Pay360 credentials from AppConfig
+          const [instIdConfig, usernameConfig, passwordConfig] = await Promise.all([
+            AppConfig.findOne({ where: { key: "PAY360_INST_ID" }, transaction: t }),
+            AppConfig.findOne({ where: { key: "PAY360_API_USERNAME" }, transaction: t }),
+            AppConfig.findOne({ where: { key: "PAY360_API_PASSWORD" }, transaction: t }),
+          ]);
+
+          if (!instIdConfig || !usernameConfig || !passwordConfig)
+            throw new Error("Pay360 credentials not set in AppConfig.");
+
+          const PAY360_INST_ID = instIdConfig.value;
+          const PAY360_API_USERNAME = usernameConfig.value;
+          const PAY360_API_PASSWORD = passwordConfig.value;
 
           const paymentPayload = {
             transaction: {
               currency: "GBP",
               amount: price,
               merchantRef,
-              description: `${venue?.name || "Venue"} - ${
-                classSchedule?.className || "Class"
-              }`,
+              description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+                }`,
               commerceType: "ECOM",
             },
             paymentMethod: {
@@ -1442,9 +1448,10 @@ exports.convertToMembership = async (data, options) => {
             },
           };
 
-          const url = `https://api.mite.pay360.com/acceptor/rest/transactions/${process.env.PAY360_INST_ID}/payment`;
+          // ✅ Use DB-stored Pay360 credentials
+          const url = `https://api.mite.pay360.com/acceptor/rest/transactions/${PAY360_INST_ID}/payment`;
           const authHeader = Buffer.from(
-            `${process.env.PAY360_API_USERNAME}:${process.env.PAY360_API_PASSWORD}`
+            `${PAY360_API_USERNAME}:${PAY360_API_PASSWORD}`
           ).toString("base64");
 
           const response = await axios.post(url, paymentPayload, {
@@ -1457,10 +1464,8 @@ exports.convertToMembership = async (data, options) => {
           gatewayResponse = response.data;
           const txnStatus = gatewayResponse?.transaction?.status?.toLowerCase();
           if (txnStatus === "success") paymentStatusFromGateway = "paid";
-          else if (txnStatus === "pending")
-            paymentStatusFromGateway = "pending";
-          else if (txnStatus === "declined")
-            paymentStatusFromGateway = "failed";
+          else if (txnStatus === "pending") paymentStatusFromGateway = "pending";
+          else if (txnStatus === "declined") paymentStatusFromGateway = "failed";
           else paymentStatusFromGateway = txnStatus || "unknown";
         }
 
@@ -1490,8 +1495,7 @@ exports.convertToMembership = async (data, options) => {
               gatewayResponse?.transaction?.merchantRef || merchantRef,
             description:
               gatewayResponse?.transaction?.description ||
-              `${venue?.name || "Venue"} - ${
-                classSchedule?.className || "Class"
+              `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
               }`,
             commerceType: "ECOM",
             gatewayResponse,

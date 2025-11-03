@@ -1,14 +1,29 @@
+const { AppConfig } = require("../../../models"); // ✅ make sure this import is correct
 const DEBUG = process.env.DEBUG === "true";
 const GOCARDLESS_API = "https://api-sandbox.gocardless.com";
 const API_VERSION = "2015-07-06";
 
 /**
- * Build GoCardless request headers
+ * Fetch GoCardless Access Token from AppConfig
  */
-function buildHeaders() {
+async function getGoCardlessAccessToken() {
+  const config = await AppConfig.findOne({
+    where: { key: "GOCARDLESS_ACCESS_TOKEN" },
+  });
+  if (!config || !config.value) {
+    throw new Error("Missing GOCARDLESS_ACCESS_TOKEN in AppConfig.");
+  }
+  return config.value;
+}
+
+/**
+ * Build GoCardless request headers (AppConfig version)
+ */
+async function buildHeaders() {
+  const accessToken = await getGoCardlessAccessToken();
   const headers = new Headers();
   headers.append("Content-Type", "application/json");
-  headers.append("Authorization", `Bearer ${process.env.GOCARDLESS_ACCESS_TOKEN}`);
+  headers.append("Authorization", `Bearer ${accessToken}`);
   headers.append("GoCardless-Version", API_VERSION);
   return headers;
 }
@@ -18,7 +33,7 @@ function buildHeaders() {
  */
 async function handleResponse(response) {
   const result = await response.json().catch(() => ({}));
-  console.log(`result - `, result);
+  console.log("result -", result);
   if (!response.ok) {
     const errorDetails = JSON.stringify(result, null, 2);
     console.error("❌ API Error:", errorDetails);
@@ -70,7 +85,7 @@ async function createCustomer({
 
     const response = await fetch(`${GOCARDLESS_API}/customers`, {
       method: "POST",
-      headers: buildHeaders(),
+      headers: await buildHeaders(),
       body: JSON.stringify(body),
     });
 
@@ -78,7 +93,8 @@ async function createCustomer({
     if (!status) {
       return {
         status: false,
-        message: "Unable to create customer. Please check details and try again.",
+        message:
+          "Unable to create customer. Please check details and try again.",
         error,
       };
     }
@@ -99,29 +115,11 @@ async function createCustomer({
       iban,
     });
 
-    // if (!customerBankAccountRes.status) {
-    //   if (DEBUG) console.log("❌ Bank account creation failed. Rolling back customer...");
-
-    //   const removeCustomerRes = await removeCustomer(customer.id);
-
-    //   if (!removeCustomerRes.status) {
-    //     return {
-    //       status: false,
-    //       message:
-    //         "Customer created but bank account linking failed. Also failed to roll back the customer record. Please contact support.",
-    //       error: customerBankAccountRes.error || "Unknown bank account error",
-    //     };
-    //   }
-
-    //   return {
-    //     status: false,
-    //     message:
-    //       "Customer creation succeeded, but bank account setup failed. The customer record has been rolled back.",
-    //     error: customerBankAccountRes.error || "Unknown bank account error",
-    //   };
-    // }
     if (!customerBankAccountRes.status) {
-      if (DEBUG) console.log("❌ Bank account creation failed. Attempting to remove created customer...");
+      if (DEBUG)
+        console.log(
+          "❌ Bank account creation failed. Attempting to remove created customer..."
+        );
 
       const removeCustomerRes = await removeCustomer(customer.id);
 
@@ -136,10 +134,7 @@ async function createCustomer({
 
       return {
         status: false,
-        // message:
-        //   "Customer was created successfully, but linking the bank account failed. Please try again later.",
-        message:
-          "Incorrect account details",
+        message: "Incorrect account details",
         error: customerBankAccountRes.error || "Unknown bank account error",
       };
     }
@@ -183,10 +178,6 @@ async function createCustomerBankAccount({
         account_holder_name,
         account_number,
         branch_code,
-        // Optional fields:
-        // bank_code,
-        // account_type,
-        // iban,
         links: { customer },
       },
     };
@@ -195,7 +186,7 @@ async function createCustomerBankAccount({
 
     const response = await fetch(`${GOCARDLESS_API}/customer_bank_accounts`, {
       method: "POST",
-      headers: buildHeaders(),
+      headers: await buildHeaders(),
       body: JSON.stringify(body),
     });
 
@@ -233,7 +224,7 @@ async function createCustomerBankAccount({
 async function removeCustomer(customerId) {
   try {
     if (DEBUG) console.log("🔹 [Remove] Step 1: Preparing headers...");
-    const headers = buildHeaders();
+    const headers = await buildHeaders();
 
     if (DEBUG) console.log("✅ Headers ready:", headers);
 
@@ -259,7 +250,6 @@ async function removeCustomer(customerId) {
 
     if (DEBUG) console.log("✅ Customer deleted successfully:", customerId);
 
-    if (DEBUG) console.log("🔹 [Remove] Step 4: Returning result...");
     return {
       status: true,
       message: `Customer with ID: ${customerId} deleted successfully.`,

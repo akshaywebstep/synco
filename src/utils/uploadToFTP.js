@@ -104,16 +104,33 @@
 const ftp = require("basic-ftp");
 const fs = require("fs");
 const path = require("path");
+const { AppConfig } = require("../models"); // adjust path if needed
 
 const DEBUG = process.env.DEBUG === "true";
 
-const ftpConfig = {
-    host: process.env.FTP_HOST,
-    user: process.env.FTP_USER,
-    password: process.env.FTP_PASSWORD,
-    secure: false,
-    publicUrlBase: process.env.FTP_FILE_HOST || "https://webstepdev.com/demo/syncoUploads",
-};
+/**
+ * Load FTP configuration from AppConfig
+ */
+async function getFTPConfig() {
+    const keys = ["FTP_HOST", "FTP_USER", "FTP_PASSWORD", "FTP_FILE_HOST"];
+    const configs = await AppConfig.findAll({ where: { key: keys } });
+
+    const configMap = {};
+    for (const c of configs) configMap[c.key] = c.value;
+
+    if (!configMap.FTP_HOST || !configMap.FTP_USER || !configMap.FTP_PASSWORD) {
+        throw new Error("Missing FTP configuration in AppConfig.");
+    }
+
+    return {
+        host: configMap.FTP_HOST,
+        user: configMap.FTP_USER,
+        password: configMap.FTP_PASSWORD,
+        secure: false,
+        publicUrlBase:
+            configMap.FTP_FILE_HOST || "https://webstepdev.com/demo/syncoUploads",
+    };
+}
 
 // -------------------- Upload --------------------
 async function uploadToFTP(localPath, remoteFilePath) {
@@ -121,6 +138,8 @@ async function uploadToFTP(localPath, remoteFilePath) {
     client.ftp.verbose = DEBUG;
 
     try {
+        const ftpConfig = await getFTPConfig();
+
         if (DEBUG) console.log("🔑 Connecting to FTP for upload...");
         await client.access({
             host: ftpConfig.host,
@@ -144,7 +163,8 @@ async function uploadToFTP(localPath, remoteFilePath) {
             }
         }
 
-        if (DEBUG) console.log(`⬆️ Uploading: ${localPath} → ${remoteFilePath}`);
+        if (DEBUG)
+            console.log(`⬆️ Uploading: ${localPath} → ${remoteFilePath}`);
         await client.uploadFrom(localPath, fileName);
 
         await client.close();
@@ -152,10 +172,11 @@ async function uploadToFTP(localPath, remoteFilePath) {
         const publicUrl = `${ftpConfig.publicUrlBase}/${folders.join("/")}/${fileName}`;
         if (DEBUG) console.log("🌍 Public URL:", publicUrl);
         return publicUrl.replace(/\\/g, "/");
-
     } catch (err) {
         console.error("❌ FTP upload failed:", err);
-        try { await client.close(); } catch { }
+        try {
+            await client.close();
+        } catch { }
         return null;
     }
 }
@@ -168,6 +189,8 @@ async function downloadFromFTP(fileUrl, localPath) {
     client.ftp.verbose = DEBUG;
 
     try {
+        const ftpConfig = await getFTPConfig();
+
         if (DEBUG) console.log("🔑 Connecting to FTP for download...");
         await client.access({
             host: ftpConfig.host,
@@ -187,7 +210,6 @@ async function downloadFromFTP(fileUrl, localPath) {
         await client.downloadTo(localPath, urlPath);
 
         return localPath;
-
     } catch (err) {
         console.error("❌ FTP download failed:", err);
         throw err;

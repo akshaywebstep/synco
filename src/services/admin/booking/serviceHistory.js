@@ -12,6 +12,7 @@ const {
   PaymentPlan,
   PaymentGroupHasPlan,
   Term,
+  AppConfig,
 } = require("../../../models");
 const { sequelize } = require("../../../models");
 const { Op } = require("sequelize");
@@ -358,13 +359,13 @@ exports.getBookingById = async (id, adminId) => {
   // Only apply bookedBy filter if adminId is valid
   const adminIds = Array.isArray(adminId)
     ? adminId.filter((id) => {
-        const isValid = !isNaN(Number(id));
-        console.log(`🧮 Checking adminId: ${id} → valid: ${isValid}`);
-        return isValid;
-      })
+      const isValid = !isNaN(Number(id));
+      console.log(`🧮 Checking adminId: ${id} → valid: ${isValid}`);
+      return isValid;
+    })
     : !isNaN(Number(adminId))
-    ? [Number(adminId)]
-    : [];
+      ? [Number(adminId)]
+      : [];
 
   console.log("📋 Valid adminIds array after filtering:", adminIds);
 
@@ -479,28 +480,28 @@ exports.getBookingById = async (id, adminId) => {
 
     const termGroups = termGroupIds.length
       ? await TermGroup.findAll({
-          where: { id: termGroupIds, createdBy: creatorId },
-        })
+        where: { id: termGroupIds, createdBy: creatorId },
+      })
       : [];
 
     const terms = termGroupIds.length
       ? await Term.findAll({
-          where: {
-            termGroupId: { [Op.in]: termGroupIds },
-            createdBy: creatorId,
-          },
-          attributes: [
-            "id",
-            "termName",
-            "day",
-            "startDate",
-            "endDate",
-            "termGroupId",
-            "exclusionDates",
-            "totalSessions",
-            "sessionsMap",
-          ],
-        })
+        where: {
+          termGroupId: { [Op.in]: termGroupIds },
+          createdBy: creatorId,
+        },
+        attributes: [
+          "id",
+          "termName",
+          "day",
+          "startDate",
+          "endDate",
+          "termGroupId",
+          "exclusionDates",
+          "totalSessions",
+          "sessionsMap",
+        ],
+      })
       : [];
 
     // Parse the terms safely
@@ -807,22 +808,29 @@ exports.updateBooking = async (payload, adminId, id) => {
         const firstStudentId = booking.students?.[0]?.id;
 
         if (paymentType === "card") {
-          if (
-            !process.env.PAY360_INST_ID ||
-            !process.env.PAY360_API_USERNAME ||
-            !process.env.PAY360_API_PASSWORD
-          ) {
-            throw new Error("Pay360 credentials not configured.");
+          // ✅ Fetch Pay360 credentials dynamically from AppConfig
+          const [instIdConfig, usernameConfig, passwordConfig] = await Promise.all([
+            AppConfig.findOne({ where: { key: "PAY360_INST_ID" }, transaction: t }),
+            AppConfig.findOne({ where: { key: "PAY360_API_USERNAME" }, transaction: t }),
+            AppConfig.findOne({ where: { key: "PAY360_API_PASSWORD" }, transaction: t }),
+          ]);
+
+          if (!instIdConfig || !usernameConfig || !passwordConfig) {
+            throw new Error("Pay360 credentials not configured in AppConfig.");
           }
 
+          const PAY360_INST_ID = instIdConfig.value;
+          const PAY360_API_USERNAME = usernameConfig.value;
+          const PAY360_API_PASSWORD = passwordConfig.value;
+
+          // ✅ Build payment payload
           const paymentPayload = {
             transaction: {
               currency: "GBP",
               amount: price,
               merchantRef,
-              description: `${venue?.name || "Venue"} - ${
-                classSchedule?.className || "Class"
-              }`,
+              description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+                }`,
               commerceType: "ECOM",
             },
             paymentMethod: {
@@ -835,11 +843,15 @@ exports.updateBooking = async (payload, adminId, id) => {
             },
           };
 
+          // ✅ Construct API URL dynamically
+          const url = `https://api.mite.pay360.com/acceptor/rest/transactions/${PAY360_INST_ID}/payment`;
+
+          // ✅ Create Basic Auth header using DB credentials
           const authHeader = Buffer.from(
-            `${process.env.PAY360_API_USERNAME}:${process.env.PAY360_API_PASSWORD}`
+            `${PAY360_API_USERNAME}:${PAY360_API_PASSWORD}`
           ).toString("base64");
 
-          const url = `https://api.mite.pay360.com/acceptor/rest/transactions/${process.env.PAY360_INST_ID}/payment`;
+          // ✅ Send request
           const response = await axios.post(url, paymentPayload, {
             headers: {
               "Content-Type": "application/json",
@@ -847,16 +859,18 @@ exports.updateBooking = async (payload, adminId, id) => {
             },
           });
 
+          // ✅ Extract transaction status safely
           const txnStatus = response.data?.transaction?.status?.toLowerCase();
           paymentStatusFromGateway =
             txnStatus === "success"
               ? "paid"
               : txnStatus === "pending"
-              ? "pending"
-              : txnStatus === "declined"
-              ? "failed"
-              : "unknown";
-        } else if (paymentType === "bank") {
+                ? "pending"
+                : txnStatus === "declined"
+                  ? "failed"
+                  : "unknown";
+        }
+        else if (paymentType === "bank") {
           // ⚠️ Fixed bug: replaced 'data' references with 'payload'
           const customerPayload = {
             email:
@@ -877,14 +891,13 @@ exports.updateBooking = async (payload, adminId, id) => {
           if (!createCustomerRes.status)
             throw new Error(
               createCustomerRes.message ||
-                "Failed to create GoCardless customer."
+              "Failed to create GoCardless customer."
             );
 
           const billingRequestPayload = {
             customerId: createCustomerRes.customer.id,
-            description: `${venue?.name || "Venue"} - ${
-              classSchedule?.className || "Class"
-            }`,
+            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+              }`,
             amount: price,
             scheme: "faster_payments",
             currency: "GBP",
@@ -904,7 +917,7 @@ exports.updateBooking = async (payload, adminId, id) => {
             await removeCustomer(createCustomerRes.customer.id);
             throw new Error(
               createBillingRequestRes.message ||
-                "Failed to create billing request."
+              "Failed to create billing request."
             );
           }
         }
@@ -923,9 +936,8 @@ exports.updateBooking = async (payload, adminId, id) => {
             amount: paymentPlan.price,
             paymentStatus: paymentStatusFromGateway,
             merchantRef,
-            description: `${venue?.name || "Venue"} - ${
-              classSchedule?.className || "Class"
-            }`,
+            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+              }`,
           },
           { transaction: t }
         );

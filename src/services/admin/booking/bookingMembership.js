@@ -10,8 +10,10 @@ const {
   PaymentPlan,
   Admin,
   CancelBooking,
+  AppConfig,
 } = require("../../../models");
 const { sequelize } = require("../../../models");
+
 const axios = require("axios");
 const { Op } = require("sequelize");
 const bcrypt = require("bcrypt");
@@ -689,11 +691,28 @@ exports.createBooking = async (data, options) => {
             },
           };
 
-          const url = `https://api.mite.pay360.com/acceptor/rest/transactions/${process.env.PAY360_INST_ID}/payment`;
+          // ✅ Fetch Pay360 credentials dynamically from AppConfig
+          const [instIdConfig, usernameConfig, passwordConfig] = await Promise.all([
+            AppConfig.findOne({ where: { key: "PAY360_INST_ID" }, transaction: t }),
+            AppConfig.findOne({ where: { key: "PAY360_API_USERNAME" }, transaction: t }),
+            AppConfig.findOne({ where: { key: "PAY360_API_PASSWORD" }, transaction: t }),
+          ]);
+
+          if (!instIdConfig || !usernameConfig || !passwordConfig) {
+            throw new Error("Missing Pay360 configuration in AppConfig table.");
+          }
+
+          const PAY360_INST_ID = instIdConfig.value;
+          const PAY360_API_USERNAME = usernameConfig.value;
+          const PAY360_API_PASSWORD = passwordConfig.value;
+
+          // ✅ Construct Pay360 API URL dynamically
+          const url = `https://api.mite.pay360.com/acceptor/rest/transactions/${PAY360_INST_ID}/payment`;
 
           try {
+            // ✅ Build Basic Auth header using DB values
             const authHeader = Buffer.from(
-              `${process.env.PAY360_API_USERNAME}:${process.env.PAY360_API_PASSWORD}`
+              `${PAY360_API_USERNAME}:${PAY360_API_PASSWORD}`
             ).toString("base64");
 
             response = await axios.post(url, paymentPayload, {
@@ -2678,12 +2697,25 @@ exports.retryBookingPayment = async (bookingId, newData) => {
 
         console.log("📦 bank Payload:", gcPayload);
 
+        // ✅ Fetch GoCardless access token from AppConfig
+        const gcAccessTokenConfig = await AppConfig.findOne({
+          where: { key: "GOCARDLESS_ACCESS_TOKEN" },
+          transaction: t,
+        });
+
+        if (!gcAccessTokenConfig || !gcAccessTokenConfig.value) {
+          throw new Error("Missing GOCARDLESS_ACCESS_TOKEN in AppConfig table.");
+        }
+
+        const GOCARDLESS_ACCESS_TOKEN = gcAccessTokenConfig.value;
+
+        // ✅ Make GoCardless API call
         const response = await axios.post(
           "https://api-sandbox.gocardless.com/billing_requests",
           gcPayload,
           {
             headers: {
-              Authorization: `Bearer ${process.env.GOCARDLESS_ACCESS_TOKEN}`,
+              Authorization: `Bearer ${GOCARDLESS_ACCESS_TOKEN}`, // ✅ from DB, not env
               "Content-Type": "application/json",
               "GoCardless-Version": "2015-07-06",
             },
@@ -2738,9 +2770,32 @@ exports.retryBookingPayment = async (bookingId, newData) => {
 
         console.log("📦 Pay360 Payload:", paymentPayload);
 
-        const url = `https://api.mite.pay360.com/acceptor/rest/transactions/${process.env.PAY360_INST_ID}/payment`;
+        // const url = `https://api.mite.pay360.com/acceptor/rest/transactions/${process.env.PAY360_INST_ID}/payment`;
+        // const authHeader = Buffer.from(
+        //   `${process.env.PAY360_API_USERNAME}:${process.env.PAY360_API_PASSWORD}`
+        // ).toString("base64");
+
+        // ✅ Fetch Pay360 credentials from AppConfig
+        const [instIdConfig, usernameConfig, passwordConfig] = await Promise.all([
+          AppConfig.findOne({ where: { key: "PAY360_INST_ID" }, transaction: t }),
+          AppConfig.findOne({ where: { key: "PAY360_API_USERNAME" }, transaction: t }),
+          AppConfig.findOne({ where: { key: "PAY360_API_PASSWORD" }, transaction: t }),
+        ]);
+
+        if (!instIdConfig || !usernameConfig || !passwordConfig) {
+          throw new Error("Missing Pay360 configuration in AppConfig table.");
+        }
+
+        const PAY360_INST_ID = instIdConfig.value;
+        const PAY360_API_USERNAME = usernameConfig.value;
+        const PAY360_API_PASSWORD = passwordConfig.value;
+
+        // ✅ Construct Pay360 API URL dynamically
+        const url = `https://api.mite.pay360.com/acceptor/rest/transactions/${PAY360_INST_ID}/payment`;
+
+        // ✅ Encode Basic Auth Header
         const authHeader = Buffer.from(
-          `${process.env.PAY360_API_USERNAME}:${process.env.PAY360_API_PASSWORD}`
+          `${PAY360_API_USERNAME}:${PAY360_API_PASSWORD}`
         ).toString("base64");
 
         const response = await axios.post(url, paymentPayload, {

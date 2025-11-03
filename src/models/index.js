@@ -6,6 +6,8 @@ const models = {
   Admin: require("./admin/Admin"),
   EmailConfig: require("./Email"),
 
+  AppConfig: require("./AppConfig"),
+
   // 📋 Activity & Logs
   ActivityLog: require("./admin/ActivityLog"),
 
@@ -93,6 +95,7 @@ Object.values(models).forEach((model) => {
 // ====================== 🔗 Manual Relationships ====================== //
 
 const {
+  AppConfig,
   Admin,
   AdminRole,
   AdminRolePermission,
@@ -320,6 +323,7 @@ OneToOneBooking.belongsTo(models.oneToOneLeads, {
 
 // ====================== 📦 Module Exports ====================== //
 module.exports = {
+  AppConfig,
   sequelize,
   Admin,
   AdminRole,
