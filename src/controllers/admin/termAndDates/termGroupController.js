@@ -36,13 +36,13 @@ exports.createTermGroup = async (req, res) => {
     });
     await logActivity(req, PANEL, MODULE, "create", result, result.status);
     // ✅ Notification
-    await createNotification(
-      req,
-      "Term Group Created",
-      `Term Group '${name}' was created by ${req?.admin?.firstName || "Admin"
-      }.`,
-      "System"
-    );
+    // await createNotification(
+    //   req,
+    //   "Term Group Created",
+    //   `Term Group '${name}' was created by ${req?.admin?.firstName || "Admin"
+    //   }.`,
+    //   "System"
+    // );
     return res.status(result.status ? 201 : 500).json(result);
   } catch (error) {
     console.error("❌ Error in createTermGroup:", error);
@@ -144,15 +144,13 @@ exports.updateGroup = async (req, res) => {
     const result = await TermGroupService.updateGroup(id, { name }, adminId);
     await logActivity(req, PANEL, MODULE, "update", result, result.status);
 
-    if (result.status) {
-      await createNotification(
-        req,
-        "Term Group Updated",
-        `Term Group '${name}' was updated by ${req?.admin?.firstName || "Admin"
-        }.`,
-        "System"
-      );
-    }
+    await createNotification(
+      req,
+      "Term Group Updated",
+      `Term Group '${name}' was updated by ${req?.admin?.firstName || "Admin"
+      }.`,
+      "System"
+    );
 
     return res.status(result.status ? 200 : 404).json(result);
   } catch (error) {
