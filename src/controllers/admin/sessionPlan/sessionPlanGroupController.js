@@ -1533,7 +1533,7 @@ exports.updateSessionPlanGroup = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Group Updated",
-     `The session plan group '${updatePayload.groupName}' was updated by ${req?.admin ? `${req.admin.firstName} ${req.admin.lastName}`.trim() : "Admin"}.`,
+      `The session plan group '${updatePayload.groupName}' was updated by ${req?.admin ? `${req.admin.firstName} ${req.admin.lastName}`.trim() : "Admin"}.`,
       "System"
     );
 
@@ -1618,7 +1618,7 @@ exports.deleteSessionPlanGroup = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Group Deleted",
-     `Session Plan Group "${existing.groupName}" was deleted by ${req?.admin ? `${req.admin.firstName} ${req.admin.lastName}`.trim() : "Admin"}.`,
+      `Session Plan Group "${existing.groupName}" was deleted by ${req?.admin ? `${req.admin.firstName} ${req.admin.lastName}`.trim() : "Admin"}.`,
       "System"
     );
 
@@ -1670,20 +1670,32 @@ exports.deleteSessionPlanGroupLevel = async (req, res) => {
         message: result.message || `Failed to delete '${levelKey}'`,
       });
     }
+    // 🟢 Fetch the group name for notification
+    const group = await SessionPlanGroup.findByPk(id, {
+      attributes: ["groupName"],
+    });
+    const groupName = group?.groupName || "Unknown Group";
 
+    // 🟢 Build admin display name
+    const deletedBy = req?.admin
+      ? `${req.admin.firstName} ${req.admin.lastName}`.trim()
+      : "Admin";
+
+    // 🟢 Log activity
     await logActivity(
       req,
       PANEL,
       MODULE,
       "delete-level",
-      { oneLineMessage: `Deleted level '${levelKey}' for group ID: ${id}` },
+      { oneLineMessage: `Deleted level '${levelKey}' from group '${groupName}' (ID: ${id})` },
       true
     );
 
+    // 🟢 Create notification with group name + level
     await createNotification(
       req,
       "Session Plan Level Deleted",
-     `Level '${levelKey}' from Session Plan Group was deleted by ${req?.admin ? `${req.admin.firstName} ${req.admin.lastName}`.trim() : "Admin"}.`,
+      `Level '${levelKey}' from Session Plan Group '${groupName}' was deleted by ${deletedBy}.`,
       "System"
     );
 

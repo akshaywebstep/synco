@@ -3,6 +3,7 @@ const {
   createNotification,
 } = require("../../../utils/admin/notificationHelper");
 const CancelClassService = require("../../../services/admin/classSchedule/cancelSession.js");
+const getClassByIdWithFullDetails = require("../../../services/admin/classSchedule/classSchedule.js");
 const ClassScheduleService = require("../../../services/admin/classSchedule/classSchedule.js");
 
 const DEBUG = process.env.DEBUG === "true";
@@ -130,8 +131,11 @@ exports.cancelClassSession = async (req, res) => {
     await logActivity(req, PANEL, MODULE, "cancel", cancelResult, hasSuccess);
 
     if (hasSuccess) {
-      // Fetch class details to get class name
-      const classDetails = await ClassScheduleService.getClassScheduleById(classScheduleId);
+      // Try to get createdBy safely (admin or from map result)
+      const createdBy = req?.admin?.id || classScheduleTermMapResult?.mapEntry?.createdBy;
+
+      // Fetch class details including className
+      const classDetails = await ClassScheduleService.getClassByIdWithFullDetails(classScheduleId, createdBy);
       const className = classDetails?.data?.className || "Unknown Class";
 
       // Get admin name (first + last, or fallback to "Admin")
@@ -139,7 +143,7 @@ exports.cancelClassSession = async (req, res) => {
         ? `${req.admin.firstName} ${req.admin.lastName}`.trim()
         : "Admin";
 
-      // Create notification with dynamic details
+      // Create notification with proper details
       await createNotification(
         req,
         "Class Session Cancelled",
