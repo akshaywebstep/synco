@@ -62,7 +62,7 @@ const SessionPlanGroup = sequelize.define(
       defaultValue: false,
     },
     type: {
-      type: DataTypes.ENUM("weekly_classes","one_to_one", "birthday", "library"),
+      type: DataTypes.ENUM("weekly_classes","one_to_one", "birthday_party", "library"),
       allowNull: false,
       defaultValue: 'weekly_classes',
     },

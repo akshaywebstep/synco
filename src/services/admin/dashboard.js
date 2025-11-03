@@ -86,15 +86,24 @@ exports.getDashboardStats = async (
     // --- Admin schedules (all-time or filtered)
     const scheduleWhere = { createdBy: adminId };
 
-    if (fromDate && toDate) {
-      scheduleWhere.createdAt = {
-        [Op.between]: [
-          new Date(fromDate.setHours(0, 0, 0, 0)),
-          new Date(toDate.setHours(23, 59, 59, 999)),
-        ],
-      };
-    }
+    // 🆕 Handle fromDate/toDate logic (supports single-date filtering)
+    if (fromDate && !toDate) {
+      // Only fromDate provided → use that whole day
+      const start = new Date(fromDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(fromDate);
+      end.setHours(23, 59, 59, 999);
 
+      scheduleWhere.createdAt = { [Op.between]: [start, end] };
+    } else if (fromDate && toDate) {
+      // Both provided → use the full range
+      const start = new Date(fromDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(toDate);
+      end.setHours(23, 59, 59, 999);
+
+      scheduleWhere.createdAt = { [Op.between]: [start, end] };
+    }
     const adminSchedules = await ClassSchedule.findAll({
       where: scheduleWhere,
       attributes: ["id", "capacity", "createdAt"],
@@ -115,10 +124,20 @@ exports.getDashboardStats = async (
       classScheduleId: { [Op.in]: adminClassScheduleIds },
     };
 
-    if (fromDate && toDate) {
-      bookingWhere.createdAt = {
-        [Op.between]: [new Date(fromDate), new Date(toDate)],
-      };
+    if (fromDate && !toDate) {
+      const start = new Date(fromDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(fromDate);
+      end.setHours(23, 59, 59, 999);
+
+      bookingWhere.createdAt = { [Op.between]: [start, end] };
+    } else if (fromDate && toDate) {
+      const start = new Date(fromDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(toDate);
+      end.setHours(23, 59, 59, 999);
+
+      bookingWhere.createdAt = { [Op.between]: [start, end] };
     }
 
     const adminBookings = await Booking.findAll({

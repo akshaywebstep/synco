@@ -113,6 +113,10 @@ router.use("/one-to-one", require("./oneToOneRoutes/sessionExerciseRoutes"));
 router.use("/one-to-one", require("./oneToOneRoutes/oneToOneLeadRoutes"));
 router.use("/one-to-one", require("./oneToOneRoutes/oneToOneBookingRoutes"));
 
+// birthday party base route
+router.use("/birthday-party", require("./birthdayPartyRoutes/sessionExerciseRoutes"));
+router.use("/birthday-party", require("./birthdayPartyRoutes/sessionPlanLibraryRoutes"));
+
 const {
   listComments,
 } = require("../../controllers/admin/booking/commentController");

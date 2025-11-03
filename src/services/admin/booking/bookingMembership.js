@@ -629,14 +629,13 @@ exports.createBooking = async (data, options) => {
           if (!createCustomerRes.status)
             throw new Error(
               createCustomerRes.message ||
-                "Failed to create GoCardless customer."
+              "Failed to create GoCardless customer."
             );
 
           const billingRequestPayload = {
             customerId: createCustomerRes.customer.id,
-            description: `${venue?.name || "Venue"} - ${
-              classSchedule?.className || "Class"
-            }`,
+            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+              }`,
             amount: planPrice, // ✅ use plan price
             scheme: "faster_payments",
             currency: "GBP",
@@ -657,7 +656,7 @@ exports.createBooking = async (data, options) => {
             await removeCustomer(createCustomerRes.customer.id);
             throw new Error(
               createBillingRequestRes.message ||
-                "Failed to create billing request."
+              "Failed to create billing request."
             );
           }
 
@@ -676,9 +675,8 @@ exports.createBooking = async (data, options) => {
               currency: "GBP",
               amount: planPrice, // ✅ use plan price
               merchantRef,
-              description: `${venue?.name || "Venue"} - ${
-                classSchedule?.className || "Class"
-              }`,
+              description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+                }`,
               commerceType: "ECOM",
             },
             paymentMethod: {
@@ -724,10 +722,10 @@ exports.createBooking = async (data, options) => {
             txnStatus === "success"
               ? "paid"
               : txnStatus === "pending"
-              ? "pending"
-              : txnStatus === "declined"
-              ? "failed"
-              : txnStatus || "unknown";
+                ? "pending"
+                : txnStatus === "declined"
+                  ? "failed"
+                  : txnStatus || "unknown";
         }
 
         console.log("🔍 [DEBUG] Response data:", response?.data);
@@ -759,8 +757,7 @@ exports.createBooking = async (data, options) => {
               gatewayResponse?.transaction?.merchantRef || merchantRef,
             description:
               gatewayResponse?.transaction?.description ||
-              `${venue?.name || "Venue"} - ${
-                classSchedule?.className || "Class"
+              `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
               }`,
             commerceType: "ECOM",
             gatewayResponse,
@@ -864,9 +861,12 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
       whereBooking.bookedBy = { [Op.in]: bookedByArray };
     }
     if (filters.duration) {
-      whereBooking["$paymentPlan.duration$"] = {
-        [Op.like]: `%${filters.duration}%`,
-      };
+      const keyword = `%${filters.duration}%`;
+
+      whereBooking[Op.or] = [
+        { "$paymentPlan.duration$": { [Op.like]: keyword } },
+        { "$paymentPlan.interval$": { [Op.like]: keyword } },
+      ];
     }
 
     // ✅ Date filters
@@ -1013,29 +1013,29 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
 
         const paymentData = payment
           ? {
-              id: payment.id,
-              bookingId: payment.bookingId,
-              firstName: payment.firstName,
-              lastName: payment.lastName,
-              email: payment.email,
-              billingAddress: payment.billingAddress,
-              cardHolderName: payment.cardHolderName,
-              cv2: payment.cv2,
-              expiryDate: payment.expiryDate,
-              paymentType: payment.paymentType,
-              pan: payment.pan,
-              paymentStatus: payment.paymentStatus,
-              referenceId: payment.referenceId,
-              currency: payment.currency,
-              merchantRef: payment.merchantRef,
-              description: payment.description,
-              commerceType: payment.commerceType,
-              createdAt: payment.createdAt,
-              updatedAt: payment.updatedAt,
-              gatewayResponse: parsedGatewayResponse,
-              transactionMeta: parsedTransactionMeta,
-              totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
-            }
+            id: payment.id,
+            bookingId: payment.bookingId,
+            firstName: payment.firstName,
+            lastName: payment.lastName,
+            email: payment.email,
+            billingAddress: payment.billingAddress,
+            cardHolderName: payment.cardHolderName,
+            cv2: payment.cv2,
+            expiryDate: payment.expiryDate,
+            paymentType: payment.paymentType,
+            pan: payment.pan,
+            paymentStatus: payment.paymentStatus,
+            referenceId: payment.referenceId,
+            currency: payment.currency,
+            merchantRef: payment.merchantRef,
+            description: payment.description,
+            commerceType: payment.commerceType,
+            createdAt: payment.createdAt,
+            updatedAt: payment.updatedAt,
+            gatewayResponse: parsedGatewayResponse,
+            transactionMeta: parsedTransactionMeta,
+            totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
+          }
           : null;
 
         const { venue: _venue, ...bookingData } = booking.dataValues;
@@ -1059,23 +1059,25 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
     // Student filter
     let finalBookings = parsedBookings;
     if (filters.studentName) {
-      const keyword = filters.studentName.toLowerCase();
+      const keyword = filters.studentName.toLowerCase().trim();
       finalBookings = finalBookings
         .map((b) => {
-          const matchedStudents = b.students.filter(
-            (s) =>
-              s.studentFirstName?.toLowerCase().includes(keyword) ||
-              s.studentLastName?.toLowerCase().includes(keyword)
-          );
+          const matchedStudents = b.students.filter((s) => {
+            const firstName = s.studentFirstName?.toLowerCase() || "";
+            const lastName = s.studentLastName?.toLowerCase() || "";
+            const fullName = `${firstName} ${lastName}`.trim();
+
+            return (
+              firstName.includes(keyword) ||
+              lastName.includes(keyword) ||
+              fullName.includes(keyword)
+            );
+          });
 
           if (matchedStudents.length > 0) {
             return {
               ...b,
-              // ✅ Always keep students as an array
-              students:
-                matchedStudents.length === 1
-                  ? [matchedStudents[0]]
-                  : matchedStudents,
+              students: matchedStudents,
             };
           }
           return null;
@@ -1163,7 +1165,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
           return (
             acc +
             ((plan.price + (plan.joiningFee || 0)) / plan.duration) *
-              studentsCount
+            studentsCount
           );
         }
         return acc;
@@ -1263,12 +1265,43 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
     //   whereBooking["$paymentPlan.title$"] = filters.flexiPlan;
     // }
     if (filters.studentName) {
-      const keyword = filters.studentName.toLowerCase();
+      const keyword = filters.studentName.toLowerCase().trim();
+
+      // ✅ Handles first name, last name, or full name (e.g., "akshay kumar")
       whereBooking[Op.or] = [
         { "$students.studentFirstName$": { [Op.like]: `%${keyword}%` } },
         { "$students.studentLastName$": { [Op.like]: `%${keyword}%` } },
+        {
+          [Op.and]: [
+            {
+              "$students.studentFirstName$": {
+                [Op.ne]: null,
+              },
+            },
+            {
+              "$students.studentLastName$": {
+                [Op.ne]: null,
+              },
+            },
+            Sequelize.where(
+              Sequelize.fn(
+                "LOWER",
+                Sequelize.fn(
+                  "CONCAT",
+                  Sequelize.col("students.studentFirstName"),
+                  " ",
+                  Sequelize.col("students.studentLastName")
+                )
+              ),
+              {
+                [Op.like]: `%${keyword}%`,
+              }
+            ),
+          ],
+        },
       ];
     }
+
     // ✅ Date filters
     if (filters.dateBooked) {
       const start = new Date(filters.dateBooked + " 00:00:00");
@@ -1401,29 +1434,29 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
       // Combine all payment info into a fully structured object
       const paymentData = payment
         ? {
-            id: payment.id,
-            bookingId: payment.bookingId,
-            firstName: payment.firstName,
-            lastName: payment.lastName,
-            email: payment.email,
-            billingAddress: payment.billingAddress,
-            cardHolderName: payment.cardHolderName,
-            cv2: payment.cv2,
-            expiryDate: payment.expiryDate,
-            paymentType: payment.paymentType,
-            pan: payment.pan,
-            paymentStatus: payment.paymentStatus,
-            referenceId: payment.referenceId,
-            currency: payment.currency,
-            merchantRef: payment.merchantRef,
-            description: payment.description,
-            commerceType: payment.commerceType,
-            createdAt: payment.createdAt,
-            updatedAt: payment.updatedAt,
-            gatewayResponse: parsedGatewayResponse, // fully parsed JSON
-            transactionMeta: parsedTransactionMeta, // fully parsed JSON
-            totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
-          }
+          id: payment.id,
+          bookingId: payment.bookingId,
+          firstName: payment.firstName,
+          lastName: payment.lastName,
+          email: payment.email,
+          billingAddress: payment.billingAddress,
+          cardHolderName: payment.cardHolderName,
+          cv2: payment.cv2,
+          expiryDate: payment.expiryDate,
+          paymentType: payment.paymentType,
+          pan: payment.pan,
+          paymentStatus: payment.paymentStatus,
+          referenceId: payment.referenceId,
+          currency: payment.currency,
+          merchantRef: payment.merchantRef,
+          description: payment.description,
+          commerceType: payment.commerceType,
+          createdAt: payment.createdAt,
+          updatedAt: payment.updatedAt,
+          gatewayResponse: parsedGatewayResponse, // fully parsed JSON
+          transactionMeta: parsedTransactionMeta, // fully parsed JSON
+          totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
+        }
         : null;
 
       return {
@@ -1438,12 +1471,12 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
 
         bookedBy: booking.admin
           ? {
-              id: booking.admin.id,
-              firstName: booking.admin.firstName,
-              lastName: booking.admin.lastName,
-              email: booking.admin.email,
-              role: booking.admin.role,
-            }
+            id: booking.admin.id,
+            firstName: booking.admin.firstName,
+            lastName: booking.admin.lastName,
+            email: booking.admin.email,
+            role: booking.admin.role,
+          }
           : null,
 
         // totalStudents: students.length,
@@ -1453,12 +1486,12 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
 
         paymentPlanData: plan
           ? {
-              id: plan.id,
-              title: plan.title,
-              price: plan.price,
-              joiningFee: plan.joiningFee,
-              duration: plan.duration,
-            }
+            id: plan.id,
+            title: plan.title,
+            price: plan.price,
+            joiningFee: plan.joiningFee,
+            duration: plan.duration,
+          }
           : null,
 
         payment: paymentData,
@@ -2345,11 +2378,11 @@ exports.getWaitingList = async () => {
 
       const emergency = emergencyContactRaw
         ? {
-            emergencyFirstName: emergencyContactRaw.emergencyFirstName,
-            emergencyLastName: emergencyContactRaw.emergencyLastName,
-            emergencyPhoneNumber: emergencyContactRaw.emergencyPhoneNumber,
-            emergencyRelation: emergencyContactRaw.emergencyRelation,
-          }
+          emergencyFirstName: emergencyContactRaw.emergencyFirstName,
+          emergencyLastName: emergencyContactRaw.emergencyLastName,
+          emergencyPhoneNumber: emergencyContactRaw.emergencyPhoneNumber,
+          emergencyRelation: emergencyContactRaw.emergencyRelation,
+        }
         : null;
 
       return {
@@ -2527,13 +2560,13 @@ exports.getBookingsById = async (bookingId) => {
 
       paymentData: payment
         ? {
-            firstName: payment.firstName,
-            lastName: payment.lastName,
-            email: payment.email,
-            billingAddress: payment.billingAddress,
-            paymentStatus: payment.paymentStatus,
-            totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
-          }
+          firstName: payment.firstName,
+          lastName: payment.lastName,
+          email: payment.email,
+          billingAddress: payment.billingAddress,
+          paymentStatus: payment.paymentStatus,
+          totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
+        }
         : null,
 
       bookedByAdmin: booking.bookedByAdmin || null,
@@ -2623,9 +2656,8 @@ exports.retryBookingPayment = async (bookingId, newData) => {
             payment_request: {
               amount: Math.round(price * 100), // in pence
               currency: "GBP",
-              description: `Booking retry for ${venue?.name || "Venue"} - ${
-                classSchedule?.className || "Class"
-              }`,
+              description: `Booking retry for ${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+                }`,
               metadata: {
                 bookingId: String(booking.id), // must be string
                 retry: "true", // must be string
@@ -2697,9 +2729,8 @@ exports.retryBookingPayment = async (bookingId, newData) => {
             currency: "GBP",
             amount: price,
             merchantRef,
-            description: `${venue?.name || "Venue"} - ${
-              classSchedule?.className || "Class"
-            }`,
+            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+              }`,
             commerceType: "ECOM",
           },
           paymentMethod: { card: { pan, expiryDate, cardHolderName, cv2 } },
@@ -2783,9 +2814,8 @@ exports.retryBookingPayment = async (bookingId, newData) => {
           newData.payment.firstName || firstParent.parentFirstName || "Parent",
         lastName: newData.payment.lastName || firstParent.parentLastName || "",
         merchantRef,
-        description: `${venue?.name || "Venue"} - ${
-          classSchedule?.className || "Class"
-        }`,
+        description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+          }`,
         commerceType: "ECOM",
         email: newData.payment.email || firstParent.parentEmail || "",
         billingAddress: newData.payment.billingAddress || "",

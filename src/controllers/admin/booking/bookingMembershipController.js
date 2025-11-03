@@ -107,7 +107,7 @@ exports.createBooking = async (req, res) => {
       ) {
         try {
           incomingGatewayResponse = JSON.parse(incomingGatewayResponse);
-        } catch (_) {}
+        } catch (_) { }
       }
 
       formData.paymentResponse = incomingGatewayResponse || null;
@@ -204,8 +204,7 @@ exports.createBooking = async (req, res) => {
                 .replace(/{{studentLastName}}/g, student.studentLastName || "")
                 .replace(
                   /{{studentName}}/g,
-                  `${student.studentFirstName || ""} ${
-                    student.studentLastName || ""
+                  `${student.studentFirstName || ""} ${student.studentLastName || ""
                   }`
                 )
                 .replace(/{{venueName}}/g, venueName)
@@ -299,6 +298,7 @@ exports.getAllPaidBookings = async (req, res) => {
       duration: req.query.duration
         ? parseInt(req.query.duration, 10)
         : undefined,
+      interval: req.query.interval ? req.query.interval.trim() : undefined,
     };
 
     // ✅ Apply bookedBy filter
