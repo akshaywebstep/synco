@@ -16,7 +16,7 @@ let stripe;
       apiVersion: "2024-06-20",
     });
 
-    console.log("✅ Stripe initialized from AppConfig.");
+    // console.log("✅ Stripe initialized from AppConfig.");
   } catch (error) {
     console.error("❌ Failed to initialize Stripe:", error.message);
   }

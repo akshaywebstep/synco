@@ -70,7 +70,7 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
     // }
 
     // ✅ Support multiple types (e.g. "paid,trial" or array)
-     if (type) {
+    if (type) {
       let types = [];
 
       if (Array.isArray(type)) {
@@ -335,31 +335,27 @@ exports.getAllOnetoOneLeadsSales = async (
       return { status: false, message: "Invalid admin ID.", data: [] };
     }
 
-    const { fromDate, toDate, type, studentName } = filters;
-
-    // const whereLead = {};
-    // const whereBooking = {};
+    const { fromDate, toDate, type, studentName, agent, coach, packageInterest, source } = filters;
 
     const whereLead = { status: "active" }; // ✅ Only pending leads
     const whereBooking = { status: "active" }; // ✅ Only pending bookings
 
-    // ✅ If user is Super Admin — show all leads for their managed admins + self
+    // ✅ Super Admin → all admins under them (including self)
     if (superAdminId === adminId) {
-      // 🧩 Super Admin: fetch all admins under this super admin (including self)
       const managedAdmins = await Admin.findAll({
-        where: { superAdminId }, // ✅ correct column name
+        where: { superAdminId },
         attributes: ["id"],
       });
 
       const adminIds = managedAdmins.map((a) => a.id);
-      adminIds.push(superAdminId); // include the super admin themselves
-
+      adminIds.push(superAdminId); // include the super admin
       whereLead.createdBy = { [Op.in]: adminIds };
     } else {
-      // 🧩 Normal Admin: only see own leads
+      // ✅ Normal Admin → only their own leads
       whereLead.createdBy = adminId;
     }
 
+    // ✅ Date filter
     if (fromDate && toDate) {
       whereLead.createdAt = {
         [Op.between]: [
@@ -368,9 +364,35 @@ exports.getAllOnetoOneLeadsSales = async (
         ],
       };
     }
-
+    // ✅ Type filter
     if (type) {
-      whereBooking.type = { [Op.eq]: type.toLowerCase() }; // makes it case-insensitive friendly
+      whereBooking.type = { [Op.eq]: type.toLowerCase() };
+    }
+
+    // ✅ Agent filter
+    if (agent) {
+      const agentIds = agent.split(",").map((id) => Number(id.trim())).filter(Boolean);
+      if (agentIds.length > 0) {
+        whereLead.createdBy = { [Op.in]: agentIds };
+      }
+    }
+
+    // ✅ Source filter
+    if (source) {
+      whereLead.source = { [Op.eq]: source.toLowerCase() };
+    }
+
+    // ✅ Package Interest filter
+    if (packageInterest) {
+      whereLead.packageInterest = { [Op.eq]: packageInterest.toLowerCase() };
+    }
+
+    // ✅ Coach filter
+    if (coach) {
+      const coachIds = coach.split(",").map((id) => Number(id.trim())).filter(Boolean);
+      if (coachIds.length > 0) {
+        whereBooking.coachId = { [Op.in]: coachIds };
+      }
     }
 
     const leads = await oneToOneLeads.findAll({
@@ -407,6 +429,7 @@ exports.getAllOnetoOneLeadsSales = async (
             },
             { model: OneToOnePayment, as: "payment" },
             { model: PaymentPlan, as: "paymentPlan" },
+            { model: Admin, as: "coach" },
           ],
         },
       ],
@@ -532,6 +555,7 @@ exports.getAllOnetoOneLeadsSales = async (
           booking: {
             leadId: booking.leadId,
             coachId: booking.coachId,
+            coach: booking.coach,
             type: booking.type,
             location: booking.location,
             address: booking.address,
@@ -561,7 +585,7 @@ exports.getAllOnetoOneLeadsSales = async (
     });
     const locations = Object.keys(locationSummary);
 
-    // ✅ Summary (only pending)
+    // ✅ Summary (only active)
     const totalLeads = await oneToOneLeads.count({
       where: { createdBy: adminId, status: "active" },
     });
@@ -598,6 +622,56 @@ exports.getAllOnetoOneLeadsSales = async (
       group: ["source"],
     });
 
+    // ✅ Agent List (super admin + managed admins)
+    let agentList = [];
+    if (superAdminId === adminId) {
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id", "firstName", "lastName", "email"],
+      });
+      agentList = managedAdmins.map((a) => ({
+        id: a.id,
+        name: `${a.firstName || ""} ${a.lastName || ""}`.trim() || a.email,
+      }));
+
+      const superAdmin = await Admin.findByPk(superAdminId, {
+        attributes: ["id", "firstName", "lastName", "email"],
+      });
+      if (superAdmin) {
+        agentList.unshift({
+          id: superAdmin.id,
+          name: `${superAdmin.firstName || ""} ${superAdmin.lastName || ""}`.trim() || superAdmin.email,
+        });
+      }
+    } else {
+      const admin = await Admin.findByPk(adminId, {
+        attributes: ["id", "firstName", "lastName", "email"],
+      });
+      if (admin) {
+        agentList.push({
+          id: admin.id,
+          name: `${admin.firstName || ""} ${admin.lastName || ""}`.trim() || admin.email,
+        });
+      }
+    }
+
+    // ✅ Coach List (from all bookings)
+    const coachIds = [
+      ...new Set(formattedData.map((lead) => lead.booking?.coachId).filter(Boolean)),
+    ];
+
+    let coachList = [];
+    if (coachIds.length) {
+      const coaches = await Admin.findAll({
+        where: { id: { [Op.in]: coachIds } },
+        attributes: ["id", "firstName", "lastName", "email"],
+      });
+      coachList = coaches.map((c) => ({
+        id: c.id,
+        name: `${c.firstName || ""} ${c.lastName || ""}`.trim() || c.email,
+      }));
+    }
+
     // ✅ Final Response
     if (!filteredLeads.length) {
       return {
@@ -623,6 +697,8 @@ exports.getAllOnetoOneLeadsSales = async (
       },
       locations,
       locationSummary,
+      coachList,
+      agentList,
       data: formattedData,
     };
   } catch (error) {
@@ -642,7 +718,7 @@ exports.getAllOnetoOneLeadsSalesAll = async (
       return { status: false, message: "Invalid admin ID.", data: [] };
     }
 
-    const { fromDate, toDate, type, studentName } = filters;
+    const { fromDate, toDate, type, studentName, packageInterest, source, coach, agent } = filters;
 
     const whereLead = {};
     const whereBooking = {};
@@ -675,6 +751,32 @@ exports.getAllOnetoOneLeadsSalesAll = async (
 
     if (type) {
       whereBooking.type = { [Op.eq]: type.toLowerCase() }; // makes it case-insensitive friendly
+    }
+
+    // ✅ Package Interest filter
+    if (packageInterest) {
+      whereLead.packageInterest = { [Op.eq]: packageInterest };
+    }
+
+     // ✅ Source filter
+    if (source) {
+      whereLead.source = { [Op.eq]: source.toLowerCase() };
+    }
+
+    // ✅ Coach filter
+    if (coach) {
+      const coachIds = coach.split(",").map((id) => Number(id.trim())).filter(Boolean);
+      if (coachIds.length > 0) {
+        whereBooking.coachId = { [Op.in]: coachIds };
+      }
+    }
+
+    // ✅ Agent filter
+    if (agent) {
+      const agentIds = agent.split(",").map((id) => Number(id.trim())).filter(Boolean);
+      if (agentIds.length > 0) {
+        whereLead.createdBy = { [Op.in]: agentIds };
+      }
     }
 
     const leads = await oneToOneLeads.findAll({
@@ -900,6 +1002,56 @@ exports.getAllOnetoOneLeadsSalesAll = async (
       group: ["source"],
     });
 
+    // ✅ Agent List (super admin + managed admins)
+    let agentList = [];
+    if (superAdminId === adminId) {
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id", "firstName", "lastName", "email"],
+      });
+      agentList = managedAdmins.map((a) => ({
+        id: a.id,
+        name: `${a.firstName || ""} ${a.lastName || ""}`.trim() || a.email,
+      }));
+
+      const superAdmin = await Admin.findByPk(superAdminId, {
+        attributes: ["id", "firstName", "lastName", "email"],
+      });
+      if (superAdmin) {
+        agentList.unshift({
+          id: superAdmin.id,
+          name: `${superAdmin.firstName || ""} ${superAdmin.lastName || ""}`.trim() || superAdmin.email,
+        });
+      }
+    } else {
+      const admin = await Admin.findByPk(adminId, {
+        attributes: ["id", "firstName", "lastName", "email"],
+      });
+      if (admin) {
+        agentList.push({
+          id: admin.id,
+          name: `${admin.firstName || ""} ${admin.lastName || ""}`.trim() || admin.email,
+        });
+      }
+    }
+
+    // ✅ Coach List (from all bookings)
+    const coachIds = [
+      ...new Set(formattedData.map((lead) => lead.booking?.coachId).filter(Boolean)),
+    ];
+
+    let coachList = [];
+    if (coachIds.length) {
+      const coaches = await Admin.findAll({
+        where: { id: { [Op.in]: coachIds } },
+        attributes: ["id", "firstName", "lastName", "email"],
+      });
+      coachList = coaches.map((c) => ({
+        id: c.id,
+        name: `${c.firstName || ""} ${c.lastName || ""}`.trim() || c.email,
+      }));
+    }
+
     // ✅ Final Response
     if (!filteredLeads.length) {
       return {
@@ -910,6 +1062,7 @@ exports.getAllOnetoOneLeadsSalesAll = async (
           newLeads,
           leadsWithBookings,
           sourceOfBookings: sourceCount,
+
         },
       };
     }
@@ -925,6 +1078,8 @@ exports.getAllOnetoOneLeadsSalesAll = async (
       },
       locations,
       locationSummary,
+      agentList,
+      coachList,
       data: formattedData,
     };
   } catch (error) {

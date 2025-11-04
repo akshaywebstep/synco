@@ -59,8 +59,7 @@ exports.createOnetoOneLeads = async (req, res) => {
     await createNotification(
       req,
       "New One-to-One Lead Added",
-      `Lead for ${formData.parentName} has been created by ${
-        req?.admin?.firstName || "Admin"
+      `Lead for ${formData.parentName} has been created by ${req?.admin?.firstName || "Admin"
       } ${req?.admin?.lastName || ""}.`,
       "Support"
     );
@@ -125,9 +124,8 @@ exports.getAllOnetoOneLeads = async (req, res) => {
       MODULE,
       "list",
       {
-        oneLineMessage: `Fetched ${
-          result.data?.length || 0
-        } One-to-One leads for admin ${adminId}.`,
+        oneLineMessage: `Fetched ${result.data?.length || 0
+          } One-to-One leads for admin ${adminId}.`,
       },
       true
     );
@@ -161,6 +159,7 @@ exports.getAllOnetoOneLeads = async (req, res) => {
 exports.getAllOnetoOneLeadsSales = async (req, res) => {
   const adminId = req.admin?.id;
   if (DEBUG) console.log("📥 Fetching all One-to-One leads...");
+
   try {
     if (!adminId) {
       return res.status(401).json({
@@ -178,6 +177,10 @@ exports.getAllOnetoOneLeadsSales = async (req, res) => {
       toDate: req.query.toDate,
       type: req.query.type,
       studentName: req.query.studentName,
+      packageInterest: req.query.packageInterest,
+      coach: req.query.coach,
+      agent: req.query.agent,
+      source: req.query.source,
     };
 
     // ✅ Fetch data (pass both admin and superAdmin)
@@ -202,19 +205,24 @@ exports.getAllOnetoOneLeadsSales = async (req, res) => {
       MODULE,
       "list",
       {
-        oneLineMessage: `Fetched ${
-          result.data?.length || 0
-        } One-to-One leads for admin ${adminId}.`,
+        oneLineMessage: `Fetched ${result.data?.length || 0
+          } One-to-One leads for admin ${adminId}.`,
       },
       true
     );
 
+    // ✅ Include all relevant fields in API response
     return res.status(200).json({
       status: true,
-      message: "Fetched One-to-One leads successfully.",
+      message: result.message || "Fetched One-to-One leads successfully.",
       summary: result.summary,
-      data: result.data,
+      // locations: result.locations || [],
+      locationSummary: result.locationSummary || {},
+      agentList: result.agentList || [],
+      coachList: result.coachList || [],
+      data: result.data || [],
     });
+
   } catch (error) {
     console.error("❌ Server error (getAllOnetoOneLeads):", error);
 
@@ -234,6 +242,7 @@ exports.getAllOnetoOneLeadsSales = async (req, res) => {
   }
 };
 
+// ✅ Get Sales and Leads
 // ✅ Get Sales and Leads
 exports.getAllOnetoOneLeadsSalesAll = async (req, res) => {
   const adminId = req.admin?.id;
@@ -255,6 +264,10 @@ exports.getAllOnetoOneLeadsSalesAll = async (req, res) => {
       toDate: req.query.toDate,
       type: req.query.type,
       studentName: req.query.studentName,
+      packageInterest: req.query.packageInterest,
+      coach: req.query.coach,
+      agent: req.query.agent,
+      source: req.query.source,
     };
 
     // ✅ Fetch data (pass both admin and superAdmin)
@@ -279,9 +292,8 @@ exports.getAllOnetoOneLeadsSalesAll = async (req, res) => {
       MODULE,
       "list",
       {
-        oneLineMessage: `Fetched ${
-          result.data?.length || 0
-        } One-to-One leads for admin ${adminId}.`,
+        oneLineMessage: `Fetched ${result.data?.length || 0
+          } One-to-One leads for admin ${adminId}.`,
       },
       true
     );
@@ -290,6 +302,9 @@ exports.getAllOnetoOneLeadsSalesAll = async (req, res) => {
       status: true,
       message: "Fetched One-to-One leads successfully.",
       summary: result.summary,
+      locationSummary: result.locationSummary || {},
+      agentList: result.agentList || [],
+      coachList: result.coachList || [],
       data: result.data,
     });
   } catch (error) {
@@ -398,9 +413,8 @@ exports.updateOnetoOneLeadById = async (req, res) => {
     await logActivity(req, PANEL, MODULE, "update", { id, updateData }, true);
 
     // ✅ Create notification
-    const adminName = `${req?.admin?.firstName || "Admin"} ${
-      req?.admin?.lastName || ""
-    }`.trim();
+    const adminName = `${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""
+      }`.trim();
     await createNotification(
       req,
       "One-to-One Lead Updated",
