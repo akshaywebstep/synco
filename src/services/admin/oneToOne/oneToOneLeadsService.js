@@ -337,7 +337,7 @@ exports.getAllOnetoOneLeadsSales = async (
       return { status: false, message: "Invalid admin ID.", data: [] };
     }
 
-    const { fromDate, toDate, type, studentName, agent, coach, packageInterest, source,location } = filters;
+    const { fromDate, toDate, type, studentName, agent, coach, packageInterest, source, location } = filters;
 
     const whereLead = { status: "active" };
     const whereBooking = { status: "active" };
@@ -370,8 +370,8 @@ exports.getAllOnetoOneLeadsSales = async (
     if (type) {
       whereBooking.type = { [Op.eq]: type.toLowerCase() };
     }
-     if(location) {
-      whereBooking.location=  { [Op.eq]: location };
+    if (location) {
+      whereBooking.location = { [Op.eq]: location };
     }
 
     // ✅ Agent filter
@@ -472,6 +472,17 @@ exports.getAllOnetoOneLeadsSales = async (
               ?.toLowerCase()
               .includes(studentName.toLowerCase()) ||
             s.studentLastName?.toLowerCase().includes(studentName.toLowerCase())
+        );
+      });
+    }
+    if (location) {
+      filteredLeads = filteredLeads.filter((lead) => {
+        const booking = lead.booking;
+        if (!booking) return false;
+
+        return (
+          booking.location &&
+          booking.location.toLowerCase().includes(location.toLowerCase())
         );
       });
     }
@@ -646,6 +657,43 @@ exports.getAllOnetoOneLeadsSales = async (
       ],
       group: ["source"],
     });
+    const topSalesAgentData = await oneToOneLeads.findOne({
+      where: { status: "active" },
+      include: [
+        {
+          model: OneToOneBooking,
+          as: "booking",
+          required: true,
+          where: { status: "active" },
+          attributes: [],
+        },
+        {
+          model: Admin, // your Admin model
+          as: "creator", // association alias
+          attributes: ["firstName", "lastName"],
+        },
+      ],
+      attributes: [
+        "createdBy",
+        [fn("COUNT", col("OneToOneLead.id")), "leadCount"],
+      ],
+      group: ["createdBy", "creator.id", "creator.firstName", "creator.lastName"],
+      order: [[literal("leadCount"), "DESC"]],
+      raw: false,
+    });
+
+    // ✅ Properly format the response object
+    const topSalesAgent =
+      topSalesAgentData && topSalesAgentData.creator
+        ? {
+          firstName: topSalesAgentData.creator.firstName,
+          lastName: topSalesAgentData.creator.lastName,
+        }
+        : null;
+
+    console.log({
+      topSalesAgent,
+    });
 
     // ✅ Agent List (super admin + managed admins)
     let agentList = [];
@@ -707,6 +755,7 @@ exports.getAllOnetoOneLeadsSales = async (
           newLeads,
           leadsWithBookings,
           sourceOfBookings: sourceCount,
+          topSalesAgent,
         },
       };
     }
@@ -719,6 +768,7 @@ exports.getAllOnetoOneLeadsSales = async (
         newLeads,
         leadsWithBookings,
         sourceOfBookings: sourceCount,
+        topSalesAgent,
       },
       locations,
       locationSummary,
@@ -743,7 +793,7 @@ exports.getAllOnetoOneLeadsSalesAll = async (
       return { status: false, message: "Invalid admin ID.", data: [] };
     }
 
-    const { fromDate, toDate, type, studentName, packageInterest, source, coach, agent,location } = filters;
+    const { fromDate, toDate, type, studentName, packageInterest, source, coach, agent, location } = filters;
 
     const whereLead = {};
     const whereBooking = {};
@@ -781,10 +831,6 @@ exports.getAllOnetoOneLeadsSalesAll = async (
     // ✅ Package Interest filter
     if (packageInterest) {
       whereLead.packageInterest = { [Op.eq]: packageInterest };
-    }
-
-    if(location) {
-      whereBooking.location=  { [Op.eq]: location };
     }
 
     // ✅ Source filter
@@ -877,6 +923,18 @@ exports.getAllOnetoOneLeadsSalesAll = async (
               ?.toLowerCase()
               .includes(studentName.toLowerCase()) ||
             s.studentLastName?.toLowerCase().includes(studentName.toLowerCase())
+        );
+      });
+    }
+
+    if (location) {
+      filteredLeads = filteredLeads.filter((lead) => {
+        const booking = lead.booking;
+        if (!booking) return false;
+
+        return (
+          booking.location &&
+          booking.location.toLowerCase().includes(location.toLowerCase())
         );
       });
     }
@@ -1051,6 +1109,44 @@ exports.getAllOnetoOneLeadsSalesAll = async (
       group: ["source"],
     });
 
+    const topSalesAgentData = await oneToOneLeads.findOne({
+      where: { status: "active" },
+      include: [
+        {
+          model: OneToOneBooking,
+          as: "booking",
+          required: true,
+          where: { status: "active" },
+          attributes: [],
+        },
+        {
+          model: Admin, // your Admin model
+          as: "creator", // association alias
+          attributes: ["firstName", "lastName"],
+        },
+      ],
+      attributes: [
+        "createdBy",
+        [fn("COUNT", col("OneToOneLead.id")), "leadCount"],
+      ],
+      group: ["createdBy", "creator.id", "creator.firstName", "creator.lastName"],
+      order: [[literal("leadCount"), "DESC"]],
+      raw: false,
+    });
+
+    // ✅ Properly format the response object
+    const topSalesAgent =
+      topSalesAgentData && topSalesAgentData.creator
+        ? {
+          firstName: topSalesAgentData.creator.firstName,
+          lastName: topSalesAgentData.creator.lastName,
+        }
+        : null;
+
+    console.log({
+      topSalesAgent,
+    });
+
     // ✅ Agent List (super admin + managed admins)
     let agentList = [];
     if (superAdminId === adminId) {
@@ -1111,7 +1207,7 @@ exports.getAllOnetoOneLeadsSalesAll = async (
           newLeads,
           leadsWithBookings,
           sourceOfBookings: sourceCount,
-
+          topSalesAgent
         },
       };
     }
@@ -1124,6 +1220,7 @@ exports.getAllOnetoOneLeadsSalesAll = async (
         newLeads,
         leadsWithBookings,
         sourceOfBookings: sourceCount,
+        topSalesAgent,
       },
       locations,
       locationSummary,
