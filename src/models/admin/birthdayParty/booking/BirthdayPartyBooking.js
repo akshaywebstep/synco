@@ -1,8 +1,9 @@
+// models/BirthdayPartyBooking.js
 const { DataTypes } = require("sequelize");
 const { sequelize } = require("../../../../config/db");
 
-const OneToOneBooking = sequelize.define(
-  "OneToOneBooking",
+const BirthdayPartyBooking = sequelize.define(
+  "BirthdayPartyBooking",
   {
     id: {
       type: DataTypes.BIGINT.UNSIGNED,
@@ -14,7 +15,7 @@ const OneToOneBooking = sequelize.define(
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
-        model: "oneToOneLeads",
+        model: "birthday_party_leads", // ✅ fixed table name (snake_case)
         key: "id",
       },
       onUpdate: "CASCADE",
@@ -30,8 +31,8 @@ const OneToOneBooking = sequelize.define(
         key: "id",
       },
       onUpdate: "CASCADE",
-      onDelete: "CASCADE",
-      comment: "Admin (coach) assigned for the booking",
+      onDelete: "RESTRICT",
+      comment: "Admin (coach) assigned to this booking",
     },
 
     status: {
@@ -44,49 +45,39 @@ const OneToOneBooking = sequelize.define(
       ),
       allowNull: false,
       defaultValue: "pending",
+      comment: "Current status of the booking",
     },
 
     type: {
       type: DataTypes.ENUM("paid", "trial", "cancel"),
       allowNull: false,
       defaultValue: "paid",
-    },
-
-    location: {
-      type: DataTypes.STRING,
-      allowNull: false,
-      comment: "Venue name or general location",
+      comment: "Type of booking (paid/trial/cancel)",
     },
 
     address: {
       type: DataTypes.STRING,
       allowNull: false,
-      comment: "Full address of the venue",
+      comment: "Full address of the birthday party venue",
     },
 
     date: {
       type: DataTypes.DATEONLY,
       allowNull: false,
-      comment: "Session date",
+      comment: "Party date",
     },
 
     time: {
       type: DataTypes.STRING,
       allowNull: false,
-      comment: "Session start time",
+      comment: "Start time of the party",
     },
 
-    totalStudents: {
+    capacity: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
       defaultValue: 1,
-      comment: "Number of students attending",
-    },
-
-    areaWorkOn: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: "Areas or skills to focus on during session",
+      comment: "Number of attendees or capacity",
     },
 
     paymentPlanId: {
@@ -98,6 +89,7 @@ const OneToOneBooking = sequelize.define(
       },
       onUpdate: "CASCADE",
       onDelete: "SET NULL",
+      comment: "Linked payment plan (if any)",
     },
 
     discountId: {
@@ -109,34 +101,54 @@ const OneToOneBooking = sequelize.define(
       },
       onUpdate: "CASCADE",
       onDelete: "SET NULL",
+      comment: "Applied discount (if any)",
     },
   },
   {
-    tableName: "one_to_one_bookings",
+    tableName: "birthday_party_bookings",
     timestamps: true,
   }
 );
 
-OneToOneBooking.associate = (models) => {
-  OneToOneBooking.hasMany(models.OneToOneStudent, {
-    foreignKey: "oneToOneBookingId",
+// ===================================================
+// 🧩 Associations
+// ===================================================
+BirthdayPartyBooking.associate = (models) => {
+  // 🔹 A booking belongs to a lead
+  BirthdayPartyBooking.belongsTo(models.BirthdayPartyLead, {
+    foreignKey: "leadId",
+    as: "lead",
+  });
+
+  // 🔹 A booking has many students
+  BirthdayPartyBooking.hasMany(models.BirthdayPartyStudent, {
+    foreignKey: "birthdayPartyBookingId",
     as: "students",
   });
 
-  OneToOneBooking.hasOne(models.OneToOnePayment, {
-    foreignKey: "oneToOneBookingId",
+  // 🔹 A booking has one payment record
+  BirthdayPartyBooking.hasOne(models.BirthdayPartyPayment, {
+    foreignKey: "birthdayPartyBookingId",
     as: "payment",
   });
 
-  OneToOneBooking.belongsTo(models.PaymentPlan, {
+  // 🔹 A booking belongs to a payment plan
+  BirthdayPartyBooking.belongsTo(models.PaymentPlan, {
     foreignKey: "paymentPlanId",
     as: "paymentPlan",
   });
 
-  OneToOneBooking.belongsTo(models.Admin, {
+  // 🔹 A booking belongs to a coach/admin
+  BirthdayPartyBooking.belongsTo(models.Admin, {
     foreignKey: "coachId",
-    as: "coach", // ✅ this alias must match the include alias
+    as: "coach",
+  });
+
+  // 🔹 A booking can have an optional discount
+  BirthdayPartyBooking.belongsTo(models.Discount, {
+    foreignKey: "discountId",
+    as: "discount",
   });
 };
 
-module.exports = OneToOneBooking;
+module.exports = BirthdayPartyBooking;

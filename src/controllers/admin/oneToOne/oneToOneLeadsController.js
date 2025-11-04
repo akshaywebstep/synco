@@ -181,6 +181,7 @@ exports.getAllOnetoOneLeadsSales = async (req, res) => {
       coach: req.query.coach,
       agent: req.query.agent,
       source: req.query.source,
+      location: req.query.location,
     };
 
     // ✅ Fetch data (pass both admin and superAdmin)
@@ -267,6 +268,7 @@ exports.getAllOnetoOneLeadsSalesAll = async (req, res) => {
       coach: req.query.coach,
       agent: req.query.agent,
       source: req.query.source,
+      location: req.query.location,
     };
 
     // ✅ Fetch data (pass both admin and superAdmin)

@@ -83,6 +83,13 @@ const models = {
   OneToOneParent: require("./admin/oneToOne/booking/OneToOneParent"),
   OneToOneEmergency: require("./admin/oneToOne/booking/OneToOneEmergency"),
   OneToOnePayment: require("./admin/oneToOne/booking/OneToOnePayment"),
+
+  BirthdayPartyLead: require("./admin/birthdayParty/BirthdayPartyLeads"),
+  BirthdayPartyBooking: require("./admin/birthdayParty/booking/BirthdayPartyBooking"),
+  BirthdayPartyStudent: require("./admin/birthdayParty/booking/BirthdayPartyStudent"),
+  BirthdayPartyParent: require("./admin/birthdayParty/booking/BirthdayPartyParent"),
+  BirthdayPartyEmergency: require("./admin/birthdayParty/booking/BirthdayPartyEmergency"),
+  BirthdayPartyPayment: require("./admin/birthdayParty/booking/BirthdayPartyPayment"),
 };
 
 // =================== Apply Model-Level Associations =================== //
@@ -146,6 +153,13 @@ const {
   OneToOneParent,
   OneToOneEmergency,
   OneToOnePayment,
+
+  BirthdayPartyLead,
+  BirthdayPartyBooking,
+  BirthdayPartyStudent,
+  BirthdayPartyParent,
+  BirthdayPartyEmergency,
+  BirthdayPartyPayment,
 } = models;
 
 // Many-to-Many
@@ -384,4 +398,10 @@ module.exports = {
   OneToOneParent,
   OneToOneEmergency,
   OneToOnePayment,
+  BirthdayPartyLead,
+  BirthdayPartyBooking,
+  BirthdayPartyStudent,
+  BirthdayPartyParent,
+  BirthdayPartyEmergency,
+  BirthdayPartyPayment,
 };

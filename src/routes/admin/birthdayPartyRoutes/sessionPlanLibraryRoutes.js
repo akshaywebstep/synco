@@ -12,13 +12,13 @@ const fs = require("fs");
 // Controllers
 const {
   getAllSessionPlanGroupStructure,
-  repinSessionPlanGroup,
   getSessionPlanGroupStructureById,
   createSessionPlanGroupStructure,
   updateSessionPlanConfig,
   deleteSessionPlanConfig,
   deleteSessionPlanConfigLevel,
   downloadSessionPlanConfigVideo,
+  reorderSessionPlanGroups,
 
 } = require("../../../controllers/admin/birthdayParty/sessionPlanLibrary/sessionPlanGroupController");
 
@@ -71,12 +71,7 @@ router.delete(
   deleteSessionPlanConfigLevel
 );
 
-// ✅ Repin Session Plan Group
-router.patch(
-  "/session-plan-birthdayParty/:id/repin",
-  authMiddleware,
-  permissionMiddleware("session-plan-birthdayParty", "repin"),
-  repinSessionPlanGroup
-);
+// ✅ Reorder Session Plan Groups
+router.patch("/session-plan-birthdayParty/reorder", authMiddleware, reorderSessionPlanGroups);
 
 module.exports = router;

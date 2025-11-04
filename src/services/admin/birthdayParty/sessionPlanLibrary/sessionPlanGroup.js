@@ -184,10 +184,7 @@ exports.getAllSessionPlanConfig = async ({
     // STEP 1 — Fetch all session plan groups
     const groups = await SessionPlanGroup.findAll({
       where: whereCondition,
-      order: [
-        ["pinned", "DESC"],
-        ["createdAt", order.toUpperCase() === "DESC" ? "DESC" : "ASC"],
-      ],
+      order: [["sortOrder", "ASC"]],
       attributes: [
         "id",
         "groupName",
@@ -282,49 +279,6 @@ exports.getAllSessionPlanConfig = async ({
   } catch (error) {
     console.error("❌ Error fetching birthday_party SessionPlanGroups:", error);
     return { status: false, message: error.message };
-  }
-};
-
-exports.repinSessionPlanGroupService = async (id, createdBy, pinned) => {
-  const t = await SessionPlanGroup.sequelize.transaction();
-
-  try {
-    // 🔹 Find the specific group by ID and creator
-    const targetGroup = await SessionPlanGroup.findOne({
-      where: { id, createdBy },
-      transaction: t,
-    });
-
-    if (!targetGroup) {
-      await t.rollback();
-      return { status: false, message: "Group not found or unauthorized." };
-    }
-
-    // 🔹 Update only this group’s pinned status (no changes to others)
-    await targetGroup.update(
-      { pinned: pinned === 1 || pinned === true },
-      { transaction: t }
-    );
-
-    await t.commit();
-
-    return {
-      status: true,
-      message: pinned
-        ? "Group pinned successfully."
-        : "Group unpinned successfully.",
-      data: {
-        id: targetGroup.id,
-        pinned: pinned ? 1 : 0,
-      },
-    };
-  } catch (error) {
-    await t.rollback();
-    console.error("❌ Error repinning session plan group (service):", error);
-    return {
-      status: false,
-      message: error.message || "Failed to repin/unpin session plan group.",
-    };
   }
 };
 
@@ -500,48 +454,75 @@ exports.deleteLevelFromSessionPlanConfig = async (id, levelKey, createdBy) => {
   }
 };
 
-exports.repinSessionPlanGroup = async (id, createdBy, pinned) => {
-  const t = await SessionPlanGroup.sequelize.transaction();
-
+exports.reorderSessionPlanGroups = async (orderedIds = [], createdBy) => {
   try {
-    const targetGroup = await SessionPlanGroup.findOne({
-      where: { id, createdBy },
-      transaction: t,
-    });
-    if (!targetGroup) {
-      await t.rollback();
-      return { status: false, message: "Group not found or unauthorized." };
-    }
-
-    // If pinned = 1 → unpin all others, then pin this one
-    if (pinned === 1) {
+    for (let index = 0; index < orderedIds.length; index++) {
+      const id = orderedIds[index];
       await SessionPlanGroup.update(
-        { pinned: false },
-        { where: { createdBy, pinned: true }, transaction: t }
+        { sortOrder: index + 1 },
+        { where: { id, createdBy } }
       );
     }
 
-    // Update this group
-    await targetGroup.update({ pinned: pinned === 1 }, { transaction: t });
-    await t.commit();
+    const updatedGroups = await SessionPlanGroup.findAll({
+      where: { createdBy },
+      order: [["sortOrder", "ASC"]],
+      attributes: ["id", "groupName", "sortOrder"],
+    });
 
     return {
       status: true,
-      message:
-        pinned === 1
-          ? "Group pinned successfully."
-          : "Group unpinned successfully.",
-      data: {
-        id: targetGroup.id,
-        pinned,
-      },
+      message: "Session plan groups reordered successfully",
+      data: updatedGroups,
     };
   } catch (error) {
-    await t.rollback();
-    console.error("❌ Error repinning session plan group:", error);
-    return {
-      status: false,
-      message: error.message || "Failed to repin session plan group.",
-    };
+    console.error("❌ reorderSessionPlanGroups service error:", error);
+    return { status: false, message: "Internal server error" };
   }
 };
+
+// exports.repinSessionPlanGroup = async (id, createdBy, pinned) => {
+//   const t = await SessionPlanGroup.sequelize.transaction();
+
+//   try {
+//     const targetGroup = await SessionPlanGroup.findOne({
+//       where: { id, createdBy },
+//       transaction: t,
+//     });
+//     if (!targetGroup) {
+//       await t.rollback();
+//       return { status: false, message: "Group not found or unauthorized." };
+//     }
+
+//     // If pinned = 1 → unpin all others, then pin this one
+//     if (pinned === 1) {
+//       await SessionPlanGroup.update(
+//         { pinned: false },
+//         { where: { createdBy, pinned: true }, transaction: t }
+//       );
+//     }
+
+//     // Update this group
+//     await targetGroup.update({ pinned: pinned === 1 }, { transaction: t });
+//     await t.commit();
+
+//     return {
+//       status: true,
+//       message:
+//         pinned === 1
+//           ? "Group pinned successfully."
+//           : "Group unpinned successfully.",
+//       data: {
+//         id: targetGroup.id,
+//         pinned,
+//       },
+//     };
+//   } catch (error) {
+//     await t.rollback();
+//     console.error("❌ Error repinning session plan group:", error);
+//     return {
+//       status: false,
+//       message: error.message || "Failed to repin session plan group.",
+//     };
+//   }
+// };

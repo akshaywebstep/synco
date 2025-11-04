@@ -337,7 +337,7 @@ exports.getAllOnetoOneLeadsSales = async (
       return { status: false, message: "Invalid admin ID.", data: [] };
     }
 
-    const { fromDate, toDate, type, studentName, agent, coach, packageInterest, source } = filters;
+    const { fromDate, toDate, type, studentName, agent, coach, packageInterest, source,location } = filters;
 
     const whereLead = { status: "active" };
     const whereBooking = { status: "active" };
@@ -369,6 +369,9 @@ exports.getAllOnetoOneLeadsSales = async (
     // ✅ Type filter
     if (type) {
       whereBooking.type = { [Op.eq]: type.toLowerCase() };
+    }
+     if(location) {
+      whereBooking.location=  { [Op.eq]: location };
     }
 
     // ✅ Agent filter
@@ -740,7 +743,7 @@ exports.getAllOnetoOneLeadsSalesAll = async (
       return { status: false, message: "Invalid admin ID.", data: [] };
     }
 
-    const { fromDate, toDate, type, studentName, packageInterest, source, coach, agent } = filters;
+    const { fromDate, toDate, type, studentName, packageInterest, source, coach, agent,location } = filters;
 
     const whereLead = {};
     const whereBooking = {};
@@ -778,6 +781,10 @@ exports.getAllOnetoOneLeadsSalesAll = async (
     // ✅ Package Interest filter
     if (packageInterest) {
       whereLead.packageInterest = { [Op.eq]: packageInterest };
+    }
+
+    if(location) {
+      whereBooking.location=  { [Op.eq]: location };
     }
 
     // ✅ Source filter
