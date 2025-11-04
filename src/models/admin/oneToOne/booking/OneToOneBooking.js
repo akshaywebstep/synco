@@ -14,7 +14,7 @@ const OneToOneBooking = sequelize.define(
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
-        model: "oneToOneLeads",
+        model: "one_to_one_leads",
         key: "id",
       },
       onUpdate: "CASCADE",
