@@ -442,6 +442,8 @@ exports.updateOnetoOneLeadById = async (req, res) => {
 // ✅ Get One-to-One Analytics
 exports.getAllOneToOneAnalytics = async (req, res) => {
   const adminId = req.admin?.id;
+  const { filterType = "thisMonth" } = req.query; // 👈 e.g. ?filterType=last3Months
+
   if (DEBUG) console.log("📊 Fetching One-to-One analytics...");
 
   try {
@@ -457,10 +459,11 @@ exports.getAllOneToOneAnalytics = async (req, res) => {
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
     const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
 
-    // 🧩 Fetch analytics data
+    // ✅ Call service with filterType
     const result = await oneToOneLeadService.getAllOneToOneAnalytics(
       superAdminId,
-      adminId
+      adminId,
+      filterType // 👈 FIXED
     );
 
     if (!result.status) {
@@ -472,7 +475,7 @@ exports.getAllOneToOneAnalytics = async (req, res) => {
       });
     }
 
-    // 🧾 Log activity success
+    // 🧾 Log success
     await logActivity(
       req,
       PANEL,
@@ -484,12 +487,13 @@ exports.getAllOneToOneAnalytics = async (req, res) => {
       true
     );
 
-    // ✅ Respond with structured analytics data
+    // ✅ Respond
     return res.status(200).json({
       status: true,
-      message: "Fetched One-to-One analytics successfully.",
+      message: `Fetched One-to-One analytics (${filterType}) successfully.`,
       summary: result.summary,
-      charts: result.charts, // renamed from result.data
+      charts: result.charts,
+      dateRange: result.dateRange,
     });
   } catch (error) {
     console.error("❌ Server error (getAllOneToOneAnalytics):", error);
