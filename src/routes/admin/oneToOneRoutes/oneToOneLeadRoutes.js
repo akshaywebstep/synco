@@ -12,6 +12,7 @@ const {
   getAllOnetoOneLeadsSalesAll,
   updateOnetoOneLeadById,
   getAllOneToOneAnalytics,
+  sendEmailToFirstParentWithBooking,
 } = require("../../../controllers/admin/oneToOne/oneToOneLeadsController");
 
 // ✅ Get All Session Plan Groups
@@ -21,6 +22,13 @@ router.post(
   authMiddleware,
   permissionMiddleware("one-to-one-lead", "create"),
   createOnetoOneLeads
+);
+
+router.post(
+  "/leads/send-email",
+  authMiddleware,
+  permissionMiddleware("one-to-one-lead", "view-listing"),
+  sendEmailToFirstParentWithBooking
 );
 
 router.get(

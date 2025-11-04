@@ -243,7 +243,6 @@ exports.getAllOnetoOneLeadsSales = async (req, res) => {
 };
 
 // ✅ Get Sales and Leads
-// ✅ Get Sales and Leads
 exports.getAllOnetoOneLeadsSalesAll = async (req, res) => {
   const adminId = req.admin?.id;
   if (DEBUG) console.log("📥 Fetching all One-to-One leads...");
@@ -505,6 +504,71 @@ exports.getAllOneToOneAnalytics = async (req, res) => {
       status: false,
       message: "Server error while fetching analytics.",
       error: DEBUG ? error.message : undefined,
+    });
+  }
+};
+
+exports.sendEmailToFirstParentWithBooking = async (req, res) => {
+  console.log("📩 [Controller] sendEmailToFirstParentWithBooking() called");
+
+  try {
+    // 🧾 Step 1: Validate input
+    console.log("📥 Request body received:", req.body);
+
+    const { leadIds } = req.body; // Expecting an array of leadIds in the body
+
+    if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
+      console.warn("⚠️ No valid leadIds provided in request body.");
+      return res.status(400).json({
+        status: false,
+        message: "Please provide at least one valid leadId in the request body.",
+      });
+    }
+
+    console.log(`✅ Valid leadIds received:`, leadIds);
+
+    // 🧠 Step 2: Call service function
+    console.log("🚀 Calling service: oneToOneLeadService.sendEmailToFirstParentWithBooking()");
+    const result = await oneToOneLeadService.sendEmailToFirstParentWithBooking(leadIds);
+    console.log("📤 Service response received:", JSON.stringify(result, null, 2));
+
+    // 🧱 Step 3: Handle failed result
+    if (!result.status) {
+      console.warn("❌ Service returned failure:", result.message);
+      return res.status(400).json({
+        status: false,
+        message: result.message || "Failed to send booking emails.",
+        skipped: result.skipped || [],
+        errors: result.errors || [],
+      });
+    }
+
+    // ✅ Step 4: Handle success result
+    console.log(`✅ Successfully sent ${result.totalSent} emails.`);
+    if (result.sentTo?.length) {
+      console.log("📧 Emails sent to:", result.sentTo);
+    }
+    if (result.skipped?.length) {
+      console.log("⏭️ Skipped leads:", result.skipped);
+    }
+    if (result.errors?.length) {
+      console.error("⚠️ Errors during email sending:", result.errors);
+    }
+
+    return res.status(200).json({
+      status: true,
+      message: result.message,
+      totalSent: result.totalSent,
+      sentTo: result.sentTo,
+      skipped: result.skipped,
+      errors: result.errors,
+    });
+  } catch (error) {
+    // 🧨 Step 5: Handle controller-level error
+    console.error("❌ sendEmailToFirstParentWithBookingController Error:", error);
+    return res.status(500).json({
+      status: false,
+      message: error.message || "Internal server error while sending emails.",
     });
   }
 };

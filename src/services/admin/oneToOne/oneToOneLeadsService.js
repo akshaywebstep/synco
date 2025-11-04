@@ -12,6 +12,8 @@ const {
 // const { Op } = require("sequelize");
 const { Op, fn, col, literal } = require("sequelize");
 const stripe = require("../../../utils/payment/pay360/stripe");
+const { getEmailConfig } = require("../../email");
+const sendEmail = require("../../../utils/email/sendEmail");
 const moment = require("moment");
 // ✅ Create
 exports.createOnetoOneLeads = async (data) => {
@@ -337,8 +339,8 @@ exports.getAllOnetoOneLeadsSales = async (
 
     const { fromDate, toDate, type, studentName, agent, coach, packageInterest, source } = filters;
 
-    const whereLead = { status: "active" }; // ✅ Only pending leads
-    const whereBooking = { status: "active" }; // ✅ Only pending bookings
+    const whereLead = { status: "active" };
+    const whereBooking = { status: "active" };
 
     // ✅ Super Admin → all admins under them (including self)
     if (superAdminId === adminId) {
@@ -371,9 +373,37 @@ exports.getAllOnetoOneLeadsSales = async (
 
     // ✅ Agent filter
     if (agent) {
-      const agentIds = agent.split(",").map((id) => Number(id.trim())).filter(Boolean);
+      let agentIds = [];
+
+      if (Array.isArray(agent)) {
+        // Handles ?agent=1&agent=6
+        agentIds = agent.map((id) => Number(id)).filter(Boolean);
+      } else if (typeof agent === "string") {
+        // Handles ?agent=1,6
+        agentIds = agent.split(",").map((id) => Number(id.trim())).filter(Boolean);
+      }
+
       if (agentIds.length > 0) {
         whereLead.createdBy = { [Op.in]: agentIds };
+        console.log("🧩 Agent filter applied:", agentIds);
+      }
+    }
+
+    // ✅ Coach filter
+    if (coach) {
+      let coachIds = [];
+
+      if (Array.isArray(coach)) {
+        // Handles ?coach=2&coach=5
+        coachIds = coach.map((id) => Number(id)).filter(Boolean);
+      } else if (typeof coach === "string") {
+        // Handles ?coach=2,5
+        coachIds = coach.split(",").map((id) => Number(id.trim())).filter(Boolean);
+      }
+
+      if (coachIds.length > 0) {
+        whereBooking.coachId = { [Op.in]: coachIds };
+        console.log("🧩 Coach filter applied:", coachIds);
       }
     }
 
@@ -385,14 +415,6 @@ exports.getAllOnetoOneLeadsSales = async (
     // ✅ Package Interest filter
     if (packageInterest) {
       whereLead.packageInterest = { [Op.eq]: packageInterest.toLowerCase() };
-    }
-
-    // ✅ Coach filter
-    if (coach) {
-      const coachIds = coach.split(",").map((id) => Number(id.trim())).filter(Boolean);
-      if (coachIds.length > 0) {
-        whereBooking.coachId = { [Op.in]: coachIds };
-      }
     }
 
     const leads = await oneToOneLeads.findAll({
@@ -758,24 +780,44 @@ exports.getAllOnetoOneLeadsSalesAll = async (
       whereLead.packageInterest = { [Op.eq]: packageInterest };
     }
 
-     // ✅ Source filter
+    // ✅ Source filter
     if (source) {
       whereLead.source = { [Op.eq]: source.toLowerCase() };
     }
 
-    // ✅ Coach filter
-    if (coach) {
-      const coachIds = coach.split(",").map((id) => Number(id.trim())).filter(Boolean);
-      if (coachIds.length > 0) {
-        whereBooking.coachId = { [Op.in]: coachIds };
+    // ✅ Agent filter
+    if (agent) {
+      let agentIds = [];
+
+      if (Array.isArray(agent)) {
+        // Handles ?agent=1&agent=6
+        agentIds = agent.map((id) => Number(id)).filter(Boolean);
+      } else if (typeof agent === "string") {
+        // Handles ?agent=1,6
+        agentIds = agent.split(",").map((id) => Number(id.trim())).filter(Boolean);
+      }
+
+      if (agentIds.length > 0) {
+        whereLead.createdBy = { [Op.in]: agentIds };
+        console.log("🧩 Agent filter applied:", agentIds);
       }
     }
 
-    // ✅ Agent filter
-    if (agent) {
-      const agentIds = agent.split(",").map((id) => Number(id.trim())).filter(Boolean);
-      if (agentIds.length > 0) {
-        whereLead.createdBy = { [Op.in]: agentIds };
+    // ✅ Coach filter
+    if (coach) {
+      let coachIds = [];
+
+      if (Array.isArray(coach)) {
+        // Handles ?coach=2&coach=5
+        coachIds = coach.map((id) => Number(id)).filter(Boolean);
+      } else if (typeof coach === "string") {
+        // Handles ?coach=2,5
+        coachIds = coach.split(",").map((id) => Number(id.trim())).filter(Boolean);
+      }
+
+      if (coachIds.length > 0) {
+        whereBooking.coachId = { [Op.in]: coachIds };
+        console.log("🧩 Coach filter applied:", coachIds);
       }
     }
 
@@ -1884,6 +1926,144 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId) => {
     };
   } catch (error) {
     console.error("❌ Error fetching One-to-One analytics:", error);
+    return { status: false, message: error.message };
+  }
+};
+
+exports.sendEmailToFirstParentWithBooking = async (leadIds = []) => {
+  try {
+    if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
+      return { status: false, message: "Please provide at least one leadId." };
+    }
+
+    // 🧩 Fetch only the leads with the selected IDs that have at least one booking
+    const leadsWithBooking = await oneToOneLeads.findAll({
+      where: { id: leadIds },
+      include: [
+        {
+          model: OneToOneBooking,
+          as: "booking",
+          required: true, // ensures only leads with booking are returned
+          include: [
+            {
+              model: OneToOneStudent,
+              as: "students",
+              include: [{ model: OneToOneParent, as: "parentDetails" }],
+            },
+            { model: OneToOnePayment, as: "payment" },
+          ],
+        },
+      ],
+    });
+
+    if (!leadsWithBooking.length) {
+      return {
+        status: false,
+        message: "No matching leads found with active bookings.",
+      };
+    }
+
+    // ⚙️ Email configuration
+    const emailConfigResult = await getEmailConfig("admin", "one-to-one-booking-sendEmail");
+    if (!emailConfigResult.status) {
+      return { status: false, message: "Email configuration not found." };
+    }
+
+    const { emailConfig, htmlTemplate, subject } = emailConfigResult;
+
+    let totalSent = 0;
+    const sentTo = [];
+    const skipped = [];
+    const errors = [];
+
+    // 🧭 Process each selected lead
+    for (const lead of leadsWithBooking) {
+      try {
+        const booking = lead.booking;
+        if (!booking || !booking.students || booking.students.length === 0) {
+          skipped.push({ leadId: lead.id, reason: "No students found in booking." });
+          continue;
+        }
+
+        // 👨‍👩‍👧 Get the first parent from the first student (only one email per booking)
+        const firstStudent = booking.students[0];
+        const firstParent = firstStudent.parentDetails;
+
+        if (!firstParent || !firstParent.parentEmail) {
+          skipped.push({ leadId: lead.id, reason: "No valid parent email found." });
+          continue;
+        }
+
+        // 📅 Booking & Payment Info
+        const bookingDate = booking.date || "TBA";
+        const bookingTime = booking.time || "TBA";
+        const location = booking.location || "Not specified";
+        const address = booking.address || "Not specified";
+        const packageName = lead.packageInterest || "N/A";
+        const paymentStatus = booking.payment?.paymentStatus || "unknown";
+        const paymentAmount = booking.payment?.amount || "0.00";
+
+        // 🧒 Student Info (all students)
+        const studentNames = booking.students
+          .map((s) => `${s.studentFirstName} ${s.studentLastName}`)
+          .join(", ");
+
+        // 🧠 Replace placeholders in email template
+        const finalHtml = htmlTemplate
+          .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`.trim())
+          .replace(/{{studentNames}}/g, studentNames)
+          .replace(/{{packageName}}/g, packageName)
+          .replace(/{{location}}/g, location)
+          .replace(/{{address}}/g, address)
+          .replace(/{{date}}/g, bookingDate)
+          .replace(/{{time}}/g, bookingTime)
+          .replace(/{{paymentStatus}}/g, paymentStatus)
+          .replace(/{{amount}}/g, paymentAmount)
+          .replace(/{{relationChild}}/g, firstParent.relationChild || "Parent")
+          .replace(/{{appName}}/g, "Synco")
+          .replace(/{{year}}/g, new Date().getFullYear());
+
+        const recipient = [
+          {
+            name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
+            email: firstParent.parentEmail,
+          },
+        ];
+
+        // 📧 Send the email
+        const sendResult = await sendEmail(emailConfig, {
+          recipient,
+          subject,
+          htmlBody: finalHtml,
+        });
+
+        if (sendResult.status) {
+          totalSent++;
+          sentTo.push(firstParent.parentEmail);
+        } else {
+          errors.push({
+            leadId: lead.id,
+            parentEmail: firstParent.parentEmail,
+            error: sendResult.message,
+          });
+        }
+      } catch (err) {
+        console.error(`❌ Error sending email for lead ${lead.id}:`, err);
+        errors.push({ leadId: lead.id, error: err.message });
+      }
+    }
+
+    // ✅ Final Response
+    return {
+      status: true,
+      message: `Emails sent to ${totalSent} first parents successfully.`,
+      totalSent,
+      sentTo,
+      skipped,
+      errors,
+    };
+  } catch (error) {
+    console.error("❌ sendEmailToFirstParentWithBooking Error:", error);
     return { status: false, message: error.message };
   }
 };

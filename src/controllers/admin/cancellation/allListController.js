@@ -18,7 +18,6 @@ exports.getFullCancelBookings = async (req, res) => {
       status,
     } = req.query; // ✅ added status
 
-
     const bookedBy = req.admin?.id;
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id, true);
     const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
