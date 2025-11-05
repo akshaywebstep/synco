@@ -20,7 +20,7 @@ const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
 
 const bcrypt = require("bcrypt");
-const { Op } = require("sequelize");
+const { Sequelize, Op } = require("sequelize"); 
 
 const axios = require("axios");
 
@@ -230,14 +230,6 @@ exports.getWaitingList = async (filters = {}) => {
     if (filters.interest) trialWhere.interest = filters.interest;
 
     const adminWhere = {};
-    /*
-    if (filters.bookedBy) {
-      adminWhere[Op.or] = [
-        { firstName: { [Op.like]: `%${filters.bookedBy}%` } },
-        { lastName: { [Op.like]: `%${filters.bookedBy}%` } },
-      ];
-    }
-    */
 
     if (filters.bookedBy) {
       // Ensure bookedBy is always an array
@@ -273,9 +265,32 @@ exports.getWaitingList = async (filters = {}) => {
 
     const studentWhere = {};
     if (filters.studentName) {
+      const keyword = filters.studentName.toLowerCase().trim();
+
       studentWhere[Op.or] = [
-        { studentFirstName: { [Op.like]: `%${filters.studentName}%` } },
-        { studentLastName: { [Op.like]: `%${filters.studentName}%` } },
+        // Match by first name
+        Sequelize.where(
+          Sequelize.fn("LOWER", Sequelize.col("students.studentFirstName")),
+          { [Op.like]: `%${keyword}%` }
+        ),
+        // Match by last name
+        Sequelize.where(
+          Sequelize.fn("LOWER", Sequelize.col("students.studentLastName")),
+          { [Op.like]: `%${keyword}%` }
+        ),
+        // Match by full name (first + space + last)
+        Sequelize.where(
+          Sequelize.fn(
+            "LOWER",
+            Sequelize.fn(
+              "CONCAT",
+              Sequelize.col("students.studentFirstName"),
+              " ",
+              Sequelize.col("students.studentLastName")
+            )
+          ),
+          { [Op.like]: `%${keyword}%` }
+        ),
       ];
     }
 
@@ -634,7 +649,7 @@ exports.createBooking = async (data, options) => {
         // keyInformation: data.keyInformation,
         status: bookingStatus,
         bookedBy: source === "open" ? bookedByAdminId : adminId,
-        intrest: data.intrest,
+        interest: data.interest,
         createdAt: new Date(),
         updatedAt: new Date(),
       },

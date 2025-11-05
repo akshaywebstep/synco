@@ -955,6 +955,8 @@ exports.updateBooking = async (payload, adminId, id) => {
         return { status: false, message: msg };
       }
     }
+    booking.status = "active";
+    await booking.save({ transaction: t });
 
     // Commit if all good
     await t.commit();

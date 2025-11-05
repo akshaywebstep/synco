@@ -1277,12 +1277,7 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
         [Op.like]: `%${filters.planType}%`,
       };
     }
-    // if (filters.lifeCycle) {
-    //   whereBooking["$paymentPlan.duration$"] = filters.lifeCycle;
-    // }
-    // if (filters.flexiPlan) {
-    //   whereBooking["$paymentPlan.title$"] = filters.flexiPlan;
-    // }
+   
     if (filters.studentName) {
       const keyword = filters.studentName.toLowerCase().trim();
 

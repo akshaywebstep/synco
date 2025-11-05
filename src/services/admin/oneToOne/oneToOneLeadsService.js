@@ -1613,8 +1613,11 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
     } else if (filterType === "last3Months") {
       startDate = moment().subtract(3, "months").startOf("month").toDate();
       endDate = moment().endOf("month").toDate();
+    } else if (filterType === "last6Months") {
+      startDate = moment().subtract(6, "months").startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
     } else {
-      throw new Error("Invalid filterType. Use thisMonth | lastMonth | last3Months");
+      throw new Error("Invalid filterType. Use thisMonth | lastMonth | last3Months | last6Months");
     }
 
     // 🗓️ Define date ranges
@@ -1781,51 +1784,51 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
       limit: 5,
     });
 
-  // ✅ One-to-One Students (monthly trend — show all months)
-const monthlyStudentsRaw = await OneToOneBooking.findAll({
-  attributes: [
-    [fn("DATE_FORMAT", col("OneToOneBooking.createdAt"), "%M"), "month"], // e.g. "October"
-    [fn("COUNT", col("OneToOneBooking.id")), "bookings"], // total bookings
-    [fn("COUNT", fn("DISTINCT", col("students.id"))), "students"], // unique students linked to those bookings
-  ],
-  include: [
-    {
-      model: OneToOneStudent,
-      as: "students", // ✅ must match your association
-      attributes: [],
-      required: true,
-    },
-  ],
-  where: {
-    status: { [Op.in]: ["pending", "active"] },
-    createdAt: {
-      [Op.between]: [
-        moment().startOf("year").toDate(),
-        moment().endOf("year").toDate(),
+    // ✅ One-to-One Students (monthly trend — show all months)
+    const monthlyStudentsRaw = await OneToOneBooking.findAll({
+      attributes: [
+        [fn("DATE_FORMAT", col("OneToOneBooking.createdAt"), "%M"), "month"], // e.g. "October"
+        [fn("COUNT", col("OneToOneBooking.id")), "bookings"], // total bookings
+        [fn("COUNT", fn("DISTINCT", col("students.id"))), "students"], // unique students linked to those bookings
       ],
-    },
-  },
-  group: [fn("MONTH", col("OneToOneBooking.createdAt"))],
-  order: [[fn("MONTH", col("OneToOneBooking.createdAt")), "ASC"]],
-  raw: true,
-});
+      include: [
+        {
+          model: OneToOneStudent,
+          as: "students", // ✅ must match your association
+          attributes: [],
+          required: true,
+        },
+      ],
+      where: {
+        status: { [Op.in]: ["pending", "active"] },
+        createdAt: {
+          [Op.between]: [
+            moment().startOf("year").toDate(),
+            moment().endOf("year").toDate(),
+          ],
+        },
+      },
+      group: [fn("MONTH", col("OneToOneBooking.createdAt"))],
+      order: [[fn("MONTH", col("OneToOneBooking.createdAt")), "ASC"]],
+      raw: true,
+    });
 
-// 🧠 Generate all 12 months (Jan → Dec)
-const allMonths = Array.from({ length: 12 }, (_, i) => ({
-  month: moment().month(i).format("MMMM"),
-  students: 0,
-  bookings: 0,
-}));
+    // 🧠 Generate all 12 months (Jan → Dec)
+    const allMonths = Array.from({ length: 12 }, (_, i) => ({
+      month: moment().month(i).format("MMMM"),
+      students: 0,
+      bookings: 0,
+    }));
 
-// 🧩 Merge DB results into allMonths
-const monthlyStudents = allMonths.map((m) => {
-  const found = monthlyStudentsRaw.find((r) => r.month === m.month);
-  return {
-    month: m.month,
-    students: found ? parseInt(found.students, 10) : 0,
-    bookings: found ? parseInt(found.bookings, 10) : 0,
-  };
-});
+    // 🧩 Merge DB results into allMonths
+    const monthlyStudents = allMonths.map((m) => {
+      const found = monthlyStudentsRaw.find((r) => r.month === m.month);
+      return {
+        month: m.month,
+        students: found ? parseInt(found.students, 10) : 0,
+        bookings: found ? parseInt(found.bookings, 10) : 0,
+      };
+    });
 
     const packageBreakdown = await oneToOneLeads.findAll({
       attributes: [
@@ -2065,7 +2068,7 @@ const monthlyStudents = allMonths.map((m) => {
         },
       },
       charts: {
-       monthlyStudents, // for line chart
+        monthlyStudents, // for line chart
         // revenueByPackage, // donut chart
         marketChannelPerformance,
         sourceBreakdown, // marketing channels
