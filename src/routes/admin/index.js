@@ -116,10 +116,13 @@ router.use("/one-to-one", require("./oneToOneRoutes/oneToOneBookingRoutes"));
 // birthday party base route
 router.use("/birthday-party", require("./birthdayPartyRoutes/sessionExerciseRoutes"));
 router.use("/birthday-party", require("./birthdayPartyRoutes/sessionPlanLibraryRoutes"));
+router.use("/birthday-party", require("./birthdayPartyRoutes/birthdayPartyLeadRoutes"));
+router.use("/birthday-party", require("./birthdayPartyRoutes/birthdayPartyBookingRoutes"));
 
 const {
   listComments,
 } = require("../../controllers/admin/booking/commentController");
+const { route } = require("./rolePermissionRoutes");
 
 router.get(
   "/comment/allComment",
@@ -174,7 +177,7 @@ router.get(
   permissionMiddleware("member", "view-listing"),
   getAllAdminsForReassign
 );
- 
+
 // ✅ Reset password
 router.post("/reset-password", resetPassword);
 

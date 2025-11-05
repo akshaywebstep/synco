@@ -15,7 +15,7 @@ const {
 } = require("../../../../models");
 const { sequelize } = require("../../../../models");
 
-const stripe = require("../../../../utils/payment/pay360/stripe");
+const stripePromise = require("../../../../utils/payment/pay360/stripe");
 const {
   createCustomer,
   createCardToken,
@@ -172,7 +172,7 @@ exports.createOnetoOneBooking = async (data) => {
       if (!cardId) {
         const cardTokenRes = await createCardToken({
           body: {
-            cardNumber: data.payment.cardNumber, 
+            cardNumber: data.payment.cardNumber,
             expiryDate: data.payment.expiryDate,
             securityCode: data.payment.securityCode,
           },
@@ -230,14 +230,16 @@ exports.createOnetoOneBooking = async (data) => {
 
     // ✅ 7️⃣ Optionally fetch charge details from Stripe (if charge succeeded)
     let stripeChargeDetails = null;
+
     if (stripeChargeId) {
       try {
+        // ✅ Wait for Stripe to be ready
+        const stripe = await stripePromise;
         stripeChargeDetails = await stripe.charges.retrieve(stripeChargeId);
       } catch (err) {
         console.error("⚠️ Failed to fetch charge details:", err.message);
       }
     }
-
     await transaction.commit();
 
     // ✅ Send confirmation email to first parent (only if payment succeeded)

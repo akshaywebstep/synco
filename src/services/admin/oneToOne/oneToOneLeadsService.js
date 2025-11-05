@@ -11,7 +11,7 @@ const {
 } = require("../../../models");
 // const { Op } = require("sequelize");
 const { Op, fn, col, literal } = require("sequelize");
-const stripe = require("../../../utils/payment/pay360/stripe");
+const stripePromise = require("../../../utils/payment/pay360/stripe");
 const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
 const moment = require("moment");
@@ -177,28 +177,28 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
 
           if (stripeChargeId) {
             try {
+              // ✅ Wait for Stripe to be ready
+              const stripe = await stripePromise;
+
               if (stripeChargeId.startsWith("pi_")) {
-                const paymentIntent = await stripe.paymentIntents.retrieve(
-                  stripeChargeId,
-                  {
-                    expand: ["latest_charge"],
-                  }
-                );
+                // 🔹 Retrieve PaymentIntent and expand to get latest charge
+                const paymentIntent = await stripe.paymentIntents.retrieve(stripeChargeId, {
+                  expand: ["latest_charge"],
+                });
+
                 if (paymentIntent.latest_charge) {
                   stripeChargeDetails = await stripe.charges.retrieve(
                     paymentIntent.latest_charge
                   );
                 }
               } else if (stripeChargeId.startsWith("ch_")) {
-                stripeChargeDetails = await stripe.charges.retrieve(
-                  stripeChargeId
-                );
+                // 🔹 Retrieve charge directly
+                stripeChargeDetails = await stripe.charges.retrieve(stripeChargeId);
               }
             } catch (err) {
               console.error("⚠️ Failed to fetch charge details:", err.message);
             }
           }
-
           paymentObj = {
             stripePaymentIntentId: stripeChargeId,
             baseAmount: booking.payment.baseAmount,
@@ -539,20 +539,23 @@ exports.getAllOnetoOneLeadsSales = async (
 
           if (stripeChargeId) {
             try {
+              // ✅ Wait for Stripe to be ready
+              const stripe = await stripePromise;
+
               if (stripeChargeId.startsWith("pi_")) {
-                const paymentIntent = await stripe.paymentIntents.retrieve(
-                  stripeChargeId,
-                  { expand: ["latest_charge"] }
-                );
+                // 🔹 Retrieve PaymentIntent and expand to get latest charge
+                const paymentIntent = await stripe.paymentIntents.retrieve(stripeChargeId, {
+                  expand: ["latest_charge"],
+                });
+
                 if (paymentIntent.latest_charge) {
                   stripeChargeDetails = await stripe.charges.retrieve(
                     paymentIntent.latest_charge
                   );
                 }
               } else if (stripeChargeId.startsWith("ch_")) {
-                stripeChargeDetails = await stripe.charges.retrieve(
-                  stripeChargeId
-                );
+                // 🔹 Retrieve charge directly
+                stripeChargeDetails = await stripe.charges.retrieve(stripeChargeId);
               }
             } catch (err) {
               console.error("⚠️ Failed to fetch charge details:", err.message);
@@ -991,20 +994,23 @@ exports.getAllOnetoOneLeadsSalesAll = async (
 
           if (stripeChargeId) {
             try {
+              // ✅ Wait for Stripe to be ready
+              const stripe = await stripePromise;
+
               if (stripeChargeId.startsWith("pi_")) {
-                const paymentIntent = await stripe.paymentIntents.retrieve(
-                  stripeChargeId,
-                  { expand: ["latest_charge"] }
-                );
+                // 🔹 Retrieve PaymentIntent and expand to get latest charge
+                const paymentIntent = await stripe.paymentIntents.retrieve(stripeChargeId, {
+                  expand: ["latest_charge"],
+                });
+
                 if (paymentIntent.latest_charge) {
                   stripeChargeDetails = await stripe.charges.retrieve(
                     paymentIntent.latest_charge
                   );
                 }
               } else if (stripeChargeId.startsWith("ch_")) {
-                stripeChargeDetails = await stripe.charges.retrieve(
-                  stripeChargeId
-                );
+                // 🔹 Retrieve charge directly
+                stripeChargeDetails = await stripe.charges.retrieve(stripeChargeId);
               }
             } catch (err) {
               console.error("⚠️ Failed to fetch charge details:", err.message);
@@ -1321,27 +1327,30 @@ exports.getOnetoOneLeadsById = async (id, adminId) => {
       const stripeChargeId = booking.payment.stripePaymentIntentId;
       let stripeChargeDetails = null;
 
-      // ✅ Fetch Stripe details if ID exists
       if (stripeChargeId) {
         try {
+          // ✅ Wait for Stripe to be ready
+          const stripe = await stripePromise;
+
           if (stripeChargeId.startsWith("pi_")) {
-            const paymentIntent = await stripe.paymentIntents.retrieve(
-              stripeChargeId,
-              { expand: ["latest_charge"] }
-            );
+            // 🔹 Retrieve PaymentIntent and expand to get latest charge
+            const paymentIntent = await stripe.paymentIntents.retrieve(stripeChargeId, {
+              expand: ["latest_charge"],
+            });
+
             if (paymentIntent.latest_charge) {
               stripeChargeDetails = await stripe.charges.retrieve(
                 paymentIntent.latest_charge
               );
             }
           } else if (stripeChargeId.startsWith("ch_")) {
+            // 🔹 Retrieve charge directly
             stripeChargeDetails = await stripe.charges.retrieve(stripeChargeId);
           }
         } catch (err) {
           console.error("⚠️ Failed to fetch charge details:", err.message);
         }
       }
-
       paymentObj = {
         stripePaymentIntentId: stripeChargeId,
         baseAmount: booking.payment.baseAmount,
