@@ -250,54 +250,6 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
   }
 };
 
-// exports.getSessionPlanGroupStructureById = async (req, res) => {
-//   try {
-//     const { id } = req.params; // ✔ use `id` instead of configId
-//     const createdBy = req.admin?.id || req.user?.id;
-
-//     if (!id) {
-//       return res.status(400).json({
-//         status: false,
-//         message: "Session Plan Group ID is required.",
-//       });
-//     }
-
-//     // Now you can safely call your service
-//     const result = await SessionPlanGroupService.getSessionPlanConfigById(id, createdBy);
-
-//     if (!result.status) {
-//       return res.status(404).json({ status: false, message: result.message });
-//     }
-
-//     const group = result.data;
-//     let parsedLevels = {};
-
-//     try {
-//       parsedLevels =
-//         typeof group.levels === "string"
-//           ? JSON.parse(group.levels)
-//           : group.levels || {};
-//     } catch (err) {
-//       parsedLevels = {};
-//       console.error("Failed to parse levels:", err);
-//     }
-
-//     // … rest of your code (exercise enrichment, video info, etc.)
-
-//     return res.status(200).json({
-//       status: true,
-//       message: "Fetched session plan group successfully.",
-//       data: {
-//         ...group,
-//         // levels: parsedLevels,
-//       },
-//     });
-//   } catch (error) {
-//     console.error("Error in getSessionPlanGroupStructureById:", error);
-//     return res.status(500).json({ status: false, message: "Server error." });
-//   }
-// };
-
 exports.getSessionPlanGroupStructureById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -417,6 +369,7 @@ exports.getSessionPlanGroupStructureById = async (req, res) => {
 exports.getAllSessionPlanGroupStructure = async (req, res) => {
   try {
     const adminId = req.admin?.id || req.user?.id;
+
     if (!adminId) {
       return res.status(400).json({
         status: false,
@@ -426,11 +379,11 @@ exports.getAllSessionPlanGroupStructure = async (req, res) => {
 
     console.log("🟢 adminId:", adminId);
 
-    // 🔹 Get top-level super admin (if exists)
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? adminId;
+    // 🔹 Get top-level super admin
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id || adminId;
 
-    // 🔹 Fetch session plan config (now passing both IDs)
+    // 🔹 Fetch all groups and exercises (service handles logic)
     const result = await SessionPlanGroupService.getAllSessionPlanConfig({
       adminId,
       superAdminId,
@@ -442,9 +395,10 @@ exports.getAllSessionPlanGroupStructure = async (req, res) => {
     }
 
     const { groups, exerciseMap } = result.data || {};
-    console.log("🟢 Number of groups:", groups?.length || 0);
 
-    // 🔹 Map groups to include enriched levels (no structure changes)
+    console.log(`🟢 Number of groups fetched: ${groups?.length || 0}`);
+
+    // 🔹 Format data for response
     const formattedData = groups.map((group) => {
       let parsedLevels = {};
       try {
@@ -453,17 +407,14 @@ exports.getAllSessionPlanGroupStructure = async (req, res) => {
             ? JSON.parse(group.levels)
             : group.levels || {};
       } catch (err) {
-        console.error(
-          `⚠️ Failed to parse levels for group ID ${group.id}`,
-          err
-        );
+        console.warn(`⚠️ Failed to parse levels for group ID ${group.id}`, err);
       }
 
-      // Attach exercises to each level item
       Object.keys(parsedLevels).forEach((levelKey) => {
         const items = Array.isArray(parsedLevels[levelKey])
           ? parsedLevels[levelKey]
           : [parsedLevels[levelKey]];
+
         parsedLevels[levelKey] = items.map((item) => ({
           ...item,
           sessionExercises: (item.sessionExerciseId || [])
@@ -488,10 +439,9 @@ exports.getAllSessionPlanGroupStructure = async (req, res) => {
 
     console.log("🟢 Formatted data ready:", formattedData.length);
 
-    // ✅ Response structure unchanged
     return res.status(200).json({
       status: true,
-      message: "Fetched session plan groups with exercises successfully.",
+      message: "Fetched session plan groups successfully.",
       data: formattedData,
     });
   } catch (error) {
@@ -1009,8 +959,10 @@ exports.deleteSessionPlanConfigLevel = async (req, res) => {
 
 exports.repinSessionPlanGroup = async (req, res) => {
   try {
-    const createdBy = req.admin?.id || req.user?.id;
-    const { id } = req.params; // e.g. PATCH /api/session-plans/130/repin
+    // 🔹 Extract user info
+    const adminId = req.admin?.id || req.user?.id;
+    const superAdminId = req.admin?.superAdminId || req.user?.superAdminId; // ensure you store this properly in token/session
+    const { id } = req.params;
     const { pinned } = req.body; // e.g. { "pinned": 1 }
 
     // 🔹 Validate required parameters
@@ -1021,10 +973,10 @@ exports.repinSessionPlanGroup = async (req, res) => {
       });
     }
 
-    if (!createdBy) {
+    if (!adminId) {
       return res.status(400).json({
         status: false,
-        message: "Missing creator information (createdBy).",
+        message: "Missing admin information.",
       });
     }
 
@@ -1036,10 +988,11 @@ exports.repinSessionPlanGroup = async (req, res) => {
       });
     }
 
-    // 🔸 Delegate to service
+    // 🔸 Delegate to service (pass both admin & superAdmin)
     const result = await SessionPlanGroupService.repinSessionPlanGroupService(
       id,
-      createdBy,
+      adminId,
+      superAdminId,
       pinnedValue
     );
 
@@ -1055,7 +1008,7 @@ exports.repinSessionPlanGroup = async (req, res) => {
     // ✅ Create a notification
     const action = pinnedValue === 1 ? "pinned" : "unpinned";
     await createNotification({
-      userId: createdBy,
+      userId: adminId,
       title: `Session Plan ${action}`,
       message: `You have ${action} session plan group (ID: ${id}).`,
       type: "session_plan",

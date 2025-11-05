@@ -1,12 +1,14 @@
 const {
   SessionPlanGroup,
   SessionExercise,
+  Admin,
   SessionPlanConfig,
 } = require("../../../../models");
 const { deleteFile } = require("../../../../utils/fileHandler");
 const path = require("path");
 const { Readable } = require("stream");
 const fetch = require("node-fetch");
+const { Op } = require("sequelize");
 
 function safeParseLevels(levelsRaw) {
   if (!levelsRaw) return {};
@@ -57,15 +59,22 @@ exports.getSessionPlanConfigById = async (id, adminId, superAdminId) => {
     };
 
     // 🧠 Access rules
-    if (superAdminId && superAdminId === adminId) {
-      // Super Admin → can see all
-      console.log("🟢 Super Admin detected — full access");
-    } else if (superAdminId && adminId) {
-      // Admin → can see own + super admin data
-      whereCondition.createdBy = [adminId, superAdminId];
+    if (superAdminId === adminId) {
+      // ✅ Super Admin → all admins under them (including self)
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id"],
+      });
+
+      const adminIds = managedAdmins.map((a) => a.id);
+      adminIds.push(superAdminId); // include the super admin
+
+      whereCondition.createdBy = { [Op.in]: adminIds };
+      console.log("🟢 Super Admin detected — fetching all related SessionPlanGroups");
     } else {
-      // Fallback → own only
-      whereCondition.createdBy = adminId;
+      // ✅ Normal Admin → only their own + super admin data
+      whereCondition.createdBy = { [Op.in]: [adminId, superAdminId] };
+      console.log("🟠 Admin detected — fetching own and Super Admin SessionPlanGroups");
     }
 
     // STEP 2 — Fetch group
@@ -173,13 +182,22 @@ exports.getAllSessionPlanConfig = async ({
 
     // 🔹 Determine what data to fetch
     let whereCondition = { type: "one_to_one" };
+    if (superAdminId === adminId) {
+      // ✅ Super Admin → all admins under them (including self)
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id"],
+      });
 
-    if (superAdminId && superAdminId === adminId) {
-      console.log("🟢 Super Admin detected — fetching all SessionPlanGroups");
-    } else if (superAdminId && adminId) {
-      whereCondition.createdBy = [adminId, superAdminId];
+      const adminIds = managedAdmins.map((a) => a.id);
+      adminIds.push(superAdminId); // include the super admin
+
+      whereCondition.createdBy = { [Op.in]: adminIds };
+      console.log("🟢 Super Admin detected — fetching all related SessionPlanGroups");
     } else {
-      whereCondition.createdBy = adminId;
+      // ✅ Normal Admin → only their own + super admin data
+      whereCondition.createdBy = { [Op.in]: [adminId, superAdminId] };
+      console.log("🟠 Admin detected — fetching own and Super Admin SessionPlanGroups");
     }
 
     // STEP 1 — Fetch all session plan groups
@@ -286,13 +304,21 @@ exports.getAllSessionPlanConfig = async ({
   }
 };
 
-exports.repinSessionPlanGroupService = async (id, createdBy, pinned) => {
+exports.repinSessionPlanGroupService = async (id, adminId, superAdminId, pinned) => {
   const t = await SessionPlanGroup.sequelize.transaction();
 
   try {
-    // 🔹 Find the specific group by ID and creator
+    // 🔹 Allow superAdmin to repin any group created by them or the admin
+    const whereCondition = {
+      id,
+      createdBy: superAdminId && superAdminId === adminId
+        ? [superAdminId]
+        : [adminId, superAdminId],
+    };
+
+    // 🔹 Find the group by ID and allowed creators
     const targetGroup = await SessionPlanGroup.findOne({
-      where: { id, createdBy },
+      where: whereCondition,
       transaction: t,
     });
 
@@ -301,7 +327,7 @@ exports.repinSessionPlanGroupService = async (id, createdBy, pinned) => {
       return { status: false, message: "Group not found or unauthorized." };
     }
 
-    // 🔹 Update only this group’s pinned status (no changes to others)
+    // 🔹 Update pinned status
     await targetGroup.update(
       { pinned: pinned === 1 || pinned === true },
       { transaction: t }
