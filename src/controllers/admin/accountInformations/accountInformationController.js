@@ -1,5 +1,7 @@
 const AccountInformationService = require("../../../services/admin/accountInformations/accountInformation");
 const { logActivity } = require("../../../utils/admin/activityLogger");
+const oneToOneLeadService = require("../../../services/admin/oneToOne//oneToOneLeadsService");
+const birthdayPartyLeadService = require("../../../services/admin/birthdayParty/birthdayPartyLeadsService");
 const {
   createNotification,
 } = require("../../../utils/admin/notificationHelper");
@@ -14,6 +16,7 @@ const PANEL = "admin";
 const MODULE = "account_information";
 
 //  controller account information controller
+
 exports.getAllStudentsListing = async (req, res) => {
   try {
     // 🧾 Extract filters from query params
@@ -25,45 +28,67 @@ exports.getAllStudentsListing = async (req, res) => {
       venueId: req.query.venueId || null,
     };
 
-    const bookedBy = req.admin?.id;
+    const adminId = req.admin?.id;
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id, true);
     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
     // ✅ Apply bookedBy filter
-    if (req.admin?.role?.toLowerCase() === 'super admin') {
+    if (req.admin?.role?.toLowerCase() === "super admin") {
       const admins = mainSuperAdminResult?.admins || [];
-      filters.bookedBy = admins.length > 0 ? admins.map(a => a.id) : [];
+      filters.bookedBy = admins.length > 0 ? admins.map((a) => a.id) : [];
     } else {
-      // Always assign bookedBy even if not in query
-      filters.bookedBy = bookedBy || null;
+      filters.bookedBy = adminId || null;
     }
 
-    // 🧠 Call the service layer
-    const result = await AccountInformationService.getAllStudentsListing(filters);
+    // 🧠 Run all three service calls in parallel for performance
+    const [membershipResult, oneToOneResult, birthdayPartyResult] = await Promise.all([
+      AccountInformationService.getAllStudentsListing(filters),
+      oneToOneLeadService.getAllOnetoOneLeadsSales(superAdminId, adminId, filters),
+      birthdayPartyLeadService.getAllBirthdayPartyLeadsSales(superAdminId, adminId, filters),
+    ]);
 
-    // ❌ Handle service-level failure
-    if (!result.status) {
-      await logActivity(
-        req,
-        PANEL,
-        MODULE,
-        "read",
-        { filters, error: result.message },
-        false
-      );
+    // ❌ Handle Membership failure
+    if (!membershipResult.status) {
+      await logActivity(req, PANEL, MODULE, "read", { filters, error: membershipResult.message }, false);
       return res.status(500).json({
         status: false,
-        message: result.message || "Failed to retrieve student listings",
+        message: membershipResult.message || "Failed to retrieve student listings",
+      });
+    }
+
+    // ❌ Handle One-to-One failure
+    if (!oneToOneResult.status) {
+      await logActivity(req, PANEL, MODULE, "read", { filters, error: oneToOneResult.message }, false);
+      return res.status(500).json({
+        status: false,
+        message: oneToOneResult.message || "Failed to retrieve One-to-One leads",
+      });
+    }
+
+    // ❌ Handle Birthday Party failure
+    if (!birthdayPartyResult.status) {
+      await logActivity(req, PANEL, MODULE, "read", { filters, error: birthdayPartyResult.message }, false);
+      return res.status(500).json({
+        status: false,
+        message: birthdayPartyResult.message || "Failed to retrieve Birthday Party leads",
       });
     }
 
     // 🧩 Optional: Debug logging
     if (DEBUG) {
-      console.log(
-        "DEBUG: Retrieved student listing:",
-        JSON.stringify(result.data, null, 2)
-      );
+      console.log("DEBUG: Membership data:", JSON.stringify(membershipResult.data, null, 2));
+      console.log("DEBUG: One-to-One data:", JSON.stringify(oneToOneResult.data, null, 2));
+      console.log("DEBUG: Birthday Party data:", JSON.stringify(birthdayPartyResult.data, null, 2));
     }
+
+    // ✅ Combine results into unified structure
+    const unifiedData = {
+      accountInformation: {
+        membership: membershipResult?.data?.accountInformation || [],
+        oneToOne: oneToOneResult?.data || [],
+        birthdayParty: birthdayPartyResult?.data || [],
+      },
+    };
 
     // ✅ Log successful read
     await logActivity(
@@ -71,28 +96,26 @@ exports.getAllStudentsListing = async (req, res) => {
       PANEL,
       MODULE,
       "read",
-      { filters, count: result.data.accountInformation.length },
+      {
+        filters,
+        membershipCount: membershipResult.data?.accountInformation?.length || 0,
+        oneToOneCount: oneToOneResult.data?.length || 0,
+        birthdayPartyCount: birthdayPartyResult.data?.length || 0,
+      },
       true
     );
 
-    // ✅ Return formatted response
+    // ✅ Return unified formatted response
     return res.status(200).json({
       status: true,
       message: "Bookings retrieved successfully",
-      data: result.data,
+      data: unifiedData,
     });
   } catch (error) {
     console.error("❌ getAllStudentsListing Controller Error:", error.message);
 
     // 🧾 Log and respond with server error
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "read",
-      { error: error.message },
-      false
-    );
+    await logActivity(req, PANEL, MODULE, "read", { error: error.message }, false);
 
     return res.status(500).json({
       status: false,
@@ -100,6 +123,93 @@ exports.getAllStudentsListing = async (req, res) => {
     });
   }
 };
+
+// exports.getAllStudentsListing = async (req, res) => {
+//   try {
+//     // 🧾 Extract filters from query params
+//     const filters = {
+//       studentName: req.query.studentName || null,
+//       dateFrom: req.query.dateFrom || null,
+//       dateTo: req.query.dateTo || null,
+//       status: req.query.status || null,
+//       venueId: req.query.venueId || null,
+//     };
+
+//     const bookedBy = req.admin?.id;
+//     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id, true);
+//     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+
+//     // ✅ Apply bookedBy filter
+//     if (req.admin?.role?.toLowerCase() === 'super admin') {
+//       const admins = mainSuperAdminResult?.admins || [];
+//       filters.bookedBy = admins.length > 0 ? admins.map(a => a.id) : [];
+//     } else {
+//       // Always assign bookedBy even if not in query
+//       filters.bookedBy = bookedBy || null;
+//     }
+
+//     // 🧠 Call the service layer
+//     const result = await AccountInformationService.getAllStudentsListing(filters);
+
+//     // ❌ Handle service-level failure
+//     if (!result.status) {
+//       await logActivity(
+//         req,
+//         PANEL,
+//         MODULE,
+//         "read",
+//         { filters, error: result.message },
+//         false
+//       );
+//       return res.status(500).json({
+//         status: false,
+//         message: result.message || "Failed to retrieve student listings",
+//       });
+//     }
+
+//     // 🧩 Optional: Debug logging
+//     if (DEBUG) {
+//       console.log(
+//         "DEBUG: Retrieved student listing:",
+//         JSON.stringify(result.data, null, 2)
+//       );
+//     }
+
+//     // ✅ Log successful read
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "read",
+//       { filters, count: result.data.accountInformation.length },
+//       true
+//     );
+
+//     // ✅ Return formatted response
+//     return res.status(200).json({
+//       status: true,
+//       message: "Bookings retrieved successfully",
+//       data: result.data,
+//     });
+//   } catch (error) {
+//     console.error("❌ getAllStudentsListing Controller Error:", error.message);
+
+//     // 🧾 Log and respond with server error
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "read",
+//       { error: error.message },
+//       false
+//     );
+
+//     return res.status(500).json({
+//       status: false,
+//       message: "Server error. Please try again later.",
+//     });
+//   }
+// };
 
 exports.getStudentById = async (req, res) => {
   try {

@@ -13,6 +13,201 @@ const {
 const { Op } = require("sequelize");
 const { sequelize } = require("../../../models");
 
+// exports.getAllStudentsListing = async (filters = {}) => {
+//   try {
+//     const { bookedBy, paymentPlanId, classScheduleId } = filters;
+
+//     // Base booking filters
+//     let studentsWhere = {
+//       bookingType: "paid"
+//     };
+
+//     // Apply filters if they exist
+//     if (bookedBy) {
+//       // Ensure bookedBy is always an array
+//       const bookedByArray = Array.isArray(bookedBy)
+//         ? bookedBy
+//         : [filters.bookedBy];
+
+//       studentsWhere.bookedBy = { [Op.in]: bookedByArray };
+//     }
+
+//     if (paymentPlanId) {
+//       studentsWhere.paymentPlanId = paymentPlanId;
+//     }
+
+//     if (classScheduleId) {
+//       studentsWhere.classScheduleId = classScheduleId;
+//     }
+
+//     const students = await BookingStudentMeta.findAll({
+//       include: [
+//         {
+//           model: Booking,
+//           as: "booking",
+//           required: false,
+//           attributes: [
+//             "id",
+//             "bookingType",
+//             "bookingId",
+//             "leadId",
+//             "venueId",
+//             "classScheduleId",
+//             "paymentPlanId",
+//             "trialDate",
+//             "startDate",
+//             "status",
+//             "totalStudents",
+//             "interest",
+//             "bookedBy",
+//             "additionalNote",
+//             "reasonForNonAttendance",
+//             "serviceType",
+//             "createdAt",
+//             "updatedAt",
+//           ],
+//           where: {
+//             ...studentsWhere
+//           },
+//           include: [
+//             {
+//               model: Admin,
+//               as: "bookedByAdmin",
+//               attributes: ["id", "firstName", "lastName", "email", "roleId", "status", "profile"],
+//               required: false,
+//             },
+//             {
+//               model: ClassSchedule,
+//               as: "classSchedule",
+//               required: false,
+//               include: [
+//                 {
+//                   model: Venue,
+//                   as: "venue",
+//                   required: false,
+//                 },
+//               ],
+//             },
+//             {
+//               model: Venue,
+//               as: "venue",
+//               required: false,
+//             },
+
+//             {
+//               model: PaymentPlan,
+//               as: "paymentPlan",
+//               required: false,
+//             },
+//           ],
+//         },
+//         {
+//           model: BookingParentMeta,
+//           as: "parents",
+//           required: false,
+//         },
+//         {
+//           model: BookingEmergencyMeta,
+//           as: "emergencyContacts",
+//           required: false,
+//         },
+//       ],
+//     });
+
+//     const grouped = {};
+
+//     students.forEach((student) => {
+//       const booking = student.booking;
+//       if (!booking) return;
+
+//       const bookingId = booking.id;
+
+//       if (!grouped[bookingId]) {
+//         grouped[bookingId] = {
+//           id: booking.id,
+//           bookingType: booking.bookingType,
+//           bookingId: booking.bookingId,
+//           serviceType: booking.serviceType,
+//           leadId: booking.leadId,
+//           venueId: booking.venueId,
+//           venue: booking.venue || null,
+//           classScheduleId: booking.classScheduleId,
+//           classSchedule: booking.classSchedule || null,
+//           paymentPlanId: booking.paymentPlanId,
+//           paymentPlan: booking.paymentPlan || null,
+//           bookedBy: booking.bookedBy,
+//           bookedByAdmin: booking.bookedByAdmin || null,
+//           trialDate: booking.trialDate,
+//           startDate: booking.startDate,
+//           status: booking.status,
+//           totalStudents: booking.totalStudents,
+//           interest: booking.interest,
+//           additionalNote: booking.additionalNote,
+//           reasonForNonAttendance: booking.reasonForNonAttendance,
+//           createdAt: booking.createdAt,
+//           updatedAt: booking.updatedAt,
+//           students: [],
+//           parents: [],
+//           emergency: [],
+//         };
+//       }
+
+//       // Add student
+//       grouped[bookingId].students.push({
+//         id: student.id,
+//         bookingTrialId: student.bookingTrialId,
+//         studentFirstName: student.studentFirstName,
+//         studentLastName: student.studentLastName,
+//         dateOfBirth: student.dateOfBirth,
+//         age: student.age,
+//         gender: student.gender,
+//         medicalInformation: student.medicalInformation,
+//       });
+
+//       // Add parents (avoid duplicates)
+//       (student.parents || []).forEach((p) => {
+//         if (!grouped[bookingId].parents.some((x) => x.id === p.id)) {
+//           grouped[bookingId].parents.push({
+//             id: p.id,
+//             studentId: p.studentId,
+//             parentFirstName: p.parentFirstName,
+//             parentLastName: p.parentLastName,
+//             parentEmail: p.parentEmail,
+//             parentPhoneNumber: p.parentPhoneNumber,
+//             relationToChild: p.relationToChild,
+//             howDidYouHear: p.howDidYouHear,
+//           });
+//         }
+//       });
+
+//       // Add emergency contacts (avoid duplicates)
+//       (student.emergencyContacts || []).forEach((e) => {
+//         if (!grouped[bookingId].emergency.some((x) => x.id === e.id)) {
+//           grouped[bookingId].emergency.push({
+//             id: e.id,
+//             studentId: e.studentId,
+//             emergencyFirstName: e.emergencyFirstName,
+//             emergencyLastName: e.emergencyLastName,
+//             emergencyPhoneNumber: e.emergencyPhoneNumber,
+//             emergencyRelation: e.emergencyRelation,
+//           });
+//         }
+//       });
+//     });
+
+//     return {
+//       status: true,
+//       message: "Bookings retrieved successfully",
+//       data: {
+//         accountInformation: Object.values(grouped),
+//       },
+//     };
+//   } catch (error) {
+//     console.error("❌ getAllStudentsListing Error:", error.message);
+//     return { status: false, message: error.message };
+//   }
+// };
+
 exports.getAllStudentsListing = async (filters = {}) => {
   try {
     const { bookedBy, paymentPlanId, classScheduleId } = filters;
@@ -113,7 +308,7 @@ exports.getAllStudentsListing = async (filters = {}) => {
         },
       ],
     });
-
+    
     const grouped = {};
 
     students.forEach((student) => {
