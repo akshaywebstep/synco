@@ -143,7 +143,7 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
       } catch (err) {
         console.error(`Failed to upload ${type}:`, err.message);
       } finally {
-        await fs.promises.unlink(localPath).catch(() => {});
+        await fs.promises.unlink(localPath).catch(() => { });
       }
 
       return uploadedPath;
@@ -219,8 +219,7 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Group Created",
-      `The session plan group '${payload.groupName}' was updated by ${
-        req?.admin?.firstName || "Admin"
+      `The session plan group '${payload.groupName}' was updated by ${req?.admin?.firstName || "Admin"
       }.`,
       "System"
     );
@@ -230,9 +229,8 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
       "session-plan-structure", // MODULE name
       "update", // Action type
       {
-        oneLineMessage: `Session Plan Group '${
-          payload.groupName
-        }'  created by ${req?.admin?.firstName || "Admin"}.`,
+        oneLineMessage: `Session Plan Group '${payload.groupName
+          }'  created by ${req?.admin?.firstName || "Admin"}.`,
       },
       true
     );
@@ -249,6 +247,54 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
     });
   }
 };
+
+// exports.getSessionPlanGroupStructureById = async (req, res) => {
+//   try {
+//     const { id } = req.params; // ✔ use `id` instead of configId
+//     const createdBy = req.admin?.id || req.user?.id;
+
+//     if (!id) {
+//       return res.status(400).json({
+//         status: false,
+//         message: "Session Plan Group ID is required.",
+//       });
+//     }
+
+//     // Now you can safely call your service
+//     const result = await SessionPlanGroupService.getSessionPlanConfigById(id, createdBy);
+
+//     if (!result.status) {
+//       return res.status(404).json({ status: false, message: result.message });
+//     }
+
+//     const group = result.data;
+//     let parsedLevels = {};
+
+//     try {
+//       parsedLevels =
+//         typeof group.levels === "string"
+//           ? JSON.parse(group.levels)
+//           : group.levels || {};
+//     } catch (err) {
+//       parsedLevels = {};
+//       console.error("Failed to parse levels:", err);
+//     }
+
+//     // … rest of your code (exercise enrichment, video info, etc.)
+
+//     return res.status(200).json({
+//       status: true,
+//       message: "Fetched session plan group successfully.",
+//       data: {
+//         ...group,
+//         // levels: parsedLevels,
+//       },
+//     });
+//   } catch (error) {
+//     console.error("Error in getSessionPlanGroupStructureById:", error);
+//     return res.status(500).json({ status: false, message: "Server error." });
+//   }
+// };
 
 exports.getSessionPlanGroupStructureById = async (req, res) => {
   try {
@@ -369,7 +415,6 @@ exports.getSessionPlanGroupStructureById = async (req, res) => {
 exports.getAllSessionPlanGroupStructure = async (req, res) => {
   try {
     const adminId = req.admin?.id || req.user?.id;
-
     if (!adminId) {
       return res.status(400).json({
         status: false,
@@ -379,11 +424,11 @@ exports.getAllSessionPlanGroupStructure = async (req, res) => {
 
     console.log("🟢 adminId:", adminId);
 
-    // 🔹 Get top-level super admin
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
-    const superAdminId = mainSuperAdminResult?.superAdmin?.id || adminId;
+    // 🔹 Get top-level super admin (if exists)
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? adminId;
 
-    // 🔹 Fetch all groups and exercises (service handles logic)
+    // 🔹 Fetch session plan config (now passing both IDs)
     const result = await SessionPlanGroupService.getAllSessionPlanConfig({
       adminId,
       superAdminId,
@@ -395,10 +440,9 @@ exports.getAllSessionPlanGroupStructure = async (req, res) => {
     }
 
     const { groups, exerciseMap } = result.data || {};
+    console.log("🟢 Number of groups:", groups?.length || 0);
 
-    console.log(`🟢 Number of groups fetched: ${groups?.length || 0}`);
-
-    // 🔹 Format data for response
+    // 🔹 Map groups to include enriched levels (no structure changes)
     const formattedData = groups.map((group) => {
       let parsedLevels = {};
       try {
@@ -407,14 +451,17 @@ exports.getAllSessionPlanGroupStructure = async (req, res) => {
             ? JSON.parse(group.levels)
             : group.levels || {};
       } catch (err) {
-        console.warn(`⚠️ Failed to parse levels for group ID ${group.id}`, err);
+        console.error(
+          `⚠️ Failed to parse levels for group ID ${group.id}`,
+          err
+        );
       }
 
+      // Attach exercises to each level item
       Object.keys(parsedLevels).forEach((levelKey) => {
         const items = Array.isArray(parsedLevels[levelKey])
           ? parsedLevels[levelKey]
           : [parsedLevels[levelKey]];
-
         parsedLevels[levelKey] = items.map((item) => ({
           ...item,
           sessionExercises: (item.sessionExerciseId || [])
@@ -439,9 +486,10 @@ exports.getAllSessionPlanGroupStructure = async (req, res) => {
 
     console.log("🟢 Formatted data ready:", formattedData.length);
 
+    // ✅ Response structure unchanged
     return res.status(200).json({
       status: true,
-      message: "Fetched session plan groups successfully.",
+      message: "Fetched session plan groups with exercises successfully.",
       data: formattedData,
     });
   } catch (error) {
@@ -610,7 +658,7 @@ exports.updateSessionPlanConfig = async (req, res) => {
       } catch (err) {
         console.error(`Failed to upload ${type}/${level || ""}`, err);
       } finally {
-        await fs.unlink(localPath).catch(() => {});
+        await fs.unlink(localPath).catch(() => { });
       }
 
       return uploadedUrl || oldUrl;
@@ -768,9 +816,8 @@ exports.updateSessionPlanConfig = async (req, res) => {
       "Session Plan Group", // MODULE name
       "update", // Action type
       {
-        oneLineMessage: `Session Plan Group '${
-          updatePayload.groupName
-        }' updated by ${req?.admin?.firstName || "Admin"}.`,
+        oneLineMessage: `Session Plan Group '${updatePayload.groupName
+          }' updated by ${req?.admin?.firstName || "Admin"}.`,
       },
       true
     );
@@ -778,8 +825,7 @@ exports.updateSessionPlanConfig = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Group Updated",
-      `The session plan group '${
-        updatePayload.groupName
+      `The session plan group '${updatePayload.groupName
       }' (ID: ${id}) was updated by ${req?.admin?.firstName || "Admin"}.`,
       "System"
     );
@@ -927,8 +973,7 @@ exports.deleteSessionPlanConfigLevel = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Level Deleted",
-      `Level '${levelKey}' from Session Plan Group ID ${id} was deleted by ${
-        req?.admin?.firstName || "Admin"
+      `Level '${levelKey}' from Session Plan Group ID ${id} was deleted by ${req?.admin?.firstName || "Admin"
       }.`,
       "System"
     );
@@ -959,9 +1004,7 @@ exports.deleteSessionPlanConfigLevel = async (req, res) => {
 
 exports.repinSessionPlanGroup = async (req, res) => {
   try {
-    // 🔹 Extract user info
-    const adminId = req.admin?.id || req.user?.id;
-    const superAdminId = req.admin?.superAdminId || req.user?.superAdminId; // ensure you store this properly in token/session
+    const createdBy = req.admin?.id || req.user?.id;
     const { id } = req.params;
     const { pinned } = req.body; // e.g. { "pinned": 1 }
 
@@ -973,10 +1016,10 @@ exports.repinSessionPlanGroup = async (req, res) => {
       });
     }
 
-    if (!adminId) {
+    if (!createdBy) {
       return res.status(400).json({
         status: false,
-        message: "Missing admin information.",
+        message: "Missing creator information (createdBy).",
       });
     }
 
@@ -988,11 +1031,10 @@ exports.repinSessionPlanGroup = async (req, res) => {
       });
     }
 
-    // 🔸 Delegate to service (pass both admin & superAdmin)
+    // 🔸 Delegate to service
     const result = await SessionPlanGroupService.repinSessionPlanGroupService(
       id,
-      adminId,
-      superAdminId,
+      createdBy,
       pinnedValue
     );
 
@@ -1007,16 +1049,14 @@ exports.repinSessionPlanGroup = async (req, res) => {
 
     // ✅ Create a notification
     const action = pinnedValue === 1 ? "pinned" : "unpinned";
-    await createNotification({
-      userId: adminId,
-      title: `Session Plan ${action}`,
-      message: `You have ${action} session plan group (ID: ${id}).`,
-      type: "session_plan",
-      metadata: {
-        groupId: id,
-        pinned: pinnedValue,
-      },
-    });
+    await createNotification(
+      req,
+      `Session Plan ${pinnedValue === 1 ? "Pinned" : "Unpinned"}`,
+      `Session Plan Group ID ${id} was ${pinnedValue === 1 ? "pinned" : "unpinned"
+      } by ${req?.admin?.firstName || "Admin"
+      } ${req?.admin?.lastName || ""}.`,
+      "System"
+    );
 
     // ✅ Log activity
     await logActivity(req, PANEL, MODULE, "repin", result, true);

@@ -2,14 +2,12 @@ const {
   SessionPlanGroup,
   SessionExercise,
   Admin,
-  SessionPlanConfig,
 } = require("../../../../models");
 const { deleteFile } = require("../../../../utils/fileHandler");
 const path = require("path");
 const { Readable } = require("stream");
 const fetch = require("node-fetch");
 const { Op } = require("sequelize");
-
 function safeParseLevels(levelsRaw) {
   if (!levelsRaw) return {};
   let parsed = levelsRaw;
@@ -59,22 +57,15 @@ exports.getSessionPlanConfigById = async (id, adminId, superAdminId) => {
     };
 
     // 🧠 Access rules
-    if (superAdminId === adminId) {
-      // ✅ Super Admin → all admins under them (including self)
-      const managedAdmins = await Admin.findAll({
-        where: { superAdminId },
-        attributes: ["id"],
-      });
-
-      const adminIds = managedAdmins.map((a) => a.id);
-      adminIds.push(superAdminId); // include the super admin
-
-      whereCondition.createdBy = { [Op.in]: adminIds };
-      console.log("🟢 Super Admin detected — fetching all related SessionPlanGroups");
+    if (superAdminId && superAdminId === adminId) {
+      // Super Admin → can see all
+      console.log("🟢 Super Admin detected — full access");
+    } else if (superAdminId && adminId) {
+      // Admin → can see own + super admin data
+      whereCondition.createdBy = [adminId, superAdminId];
     } else {
-      // ✅ Normal Admin → only their own + super admin data
-      whereCondition.createdBy = { [Op.in]: [adminId, superAdminId] };
-      console.log("🟠 Admin detected — fetching own and Super Admin SessionPlanGroups");
+      // Fallback → own only
+      whereCondition.createdBy = adminId;
     }
 
     // STEP 2 — Fetch group
@@ -182,6 +173,7 @@ exports.getAllSessionPlanConfig = async ({
 
     // 🔹 Determine what data to fetch
     let whereCondition = { type: "one_to_one" };
+
     if (superAdminId === adminId) {
       // ✅ Super Admin → all admins under them (including self)
       const managedAdmins = await Admin.findAll({
@@ -304,19 +296,49 @@ exports.getAllSessionPlanConfig = async ({
   }
 };
 
-exports.repinSessionPlanGroupService = async (id, adminId, superAdminId, pinned) => {
+exports.repinSessionPlanGroupService = async (id, createdBy, pinned) => {
   const t = await SessionPlanGroup.sequelize.transaction();
 
   try {
-    // 🔹 Allow superAdmin to repin any group created by them or the admin
-    const whereCondition = {
-      id,
-      createdBy: superAdminId && superAdminId === adminId
-        ? [superAdminId]
-        : [adminId, superAdminId],
-    };
+    // 🔹 Fetch admin info
+    const admin = await Admin.findOne({
+      where: { id: createdBy },
+      attributes: ["id", "superAdminId"],
+      transaction: t,
+    });
 
-    // 🔹 Find the group by ID and allowed creators
+    if (!admin) {
+      await t.rollback();
+      return { status: false, message: "Admin not found or unauthorized." };
+    }
+
+    const adminId = admin.id;
+    const superAdminId = admin.superAdminId; // null for Super Admin
+
+    let whereCondition = { id };
+
+    if (!superAdminId) {
+      // ✅ SUPER ADMIN
+      // Can repin any group created by themselves or their managed admins
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId: adminId },
+        attributes: ["id"],
+        transaction: t,
+      });
+
+      const adminIds = managedAdmins.map((a) => a.id);
+      adminIds.push(adminId); // include Super Admin’s own ID
+
+      whereCondition.createdBy = { [Op.in]: adminIds };
+      console.log("🟢 Super Admin detected — can repin own and managed admins’ SessionPlanGroups");
+    } else {
+      // ✅ NORMAL ADMIN
+      // Can repin only their own and Super Admin’s groups
+      whereCondition.createdBy = { [Op.in]: [adminId, superAdminId] };
+      console.log("🟠 Normal Admin detected — can repin own and Super Admin’s SessionPlanGroups");
+    }
+
+    // 🔹 Find the specific group by ID and valid creator
     const targetGroup = await SessionPlanGroup.findOne({
       where: whereCondition,
       transaction: t,

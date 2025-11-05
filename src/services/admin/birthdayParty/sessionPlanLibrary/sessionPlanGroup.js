@@ -1,11 +1,13 @@
 const {
   SessionPlanGroup,
   SessionExercise,
+  Admin,
 } = require("../../../../models");
 const { deleteFile } = require("../../../../utils/fileHandler");
 const path = require("path");
 const { Readable } = require("stream");
 const fetch = require("node-fetch");
+const { Op } = require("sequelize");
 
 function safeParseLevels(levelsRaw) {
   if (!levelsRaw) return {};
@@ -172,13 +174,22 @@ exports.getAllSessionPlanConfig = async ({
 
     // 🔹 Determine what data to fetch
     let whereCondition = { type: "birthday_party" };
+    if (superAdminId === adminId) {
+      // ✅ Super Admin → all admins under them (including self)
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id"],
+      });
 
-    if (superAdminId && superAdminId === adminId) {
-      console.log("🟢 Super Admin detected — fetching all SessionPlanGroups");
-    } else if (superAdminId && adminId) {
-      whereCondition.createdBy = [adminId, superAdminId];
+      const adminIds = managedAdmins.map((a) => a.id);
+      adminIds.push(superAdminId); // include the super admin
+
+      whereCondition.createdBy = { [Op.in]: adminIds };
+      console.log("🟢 Super Admin detected — fetching all related SessionPlanGroups");
     } else {
-      whereCondition.createdBy = adminId;
+      // ✅ Normal Admin → only their own + super admin data
+      whereCondition.createdBy = { [Op.in]: [adminId, superAdminId] };
+      console.log("🟠 Admin detected — fetching own and Super Admin SessionPlanGroups");
     }
 
     // STEP 1 — Fetch all session plan groups
