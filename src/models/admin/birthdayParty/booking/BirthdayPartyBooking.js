@@ -103,6 +103,14 @@ const BirthdayPartyBooking = sequelize.define(
       onDelete: "SET NULL",
       comment: "Applied discount (if any)",
     },
+     serviceType: {
+      type: DataTypes.ENUM(
+        "birthday party"
+      ),
+      allowNull: true, // ✅ allow nulls
+      defaultValue: "birthday party", // ✅ default is actually NULL, not 'NULL'
+      comment: "Type of service for the booking",
+    },
   },
   {
     tableName: "birthday_party_bookings",

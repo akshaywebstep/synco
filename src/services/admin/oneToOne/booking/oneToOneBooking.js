@@ -91,6 +91,7 @@ exports.createOnetoOneBooking = async (data) => {
         discountId: data.discountId || null,
         status: "pending",
         type: "paid",
+        serviceType: "one to one",
       },
       { transaction }
     );

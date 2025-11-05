@@ -110,6 +110,14 @@ const OneToOneBooking = sequelize.define(
       onUpdate: "CASCADE",
       onDelete: "SET NULL",
     },
+    serviceType: {
+      type: DataTypes.ENUM(
+        "one to one"
+      ),
+      allowNull: true, // ✅ allow nulls
+      defaultValue: "one to one", // ✅ default is actually NULL, not 'NULL'
+      comment: "Type of service for the booking",
+    },
   },
   {
     tableName: "one_to_one_bookings",

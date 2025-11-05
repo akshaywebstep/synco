@@ -88,6 +88,7 @@ exports.createBirthdayPartyBooking = async (data) => {
                 discountId: data.discountId || null,
                 status: "pending",
                 type: "paid",
+                serviceType: "birthday party"
             },
             { transaction }
         );
