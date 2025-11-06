@@ -677,6 +677,11 @@ exports.updateBooking = async (payload, adminId, id) => {
       booking.serviceType = "weekly class membership";
     }
 
+    // 🔹 Set isConvertedToMembership automatically
+    if (wasTrial && (booking.paymentPlanId || booking.serviceType?.toLowerCase().includes("membership"))) {
+      booking.isConvertedToMembership = true;
+    }
+
     // 🔹 Convert "rebooked" to "active" for membership upgrades
     const isMembership =
       booking.paymentPlanId ||

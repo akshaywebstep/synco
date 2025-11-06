@@ -111,6 +111,13 @@ const Booking = sequelize.define(
       defaultValue: "medium",
       comment: "Indicates the level of interest for the booking",
     },
+    // ✅ NEW FIELD — trial conversion status
+    isConvertedToMembership: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: null,
+      comment: "Indicates if a trial booking has been converted to a paid membership",
+    },
 
     // ✅ NEW FIELD — FK → Admins.id
     bookedBy: {
