@@ -664,6 +664,7 @@ exports.updateBooking = async (payload, adminId, id) => {
     }
 
     // Recompute after updates
+    const wasTrial = booking.bookingType === "free";
     booking.bookingType = booking.paymentPlanId ? "paid" : "free";
     booking.status = payload.status || booking.status || "active";
     booking.trialDate = null;
