@@ -17,7 +17,6 @@ exports.getMonthlyReport = async (req, res) => {
             console.log("📥 Filters:", JSON.stringify(req.query, null, 2));
         }
     }
-
     try {
         // ✅ Get super admin of this admin
         const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
@@ -40,6 +39,23 @@ exports.getMonthlyReport = async (req, res) => {
             adminId
         );
 
+        const getHighDemandVenue = await capacityAnalytics.getHighDemandVenue(
+            superAdminId,
+            filters,
+            adminId
+        );
+
+        const getCapacityByVenue = await capacityAnalytics.getCapacityByVenue(
+            superAdminId,
+            filters,
+            adminId
+        );
+
+         const membershipPlans = await capacityAnalytics.membershipPlans(
+            superAdminId,
+            filters,
+            adminId
+        );
         const successMessage = "Capacity analytics report generated successfully.";
         if (DEBUG) console.log("✅", successMessage);
 
@@ -59,7 +75,10 @@ exports.getMonthlyReport = async (req, res) => {
             message: successMessage,
             data: {
                 summary: reportResult,
-                monthWise: monthWiseResult,
+                charts: monthWiseResult,
+                highDemandVenue: getHighDemandVenue,
+                getCapacityByVenue,
+                membershipPlans,
             },
         });
     } catch (error) {

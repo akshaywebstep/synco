@@ -1,6 +1,6 @@
-const { Op } = require("sequelize");
+const { Op, Sequelize } = require("sequelize");
 const moment = require("moment");
-const { Booking, ClassSchedule, PaymentPlan, Admin } = require("../../../../models");
+const { Booking, ClassSchedule, Venue, PaymentPlan, Admin } = require("../../../../models");
 
 // 🔹 Helper: Build admin filter depending on role
 async function getAdminFilter(superAdminId, adminId) {
@@ -76,66 +76,239 @@ async function getTotalRevenue(periodStart, periodEnd, adminIds) {
 }
 
 // 🔹 Helper: month-wise capacity trend (current vs previous year)
-async function getCapacityMonthWise(superAdminId,filters, adminId) {
+async function getCapacityMonthWise(superAdminId, filters, adminId) {
     const adminIds = await getAdminFilter(superAdminId, adminId);
     const now = moment();
     const currentYear = now.year();
     const prevYear = currentYear - 1;
 
-    const monthlyData = [];
-
-    // ✅ Loop through all 12 months (Jan → Dec)
-    for (let month = 0; month < 12; month++) {
-        const startCurrent = moment().year(currentYear).month(month).startOf("month").toDate();
-        const endCurrent = moment().year(currentYear).month(month).endOf("month").toDate();
-        const startPrev = moment().year(prevYear).month(month).startOf("month").toDate();
-        const endPrev = moment().year(prevYear).month(month).endOf("month").toDate();
-
-        // ✅ Get total class capacity for this month (current year)
-        const currentSchedules = await ClassSchedule.findAll({
-            where: {
-                createdBy: { [Op.in]: adminIds },
-                createdAt: { [Op.between]: [startCurrent, endCurrent] },
+    // ✅ Fetch all schedules for current & previous years in one go
+    const schedules = await ClassSchedule.findAll({
+        where: {
+            createdBy: { [Op.in]: adminIds },
+            createdAt: {
+                [Op.between]: [
+                    moment().year(prevYear).startOf("year").toDate(),
+                    moment().year(currentYear).endOf("year").toDate(),
+                ],
             },
-            attributes: ["capacity"],
-        });
-        const currentYearCount = currentSchedules.reduce(
-            (sum, c) => sum + (c.capacity || 0),
-            0
-        );
+        },
+        attributes: ["capacity", "createdAt"],
+    });
 
-        // ✅ Get total class capacity for this month (previous year)
-        const prevSchedules = await ClassSchedule.findAll({
-            where: {
-                createdBy: { [Op.in]: adminIds },
-                createdAt: { [Op.between]: [startPrev, endPrev] },
-            },
-            attributes: ["capacity"],
-        });
-        const prevYearCount = prevSchedules.reduce(
-            (sum, c) => sum + (c.capacity || 0),
-            0
-        );
+    // ✅ Group data by month and year
+    const dataByYear = {
+        [currentYear]: Array(12).fill(0),
+        [prevYear]: Array(12).fill(0),
+    };
 
-        // ✅ Calculate overall capacity (sum of both years for reference)
+    schedules.forEach((s) => {
+        const year = moment(s.createdAt).year();
+        const monthIndex = moment(s.createdAt).month(); // 0–11
+        if (dataByYear[year]) {
+            dataByYear[year][monthIndex] += s.capacity || 0;
+        }
+    });
+
+    // ✅ Build structured response (Jan–Dec)
+    const monthWise = [];
+    for (let i = 0; i < 12; i++) {
+        const currentYearCount = dataByYear[currentYear][i] || 0;
+        const prevYearCount = dataByYear[prevYear][i] || 0;
         const totalCapacity = currentYearCount + prevYearCount;
 
-        // ✅ Occupancy Rate (not based on booking, just relative change)
-        const occupancyRate =
-            totalCapacity > 0
-                ? `${((currentYearCount / totalCapacity) * 100).toFixed(2)}%`
-                : "0%";
-
-        monthlyData.push({
-            month: moment().month(month).format("MMM"), // Jan, Feb, ...
+        monthWise.push({
+            month: moment().month(i).format("MMM"),
             currentYearCount,
             prevYearCount,
             totalCapacity,
-            occupancyRate,
+            occupancyRate:
+                totalCapacity > 0
+                    ? `${((currentYearCount / totalCapacity) * 100).toFixed(2)}%`
+                    : "0%",
         });
     }
 
-    return { monthWise: monthlyData };
+    return { monthWise };
+}
+
+// 🔹 High Demand Venues (group by venueId → show venue.address or venue.area)
+async function getHighDemandVenue(superAdminId, filters, adminId) {
+    // 1️⃣ Determine which admin(s) to include
+    const adminIds = await getAdminFilter(superAdminId, adminId);
+
+    // 2️⃣ Build WHERE clause
+    const where = {
+        bookedBy: { [Op.in]: adminIds },
+    };
+
+    // Optional: filter only current month’s bookings
+    if (filters?.period === "thisMonth") {
+        const start = moment().startOf("month").toDate();
+        const end = moment().endOf("month").toDate();
+        where.createdAt = { [Op.between]: [start, end] };
+    }
+
+    // 3️⃣ Group bookings by venueId and count
+    const venues = await Booking.findAll({
+        where,
+        attributes: [
+            "venueId",
+            [Booking.sequelize.fn("COUNT", Booking.sequelize.col("Booking.id")), "count"],
+        ],
+        include: [
+            {
+                model: Venue,
+                as: "venue", // make sure association exists
+                attributes: ["id", "area", "address"], // adjust per your Venue model
+            },
+        ],
+        group: ["venueId", "venue.id", "venue.area", "venue.address"],
+        order: [[Booking.sequelize.literal("count"), "DESC"]],
+    });
+
+    // 4️⃣ Compute total bookings
+    const totalBookings = venues.reduce((sum, v) => sum + Number(v.getDataValue("count")), 0);
+
+    // 5️⃣ Format output for frontend
+    const result = venues.map((v) => {
+        const count = Number(v.getDataValue("count"));
+        const percentage = totalBookings ? ((count / totalBookings) * 100).toFixed(0) : 0;
+
+        const venueName = v.venue?.area || v.venue?.address || "Unknown Venue";
+
+        return {
+            venueId: v.venueId,
+            name: venueName,
+            count,
+            percentage: `${percentage}%`,
+            value: Number(percentage),
+        };
+    });
+
+    // 6️⃣ Return top 5 by demand
+    return result.sort((a, b) => b.value - a.value).slice(0, 5);
+}
+
+async function getCapacityByVenue(superAdminId, filters, adminId) {
+  // 1️⃣ Get admin IDs allowed for this query
+  const adminIds = await getAdminFilter(superAdminId, adminId);
+
+  // 2️⃣ Build WHERE clause for ClassSchedule
+  const where = {
+    createdBy: { [Op.in]: adminIds },
+  };
+
+  // Optional: Filter only current month's schedules
+  if (filters?.period === "thisMonth") {
+    const start = moment().startOf("month").toDate();
+    const end = moment().endOf("month").toDate();
+    where.createdAt = { [Op.between]: [start, end] };
+  }
+
+  // 3️⃣ Query venues along with total capacity of their class schedules
+  const venues = await Venue.findAll({
+    include: [
+      {
+        model: ClassSchedule,
+        as: "classSchedules",
+        where,
+        attributes: [], // we only need SUM(capacity), not each record
+      },
+    ],
+    attributes: [
+      "id",
+      "area",
+      "address",
+      [Sequelize.fn("SUM", Sequelize.col("classSchedules.capacity")), "totalCapacity"],
+    ],
+    group: ["Venue.id", "Venue.area", "Venue.address"],
+    order: [[Sequelize.literal("totalCapacity"), "DESC"]],
+  });
+
+  // 4️⃣ Calculate total capacity across all venues
+  const totalCapacity = venues.reduce(
+    (sum, v) => sum + Number(v.getDataValue("totalCapacity") || 0),
+    0
+  );
+
+  // 5️⃣ Format result for frontend
+  const result = venues.map((v) => {
+    const total = Number(v.getDataValue("totalCapacity")) || 0;
+    const percentage = totalCapacity ? ((total / totalCapacity) * 100).toFixed(0) : 0;
+
+    const venueName = v.area || v.address || "Unknown Venue";
+
+    return {
+      venueId: v.id,
+      name: venueName,
+      totalCapacity: total,
+      percentage: `${percentage}%`,
+      value: Number(percentage),
+    };
+  });
+
+  // 6️⃣ Sort and limit to top 5 venues
+  return result.sort((a, b) => b.value - a.value).slice(0, 5);
+}
+ 
+// 🔹 Membership / Payment Plan Breakdown
+async function membershipPlans(superAdminId, filters, adminId) {
+  // 1️⃣ Get list of admin IDs to include
+  const adminIds = await getAdminFilter(superAdminId, adminId);
+
+  // 2️⃣ Build WHERE clause for Booking
+  const where = {
+    bookedBy: { [Op.in]: adminIds },
+    paymentPlanId: { [Op.ne]: null }, // ✅ Exclude null paymentPlanId
+  };
+
+  // Optional: filter by current month
+  if (filters?.period === "thisMonth") {
+    const start = moment().startOf("month").toDate();
+    const end = moment().endOf("month").toDate();
+    where.createdAt = { [Op.between]: [start, end] };
+  }
+
+  // 3️⃣ Query Bookings grouped by paymentPlanId
+  const plans = await Booking.findAll({
+    where,
+    attributes: [
+      "paymentPlanId",
+      [Booking.sequelize.fn("COUNT", Booking.sequelize.col("Booking.id")), "count"],
+    ],
+    include: [
+      {
+        model: PaymentPlan,
+        as: "paymentPlan", // ✅ Ensure association exists
+        attributes: ["id", "title", "price", "interval", "duration"],
+      },
+    ],
+    group: [
+      "paymentPlanId",
+      "paymentPlan.id",
+      "paymentPlan.title",
+      "paymentPlan.price",
+      "paymentPlan.interval",
+      "paymentPlan.duration",
+    ],
+    order: [[Booking.sequelize.literal("count"), "DESC"]],
+  });
+
+  // 4️⃣ Compute total bookings across all plans
+  const totalBookings = plans.reduce((sum, p) => sum + Number(p.getDataValue("count")), 0);
+
+  // 5️⃣ Format result for frontend
+  const result = plans.map((p) => ({
+    paymentPlanId: p.paymentPlanId,
+    title: p.paymentPlan?.title || "Unknown Plan",
+    price: p.paymentPlan?.price || 0,
+    interval: p.paymentPlan?.interval || "N/A",
+    duration: p.paymentPlan?.duration || 0,
+  }));
+
+  // 6️⃣ Sort and return top 5 plans
+  return result.slice(0, 5);
 }
 
 // 🔹 Main: capacity dashboard summary
@@ -199,5 +372,5 @@ async function getCapacityWidgets(superAdminId, filters, adminId) {
 }
 
 module.exports = {
-    getCapacityWidgets, getCapacityMonthWise
+    getCapacityWidgets, getCapacityMonthWise, getHighDemandVenue,getCapacityByVenue,membershipPlans
 };
