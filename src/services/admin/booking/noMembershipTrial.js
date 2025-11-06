@@ -22,8 +22,8 @@ exports.createNoMembershipTrial = async ({
       return { status: false, message: "Booking not found." };
     }
 
-    if (booking.status !== "active") {
-      return { status: false, message: "Booking is not marked as active." };
+    if (booking.status !== "attended") {
+      return { status: false, message: "Booking is not marked as attend." };
     }
 
     const existing = await CancelBooking.findOne({ where: { bookingId } });

@@ -25,7 +25,7 @@ router.get(
 
 // Weekly class report route
 router.get(
-  "/analytics/sale",
+  "/analytics/sales",
   authMiddleware,
   // permissionMiddleware("weekly-class", "view-report"),
   saleController.getMonthlyReport
