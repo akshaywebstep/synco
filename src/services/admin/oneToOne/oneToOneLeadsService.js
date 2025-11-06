@@ -1240,10 +1240,34 @@ exports.getAllOnetoOneLeadsSalesAll = async (
   }
 };
 
-exports.getOnetoOneLeadsById = async (id, adminId) => {
+exports.getOnetoOneLeadsById = async (id, superAdminId,adminId) => {
   try {
+     if (!adminId || isNaN(Number(adminId))) {
+      return { status: false, message: "Invalid admin ID.", data: [] };
+    }
+
+    // ✅ Declare whereLead object
+    const whereLead = {};
+
+    // ✅ If user is Super Admin — show all leads for their managed admins + self
+    if (superAdminId === adminId) {
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id"],
+      });
+
+      const adminIds = managedAdmins.map((a) => a.id);
+      adminIds.push(superAdminId); // include the super admin themselves
+
+      whereLead.createdBy = { [Op.in]: adminIds };
+    } else {
+      // 🧩 Normal Admin: only see own leads
+      whereLead.createdBy = adminId;
+    }
+
+    // ✅ Merge whereLead into the query
     const lead = await oneToOneLeads.findOne({
-      where: { id, createdBy: adminId },
+      where: { id, ...whereLead },
       include: [
         {
           model: OneToOneBooking,

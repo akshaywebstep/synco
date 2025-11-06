@@ -320,7 +320,8 @@ exports.getBirthdayPartyLeadsById = async (req, res) => {
     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
     const result = await birthdayPartyLeadService.getBirthdayPartyLeadsById(
       id,
-      superAdminId
+      superAdminId,
+      adminId,
     );
 
     if (!result.status) {

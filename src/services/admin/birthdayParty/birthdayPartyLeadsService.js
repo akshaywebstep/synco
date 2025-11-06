@@ -1018,10 +1018,31 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
   }
 };
 
-exports.getBirthdayPartyLeadsById = async (id, adminId) => {
-  try {
+exports.getBirthdayPartyLeadsById = async (id, adminId,superAdminId) => {
+   try {
+    if (!adminId || isNaN(Number(adminId))) {
+      return { status: false, message: "Invalid admin ID.", data: [] };
+    }
+
+    // ✅ Declare whereLead
+    const whereLead = {};
+
+    // ✅ Super Admin logic
+    if (superAdminId === adminId) {
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id"],
+      });
+      const adminIds = managedAdmins.map((a) => a.id);
+      adminIds.push(superAdminId);
+      whereLead.createdBy = { [Op.in]: adminIds };
+    } else {
+      whereLead.createdBy = adminId;
+    }
+
+    // ✅ Query lead
     const lead = await BirthdayPartyLead.findOne({
-      where: { id, createdBy: adminId },
+      where: { id, ...whereLead },
       include: [
         {
           model: BirthdayPartyBooking,

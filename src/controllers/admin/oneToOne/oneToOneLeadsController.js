@@ -337,7 +337,8 @@ exports.getOnetoOneLeadsById = async (req, res) => {
     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
     const result = await oneToOneLeadService.getOnetoOneLeadsById(
       id,
-      superAdminId
+      superAdminId,
+      adminId,
     );
 
     if (!result.status) {
