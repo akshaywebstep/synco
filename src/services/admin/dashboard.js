@@ -84,7 +84,11 @@ exports.getDashboardStats = async (
     }
 
     // --- Admin schedules (all-time or filtered)
-    const scheduleWhere = { createdBy: adminId };
+    const scheduleWhere = {
+      createdBy: {
+        [Op.in]: [adminId, superAdminId], // include both admin and its super admin
+      },
+    };
 
     // 🆕 Handle fromDate/toDate logic (supports single-date filtering)
     if (fromDate && !toDate) {

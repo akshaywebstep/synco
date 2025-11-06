@@ -76,7 +76,7 @@ async function getTotalRevenue(periodStart, periodEnd, adminIds) {
 }
 
 // 🔹 Helper: month-wise capacity trend (current vs previous year)
-async function getCapacityMonthWise(superAdminId, adminId) {
+async function getCapacityMonthWise(superAdminId,filters, adminId) {
     const adminIds = await getAdminFilter(superAdminId, adminId);
     const now = moment();
     const currentYear = now.year();
