@@ -191,124 +191,181 @@ async function getHighDemandVenue(superAdminId, filters, adminId) {
 }
 
 async function getCapacityByVenue(superAdminId, filters, adminId) {
-  // 1️⃣ Get admin IDs allowed for this query
-  const adminIds = await getAdminFilter(superAdminId, adminId);
+    // 1️⃣ Get admin IDs allowed for this query
+    const adminIds = await getAdminFilter(superAdminId, adminId);
 
-  // 2️⃣ Build WHERE clause for ClassSchedule
-  const where = {
-    createdBy: { [Op.in]: adminIds },
-  };
-
-  // Optional: Filter only current month's schedules
-  if (filters?.period === "thisMonth") {
-    const start = moment().startOf("month").toDate();
-    const end = moment().endOf("month").toDate();
-    where.createdAt = { [Op.between]: [start, end] };
-  }
-
-  // 3️⃣ Query venues along with total capacity of their class schedules
-  const venues = await Venue.findAll({
-    include: [
-      {
-        model: ClassSchedule,
-        as: "classSchedules",
-        where,
-        attributes: [], // we only need SUM(capacity), not each record
-      },
-    ],
-    attributes: [
-      "id",
-      "area",
-      "address",
-      [Sequelize.fn("SUM", Sequelize.col("classSchedules.capacity")), "totalCapacity"],
-    ],
-    group: ["Venue.id", "Venue.area", "Venue.address"],
-    order: [[Sequelize.literal("totalCapacity"), "DESC"]],
-  });
-
-  // 4️⃣ Calculate total capacity across all venues
-  const totalCapacity = venues.reduce(
-    (sum, v) => sum + Number(v.getDataValue("totalCapacity") || 0),
-    0
-  );
-
-  // 5️⃣ Format result for frontend
-  const result = venues.map((v) => {
-    const total = Number(v.getDataValue("totalCapacity")) || 0;
-    const percentage = totalCapacity ? ((total / totalCapacity) * 100).toFixed(0) : 0;
-
-    const venueName = v.area || v.address || "Unknown Venue";
-
-    return {
-      venueId: v.id,
-      name: venueName,
-      totalCapacity: total,
-      percentage: `${percentage}%`,
-      value: Number(percentage),
+    // 2️⃣ Build WHERE clause for ClassSchedule
+    const where = {
+        createdBy: { [Op.in]: adminIds },
     };
-  });
 
-  // 6️⃣ Sort and limit to top 5 venues
-  return result.sort((a, b) => b.value - a.value).slice(0, 5);
+    // Optional: Filter only current month's schedules
+    if (filters?.period === "thisMonth") {
+        const start = moment().startOf("month").toDate();
+        const end = moment().endOf("month").toDate();
+        where.createdAt = { [Op.between]: [start, end] };
+    }
+
+    // 3️⃣ Query venues along with total capacity of their class schedules
+    const venues = await Venue.findAll({
+        include: [
+            {
+                model: ClassSchedule,
+                as: "classSchedules",
+                where,
+                attributes: [], // we only need SUM(capacity), not each record
+            },
+        ],
+        attributes: [
+            "id",
+            "area",
+            "address",
+            [Sequelize.fn("SUM", Sequelize.col("classSchedules.capacity")), "totalCapacity"],
+        ],
+        group: ["Venue.id", "Venue.area", "Venue.address"],
+        order: [[Sequelize.literal("totalCapacity"), "DESC"]],
+    });
+
+    // 4️⃣ Calculate total capacity across all venues
+    const totalCapacity = venues.reduce(
+        (sum, v) => sum + Number(v.getDataValue("totalCapacity") || 0),
+        0
+    );
+
+    // 5️⃣ Format result for frontend
+    const result = venues.map((v) => {
+        const total = Number(v.getDataValue("totalCapacity")) || 0;
+        const percentage = totalCapacity ? ((total / totalCapacity) * 100).toFixed(0) : 0;
+
+        const venueName = v.area || v.address || "Unknown Venue";
+
+        return {
+            venueId: v.id,
+            name: venueName,
+            totalCapacity: total,
+            percentage: `${percentage}%`,
+            value: Number(percentage),
+        };
+    });
+
+    // 6️⃣ Sort and limit to top 5 venues
+    return result.sort((a, b) => b.value - a.value).slice(0, 5);
 }
- 
+
 // 🔹 Membership / Payment Plan Breakdown
 async function membershipPlans(superAdminId, filters, adminId) {
-  // 1️⃣ Get list of admin IDs to include
-  const adminIds = await getAdminFilter(superAdminId, adminId);
+    // 1️⃣ Get list of admin IDs to include
+    const adminIds = await getAdminFilter(superAdminId, adminId);
 
-  // 2️⃣ Build WHERE clause for Booking
-  const where = {
-    bookedBy: { [Op.in]: adminIds },
-    paymentPlanId: { [Op.ne]: null }, // ✅ Exclude null paymentPlanId
-  };
+    // 2️⃣ Build WHERE clause for Booking
+    const where = {
+        bookedBy: { [Op.in]: adminIds },
+        paymentPlanId: { [Op.ne]: null }, // ✅ Exclude null paymentPlanId
+    };
 
-  // Optional: filter by current month
-  if (filters?.period === "thisMonth") {
-    const start = moment().startOf("month").toDate();
-    const end = moment().endOf("month").toDate();
-    where.createdAt = { [Op.between]: [start, end] };
-  }
+    // Optional: filter by current month
+    if (filters?.period === "thisMonth") {
+        const start = moment().startOf("month").toDate();
+        const end = moment().endOf("month").toDate();
+        where.createdAt = { [Op.between]: [start, end] };
+    }
 
-  // 3️⃣ Query Bookings grouped by paymentPlanId
-  const plans = await Booking.findAll({
-    where,
-    attributes: [
-      "paymentPlanId",
-      [Booking.sequelize.fn("COUNT", Booking.sequelize.col("Booking.id")), "count"],
-    ],
-    include: [
-      {
-        model: PaymentPlan,
-        as: "paymentPlan", // ✅ Ensure association exists
-        attributes: ["id", "title", "price", "interval", "duration"],
-      },
-    ],
-    group: [
-      "paymentPlanId",
-      "paymentPlan.id",
-      "paymentPlan.title",
-      "paymentPlan.price",
-      "paymentPlan.interval",
-      "paymentPlan.duration",
-    ],
-    order: [[Booking.sequelize.literal("count"), "DESC"]],
-  });
+    // 3️⃣ Query Bookings grouped by paymentPlanId
+    const plans = await Booking.findAll({
+        where,
+        attributes: [
+            "paymentPlanId",
+            [Booking.sequelize.fn("COUNT", Booking.sequelize.col("Booking.id")), "count"],
+        ],
+        include: [
+            {
+                model: PaymentPlan,
+                as: "paymentPlan", // ✅ Ensure association exists
+                attributes: ["id", "title", "price", "interval", "duration"],
+            },
+        ],
+        group: [
+            "paymentPlanId",
+            "paymentPlan.id",
+            "paymentPlan.title",
+            "paymentPlan.price",
+            "paymentPlan.interval",
+            "paymentPlan.duration",
+        ],
+        order: [[Booking.sequelize.literal("count"), "DESC"]],
+    });
 
-  // 4️⃣ Compute total bookings across all plans
-  const totalBookings = plans.reduce((sum, p) => sum + Number(p.getDataValue("count")), 0);
+    // 4️⃣ Compute total bookings across all plans
+    const totalBookings = plans.reduce((sum, p) => sum + Number(p.getDataValue("count")), 0);
 
-  // 5️⃣ Format result for frontend
-  const result = plans.map((p) => ({
-    paymentPlanId: p.paymentPlanId,
-    title: p.paymentPlan?.title || "Unknown Plan",
-    price: p.paymentPlan?.price || 0,
-    interval: p.paymentPlan?.interval || "N/A",
-    duration: p.paymentPlan?.duration || 0,
-  }));
+    // 5️⃣ Format result for frontend
+    const result = plans.map((p) => ({
+        paymentPlanId: p.paymentPlanId,
+        title: p.paymentPlan?.title || "Unknown Plan",
+        price: p.paymentPlan?.price || 0,
+        interval: p.paymentPlan?.interval || "N/A",
+        duration: p.paymentPlan?.duration || 0,
+    }));
 
-  // 6️⃣ Sort and return top 5 plans
-  return result.slice(0, 5);
+    // 6️⃣ Sort and return top 5 plans
+    return result.slice(0, 5);
+}
+
+async function capacityByClass(superAdminId, filters, adminId) {
+    const adminIds = await getAdminFilter(superAdminId, adminId);
+
+    const where = {
+        bookedBy: { [Op.in]: adminIds },
+        classScheduleId: { [Op.ne]: null },
+    };
+
+    if (filters?.period === "thisMonth") {
+        const start = moment().startOf("month").toDate();
+        const end = moment().endOf("month").toDate();
+        where.createdAt = { [Op.between]: [start, end] };
+    }
+
+    const classes = await Booking.findAll({
+        where,
+        attributes: [
+            "classScheduleId",
+            [Booking.sequelize.fn("COUNT", Booking.sequelize.col("Booking.id")), "usedCount"],
+        ],
+        include: [
+            {
+                model: ClassSchedule,
+                as: "classSchedule",
+                attributes: ["id", "className", "capacity"],
+            },
+        ],
+        group: [
+            "classScheduleId",
+            "classSchedule.id",
+            "classSchedule.className",
+            "classSchedule.capacity",
+        ],
+        order: [[Booking.sequelize.literal("usedCount"), "DESC"]],
+    });
+
+    const result = classes
+        .filter(c => (c.classSchedule?.capacity || 0) > 0)
+        .map((c) => {
+            const capacity = c.classSchedule.capacity;
+            const usedCount = Number(c.getDataValue("usedCount"));
+            const percentageUsed = (usedCount / capacity) * 100;
+
+            return {
+                classScheduleId: c.classScheduleId,
+                className: c.classSchedule?.className || "N/A",
+                capacity,
+                usedCount: Number(usedCount.toFixed(3)),        // e.g. 10.234
+                percentageUsed: `${percentageUsed.toFixed(2)}%`, // e.g. "75.00%"
+            };
+        })
+        .sort((a, b) => parseFloat(b.percentageUsed) - parseFloat(a.percentageUsed))
+        .slice(0, 5);
+
+    return result.slice(0, 5); // top 5 classes
 }
 
 // 🔹 Main: capacity dashboard summary
@@ -372,5 +429,5 @@ async function getCapacityWidgets(superAdminId, filters, adminId) {
 }
 
 module.exports = {
-    getCapacityWidgets, getCapacityMonthWise, getHighDemandVenue,getCapacityByVenue,membershipPlans
+    getCapacityWidgets, getCapacityMonthWise, getHighDemandVenue, getCapacityByVenue, membershipPlans, capacityByClass
 };

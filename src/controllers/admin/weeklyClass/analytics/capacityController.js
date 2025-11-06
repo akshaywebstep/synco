@@ -51,11 +51,17 @@ exports.getMonthlyReport = async (req, res) => {
             adminId
         );
 
-         const membershipPlans = await capacityAnalytics.membershipPlans(
+        const capacityByClass = await capacityAnalytics.capacityByClass(
             superAdminId,
             filters,
             adminId
         );
+        const membershipPlans = await capacityAnalytics.membershipPlans(
+            superAdminId,
+            filters,
+            adminId
+        );
+
         const successMessage = "Capacity analytics report generated successfully.";
         if (DEBUG) console.log("✅", successMessage);
 
@@ -79,6 +85,7 @@ exports.getMonthlyReport = async (req, res) => {
                 highDemandVenue: getHighDemandVenue,
                 getCapacityByVenue,
                 membershipPlans,
+                capacityByClass,
             },
         });
     } catch (error) {

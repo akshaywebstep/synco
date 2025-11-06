@@ -365,14 +365,16 @@ exports.createPaymentPlan = async (req, res) => {
     if (DEBUG) console.log("✅ STEP 4: Payment plan created:", result.data);
     await logActivity(req, PANEL, MODULE, "create", result, true);
 
-    const msg = `Payment plan "${title}" created successfully by Admin: ${req.admin?.name}`;
+    // ✅ Construct admin full name safely
+    const adminFullName =
+      req.admin?.name ||
+      `${req.admin?.firstName || ""} ${req.admin?.lastName || ""}`.trim() ||
+      "Unknown Admin";
 
-    await createNotification(
-      req,
-      "Payment Plan Created",
-      msg,
-      "Support"
-    );
+    // ✅ Fixed notification message
+    const msg = `Payment plan "${title}" created successfully ${adminFullName}`;
+
+    await createNotification(req, "Payment Plan Created", msg, "Support");
 
     return res.status(201).json({
       status: true,
@@ -557,14 +559,16 @@ exports.updatePaymentPlan = async (req, res) => {
       },
       true
     );
-    const msg = `Payment plan "${title}"  updated successfully by Admin: ${req.admin?.name}`;
+    // ✅ Build admin full name safely
+    const adminFullName =
+      req.admin?.name ||
+      `${req.admin?.firstName || ""} ${req.admin?.lastName || ""}`.trim() ||
+      "Unknown Admin";
 
-    await createNotification(
-      req,
-      "Payment Plan Updated",
-      msg,
-      "Support"
-    );
+    // ✅ Fixed notification message
+    const msg = `Payment plan "${title}" updated successfully by  ${adminFullName}`;
+
+    await createNotification(req, "Payment Plan Updated", msg, "Support");
 
     return res.status(200).json({
       status: true,
@@ -631,7 +635,6 @@ exports.updatePaymentPlan = async (req, res) => {
 //   }
 // };
 
-// ✅ DELETE Plan (restricted by admin)
 exports.deletePaymentPlan = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id;
@@ -643,10 +646,11 @@ exports.deletePaymentPlan = async (req, res) => {
   if (DEBUG) console.log(`🗑️ Deleting Payment Plan ID: ${id}`);
 
   try {
-    // ✅ Fetch plan before deletion
-    const plan = await PaymentPlan.getPlanById(id);
-    if (!plan) {
-      return res.status(404).json({ status: false, message: "Payment plan not found." });
+    // ✅ Fetch plan before deletion (use destructuring)
+    const { status, data: plan, message } = await PaymentPlan.getPlanById(id, adminId);
+
+    if (!status || !plan) {
+      return res.status(404).json({ status: false, message });
     }
 
     // ✅ Perform soft delete
@@ -659,14 +663,19 @@ exports.deletePaymentPlan = async (req, res) => {
       return res.status(404).json({ status: false, message: result.message });
     }
 
-    const msg = `Payment plan deleted successfully by Admin: ${req.admin?.name}`;
+    // ✅ Build admin full name safely
+    const adminFullName =
+      req.admin?.name ||
+      `${req.admin?.firstName || ""} ${req.admin?.lastName || ""}`.trim() ||
+      "Unknown Admin";
 
-    await createNotification(
-      req,
-      "Payment Plan Deleted",
-      msg,
-      "Support"
-    );
+    // ✅ Use correct plan title
+    const planTitle = plan.title || "Unknown Plan";
+
+    // ✅ Notification message
+    const msg = `Payment plan "${planTitle}" deleted successfully by ${adminFullName}`;
+
+    await createNotification(req, "Payment Plan Deleted", msg, "Support");
 
     if (DEBUG) console.log("✅ Payment plan deleted successfully");
 
@@ -676,7 +685,14 @@ exports.deletePaymentPlan = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error deleting payment plan:", error);
-    await logActivity(req, PANEL, MODULE, "delete", { oneLineMessage: error.message }, false);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "delete",
+      { oneLineMessage: error.message },
+      false
+    );
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };

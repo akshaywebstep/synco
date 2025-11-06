@@ -137,13 +137,19 @@ exports.createPaymentGroup = async (req, res) => {
       true
     );
 
-    const msg = `Payment group "${name}" created successfully by Admin: ${req.admin?.name}`;
-    await createNotification(
-      req,
-      "Payment Group Created",
-      msg,
-      "Support"
-    );
+    // ✅ Construct proper admin name
+    const adminFullName = `${req.admin?.firstName || ""} ${req.admin?.lastName || ""}`.trim();
+
+    const msg = `Payment group "${name}" created successfully by ${adminFullName || "Unknown Admin"}`;
+
+    // ✅ Create notification with proper message
+    await createNotification(req, "Payment Group Created", msg, "Support");
+
+    return res.status(201).json({
+      status: true,
+      message: "Payment group created successfully.",
+      data: result.data,
+    });
 
     return res.status(201).json({
       status: true,
@@ -361,13 +367,16 @@ exports.updatePaymentGroup = async (req, res) => {
       { oneLineMessage: `Updated payment group ID: ${id}` },
       true
     );
-    const msg = `Payment group "${name}" created successfully by Admin: ${req.admin?.name}`;
-    await createNotification(
-      req,
-      "Payment Group Updated",
-      msg,
-      "Support"
-    );
+    // ✅ Build admin full name safely
+    const adminFullName =
+      req.admin?.name ||
+      `${req.admin?.firstName || ""} ${req.admin?.lastName || ""}`.trim() ||
+      "Unknown Admin";
+
+    // ✅ Fixed notification message (correct wording + proper name)
+    const msg = `Payment group "${name}" updated successfully by ${adminFullName}`;
+
+    await createNotification(req, "Payment Group Updated", msg, "Support");
 
     return res.status(200).json({
       status: true,
@@ -506,17 +515,25 @@ exports.deletePaymentGroup = async (req, res) => {
       return res.status(400).json({ status: false, message: deleteResult.message });
     }
 
-    // Step 3: Log + Notify
-    const successMsg = `Payment Group "${paymentGroup.name}" deleted by ${req.admin?.name || "Admin"}.`;
+    // ✅ Step 3: Build admin full name safely
+    const adminFullName =
+      req.admin?.name ||
+      `${req.admin?.firstName || ""} ${req.admin?.lastName || ""}`.trim() ||
+      "Unknown Admin";
 
-    await logActivity(req, PANEL, MODULE, "delete", { oneLineMessage: successMsg }, true);
+    // ✅ Step 4: Log + Notify with proper message
+    const successMsg = `Payment group "${paymentGroup.name}" deleted successfully by ${adminFullName}`;
 
-    await createNotification(
+    await logActivity(
       req,
-      "Payment Group Deleted",
-      successMsg,
-      "Support"
+      PANEL,
+      MODULE,
+      "delete",
+      { oneLineMessage: successMsg },
+      true
     );
+
+    await createNotification(req, "Payment Group Deleted", successMsg, "Support");
 
     return res.status(200).json({
       status: true,
