@@ -1780,13 +1780,14 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
       };
     });
 
-    // 🎉 Calculate Party Booking performance (by age)
-    const partyBookingRaw = await BirthdayPartyLead.findAll({
+    // 🎉 Calculate Party Booking performance (by age and gender)
+    const partyBookingRaw = await BirthdayPartyStudent.findAll({
       attributes: [
         "age",
+        "gender",
         [fn("COUNT", col("id")), "count"],
       ],
-      group: ["age"],
+      group: ["age", "gender"],
       order: [[literal("count"), "DESC"]],
     });
 
@@ -1796,42 +1797,91 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
       0
     );
 
-    const partyBooking = partyBookingRaw.map((s) => {
+    // 2️⃣ Group by Age
+    const byAgeMap = {};
+    partyBookingRaw.forEach((s) => {
       const age = s.age || "Unknown";
       const count = parseInt(s.dataValues.count, 10);
-      const percentage =
-        totalBookings > 0 ? ((count / totalBookings) * 100).toFixed(2) : 0;
-
-      return {
-        name: age.toString(),             // e.g. "4", "5", "6"
-        count,                            // e.g. 23
-        percentage: parseFloat(percentage), // e.g. 10.23
-      };
+      byAgeMap[age] = (byAgeMap[age] || 0) + count;
     });
-    // 🎁 Calculate Package Background performance (by packageInterest)
+
+    const byAge = Object.entries(byAgeMap).map(([age, count]) => ({
+      name: age.toString(),
+      count,
+      percentage:
+        totalBookings > 0 ? parseFloat(((count / totalBookings) * 100).toFixed(2)) : 0,
+    }));
+
+    // 3️⃣ Group by Gender
+    const byGenderMap = {};
+    partyBookingRaw.forEach((s) => {
+      const gender = s.gender || "Unknown";
+      const count = parseInt(s.dataValues.count, 10);
+      byGenderMap[gender] = (byGenderMap[gender] || 0) + count;
+    });
+
+    const byGender = Object.entries(byGenderMap).map(([gender, count]) => ({
+      name: gender,
+      count,
+      percentage:
+        totalBookings > 0 ? parseFloat(((count / totalBookings) * 100).toFixed(2)) : 0,
+    }));
+
+    // 4️⃣ By Total
+    const byTotal = [
+      {
+        name: "Total",
+        count: totalBookings,
+        percentage: 100.0,
+      },
+    ];
+
+    // ✅ Final structured output
+    const partyBooking = [
+      {
+        byAge,
+        byGender,
+        byTotal,
+      },
+    ];
+
+    // Example mapping rule
+    const categoryMap = {
+      Gold: "revenue",
+      Platinum: "revenue",
+      Silver: "growth",
+      Bronze: "growth",
+    };
+
     const packageBackgroundRaw = await BirthdayPartyLead.findAll({
-      attributes: [
-        "packageInterest",
-        [fn("COUNT", col("id")), "count"],
-      ],
+      attributes: ["packageInterest", [fn("COUNT", col("id")), "count"]],
       group: ["packageInterest"],
       order: [[literal("count"), "DESC"]],
     });
 
-    // 🧠 Format data for frontend (progress bar UI)
-
-    const packageBackground = packageBackgroundRaw.map((s) => {
+    // Calculate total
+    const grouped = {};
+    packageBackgroundRaw.forEach((s) => {
       const pkg = s.packageInterest || "Unknown";
       const count = parseInt(s.dataValues.count, 10);
-      const percentage =
-        totalPackages > 0 ? ((count / totalPackages) * 100).toFixed(2) : 0;
+      const category = categoryMap[pkg] || "other";
 
-      return {
-        name: pkg,                           // e.g. "Standard", "Premium", "Deluxe"
-        count,                               // e.g. 23
-        percentage: parseFloat(percentage),  // e.g. 10.23
-      };
+      const percentage =
+        totalPackages > 0 ? parseFloat(((count / totalPackages) * 100).toFixed(2)) : 0;
+
+      if (!grouped[category]) grouped[category] = [];
+
+      grouped[category].push({
+        name: pkg,
+        count,
+        percentage,
+      });
     });
+
+    const packageBackground = Object.entries(grouped).map(([category, items]) => ({
+      [category]: items,
+    }));
+
     // ✅ Final Structured Response (matches Figma)
     return {
       status: true,

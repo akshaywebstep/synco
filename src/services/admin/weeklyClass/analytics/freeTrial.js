@@ -40,10 +40,11 @@ function countAttendedTrials(bookings) {
 function countTrialToMember(bookings) {
     return bookings.reduce((sum, b) => {
         if (
-            ((b.type === 'free' || b.trialDate !== null) && (b.paymentPlanId !== null || b.startDate !== null)) ||
-            (b.trialDate !== null && b.startDate !== null)
+            b.isConvertedToMembership === true ||
+            b.isConvertedToMembership === 1 ||
+            b.isConvertedToMembership === '1'
         ) {
-            return sum + 1; // count this booking
+            return sum + 1;
         }
         return sum;
     }, 0);
@@ -225,7 +226,7 @@ function groupBookingsByYearMonth(bookings, filter) {
             // Agents
             const admin = b.bookedByAdmin;
             if (!admin) return;
-            
+
             if (!agents[admin.id]) agents[admin.id] = { id: admin.id, name: `${admin.firstName} ${admin.lastName}`, freeTrialTrend: { freeTrialsCount: 0, attendedCount: 0, attendanceRate: 0, trialToMemberCount: 0, conversionRate: 0, rebookCount: 0 } };
 
             if (b.trialDate !== null || b.type === 'free') {
@@ -332,6 +333,7 @@ const getMonthlyReport = async (filters) => {
             where: {
                 [Op.or]: [
                     { bookingType: 'free' },
+                    { bookingType: 'paid' },
                     { trialDate: { [Op.not]: null } }
                 ]
             },

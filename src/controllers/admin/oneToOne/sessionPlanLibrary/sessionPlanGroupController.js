@@ -826,7 +826,7 @@ exports.updateSessionPlanConfig = async (req, res) => {
       req,
       "Session Plan Group Updated",
       `The session plan group '${updatePayload.groupName
-      }' (ID: ${id}) was updated by ${req?.admin?.firstName || "Admin"}.`,
+      }'  was updated by ${req?.admin?.firstName || "Admin"}.`,
       "System"
     );
 

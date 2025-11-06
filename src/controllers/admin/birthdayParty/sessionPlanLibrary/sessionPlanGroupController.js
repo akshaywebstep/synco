@@ -143,7 +143,7 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
       } catch (err) {
         console.error(`Failed to upload ${type}:`, err.message);
       } finally {
-        await fs.promises.unlink(localPath).catch(() => {});
+        await fs.promises.unlink(localPath).catch(() => { });
       }
 
       return uploadedPath;
@@ -219,8 +219,7 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Group Created",
-      `The session plan group '${payload.groupName}' was updated by ${
-        req?.admin?.firstName || "Admin"
+      `The session plan group '${payload.groupName}' was updated by ${req?.admin?.firstName || "Admin"
       }.`,
       "System"
     );
@@ -230,9 +229,8 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
       "session-plan-birthdayParty", // MODULE name
       "update", // Action type
       {
-        oneLineMessage: `Session Plan Group '${
-          payload.groupName
-        }'  created by ${req?.admin?.firstName || "Admin"}.`,
+        oneLineMessage: `Session Plan Group '${payload.groupName
+          }'  created by ${req?.admin?.firstName || "Admin"}.`,
       },
       true
     );
@@ -660,7 +658,7 @@ exports.updateSessionPlanConfig = async (req, res) => {
       } catch (err) {
         console.error(`Failed to upload ${type}/${level || ""}`, err);
       } finally {
-        await fs.unlink(localPath).catch(() => {});
+        await fs.unlink(localPath).catch(() => { });
       }
 
       return uploadedUrl || oldUrl;
@@ -818,9 +816,8 @@ exports.updateSessionPlanConfig = async (req, res) => {
       "Session Plan Group", // MODULE name
       "update", // Action type
       {
-        oneLineMessage: `Session Plan Group '${
-          updatePayload.groupName
-        }' updated by ${req?.admin?.firstName || "Admin"}.`,
+        oneLineMessage: `Session Plan Group '${updatePayload.groupName
+          }' updated by ${req?.admin?.firstName || "Admin"}.`,
       },
       true
     );
@@ -828,9 +825,8 @@ exports.updateSessionPlanConfig = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Group Updated",
-      `The session plan group '${
-        updatePayload.groupName
-      }' (ID: ${id}) was updated by ${req?.admin?.firstName || "Admin"}.`,
+      `The session plan group '${updatePayload.groupName
+      }'  was updated by ${req?.admin?.firstName || "Admin"}.`,
       "System"
     );
 
@@ -977,8 +973,7 @@ exports.deleteSessionPlanConfigLevel = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Level Deleted",
-      `Level '${levelKey}' from Session Plan Group ID ${id} was deleted by ${
-        req?.admin?.firstName || "Admin"
+      `Level '${levelKey}' from Session Plan Group ID ${id} was deleted by ${req?.admin?.firstName || "Admin"
       }.`,
       "System"
     );
