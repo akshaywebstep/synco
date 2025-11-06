@@ -195,10 +195,15 @@ exports.getFullCancelBooking = async ({
         {
           model: Booking,
           as: "booking",
+          // where: {
+          //   status: {
+          //     [Op.in]: ["request_to_cancel", "cancelled"], // ✅ show both
+          //   },
+          // },
           where: {
-            status: {
-              [Op.in]: ["request_to_cancel", "cancelled"], // ✅ show both
-            },
+            status: status
+              ? { [Op.in]: Array.isArray(status) ? status : [status] }
+              : { [Op.in]: ["request_to_cancel", "cancelled"] },
           },
           attributes: [
             "id",
@@ -676,7 +681,7 @@ exports.getFullCancelBookingById = async (id, adminId) => {
       bookingId: booking.bookingId,
       classScheduleId: booking.classScheduleId,
       startDate: booking.startDate,
-      serviceType:booking.serviceType,
+      serviceType: booking.serviceType,
       bookedBy: booking.bookedByAdmin || null,
       className: booking.className,
       classTime: booking.classTime,

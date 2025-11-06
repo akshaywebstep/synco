@@ -187,7 +187,8 @@ exports.getRequestToCancel = async ({
         {
           model: Booking,
           as: "booking",
-          where: { status: "request_to_cancel" },
+          where: status ? { status } : { status: "request_to_cancel" },
+          // where: { status: "request_to_cancel" },
           bookingType: "paid", // ✅ filter by booking status
 
           attributes: [

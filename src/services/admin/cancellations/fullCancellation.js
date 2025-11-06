@@ -186,10 +186,10 @@ exports.getFullCancelBooking = async ({
         {
           model: Booking,
           as: "booking",
-          where: {
-            status: "cancelled",
+           where: status ? { status } : { status: "cancelled" },
+            // status: "cancelled",
             bookingType: "paid",
-          },
+          
           attributes: [
             "id",
             "venueId",
