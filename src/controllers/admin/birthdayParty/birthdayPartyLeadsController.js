@@ -256,6 +256,7 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (req, res) => {
       type: req.query.type,
       studentName: req.query.studentName,
       packageInterest: req.query.packageInterest,
+      partyDate: req.query.partyDate,
     };
 
     // ✅ Fetch data (pass both admin and superAdmin)

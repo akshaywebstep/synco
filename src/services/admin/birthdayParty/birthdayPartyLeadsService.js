@@ -763,6 +763,7 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
             },
             { model: BirthdayPartyPayment, as: "payment" },
             { model: PaymentPlan, as: "paymentPlan" },
+            { model: Admin, as: "coach" },
           ],
         },
       ],
@@ -891,6 +892,7 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
           booking: {
             leadId: booking.leadId,
             coachId: booking.coachId,
+            coach: booking.coach,
             type: booking.type,
             location: booking.location,
             address: booking.address,
@@ -1200,6 +1202,7 @@ exports.getBirthdayPartyLeadsById = async (id, adminId,superAdminId) => {
         paymentPlanId: booking.paymentPlanId,
         paymentPlan: booking.paymentPlan,
         discountId: booking.discountId,
+        createdAt: booking.createdAt,
         students,
         parents,
         emergency,
