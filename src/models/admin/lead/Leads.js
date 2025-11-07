@@ -60,6 +60,16 @@ const Lead = sequelize.define(
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
     },
+    createdBy: {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: false,
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "CASCADE",
+    },
   },
   {
     tableName: "leads",

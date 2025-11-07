@@ -9,7 +9,6 @@ const {
   Admin,
   sequelize,
 } = require("../../../models");
-// const { Op } = require("sequelize");
 const { Op, fn, col, literal } = require("sequelize");
 const stripePromise = require("../../../utils/payment/pay360/stripe");
 const { getEmailConfig } = require("../../email");
@@ -685,7 +684,7 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
     if (!adminId || isNaN(Number(adminId))) {
       return { status: false, message: "Invalid admin ID.", data: [] };
     }
-
+    
     const { fromDate, toDate, type, studentName, packageInterest, partyDate } = filters;
 
     const whereLead = {};
