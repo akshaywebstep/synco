@@ -130,7 +130,7 @@ exports.listCommentsForLead = async (req, res) => {
 };
 
 exports.createLead = async (req, res) => {
-  const { firstName, lastName, email, phone, postcode, childAge, status } =
+  const { firstName, lastName, email, phone, postCode, childAge, status } =
     req.body;
 
   if (DEBUG) {
@@ -154,7 +154,7 @@ exports.createLead = async (req, res) => {
       lastName,
       email,
       phone,
-      postcode,
+      postCode,
       childAge,
       status,
       assignedAgentId: req.admin.id, // ✅ add logged-in admin ID
@@ -416,7 +416,7 @@ exports.syncFacebookLeads = async (req, res) => {
       lastName: parsedFields.last_name?.split(" ")[1] || "",
       email: parsedFields.email || "no-email@example.com",
       phone: parsedFields.phone_number || "",
-      postcode: parsedFields.post_code || "",
+      postCode: parsedFields.post_code || "",
       childAge: parsedFields.child_age || 6,
       status: "Facebook",
     });
@@ -497,7 +497,11 @@ exports.getAllReferallLeads = async (req, res) => {
 
     // Fetch leads from service
     // const result = await LeadService.getAllForFacebookLeads(superAdminId,filters);
-    const result = await LeadService.getAllReferallLeads(superAdminId,adminId, filters);
+    const result = await LeadService.getAllReferallLeads(
+      superAdminId,
+      adminId,
+      filters
+    );
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Failed fetching leads:", result.message);
@@ -575,7 +579,11 @@ exports.getAllOthersLeads = async (req, res) => {
     };
 
     // Fetch leads from service
-    const result = await LeadService.getAllOthersLeads(superAdminId,adminId, filters);
+    const result = await LeadService.getAllOthersLeads(
+      superAdminId,
+      adminId,
+      filters
+    );
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Failed fetching leads:", result.message);
@@ -653,7 +661,11 @@ exports.getAllLeads = async (req, res) => {
     };
 
     // Fetch leads from service
-    const result = await LeadService.getAllLeads(superAdminId,adminId, filters);
+    const result = await LeadService.getAllLeads(
+      superAdminId,
+      adminId,
+      filters
+    );
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Failed fetching leads:", result.message);
