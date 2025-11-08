@@ -68,6 +68,11 @@ BirthdayPartyStudent.associate = (models) => {
     foreignKey: "studentId",
     as: "emergencyDetails",
   });
+
+  BirthdayPartyStudent.belongsTo(models.BirthdayPartyBooking, {
+    foreignKey: "birthdayPartyBookingId", // must match the FK used in hasMany
+    as: "booking", // can be "booking" (common), OR whatever you use in other includes
+  });
 };
 
 module.exports = BirthdayPartyStudent;

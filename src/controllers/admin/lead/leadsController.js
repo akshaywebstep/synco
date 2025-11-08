@@ -130,7 +130,7 @@ exports.listCommentsForLead = async (req, res) => {
 };
 
 exports.createLead = async (req, res) => {
-  const { firstName, lastName, email, phone, postCode, childAge, status } =
+  const { firstName, lastName, email, phone, postcode, childAge, status } =
     req.body;
 
   if (DEBUG) {
@@ -154,7 +154,7 @@ exports.createLead = async (req, res) => {
       lastName,
       email,
       phone,
-      postCode,
+      postcode,
       childAge,
       status,
       assignedAgentId: req.admin.id, // ✅ add logged-in admin ID
@@ -416,7 +416,7 @@ exports.syncFacebookLeads = async (req, res) => {
       lastName: parsedFields.last_name?.split(" ")[1] || "",
       email: parsedFields.email || "no-email@example.com",
       phone: parsedFields.phone_number || "",
-      postCode: parsedFields.post_code || "",
+      postcode: parsedFields.post_code || "",
       childAge: parsedFields.child_age || 6,
       status: "Facebook",
     });

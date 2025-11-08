@@ -68,6 +68,11 @@ OneToOneStudent.associate = (models) => {
     foreignKey: "studentId",
     as: "emergencyDetails",
   });
+
+  OneToOneStudent.belongsTo(models.OneToOneBooking, {
+    foreignKey: "oneToOneBookingId", // must match the FK used in hasMany
+    as: "booking", // can be "booking" (common), OR whatever you use in other includes
+  });
 };
 
 module.exports = OneToOneStudent;

@@ -35,16 +35,16 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-async function getCoordinatesFromPostcode(postCode) {
-  if (!postCode || typeof postCode !== "string" || postCode.trim().length < 5) {
-    console.warn("⚠️ Skipping postCode lookup: invalid postCode", postCode);
+async function getCoordinatesFromPostcode(postcode) {
+  if (!postcode || typeof postcode !== "string" || postcode.trim().length < 5) {
+    console.warn("⚠️ Skipping postcode lookup: invalid postcode", postcode);
     return null;
   }
 
   try {
     const res = await axios.get(
-      `https://api.postCodes.io/postCodes/${encodeURIComponent(
-        postCode.trim()
+      `https://api.postcodes.io/postcodes/${encodeURIComponent(
+        postcode.trim()
       )}`
     );
 
@@ -54,7 +54,7 @@ async function getCoordinatesFromPostcode(postCode) {
         longitude: res.data.result.longitude,
       };
     } else {
-      console.warn("⚠️ Postcode not found:", postCode);
+      console.warn("⚠️ Postcode not found:", postcode);
     }
   } catch (err) {
     console.error(
@@ -180,7 +180,7 @@ exports.createLead = async (payload) => {
       lastName,
       email,
       phone,
-      postCode,
+      postcode,
       childAge,
       status,
       assignedAgentId,
@@ -201,7 +201,7 @@ exports.createLead = async (payload) => {
       lastName,
       email,
       phone,
-      postCode,
+      postcode,
       childAge,
       status: status || "others",
       assignedAgentId,
@@ -431,7 +431,7 @@ exports.createLead = async (payload) => {
 
 //         // Nearest venues
 //         let nearestVenues = [];
-//         if (lead.postCode && allVenuesList.length > 0) {
+//         if (lead.postcode && allVenuesList.length > 0) {
 //           const coords = await getCoordinatesFromPostcode(lead.postcode);
 //           if (coords) {
 //             nearestVenues = await Promise.all(
@@ -473,11 +473,7 @@ exports.createLead = async (payload) => {
 //     return { status: false, message: error.message };
 //   }
 // };
-exports.getAllForFacebookLeads = async (
-  adminId,
-  superAdminId,
-  filters = {}
-) => {
+exports.getAllForFacebookLeads = async (adminId, superAdminId, filters = {}) => {
   try {
     if (!adminId || isNaN(Number(adminId))) {
       return {
@@ -1266,8 +1262,8 @@ exports.getAllOthersLeads = async (adminId, superAdminId, filters = {}) => {
 
         // ✅ Nearby Venues (created by allowed admins)
         let nearestVenues = [];
-        if (lead.postCode && allVenuesList.length > 0) {
-          const coords = await getCoordinatesFromPostcode(lead.postCode);
+        if (lead.postcode && allVenuesList.length > 0) {
+          const coords = await getCoordinatesFromPostcode(lead.postcode);
           if (coords) {
             nearestVenues = await Promise.all(
               allVenuesList
@@ -2060,8 +2056,8 @@ exports.getLeadandBookingDatabyLeadId = async (leadId) => {
     let nearestVenues = [];
     const allVenuesList = await Venue.findAll();
 
-    if (lead.postCode && allVenuesList.length > 0) {
-      const coords = await getCoordinatesFromPostcode(lead.postCode);
+    if (lead.postcode && allVenuesList.length > 0) {
+      const coords = await getCoordinatesFromPostcode(lead.postcode);
       if (coords) {
         nearestVenues = await Promise.all(
           allVenuesList
@@ -2388,8 +2384,8 @@ exports.findAClass = async (filters = {}) => {
         const { bookings, ...leadWithoutBookings } = lead.dataValues;
 
         let nearestVenues = [];
-        if (lead.postCode && allVenuesList.length > 0) {
-          const coords = await getCoordinatesFromPostcode(lead.postCode);
+        if (lead.postcode && allVenuesList.length > 0) {
+          const coords = await getCoordinatesFromPostcode(lead.postcode);
           if (coords) {
             nearestVenues = await Promise.all(
               allVenuesList

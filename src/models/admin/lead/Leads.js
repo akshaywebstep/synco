@@ -39,7 +39,7 @@ const Lead = sequelize.define(
     },
 
     // Postcode
-    postCode: {
+    postcode: {
       type: DataTypes.STRING,
       allowNull: true,
     },
