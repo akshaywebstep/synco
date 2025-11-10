@@ -59,7 +59,7 @@ const BirthdayPartyStudent = sequelize.define(
 );
 
 BirthdayPartyStudent.associate = (models) => {
-  BirthdayPartyStudent.hasOne(models.BirthdayPartyParent, {
+  BirthdayPartyStudent.hasMany(models.BirthdayPartyParent, {
     foreignKey: "studentId",
     as: "parentDetails",
   });

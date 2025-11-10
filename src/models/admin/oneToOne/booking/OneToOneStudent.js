@@ -59,7 +59,7 @@ const OneToOneStudent = sequelize.define(
 );
 
 OneToOneStudent.associate = (models) => {
-  OneToOneStudent.hasOne(models.OneToOneParent, {
+  OneToOneStudent.hasMany(models.OneToOneParent, {
     foreignKey: "studentId",
     as: "parentDetails",
   });

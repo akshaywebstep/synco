@@ -378,19 +378,22 @@ exports.updateOnetoOneLeadById = async (req, res) => {
     const adminId = req.admin?.id;
     const updateData = req.body;
 
+    if (DEBUG) console.log("🔹 Received request to update lead:", { id, adminId, updateData });
+
     if (!id) {
+      if (DEBUG) console.log("⚠️ Lead ID is missing in request params");
       return res.status(400).json({
         status: false,
         message: "Lead ID is required.",
       });
     }
 
-    // ✅ Optional validation (you can expand if needed)
     if (
       !updateData.student &&
       !updateData.parentDetails &&
       !updateData.emergencyDetails
     ) {
+      if (DEBUG) console.log("⚠️ No update data provided");
       return res.status(400).json({
         status: false,
         message:
@@ -398,26 +401,36 @@ exports.updateOnetoOneLeadById = async (req, res) => {
       });
     }
 
+    // 🔹 Get main super admin of current admin
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+    if (DEBUG) console.log("🔹 Super Admin ID fetched:", superAdminId);
+
     // ✅ Call service to update lead
+    if (DEBUG) console.log("🔹 Calling service to update lead...");
     const updateResult = await oneToOneLeadService.updateOnetoOneLeadById(
       id,
+      superAdminId,
       adminId,
       updateData
     );
+    if (DEBUG) console.log("🔹 Service returned:", updateResult);
 
     if (!updateResult.status) {
+      if (DEBUG) console.log("⚠️ Update failed:", updateResult.message);
       return res.status(400).json({
         status: false,
         message: updateResult.message || "Failed to update One-to-One Lead.",
       });
     }
 
-    // ✅ Log admin activity
+    // Log admin activity
+    if (DEBUG) console.log("🔹 Logging admin activity...");
     await logActivity(req, PANEL, MODULE, "update", { id, updateData }, true);
 
-    // ✅ Create notification
-    const adminName = `${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""
-      }`.trim();
+    // Create notification
+    const adminName = `${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""}`.trim();
+    if (DEBUG) console.log(`🔹 Creating notification for admin: ${adminName}`);
     await createNotification(
       req,
       "One-to-One Lead Updated",
@@ -425,14 +438,15 @@ exports.updateOnetoOneLeadById = async (req, res) => {
       "Support"
     );
 
-    // ✅ Success response
+    // Success response
+    if (DEBUG) console.log("✅ Lead update successful");
     return res.status(200).json({
       status: true,
       message: "One-to-One Lead updated successfully.",
       data: updateResult.data,
     });
   } catch (error) {
-    console.error("❌ Error updating One-to-One Lead:", error);
+    if (DEBUG) console.error("❌ Error updating One-to-One Lead:", error);
     return res.status(500).json({
       status: false,
       message: "Server error while updating One-to-One Lead.",

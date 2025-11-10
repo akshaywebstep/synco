@@ -10,7 +10,8 @@ const {
   sequelize,
 } = require("../../../models");
 // const { Op } = require("sequelize");
-const { Op, fn, col, literal } = require("sequelize");
+const { Op, fn, col, literal, Sequelize } = require("sequelize");
+
 const stripePromise = require("../../../utils/payment/pay360/stripe");
 const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
@@ -163,11 +164,11 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
           null;
         const emergency = emergencyObj
           ? {
-              emergencyFirstName: emergencyObj.emergencyFirstName,
-              emergencyLastName: emergencyObj.emergencyLastName,
-              emergencyPhoneNumber: emergencyObj.phoneNumber,
-              emergencyRelation: emergencyObj.relationChild,
-            }
+            emergencyFirstName: emergencyObj.emergencyFirstName,
+            emergencyLastName: emergencyObj.emergencyLastName,
+            emergencyPhoneNumber: emergencyObj.phoneNumber,
+            emergencyRelation: emergencyObj.relationChild,
+          }
           : null;
 
         let paymentObj = null;
@@ -215,17 +216,17 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
             failureReason: booking.payment.failureReason,
             stripeChargeDetails: stripeChargeDetails
               ? {
-                  id: stripeChargeDetails.id,
-                  amount: stripeChargeDetails.amount / 100,
-                  currency: stripeChargeDetails.currency,
-                  status: stripeChargeDetails.status,
-                  paymentMethod:
-                    stripeChargeDetails.payment_method_details?.card?.brand,
-                  last4:
-                    stripeChargeDetails.payment_method_details?.card?.last4,
-                  receiptUrl: stripeChargeDetails.receipt_url,
-                  fullResponse: stripeChargeDetails,
-                }
+                id: stripeChargeDetails.id,
+                amount: stripeChargeDetails.amount / 100,
+                currency: stripeChargeDetails.currency,
+                status: stripeChargeDetails.status,
+                paymentMethod:
+                  stripeChargeDetails.payment_method_details?.card?.brand,
+                last4:
+                  stripeChargeDetails.payment_method_details?.card?.last4,
+                receiptUrl: stripeChargeDetails.receipt_url,
+                fullResponse: stripeChargeDetails,
+              }
               : null,
           };
         }
@@ -460,9 +461,9 @@ exports.getAllOnetoOneLeadsSales = async (
           required: !!type, // still only strict join when filtering by type
           where: !!type
             ? {
-                ...(Object.keys(whereBooking).length ? whereBooking : {}),
-                status: "active",
-              }
+              ...(Object.keys(whereBooking).length ? whereBooking : {}),
+              status: "active",
+            }
             : undefined, // <- important: no where when no type, keeps LEFT JOIN
           include: [
             {
@@ -545,11 +546,11 @@ exports.getAllOnetoOneLeadsSales = async (
           null;
         const emergency = emergencyObj
           ? {
-              emergencyFirstName: emergencyObj.emergencyFirstName,
-              emergencyLastName: emergencyObj.emergencyLastName,
-              emergencyPhoneNumber: emergencyObj.phoneNumber,
-              emergencyRelation: emergencyObj.relationChild,
-            }
+            emergencyFirstName: emergencyObj.emergencyFirstName,
+            emergencyLastName: emergencyObj.emergencyLastName,
+            emergencyPhoneNumber: emergencyObj.phoneNumber,
+            emergencyRelation: emergencyObj.relationChild,
+          }
           : null;
 
         // Payment + Stripe charge details
@@ -599,17 +600,17 @@ exports.getAllOnetoOneLeadsSales = async (
             failureReason: booking.payment.failureReason,
             stripeChargeDetails: stripeChargeDetails
               ? {
-                  id: stripeChargeDetails.id,
-                  amount: stripeChargeDetails.amount / 100,
-                  currency: stripeChargeDetails.currency,
-                  status: stripeChargeDetails.status,
-                  paymentMethod:
-                    stripeChargeDetails.payment_method_details?.card?.brand,
-                  last4:
-                    stripeChargeDetails.payment_method_details?.card?.last4,
-                  receiptUrl: stripeChargeDetails.receipt_url,
-                  fullResponse: stripeChargeDetails,
-                }
+                id: stripeChargeDetails.id,
+                amount: stripeChargeDetails.amount / 100,
+                currency: stripeChargeDetails.currency,
+                status: stripeChargeDetails.status,
+                paymentMethod:
+                  stripeChargeDetails.payment_method_details?.card?.brand,
+                last4:
+                  stripeChargeDetails.payment_method_details?.card?.last4,
+                receiptUrl: stripeChargeDetails.receipt_url,
+                fullResponse: stripeChargeDetails,
+              }
               : null,
           };
         }
@@ -720,9 +721,9 @@ exports.getAllOnetoOneLeadsSales = async (
     const topSalesAgent =
       topSalesAgentData && topSalesAgentData.creator
         ? {
-            firstName: topSalesAgentData.creator.firstName,
-            lastName: topSalesAgentData.creator.lastName,
-          }
+          firstName: topSalesAgentData.creator.firstName,
+          lastName: topSalesAgentData.creator.lastName,
+        }
         : null;
 
     console.log({
@@ -748,9 +749,8 @@ exports.getAllOnetoOneLeadsSales = async (
         agentList.unshift({
           id: superAdmin.id,
           name:
-            `${superAdmin.firstName || ""} ${
-              superAdmin.lastName || ""
-            }`.trim() || superAdmin.email,
+            `${superAdmin.firstName || ""} ${superAdmin.lastName || ""
+              }`.trim() || superAdmin.email,
         });
       }
     } else {
@@ -949,8 +949,8 @@ exports.getAllOnetoOneLeadsSalesAll = async (
           required: !!type, // still only strict join when filtering by type
           where: !!type
             ? {
-                ...(Object.keys(whereBooking).length ? whereBooking : {}),
-              }
+              ...(Object.keys(whereBooking).length ? whereBooking : {}),
+            }
             : undefined, // <- important: no where when no type, keeps LEFT JOIN
           include: [
             {
@@ -1033,11 +1033,11 @@ exports.getAllOnetoOneLeadsSalesAll = async (
           null;
         const emergency = emergencyObj
           ? {
-              emergencyFirstName: emergencyObj.emergencyFirstName,
-              emergencyLastName: emergencyObj.emergencyLastName,
-              emergencyPhoneNumber: emergencyObj.phoneNumber,
-              emergencyRelation: emergencyObj.relationChild,
-            }
+            emergencyFirstName: emergencyObj.emergencyFirstName,
+            emergencyLastName: emergencyObj.emergencyLastName,
+            emergencyPhoneNumber: emergencyObj.phoneNumber,
+            emergencyRelation: emergencyObj.relationChild,
+          }
           : null;
 
         // Payment + Stripe charge details
@@ -1087,17 +1087,17 @@ exports.getAllOnetoOneLeadsSalesAll = async (
             failureReason: booking.payment.failureReason,
             stripeChargeDetails: stripeChargeDetails
               ? {
-                  id: stripeChargeDetails.id,
-                  amount: stripeChargeDetails.amount / 100,
-                  currency: stripeChargeDetails.currency,
-                  status: stripeChargeDetails.status,
-                  paymentMethod:
-                    stripeChargeDetails.payment_method_details?.card?.brand,
-                  last4:
-                    stripeChargeDetails.payment_method_details?.card?.last4,
-                  receiptUrl: stripeChargeDetails.receipt_url,
-                  fullResponse: stripeChargeDetails,
-                }
+                id: stripeChargeDetails.id,
+                amount: stripeChargeDetails.amount / 100,
+                currency: stripeChargeDetails.currency,
+                status: stripeChargeDetails.status,
+                paymentMethod:
+                  stripeChargeDetails.payment_method_details?.card?.brand,
+                last4:
+                  stripeChargeDetails.payment_method_details?.card?.last4,
+                receiptUrl: stripeChargeDetails.receipt_url,
+                fullResponse: stripeChargeDetails,
+              }
               : null,
           };
         }
@@ -1208,9 +1208,9 @@ exports.getAllOnetoOneLeadsSalesAll = async (
     const topSalesAgent =
       topSalesAgentData && topSalesAgentData.creator
         ? {
-            firstName: topSalesAgentData.creator.firstName,
-            lastName: topSalesAgentData.creator.lastName,
-          }
+          firstName: topSalesAgentData.creator.firstName,
+          lastName: topSalesAgentData.creator.lastName,
+        }
         : null;
 
     console.log({
@@ -1236,9 +1236,8 @@ exports.getAllOnetoOneLeadsSalesAll = async (
         agentList.unshift({
           id: superAdmin.id,
           name:
-            `${superAdmin.firstName || ""} ${
-              superAdmin.lastName || ""
-            }`.trim() || superAdmin.email,
+            `${superAdmin.firstName || ""} ${superAdmin.lastName || ""
+              }`.trim() || superAdmin.email,
         });
       }
     } else {
@@ -1375,46 +1374,56 @@ exports.getOnetoOneLeadsById = async (id, superAdminId, adminId) => {
       return { status: true, data: leadPlain };
     }
 
-    // 🧩 Extract students
-    const students = (booking.students || []).map((s) => ({
-      id: s.id,
-      studentFirstName: s.studentFirstName,
-      studentLastName: s.studentLastName,
-      dateOfBirth: s.dateOfBirth,
-      age: s.age,
-      gender: s.gender,
-      medicalInfo: s.medicalInfo,
-    }));
+    // 🧩 Students
+    const students =
+      booking.students?.map((student) => ({
+        id: student.id,
+        studentFirstName: student.studentFirstName,
+        studentLastName: student.studentLastName,
+        dateOfBirth: student.dateOfBirth,
+        age: student.age,
+        gender: student.gender,
+        medicalInfo: student.medicalInfo,
+      })) || [];
 
-    // 🧩 Collect parent details
-    const parents = (booking.students || [])
-      .map((s) => s.parentDetails)
-      .filter(Boolean)
-      .map((p) => ({
-        id: p.id,
-        parentFirstName: p.parentFirstName,
-        parentLastName: p.parentLastName,
-        parentEmail: p.parentEmail,
-        phoneNumber: p.phoneNumber,
-        relationChild: p.relationChild,
-        howDidHear: p.howDidHear,
-      }));
+    // 🧩 Parents for all students
+    const parents =
+      booking.students?.flatMap((student) => {
+        const parentArr = Array.isArray(student.parentDetails)
+          ? student.parentDetails
+          : student.parentDetails
+            ? [student.parentDetails] // wrap single object into array
+            : [];
 
-    // 🧩 Get emergency contact
-    const emergencyObj =
-      booking.students && booking.students.length > 0
-        ? booking.students.find((s) => s.emergencyDetails)?.emergencyDetails
-        : null;
+        return parentArr.map((parent) => ({
+          id: parent.id,
+          studentId: student.id, // link to correct student
+          parentFirstName: parent.parentFirstName,
+          parentLastName: parent.parentLastName,
+          parentEmail: parent.parentEmail,
+          phoneNumber: parent.phoneNumber,
+          relationChild: parent.relationChild,
+          howDidHear: parent.howDidHear,
+        }));
+      }) || [];
 
-    const emergency = emergencyObj
-      ? {
-          id: emergencyObj.id,
-          emergencyFirstName: emergencyObj.emergencyFirstName,
-          emergencyLastName: emergencyObj.emergencyLastName,
-          emergencyPhoneNumber: emergencyObj.phoneNumber,
-          emergencyRelation: emergencyObj.relationChild,
-        }
-      : null;
+    // 🧩 Get emergency contact (take first found)
+    const emergency =
+      booking.students?.flatMap(
+        (student) =>
+          (Array.isArray(student.emergencyDetails)
+            ? student.emergencyDetails
+            : student.emergencyDetails
+              ? [student.emergencyDetails]
+              : []
+          ).map((em) => ({
+            id: em.id,
+            emergencyFirstName: em.emergencyFirstName,
+            emergencyLastName: em.emergencyLastName,
+            emergencyPhoneNumber: em.phoneNumber,
+            emergencyRelation: em.relationChild,
+          }))
+      )?.[0] || null;
 
     // 💳 Payment + Stripe details
     let paymentObj = null;
@@ -1462,16 +1471,16 @@ exports.getOnetoOneLeadsById = async (id, superAdminId, adminId) => {
         // ✅ Include Stripe charge details
         stripeChargeDetails: stripeChargeDetails
           ? {
-              id: stripeChargeDetails.id,
-              amount: stripeChargeDetails.amount / 100,
-              currency: stripeChargeDetails.currency,
-              status: stripeChargeDetails.status,
-              paymentMethod:
-                stripeChargeDetails.payment_method_details?.card?.brand,
-              last4: stripeChargeDetails.payment_method_details?.card?.last4,
-              receiptUrl: stripeChargeDetails.receipt_url,
-              fullResponse: stripeChargeDetails,
-            }
+            id: stripeChargeDetails.id,
+            amount: stripeChargeDetails.amount / 100,
+            currency: stripeChargeDetails.currency,
+            status: stripeChargeDetails.status,
+            paymentMethod:
+              stripeChargeDetails.payment_method_details?.card?.brand,
+            last4: stripeChargeDetails.payment_method_details?.card?.last4,
+            receiptUrl: stripeChargeDetails.receipt_url,
+            fullResponse: stripeChargeDetails,
+          }
           : null,
       };
     }
@@ -1519,12 +1528,19 @@ exports.getOnetoOneLeadsById = async (id, superAdminId, adminId) => {
   }
 };
 
-exports.updateOnetoOneLeadById = async (id, adminId, updateData) => {
+exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) => {
   const t = await sequelize.transaction();
   try {
-    // Step 1: Fetch lead + booking
+    console.log("🔹 Fetching lead with ID:", id);
+
     const lead = await oneToOneLeads.findOne({
-      where: { id, createdBy: adminId },
+      where: {
+        id,
+        [Op.or]: [
+          { createdBy: adminId },
+          { createdBy: superAdminId }
+        ]
+      },
       include: [
         {
           model: OneToOneBooking,
@@ -1545,48 +1561,48 @@ exports.updateOnetoOneLeadById = async (id, adminId, updateData) => {
     });
 
     if (!lead) {
+      console.log("⚠️ Lead not found or unauthorized");
       await t.rollback();
       return { status: false, message: "Lead not found or unauthorized." };
     }
 
     const booking = lead.booking;
     if (!booking) {
+      console.log("⚠️ Booking not found for this lead");
       await t.rollback();
       return { status: false, message: "Booking not found for this lead." };
     }
 
     // ======================================================
-    // 🧩 STUDENTS: Add new or update existing
+    // 🧩 STUDENTS
     // ======================================================
-    if (Array.isArray(updateData.student) && updateData.student.length) {
+    if (updateData?.student && Array.isArray(updateData.student) && updateData.student.length) {
+      console.log("🔹 Updating/creating students:", updateData.student);
       for (const studentData of updateData.student) {
         if (studentData.id) {
-          // ✅ Update existing
           const existingStudent = await OneToOneStudent.findOne({
             where: { id: studentData.id, oneToOneBookingId: booking.id },
             transaction: t,
           });
           if (existingStudent) {
+            console.log(`🔄 Updating existing student id=${studentData.id}`);
             await existingStudent.update(
               {
-                studentFirstName:
-                  studentData.studentFirstName ??
-                  existingStudent.studentFirstName,
-                studentLastName:
-                  studentData.studentLastName ??
-                  existingStudent.studentLastName,
-                dateOfBirth:
-                  studentData.dateOfBirth ?? existingStudent.dateOfBirth,
+                studentFirstName: studentData.studentFirstName ?? existingStudent.studentFirstName,
+                studentLastName: studentData.studentLastName ?? existingStudent.studentLastName,
+                dateOfBirth: studentData.dateOfBirth ?? existingStudent.dateOfBirth,
                 age: studentData.age ?? existingStudent.age,
                 gender: studentData.gender ?? existingStudent.gender,
-                medicalInfo:
-                  studentData.medicalInfo ?? existingStudent.medicalInfo,
+                medicalInfo: studentData.medicalInfo ?? existingStudent.medicalInfo,
               },
               { transaction: t }
             );
+            console.log(`✅ Updated student id=${studentData.id}`);
+          } else {
+            console.log(`⚠️ Student id=${studentData.id} not found, skipping`);
           }
         } else {
-          // ✅ Create new student
+          console.log("➕ Creating new student:", studentData);
           await OneToOneStudent.create(
             {
               oneToOneBookingId: booking.id,
@@ -1599,48 +1615,47 @@ exports.updateOnetoOneLeadById = async (id, adminId, updateData) => {
             },
             { transaction: t }
           );
+          console.log(`✅ Created new student: ${studentData.studentFirstName} ${studentData.studentLastName}`);
         }
       }
     }
 
     // ======================================================
-    // 👨‍👩‍👧 PARENTS: Add new or update existing
+    // 👨‍👩‍👧 PARENTS
     // ======================================================
-    if (
-      Array.isArray(updateData.parentDetails) &&
-      updateData.parentDetails.length
-    ) {
+    if (updateData?.parentDetails && Array.isArray(updateData.parentDetails)) {
+      console.log("🔹 Updating/creating parent details:", updateData.parentDetails);
+
       for (const parentData of updateData.parentDetails) {
         if (parentData.id) {
-          // ✅ Update existing parent
+          console.log(`🔄 Attempting to update existing parent id=${parentData.id}`);
           const existingParent = await OneToOneParent.findOne({
             where: { id: parentData.id },
             transaction: t,
           });
 
           if (existingParent) {
+            console.log(`✅ Found parent id=${parentData.id}, updating fields`);
             await existingParent.update(
               {
-                parentFirstName:
-                  parentData.parentFirstName ?? existingParent.parentFirstName,
-                parentLastName:
-                  parentData.parentLastName ?? existingParent.parentLastName,
-                parentEmail:
-                  parentData.parentEmail ?? existingParent.parentEmail,
-                phoneNumber:
-                  parentData.phoneNumber ?? existingParent.phoneNumber,
-                relationChild:
-                  parentData.relationChild ?? existingParent.relationChild,
+                parentFirstName: parentData.parentFirstName ?? existingParent.parentFirstName,
+                parentLastName: parentData.parentLastName ?? existingParent.parentLastName,
+                parentEmail: parentData.parentEmail ?? existingParent.parentEmail,
+                phoneNumber: parentData.phoneNumber ?? existingParent.phoneNumber,
+                relationChild: parentData.relationChild ?? existingParent.relationChild,
                 howDidHear: parentData.howDidHear ?? existingParent.howDidHear,
               },
               { transaction: t }
             );
+            console.log('Parent updated:', existingParent.toJSON());
+          } else {
+            console.log(`⚠️ Parent id=${parentData.id} not found, cannot update`);
           }
-        } else if (parentData.oneToOneStudentId) {
-          // ✅ Add new parent for a student
-          await OneToOneParent.create(
+        } else if (parentData.studentId) {
+          console.log(`➕ Creating new parent for studentId=${parentData.studentId}`);
+          const newParent = await OneToOneParent.create(
             {
-              oneToOneStudentId: parentData.oneToOneStudentId,
+              studentId: parentData.studentId,
               parentFirstName: parentData.parentFirstName,
               parentLastName: parentData.parentLastName,
               parentEmail: parentData.parentEmail,
@@ -1650,45 +1665,46 @@ exports.updateOnetoOneLeadById = async (id, adminId, updateData) => {
             },
             { transaction: t }
           );
+          console.log('Parent created:', newParent.toJSON());
+        } else {
+          console.log("⚠️ Skipping parent entry (no id or studentId provided):", parentData);
         }
       }
     }
 
     // ======================================================
-    // 🚨 EMERGENCY DETAILS: Update only
+    // 🚨 EMERGENCY DETAILS
     // ======================================================
-    if (updateData.emergencyDetails && updateData.emergencyDetails.id) {
+    if (updateData?.emergencyDetails && updateData.emergencyDetails.id) {
+      console.log(`🔄 Updating emergency details id=${updateData.emergencyDetails.id}`);
       const e = updateData.emergencyDetails;
-
       const existingEmergency = await OneToOneEmergency.findOne({
         where: { id: e.id },
         transaction: t,
       });
-
       if (existingEmergency) {
         await existingEmergency.update(
           {
-            emergencyFirstName:
-              e.emergencyFirstName ?? existingEmergency.emergencyFirstName,
-            emergencyLastName:
-              e.emergencyLastName ?? existingEmergency.emergencyLastName,
+            emergencyFirstName: e.emergencyFirstName ?? existingEmergency.emergencyFirstName,
+            emergencyLastName: e.emergencyLastName ?? existingEmergency.emergencyLastName,
             phoneNumber: e.phoneNumber ?? existingEmergency.phoneNumber,
             relationChild: e.relationChild ?? existingEmergency.relationChild,
           },
           { transaction: t }
         );
+        console.log(`✅ Updated emergency details id=${e.id}`);
+      } else {
+        console.log(`⚠️ Emergency details id=${e.id} not found, skipping`);
       }
     }
 
-    // ✅ Commit
+    // Commit transaction
     await t.commit();
+    console.log("✅ Transaction committed successfully");
 
-    // ✅ Return updated full data
-    const refreshed = await exports.getOnetoOneLeadsById(id, adminId);
     return {
       status: true,
       message: "Lead updated successfully.",
-      data: refreshed.data,
     };
   } catch (error) {
     await t.rollback();
@@ -2163,8 +2179,8 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
         lastRevenue > 0
           ? (((currentRevenue - lastRevenue) / lastRevenue) * 100).toFixed(2)
           : currentRevenue > 0
-          ? 100
-          : 0;
+            ? 100
+            : 0;
 
       return {
         name: pkgName,
