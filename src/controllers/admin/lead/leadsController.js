@@ -497,7 +497,11 @@ exports.getAllReferallLeads = async (req, res) => {
 
     // Fetch leads from service
     // const result = await LeadService.getAllForFacebookLeads(superAdminId,filters);
-    const result = await LeadService.getAllReferallLeads(superAdminId,adminId, filters);
+    const result = await LeadService.getAllReferallLeads(
+      superAdminId,
+      adminId,
+      filters
+    );
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Failed fetching leads:", result.message);
@@ -575,7 +579,11 @@ exports.getAllOthersLeads = async (req, res) => {
     };
 
     // Fetch leads from service
-    const result = await LeadService.getAllOthersLeads(superAdminId,adminId, filters);
+    const result = await LeadService.getAllOthersLeads(
+      superAdminId,
+      adminId,
+      filters
+    );
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Failed fetching leads:", result.message);
@@ -653,7 +661,11 @@ exports.getAllLeads = async (req, res) => {
     };
 
     // Fetch leads from service
-    const result = await LeadService.getAllLeads(superAdminId,adminId, filters);
+    const result = await LeadService.getAllLeads(
+      superAdminId,
+      adminId,
+      filters
+    );
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Failed fetching leads:", result.message);

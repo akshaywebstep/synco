@@ -26,13 +26,18 @@ exports.createBirthdayPartyLeads = async (data) => {
 };
 
 // Get All Leads
-exports.getAllBirthdayPartyLeads = async (superAdminId, adminId, filters = {}) => {
+exports.getAllBirthdayPartyLeads = async (
+  superAdminId,
+  adminId,
+  filters = {}
+) => {
   try {
     if (!adminId || isNaN(Number(adminId))) {
       return { status: false, message: "Invalid admin ID.", data: [] };
     }
 
-    const { fromDate, toDate, type, studentName, partyDate, packageInterest } = filters;
+    const { fromDate, toDate, type, studentName, partyDate, packageInterest } =
+      filters;
 
     const whereLead = { status: "pending" };
     const whereBooking = { status: "pending" };
@@ -168,11 +173,11 @@ exports.getAllBirthdayPartyLeads = async (superAdminId, adminId, filters = {}) =
           null;
         const emergency = emergencyObj
           ? {
-            emergencyFirstName: emergencyObj.emergencyFirstName,
-            emergencyLastName: emergencyObj.emergencyLastName,
-            emergencyPhoneNumber: emergencyObj.phoneNumber,
-            emergencyRelation: emergencyObj.relationChild,
-          }
+              emergencyFirstName: emergencyObj.emergencyFirstName,
+              emergencyLastName: emergencyObj.emergencyLastName,
+              emergencyPhoneNumber: emergencyObj.phoneNumber,
+              emergencyRelation: emergencyObj.relationChild,
+            }
           : null;
 
         let paymentObj = null;
@@ -187,9 +192,12 @@ exports.getAllBirthdayPartyLeads = async (superAdminId, adminId, filters = {}) =
 
               if (stripeChargeId.startsWith("pi_")) {
                 // 🔹 Retrieve PaymentIntent and expand to get latest charge
-                const paymentIntent = await stripe.paymentIntents.retrieve(stripeChargeId, {
-                  expand: ["latest_charge"],
-                });
+                const paymentIntent = await stripe.paymentIntents.retrieve(
+                  stripeChargeId,
+                  {
+                    expand: ["latest_charge"],
+                  }
+                );
 
                 if (paymentIntent.latest_charge) {
                   stripeChargeDetails = await stripe.charges.retrieve(
@@ -198,7 +206,9 @@ exports.getAllBirthdayPartyLeads = async (superAdminId, adminId, filters = {}) =
                 }
               } else if (stripeChargeId.startsWith("ch_")) {
                 // 🔹 Retrieve charge directly
-                stripeChargeDetails = await stripe.charges.retrieve(stripeChargeId);
+                stripeChargeDetails = await stripe.charges.retrieve(
+                  stripeChargeId
+                );
               }
             } catch (err) {
               console.error("⚠️ Failed to fetch charge details:", err.message);
@@ -216,17 +226,17 @@ exports.getAllBirthdayPartyLeads = async (superAdminId, adminId, filters = {}) =
             failureReason: booking.payment.failureReason,
             stripeChargeDetails: stripeChargeDetails
               ? {
-                id: stripeChargeDetails.id,
-                amount: stripeChargeDetails.amount / 100,
-                currency: stripeChargeDetails.currency,
-                status: stripeChargeDetails.status,
-                paymentMethod:
-                  stripeChargeDetails.payment_method_details?.card?.brand,
-                last4:
-                  stripeChargeDetails.payment_method_details?.card?.last4,
-                receiptUrl: stripeChargeDetails.receipt_url,
-                fullResponse: stripeChargeDetails,
-              }
+                  id: stripeChargeDetails.id,
+                  amount: stripeChargeDetails.amount / 100,
+                  currency: stripeChargeDetails.currency,
+                  status: stripeChargeDetails.status,
+                  paymentMethod:
+                    stripeChargeDetails.payment_method_details?.card?.brand,
+                  last4:
+                    stripeChargeDetails.payment_method_details?.card?.last4,
+                  receiptUrl: stripeChargeDetails.receipt_url,
+                  fullResponse: stripeChargeDetails,
+                }
               : null,
           };
         }
@@ -341,7 +351,8 @@ exports.getAllBirthdayPartyLeadsSales = async (
       return { status: false, message: "Invalid admin ID.", data: [] };
     }
 
-    const { fromDate, toDate, type, studentName, packageInterest, partyDate } = filters;
+    const { fromDate, toDate, type, studentName, packageInterest, partyDate } =
+      filters;
 
     const whereLead = { status: "active" };
     const whereBooking = { status: "active" };
@@ -404,9 +415,9 @@ exports.getAllBirthdayPartyLeadsSales = async (
           required: !!type, // still only strict join when filtering by type
           where: !!type
             ? {
-              ...(Object.keys(whereBooking).length ? whereBooking : {}),
-              status: "active",
-            }
+                ...(Object.keys(whereBooking).length ? whereBooking : {}),
+                status: "active",
+              }
             : undefined, // <- important: no where when no type, keeps LEFT JOIN
           include: [
             {
@@ -477,11 +488,11 @@ exports.getAllBirthdayPartyLeadsSales = async (
           null;
         const emergency = emergencyObj
           ? {
-            emergencyFirstName: emergencyObj.emergencyFirstName,
-            emergencyLastName: emergencyObj.emergencyLastName,
-            emergencyPhoneNumber: emergencyObj.phoneNumber,
-            emergencyRelation: emergencyObj.relationChild,
-          }
+              emergencyFirstName: emergencyObj.emergencyFirstName,
+              emergencyLastName: emergencyObj.emergencyLastName,
+              emergencyPhoneNumber: emergencyObj.phoneNumber,
+              emergencyRelation: emergencyObj.relationChild,
+            }
           : null;
 
         // Payment + Stripe charge details
@@ -497,9 +508,12 @@ exports.getAllBirthdayPartyLeadsSales = async (
 
               if (stripeChargeId.startsWith("pi_")) {
                 // 🔹 Retrieve PaymentIntent and expand to get latest charge
-                const paymentIntent = await stripe.paymentIntents.retrieve(stripeChargeId, {
-                  expand: ["latest_charge"],
-                });
+                const paymentIntent = await stripe.paymentIntents.retrieve(
+                  stripeChargeId,
+                  {
+                    expand: ["latest_charge"],
+                  }
+                );
 
                 if (paymentIntent.latest_charge) {
                   stripeChargeDetails = await stripe.charges.retrieve(
@@ -508,7 +522,9 @@ exports.getAllBirthdayPartyLeadsSales = async (
                 }
               } else if (stripeChargeId.startsWith("ch_")) {
                 // 🔹 Retrieve charge directly
-                stripeChargeDetails = await stripe.charges.retrieve(stripeChargeId);
+                stripeChargeDetails = await stripe.charges.retrieve(
+                  stripeChargeId
+                );
               }
             } catch (err) {
               console.error("⚠️ Failed to fetch charge details:", err.message);
@@ -526,17 +542,17 @@ exports.getAllBirthdayPartyLeadsSales = async (
             failureReason: booking.payment.failureReason,
             stripeChargeDetails: stripeChargeDetails
               ? {
-                id: stripeChargeDetails.id,
-                amount: stripeChargeDetails.amount / 100,
-                currency: stripeChargeDetails.currency,
-                status: stripeChargeDetails.status,
-                paymentMethod:
-                  stripeChargeDetails.payment_method_details?.card?.brand,
-                last4:
-                  stripeChargeDetails.payment_method_details?.card?.last4,
-                receiptUrl: stripeChargeDetails.receipt_url,
-                fullResponse: stripeChargeDetails,
-              }
+                  id: stripeChargeDetails.id,
+                  amount: stripeChargeDetails.amount / 100,
+                  currency: stripeChargeDetails.currency,
+                  status: stripeChargeDetails.status,
+                  paymentMethod:
+                    stripeChargeDetails.payment_method_details?.card?.brand,
+                  last4:
+                    stripeChargeDetails.payment_method_details?.card?.last4,
+                  receiptUrl: stripeChargeDetails.receipt_url,
+                  fullResponse: stripeChargeDetails,
+                }
               : null,
           };
         }
@@ -623,7 +639,12 @@ exports.getAllBirthdayPartyLeadsSales = async (
         "createdBy",
         [fn("COUNT", col("BirthdayPartyLead.id")), "leadCount"],
       ],
-      group: ["createdBy", "creator.id", "creator.firstName", "creator.lastName"],
+      group: [
+        "createdBy",
+        "creator.id",
+        "creator.firstName",
+        "creator.lastName",
+      ],
       order: [[literal("leadCount"), "DESC"]],
       raw: false,
     });
@@ -632,9 +653,9 @@ exports.getAllBirthdayPartyLeadsSales = async (
     const topSalesAgent =
       topSalesAgentData && topSalesAgentData.creator
         ? {
-          firstName: topSalesAgentData.creator.firstName,
-          lastName: topSalesAgentData.creator.lastName,
-        }
+            firstName: topSalesAgentData.creator.firstName,
+            lastName: topSalesAgentData.creator.lastName,
+          }
         : null;
 
     console.log({
@@ -684,8 +705,9 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
     if (!adminId || isNaN(Number(adminId))) {
       return { status: false, message: "Invalid admin ID.", data: [] };
     }
-    
-    const { fromDate, toDate, type, studentName, packageInterest, partyDate } = filters;
+
+    const { fromDate, toDate, type, studentName, packageInterest, partyDate } =
+      filters;
 
     const whereLead = {};
     const whereBooking = {};
@@ -748,8 +770,8 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
           required: !!type, // still only strict join when filtering by type
           where: !!type
             ? {
-              ...(Object.keys(whereBooking).length ? whereBooking : {}),
-            }
+                ...(Object.keys(whereBooking).length ? whereBooking : {}),
+              }
             : undefined, // <- important: no where when no type, keeps LEFT JOIN
           include: [
             {
@@ -821,11 +843,11 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
           null;
         const emergency = emergencyObj
           ? {
-            emergencyFirstName: emergencyObj.emergencyFirstName,
-            emergencyLastName: emergencyObj.emergencyLastName,
-            emergencyPhoneNumber: emergencyObj.phoneNumber,
-            emergencyRelation: emergencyObj.relationChild,
-          }
+              emergencyFirstName: emergencyObj.emergencyFirstName,
+              emergencyLastName: emergencyObj.emergencyLastName,
+              emergencyPhoneNumber: emergencyObj.phoneNumber,
+              emergencyRelation: emergencyObj.relationChild,
+            }
           : null;
 
         // Payment + Stripe charge details
@@ -841,9 +863,12 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
 
               if (stripeChargeId.startsWith("pi_")) {
                 // 🔹 Retrieve PaymentIntent and expand to get latest charge
-                const paymentIntent = await stripe.paymentIntents.retrieve(stripeChargeId, {
-                  expand: ["latest_charge"],
-                });
+                const paymentIntent = await stripe.paymentIntents.retrieve(
+                  stripeChargeId,
+                  {
+                    expand: ["latest_charge"],
+                  }
+                );
 
                 if (paymentIntent.latest_charge) {
                   stripeChargeDetails = await stripe.charges.retrieve(
@@ -852,7 +877,9 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
                 }
               } else if (stripeChargeId.startsWith("ch_")) {
                 // 🔹 Retrieve charge directly
-                stripeChargeDetails = await stripe.charges.retrieve(stripeChargeId);
+                stripeChargeDetails = await stripe.charges.retrieve(
+                  stripeChargeId
+                );
               }
             } catch (err) {
               console.error("⚠️ Failed to fetch charge details:", err.message);
@@ -870,17 +897,17 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
             failureReason: booking.payment.failureReason,
             stripeChargeDetails: stripeChargeDetails
               ? {
-                id: stripeChargeDetails.id,
-                amount: stripeChargeDetails.amount / 100,
-                currency: stripeChargeDetails.currency,
-                status: stripeChargeDetails.status,
-                paymentMethod:
-                  stripeChargeDetails.payment_method_details?.card?.brand,
-                last4:
-                  stripeChargeDetails.payment_method_details?.card?.last4,
-                receiptUrl: stripeChargeDetails.receipt_url,
-                fullResponse: stripeChargeDetails,
-              }
+                  id: stripeChargeDetails.id,
+                  amount: stripeChargeDetails.amount / 100,
+                  currency: stripeChargeDetails.currency,
+                  status: stripeChargeDetails.status,
+                  paymentMethod:
+                    stripeChargeDetails.payment_method_details?.card?.brand,
+                  last4:
+                    stripeChargeDetails.payment_method_details?.card?.last4,
+                  receiptUrl: stripeChargeDetails.receipt_url,
+                  fullResponse: stripeChargeDetails,
+                }
               : null,
           };
         }
@@ -968,7 +995,12 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
         "createdBy",
         [fn("COUNT", col("BirthdayPartyLead.id")), "leadCount"],
       ],
-      group: ["createdBy", "creator.id", "creator.firstName", "creator.lastName"],
+      group: [
+        "createdBy",
+        "creator.id",
+        "creator.firstName",
+        "creator.lastName",
+      ],
       order: [[literal("leadCount"), "DESC"]],
       raw: false,
     });
@@ -977,9 +1009,9 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
     const topSalesAgent =
       topSalesAgentData && topSalesAgentData.creator
         ? {
-          firstName: topSalesAgentData.creator.firstName,
-          lastName: topSalesAgentData.creator.lastName,
-        }
+            firstName: topSalesAgentData.creator.firstName,
+            lastName: topSalesAgentData.creator.lastName,
+          }
         : null;
 
     console.log({
@@ -996,7 +1028,7 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
           newLeads,
           leadsWithBookings,
           sourceOfBookings: sourceCount,
-          topSalesAgent
+          topSalesAgent,
         },
       };
     }
@@ -1019,8 +1051,8 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
   }
 };
 
-exports.getBirthdayPartyLeadsById = async (id, adminId,superAdminId) => {
-   try {
+exports.getBirthdayPartyLeadsById = async (id, adminId, superAdminId) => {
+  try {
     if (!adminId || isNaN(Number(adminId))) {
       return { status: false, message: "Invalid admin ID.", data: [] };
     }
@@ -1113,12 +1145,12 @@ exports.getBirthdayPartyLeadsById = async (id, adminId,superAdminId) => {
 
     const emergency = emergencyObj
       ? {
-        id: emergencyObj.id,
-        emergencyFirstName: emergencyObj.emergencyFirstName,
-        emergencyLastName: emergencyObj.emergencyLastName,
-        emergencyPhoneNumber: emergencyObj.phoneNumber,
-        emergencyRelation: emergencyObj.relationChild,
-      }
+          id: emergencyObj.id,
+          emergencyFirstName: emergencyObj.emergencyFirstName,
+          emergencyLastName: emergencyObj.emergencyLastName,
+          emergencyPhoneNumber: emergencyObj.phoneNumber,
+          emergencyRelation: emergencyObj.relationChild,
+        }
       : null;
 
     // 💳 Payment + Stripe details
@@ -1134,9 +1166,12 @@ exports.getBirthdayPartyLeadsById = async (id, adminId,superAdminId) => {
 
           if (stripeChargeId.startsWith("pi_")) {
             // 🔹 Retrieve PaymentIntent and expand to get latest charge
-            const paymentIntent = await stripe.paymentIntents.retrieve(stripeChargeId, {
-              expand: ["latest_charge"],
-            });
+            const paymentIntent = await stripe.paymentIntents.retrieve(
+              stripeChargeId,
+              {
+                expand: ["latest_charge"],
+              }
+            );
 
             if (paymentIntent.latest_charge) {
               stripeChargeDetails = await stripe.charges.retrieve(
@@ -1164,16 +1199,16 @@ exports.getBirthdayPartyLeadsById = async (id, adminId,superAdminId) => {
         // ✅ Include Stripe charge details
         stripeChargeDetails: stripeChargeDetails
           ? {
-            id: stripeChargeDetails.id,
-            amount: stripeChargeDetails.amount / 100,
-            currency: stripeChargeDetails.currency,
-            status: stripeChargeDetails.status,
-            paymentMethod:
-              stripeChargeDetails.payment_method_details?.card?.brand,
-            last4: stripeChargeDetails.payment_method_details?.card?.last4,
-            receiptUrl: stripeChargeDetails.receipt_url,
-            fullResponse: stripeChargeDetails,
-          }
+              id: stripeChargeDetails.id,
+              amount: stripeChargeDetails.amount / 100,
+              currency: stripeChargeDetails.currency,
+              status: stripeChargeDetails.status,
+              paymentMethod:
+                stripeChargeDetails.payment_method_details?.card?.brand,
+              last4: stripeChargeDetails.payment_method_details?.card?.last4,
+              receiptUrl: stripeChargeDetails.receipt_url,
+              fullResponse: stripeChargeDetails,
+            }
           : null,
       };
     }
@@ -1395,9 +1430,30 @@ exports.updateBirthdayPartyLeadById = async (id, adminId, updateData) => {
 };
 
 // Get All One-to-One Analytics
-exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType) => {
+exports.getAllBirthdayPartyAnalytics = async (
+  superAdminId,
+  adminId,
+  filterType
+) => {
   try {
+    const whereLead = {}; // ✅ initialize first
 
+    // ✅ Super Admin logic
+    if (superAdminId === adminId) {
+      // Super admin — include all leads created by self or managed admins
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id"],
+      });
+
+      const adminIds = managedAdmins.map((a) => a.id);
+      adminIds.push(superAdminId);
+
+      whereLead.createdBy = { [Op.in]: adminIds };
+    } else {
+      // Normal admin — include only own leads
+      whereLead.createdBy = adminId;
+    }
     // 🗓️ Define date ranges dynamically based on filterType
     let startDate, endDate;
 
@@ -1414,7 +1470,9 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
       startDate = moment().subtract(6, "months").startOf("month").toDate();
       endDate = moment().endOf("month").toDate();
     } else {
-      throw new Error("Invalid filterType. Use thisMonth | lastMonth | last3Months | last6Months");
+      throw new Error(
+        "Invalid filterType. Use thisMonth | lastMonth | last3Months | last6Months"
+      );
     }
 
     // 🗓️ Define date ranges
@@ -1430,34 +1488,52 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
       .toDate();
 
     const whereThisMonth = {
-      createdBy: adminId,
+      ...whereLead, // includes createdBy: adminId OR createdBy: { [Op.in]: adminIds } for superAdmin
       createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
     };
     const whereLastMonth = {
-      createdBy: adminId,
+      ...whereLead,
       createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
     };
 
-    // ✅ Total Leads
+    // ✅ Total Leads (scoped to the lead owners determined by whereLead)
     const totalLeadsThisMonth = await BirthdayPartyLead.count({
       where: whereThisMonth,
     });
     const totalLeadsLastMonth = await BirthdayPartyLead.count({
       where: whereLastMonth,
     });
-
     // ✅ Number of Sales (active bookings only)
     const salesThisMonth = await BirthdayPartyBooking.count({
       where: {
         status: "active",
         createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
       },
+      include: [
+        {
+          model: BirthdayPartyLead,
+          as: "lead", // 👈 make sure alias matches your association
+          attributes: [],
+          where: whereLead, // ✅ filter by lead.createdBy (admin or superAdmin scope)
+          required: true,
+        },
+      ],
     });
+
     const salesLastMonth = await BirthdayPartyBooking.count({
       where: {
         status: "active",
         createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
       },
+      include: [
+        {
+          model: BirthdayPartyLead,
+          as: "lead",
+          attributes: [],
+          where: whereLead, // ✅ same filtering logic
+          required: true,
+        },
+      ],
     });
 
     // ✅ Conversion Rate
@@ -1470,84 +1546,131 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
         ? ((salesLastMonth / totalLeadsLastMonth) * 100).toFixed(2)
         : "0.00";
 
-    // ✅ Revenue Generated
+    // ✅ Revenue Generated (based on lead.createdBy)
     const paymentsThisMonth = await BirthdayPartyPayment.findAll({
+      attributes: [[fn("SUM", col("BirthdayPartyPayment.amount")), "total"]],
+      include: [
+        {
+          model: BirthdayPartyBooking,
+          as: "booking", // 👈 must match your association
+          attributes: [],
+          include: [
+            {
+              model: BirthdayPartyLead,
+              as: "lead",
+              attributes: [],
+              where: whereLead, // ✅ filter by lead.createdBy (admin/superAdmin scope)
+              required: true,
+            },
+          ],
+          required: true,
+        },
+      ],
       where: {
         createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
       },
-      attributes: [[fn("SUM", col("amount")), "total"]],
       raw: true,
     });
+
     const paymentsLastMonth = await BirthdayPartyPayment.findAll({
+      attributes: [[fn("SUM", col("BirthdayPartyPayment.amount")), "total"]],
+      include: [
+        {
+          model: BirthdayPartyBooking,
+          as: "booking",
+          attributes: [],
+          include: [
+            {
+              model: BirthdayPartyLead,
+              as: "lead",
+              attributes: [],
+              where: whereLead, // ✅ same filtering logic for last month
+              required: true,
+            },
+          ],
+          required: true,
+        },
+      ],
       where: {
         createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
       },
-      attributes: [[fn("SUM", col("amount")), "total"]],
       raw: true,
     });
 
-    const revenueThisMonth = paymentsThisMonth[0].total || 0;
-    const revenueLastMonth = paymentsLastMonth[0].total || 0;
+    const revenueThisMonth = paymentsThisMonth[0]?.total || 0;
+    const revenueLastMonth = paymentsLastMonth[0]?.total || 0;
+
     const packages = ["Gold", "Silver", "Platinum"];
 
     // ✅ Fetch revenue by package (THIS MONTH)
-    const revenueThisMonthRaw = await BirthdayPartyPayment.findAll({
-      attributes: [
-        [col("booking.lead.packageInterest"), "packageName"],
-        [fn("SUM", col("BirthdayPartyPayment.amount")), "totalRevenue"],
-      ],
-      include: [
-        {
-          model: BirthdayPartyBooking,
-          as: "booking",
-          attributes: [],
-          include: [
-            {
-              model: BirthdayPartyLead,
-              as: "lead",
-              attributes: [],
-              where: { packageInterest: { [Op.in]: packages } },
-              required: true,
-            },
-          ],
-          required: true,
-        },
-      ],
-      where: { createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] } },
-      group: ["booking.lead.packageInterest"],
-      raw: true,
-    });
+    // const revenueThisMonthRaw = await BirthdayPartyPayment.findAll({
+    //   attributes: [
+    //     [col("booking.lead.packageInterest"), "packageName"],
+    //     [fn("SUM", col("BirthdayPartyPayment.amount")), "totalRevenue"],
+    //   ],
+    //   include: [
+    //     {
+    //       model: BirthdayPartyBooking,
+    //       as: "booking",
+    //       attributes: [],
+    //       include: [
+    //         {
+    //           model: BirthdayPartyLead,
+    //           as: "lead",
+    //           attributes: [],
+    //           where: {
+    //             ...whereLead, // ✅ filter by lead.createdBy (admin or superAdmin)
+    //             packageInterest: { [Op.in]: packages },
+    //           },
+    //           required: true,
+    //         },
+    //       ],
+    //       required: true,
+    //     },
+    //   ],
+    //   where: {
+    //     createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
+    //   },
+    //   group: ["booking.lead.packageInterest"],
+    //   raw: true,
+    // });
 
-    // ✅ Fetch revenue by package (LAST MONTH)
-    const revenueLastMonthRaw = await BirthdayPartyPayment.findAll({
-      attributes: [
-        [col("booking.lead.packageInterest"), "packageName"],
-        [fn("SUM", col("BirthdayPartyPayment.amount")), "totalRevenue"],
-      ],
-      include: [
-        {
-          model: BirthdayPartyBooking,
-          as: "booking",
-          attributes: [],
-          include: [
-            {
-              model: BirthdayPartyLead,
-              as: "lead",
-              attributes: [],
-              where: { packageInterest: { [Op.in]: packages } },
-              required: true,
-            },
-          ],
-          required: true,
-        },
-      ],
-      where: { createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] } },
-      group: ["booking.lead.packageInterest"],
-      raw: true,
-    });
+    // // ✅ Fetch revenue by package (LAST MONTH)
+    // const revenueLastMonthRaw = await BirthdayPartyPayment.findAll({
+    //   attributes: [
+    //     [col("booking.lead.packageInterest"), "packageName"],
+    //     [fn("SUM", col("BirthdayPartyPayment.amount")), "totalRevenue"],
+    //   ],
+    //   include: [
+    //     {
+    //       model: BirthdayPartyBooking,
+    //       as: "booking",
+    //       attributes: [],
+    //       include: [
+    //         {
+    //           model: BirthdayPartyLead,
+    //           as: "lead",
+    //           attributes: [],
+    //           where: {
+    //             ...whereLead, // ✅ same filter for last month
+    //             packageInterest: { [Op.in]: packages },
+    //           },
+    //           required: true,
+    //         },
+    //       ],
+    //       required: true,
+    //     },
+    //   ],
+    //   where: {
+    //     createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
+    //   },
+    //   group: ["booking.lead.packageInterest"],
+    //   raw: true,
+    // });
 
     // ✅ Source Breakdown (Marketing)
     const sourceBreakdown = await BirthdayPartyLead.findAll({
+      where: whereLead, // ✅ filter by createdBy (admin or superAdmin scope)
       attributes: ["source", [fn("COUNT", col("source")), "count"]],
       group: ["source"],
       raw: true,
@@ -1555,10 +1678,8 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
 
     // ✅ Top Agents
     const topAgents = await BirthdayPartyLead.findAll({
-      attributes: [
-        "createdBy",
-        [fn("COUNT", col("createdBy")), "leadCount"]
-      ],
+      where: whereLead, // ✅ filter by same createdBy logic
+      attributes: ["createdBy", [fn("COUNT", col("createdBy")), "leadCount"]],
       include: [
         {
           model: Admin,
@@ -1573,15 +1694,25 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
     // ✅ One-to-One Students (monthly trend — show all months)
     const monthlyStudentsRaw = await BirthdayPartyBooking.findAll({
       attributes: [
-        [fn("DATE_FORMAT", col("BirthdayPartyBooking.createdAt"), "%M"), "month"], // e.g. "October"
+        [
+          fn("DATE_FORMAT", col("BirthdayPartyBooking.createdAt"), "%M"),
+          "month",
+        ], // e.g. "October"
         [fn("COUNT", col("BirthdayPartyBooking.id")), "bookings"], // total bookings
         [fn("COUNT", fn("DISTINCT", col("students.id"))), "students"], // unique students linked to those bookings
       ],
       include: [
         {
           model: BirthdayPartyStudent,
-          as: "students", // ✅ must match your association
+          as: "students",
           attributes: [],
+          required: true,
+        },
+        {
+          model: BirthdayPartyLead,
+          as: "lead", // ✅ ensure association name matches your model
+          attributes: [],
+          where: whereLead, // ✅ filter by lead.createdBy
           required: true,
         },
       ],
@@ -1616,12 +1747,14 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
       };
     });
 
+    // ✅ Package Breakdown (filtered by lead.createdBy)
     const packageBreakdown = await BirthdayPartyLead.findAll({
       attributes: [
         ["packageInterest", "packageName"], // e.g., Gold / Silver / Platinum
         [fn("COUNT", col("packageInterest")), "count"],
       ],
       where: {
+        ...whereLead, // ✅ add lead.createdBy filter here
         packageInterest: { [Op.in]: ["Gold", "Silver", "Platinum"] },
       },
       group: ["packageInterest"],
@@ -1635,13 +1768,14 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
     );
 
     // 🧠 Format data for frontend donut chart
-    const formattedPackages = packageBreakdown.map(pkg => {
+    const formattedPackages = packageBreakdown.map((pkg) => {
       const count = parseInt(pkg.count, 10);
-      const percentage = totalPackages > 0 ? ((count / totalPackages) * 100).toFixed(2) : 0;
+      const percentage =
+        totalPackages > 0 ? ((count / totalPackages) * 100).toFixed(2) : 0;
       return {
-        name: pkg.packageName,           // Gold / Silver / Platinum
+        name: pkg.packageName, // Gold / Silver / Platinum
         value: parseFloat((count / 1000).toFixed(3)), // e.g. 1.235 (mock scaling)
-        percentage: parseFloat(percentage),           // e.g. 25.00
+        percentage: parseFloat(percentage), // e.g. 25.00
       };
     });
 
@@ -1673,8 +1807,8 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
     );
 
     // 🧠 Format for frontend (progress bar chart)
-    const renewalBreakdown = ["Gold", "Silver", "Platinum"].map(pkgName => {
-      const found = renewalBreakdownRaw.find(r => r.packageName === pkgName);
+    const renewalBreakdown = ["Gold", "Silver", "Platinum"].map((pkgName) => {
+      const found = renewalBreakdownRaw.find((r) => r.packageName === pkgName);
       const count = found ? parseInt(found.count, 10) : 0;
       const percentage =
         totalRenewals > 0 ? ((count / totalRenewals) * 100).toFixed(2) : 0;
@@ -1751,19 +1885,25 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
     });
 
     // 🧮 Combine and calculate growth %
-    const revenueByPackage = ["Gold", "Silver", "Platinum"].map(pkgName => {
-      const current = revenueByPackageRaw.find(r => r.packageName === pkgName);
-      const last = revenueByPackageLastMonth.find(r => r.packageName === pkgName);
+    const revenueByPackage = ["Gold", "Silver", "Platinum"].map((pkgName) => {
+      const current = revenueByPackageRaw.find(
+        (r) => r.packageName === pkgName
+      );
+      const last = revenueByPackageLastMonth.find(
+        (r) => r.packageName === pkgName
+      );
 
-      const currentRevenue = current ? parseFloat(current.totalRevenue || 0) : 0;
+      const currentRevenue = current
+        ? parseFloat(current.totalRevenue || 0)
+        : 0;
       const lastRevenue = last ? parseFloat(last.totalRevenue || 0) : 0;
 
       const growth =
         lastRevenue > 0
           ? (((currentRevenue - lastRevenue) / lastRevenue) * 100).toFixed(2)
           : currentRevenue > 0
-            ? 100
-            : 0;
+          ? 100
+          : 0;
 
       return {
         name: pkgName,
@@ -1774,12 +1914,10 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
     });
     // ✅ Marketing Channel Performance
     const marketChannelRaw = await BirthdayPartyLead.findAll({
-      attributes: [
-        "source",
-        [fn("COUNT", col("source")), "count"],
-      ],
+      attributes: ["source", [fn("COUNT", col("source")), "count"]],
       where: {
-        source: { [Op.ne]: null }, // exclude leads without source
+        ...whereLead, // ✅ filter by createdBy (admin or superAdmin scope)
+        source: { [Op.ne]: null }, // exclude null sources
       },
       group: ["source"],
       raw: true,
@@ -1792,13 +1930,14 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
     );
 
     // 🧠 Format data for frontend (progress bar UI)
-    const marketChannelPerformance = marketChannelRaw.map(s => {
+    const marketChannelPerformance = marketChannelRaw.map((s) => {
       const count = parseInt(s.count, 10);
-      const percentage = totalSources > 0 ? ((count / totalSources) * 100).toFixed(2) : 0;
+      const percentage =
+        totalSources > 0 ? ((count / totalSources) * 100).toFixed(2) : 0;
 
       return {
-        name: s.source,           // e.g. "Facebook"
-        count,                    // e.g. 23456
+        name: s.source, // e.g. "Facebook"
+        count, // e.g. 23456
         percentage: parseFloat(percentage), // e.g. 50.00
       };
     });
@@ -1808,15 +1947,33 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
       attributes: [
         "age",
         "gender",
-        [fn("COUNT", col("id")), "count"],
+        [fn("COUNT", col("BirthdayPartyStudent.id")), "count"],
+      ],
+      include: [
+        {
+          model: BirthdayPartyBooking,
+          as: "booking",
+          attributes: [],
+          include: [
+            {
+              model: BirthdayPartyLead,
+              as: "lead",
+              attributes: [],
+              where: { ...whereLead }, // ✅ filter by lead.createdBy (scope)
+              required: true,
+            },
+          ],
+          required: true,
+        },
       ],
       group: ["age", "gender"],
       order: [[literal("count"), "DESC"]],
+      raw: true,
     });
 
     // 🧠 Format data for frontend (progress bar UI)
     const totalBookings = partyBookingRaw.reduce(
-      (sum, s) => sum + parseInt(s.dataValues.count, 10),
+      (sum, s) => sum + parseInt(s.count, 10),
       0
     );
 
@@ -1824,7 +1981,7 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
     const byAgeMap = {};
     partyBookingRaw.forEach((s) => {
       const age = s.age || "Unknown";
-      const count = parseInt(s.dataValues.count, 10);
+      const count = parseInt(s.count, 10);
       byAgeMap[age] = (byAgeMap[age] || 0) + count;
     });
 
@@ -1832,14 +1989,16 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
       name: age.toString(),
       count,
       percentage:
-        totalBookings > 0 ? parseFloat(((count / totalBookings) * 100).toFixed(2)) : 0,
+        totalBookings > 0
+          ? parseFloat(((count / totalBookings) * 100).toFixed(2))
+          : 0,
     }));
 
     // 3️⃣ Group by Gender
     const byGenderMap = {};
     partyBookingRaw.forEach((s) => {
       const gender = s.gender || "Unknown";
-      const count = parseInt(s.dataValues.count, 10);
+      const count = parseInt(s.count, 10);
       byGenderMap[gender] = (byGenderMap[gender] || 0) + count;
     });
 
@@ -1847,7 +2006,9 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
       name: gender,
       count,
       percentage:
-        totalBookings > 0 ? parseFloat(((count / totalBookings) * 100).toFixed(2)) : 0,
+        totalBookings > 0
+          ? parseFloat(((count / totalBookings) * 100).toFixed(2))
+          : 0,
     }));
 
     // 4️⃣ By Total
@@ -1876,21 +2037,28 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
       Bronze: "growth",
     };
 
+    // ✅ Package Background Breakdown (filtered by createdBy)
     const packageBackgroundRaw = await BirthdayPartyLead.findAll({
       attributes: ["packageInterest", [fn("COUNT", col("id")), "count"]],
+      where: {
+        ...whereLead, // ✅ restrict by lead.createdBy (admin or superAdmin)
+      },
       group: ["packageInterest"],
       order: [[literal("count"), "DESC"]],
+      raw: true,
     });
 
     // Calculate total
     const grouped = {};
     packageBackgroundRaw.forEach((s) => {
       const pkg = s.packageInterest || "Unknown";
-      const count = parseInt(s.dataValues.count, 10);
+      const count = parseInt(s.count, 10);
       const category = categoryMap[pkg] || "other";
 
       const percentage =
-        totalPackages > 0 ? parseFloat(((count / totalPackages) * 100).toFixed(2)) : 0;
+        totalPackages > 0
+          ? parseFloat(((count / totalPackages) * 100).toFixed(2))
+          : 0;
 
       if (!grouped[category]) grouped[category] = [];
 
@@ -1901,9 +2069,11 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
       });
     });
 
-    const packageBackground = Object.entries(grouped).map(([category, items]) => ({
-      [category]: items,
-    }));
+    const packageBackground = Object.entries(grouped).map(
+      ([category, items]) => ({
+        [category]: items,
+      })
+    );
 
     // ✅ Final Structured Response (matches Figma)
     return {
@@ -1926,6 +2096,10 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
           thisMonth: revenueThisMonth,
           previousMonth: revenueLastMonth,
         },
+        // revenueThisMonthRaw: {
+        //   thisMonth: revenueThisMonthRaw,
+        //   previousMonth: revenueLastMonthRaw,
+        // },
       },
       charts: {
         monthlyStudents, // for line chart
@@ -1937,7 +2111,7 @@ exports.getAllBirthdayPartyAnalytics = async (superAdminId, adminId, filterType)
         packageBackground,
         renewalBreakdown, // renewal chart
         packageBreakdown: formattedPackages,
-        revenueByPackage
+        revenueByPackage,
       },
     };
   } catch (error) {
@@ -1980,7 +2154,10 @@ exports.sendEmailToFirstParentWithBooking = async (leadIds = []) => {
     }
 
     // ⚙️ Email configuration
-    const emailConfigResult = await getEmailConfig("admin", "birthday-party-booking-sendEmail");
+    const emailConfigResult = await getEmailConfig(
+      "admin",
+      "birthday-party-booking-sendEmail"
+    );
     if (!emailConfigResult.status) {
       return { status: false, message: "Email configuration not found." };
     }
@@ -1997,7 +2174,10 @@ exports.sendEmailToFirstParentWithBooking = async (leadIds = []) => {
       try {
         const booking = lead.booking;
         if (!booking || !booking.students || booking.students.length === 0) {
-          skipped.push({ leadId: lead.id, reason: "No students found in booking." });
+          skipped.push({
+            leadId: lead.id,
+            reason: "No students found in booking.",
+          });
           continue;
         }
 
@@ -2006,7 +2186,10 @@ exports.sendEmailToFirstParentWithBooking = async (leadIds = []) => {
         const firstParent = firstStudent.parentDetails;
 
         if (!firstParent || !firstParent.parentEmail) {
-          skipped.push({ leadId: lead.id, reason: "No valid parent email found." });
+          skipped.push({
+            leadId: lead.id,
+            reason: "No valid parent email found.",
+          });
           continue;
         }
 
@@ -2026,7 +2209,10 @@ exports.sendEmailToFirstParentWithBooking = async (leadIds = []) => {
 
         // 🧠 Replace placeholders in email template
         const finalHtml = htmlTemplate
-          .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`.trim())
+          .replace(
+            /{{parentName}}/g,
+            `${firstParent.parentFirstName} ${firstParent.parentLastName}`.trim()
+          )
           .replace(/{{studentNames}}/g, studentNames)
           .replace(/{{packageName}}/g, packageName)
           .replace(/{{address}}/g, address)

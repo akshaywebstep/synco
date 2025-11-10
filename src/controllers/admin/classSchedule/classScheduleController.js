@@ -2,7 +2,10 @@ const { validateFormData } = require("../../../utils/validateFormData");
 const ClassScheduleService = require("../../../services/admin/classSchedule/classSchedule");
 const TermService = require("../../../services/admin/termAndDates/term");
 const { logActivity } = require("../../../utils/admin/activityLogger");
-const { getVideoDurationInSeconds, formatDuration, } = require("../../../utils/videoHelper");
+const {
+  getVideoDurationInSeconds,
+  formatDuration,
+} = require("../../../utils/videoHelper");
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 const {
   Venue,
@@ -96,7 +99,7 @@ exports.createClassSchedule = async (req, res) => {
   const termGroupIds = JSON.parse(venue.termGroupId || "[]").map(Number);
   const termsRes = await TermService.getTermsByTermGroupId(termGroupIds);
 
-  const termIds = (termsRes.data || []).map(t => t.id);
+  const termIds = (termsRes.data || []).map((t) => t.id);
   const termIdsString = JSON.stringify(termIds);
 
   try {
@@ -407,7 +410,10 @@ exports.getClassScheduleDetails = async (req, res) => {
     const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? createdBy;
 
     // ✅ Pass both classId and superAdminId to the service
-    const result = await ClassScheduleService.getClassByIdWithFullDetails(id, superAdminId);
+    const result = await ClassScheduleService.getClassByIdWithFullDetails(
+      id,
+      superAdminId
+    );
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Not found:", result.message);
@@ -440,6 +446,7 @@ exports.updateClassSchedule = async (req, res) => {
   const adminId = req.admin?.id;
 
   try {
+    // ✅ Validate venue
     const venue = await Venue.findByPk(req.body.venueId);
     if (!venue) {
       return res.status(404).json({
@@ -448,6 +455,7 @@ exports.updateClassSchedule = async (req, res) => {
       });
     }
 
+    // ✅ Validate existing class
     const existingClass = await ClassSchedule.findByPk(id);
     if (!existingClass) {
       return res.status(404).json({
@@ -456,39 +464,33 @@ exports.updateClassSchedule = async (req, res) => {
       });
     }
 
-    // ✅ Capacity logic
+    // ✅ Capacity logic (Add-on behavior)
     let updatedCapacity = existingClass.capacity;
     let updatedTotalCapacity = existingClass.totalCapacity;
 
     if (req.body.capacity !== undefined) {
-      // Convert to number
-      const newCapacity = Number(req.body.capacity);
+      const addCapacity = Number(req.body.capacity);
 
-      // Check for invalid or non-numeric input
-      if (isNaN(newCapacity)) {
+      if (isNaN(addCapacity)) {
         return res.status(400).json({
           status: false,
           message: "Capacity must be a valid number.",
         });
       }
 
-      // Optional: ensure capacity is not negative
-      if (newCapacity < 0) {
+      if (addCapacity < 0) {
         return res.status(400).json({
           status: false,
           message: "Capacity cannot be negative.",
         });
       }
 
-      // Calculate difference and update values
-      const diff = newCapacity - existingClass.capacity;
-
-      if (diff !== 0) {
-        updatedCapacity += diff;
-        updatedTotalCapacity += diff;
-      }
+      // ✅ Add-on logic
+      updatedCapacity += addCapacity;
+      updatedTotalCapacity += addCapacity;
     }
 
+    // ✅ Perform the main update using your service
     const result = await ClassScheduleService.updateClass(id, {
       ...req.body,
       capacity: updatedCapacity,
@@ -497,9 +499,12 @@ exports.updateClassSchedule = async (req, res) => {
     });
 
     if (!result.status) {
-      return res.status(400).json({ status: false, message: result.message || "Update failed" });
+      return res
+        .status(400)
+        .json({ status: false, message: result.message || "Update failed." });
     }
 
+    // ✅ Log the update activity
     await logActivity(
       req,
       PANEL,
@@ -509,6 +514,7 @@ exports.updateClassSchedule = async (req, res) => {
       true
     );
 
+    // ✅ Create a notification
     await createNotification(
       req,
       "Class Schedule Updated",
@@ -516,6 +522,7 @@ exports.updateClassSchedule = async (req, res) => {
       "System"
     );
 
+    // ✅ Final response
     return res.status(200).json({
       status: true,
       message: "Class schedule updated successfully.",
@@ -533,7 +540,6 @@ exports.updateClassSchedule = async (req, res) => {
       false
     );
 
-    // ✅ Always return JSON object, never plain string
     return res.status(500).json({
       status: false,
       message: "Server error: " + (error.message || "Something went wrong"),
@@ -977,7 +983,9 @@ exports.deleteClassSchedule = async (req, res) => {
     await createNotification(
       req,
       "Class Schedule Deleted",
-      `Class schedule with ID ${id} has been deleted by ${req.admin?.firstName || "Admin"}.`,
+      `Class schedule with ID ${id} has been deleted by ${
+        req.admin?.firstName || "Admin"
+      }.`,
       "Admins"
     );
 

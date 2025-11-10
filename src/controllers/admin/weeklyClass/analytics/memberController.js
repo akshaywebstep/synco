@@ -2,6 +2,7 @@
 
 const memberAnalytics = require("../../../../services/admin/weeklyClass/analytics/member");
 const { logActivity } = require("../../../../utils/admin/activityLogger");
+const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -10,21 +11,48 @@ const MODULE = "weekly-class";
 // ✅ Generate Weekly Class Report
 exports.getMonthlyReport = async (req, res) => {
   if (DEBUG) {
-    console.log("📊 [Step 1] Request received to generate weekly class report.");
+    console.log(
+      "📊 [Step 1] Request received to generate weekly class report."
+    );
     if (Object.keys(req.query).length > 0) {
       console.log("📥 Filters:", JSON.stringify(req.query, null, 2));
+    }
+  }
+  const adminId = req.admin?.id || null;
+  if (!adminId) {
+    if (DEBUG) console.log("❌ [Auth Error] Admin ID not found in request.");
+    return res.status(401).json({
+      status: false,
+      message: "Unauthorized: Admin ID not found.",
+    });
+  }
+
+  if (DEBUG) console.log(`✅ Admin ID detected: ${adminId}`);
+
+  // ✅ [Step 3] Identify super admin
+  if (DEBUG) console.log("🔍 Fetching main super admin for admin:", adminId);
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+  const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+  if (DEBUG) {
+    if (superAdminId) {
+      console.log(`👑 Super Admin detected for this admin: ${superAdminId}`);
+    } else {
+      console.log("ℹ️ No Super Admin associated with this admin.");
     }
   }
 
   // ✅ Map query parameters into structured filters
   const filters = {
-    student: { name: req.query.studentName?.trim() || '' },
-    venue: { name: req.query.venueName?.trim() || '' },
+    adminId,
+    superAdminId,
+    student: { name: req.query.studentName?.trim() || "" },
+    venue: { name: req.query.venueName?.trim() || "" },
     paymentPlan: {
-      interval: req.query.paymentPlanInterval?.trim() || '',
+      interval: req.query.paymentPlanInterval?.trim() || "",
       duration: Number(req.query.paymentPlanDuration) || 0,
     },
-    admin: { name: req.query.agentName?.trim() || '' },
+    admin: { name: req.query.agentName?.trim() || "" },
   };
 
   if (DEBUG) {
