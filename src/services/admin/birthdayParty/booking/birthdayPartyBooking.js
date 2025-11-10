@@ -256,28 +256,15 @@ exports.createBirthdayPartyBooking = async (data) => {
                     if (firstStudent && firstParent?.parentEmail) {
                         // Build HTML email body using booking data
                         let htmlBody = htmlTemplate
-                            .replace(
-                                /{{parentName}}/g,
-                                `${firstParent.parentFirstName} ${firstParent.parentLastName}`
-                            )
-                            .replace(
-                                /{{studentFirstName}}/g,
-                                firstStudent.studentFirstName || ""
-                            )
-                            .replace(
-                                /{{studentLastName}}/g,
-                                firstStudent.studentLastName || ""
-                            )
-                            .replace(
-                                /{{studentName}}/g,
-                                `${firstStudent.studentFirstName || ""} ${firstStudent.studentLastName || ""
-                                }`
-                            )
+                            .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`)
+                            .replace(/{{studentFirstName}}/g, firstStudent.studentFirstName || "")
+                            .replace(/{{studentLastName}}/g, firstStudent.studentLastName || "")
+                            .replace(/{{studentName}}/g, `${firstStudent.studentFirstName || ""} ${firstStudent.studentLastName || ""}`)
                             .replace(/{{location}}/g, data.location || "")
-                            .replace(/{{age}}/g, data.age || "")
-                            .replace(/{{gender}}/g, data.gender || "")
-                            .replace(/{{relationChild}}/g, data.relationChild || "")
-                            .replace(/{{phoneNumber}}/g, data.phoneNumber || "")
+                            .replace(/{{age}}/g, firstStudent.age || "")
+                            .replace(/{{gender}}/g, firstStudent.gender || "")
+                            .replace(/{{relationChild}}/g, firstParent.relationChild || "")
+                            .replace(/{{phoneNumber}}/g, firstParent.phoneNumber || "")
                             .replace(/{{className}}/g, "One to One Coaching")
                             .replace(/{{classTime}}/g, data.time || "")
                             .replace(/{{startDate}}/g, data.date || "")
@@ -285,25 +272,8 @@ exports.createBirthdayPartyBooking = async (data) => {
                             .replace(/{{parentPassword}}/g, "Synco123")
                             .replace(/{{appName}}/g, "Synco")
                             .replace(/{{year}}/g, new Date().getFullYear().toString())
-                            .replace(
-                                /{{logoUrl}}/g,
-                                "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
-                            )
-                            .replace(
-                                /{{kidsPlaying}}/g,
-                                "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
-                            );
-
-                        await sendEmail(emailConfig, {
-                            recipient: [
-                                {
-                                    name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
-                                    email: firstParent.parentEmail,
-                                },
-                            ],
-                            subject,
-                            htmlBody,
-                        });
+                            .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
+                            .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png");
 
                         console.log(
                             `📧 Confirmation email sent to ${firstParent.parentEmail}`
