@@ -173,11 +173,11 @@ exports.getAllBirthdayPartyLeads = async (
           null;
         const emergency = emergencyObj
           ? {
-              emergencyFirstName: emergencyObj.emergencyFirstName,
-              emergencyLastName: emergencyObj.emergencyLastName,
-              emergencyPhoneNumber: emergencyObj.phoneNumber,
-              emergencyRelation: emergencyObj.relationChild,
-            }
+            emergencyFirstName: emergencyObj.emergencyFirstName,
+            emergencyLastName: emergencyObj.emergencyLastName,
+            emergencyPhoneNumber: emergencyObj.phoneNumber,
+            emergencyRelation: emergencyObj.relationChild,
+          }
           : null;
 
         let paymentObj = null;
@@ -226,17 +226,17 @@ exports.getAllBirthdayPartyLeads = async (
             failureReason: booking.payment.failureReason,
             stripeChargeDetails: stripeChargeDetails
               ? {
-                  id: stripeChargeDetails.id,
-                  amount: stripeChargeDetails.amount / 100,
-                  currency: stripeChargeDetails.currency,
-                  status: stripeChargeDetails.status,
-                  paymentMethod:
-                    stripeChargeDetails.payment_method_details?.card?.brand,
-                  last4:
-                    stripeChargeDetails.payment_method_details?.card?.last4,
-                  receiptUrl: stripeChargeDetails.receipt_url,
-                  fullResponse: stripeChargeDetails,
-                }
+                id: stripeChargeDetails.id,
+                amount: stripeChargeDetails.amount / 100,
+                currency: stripeChargeDetails.currency,
+                status: stripeChargeDetails.status,
+                paymentMethod:
+                  stripeChargeDetails.payment_method_details?.card?.brand,
+                last4:
+                  stripeChargeDetails.payment_method_details?.card?.last4,
+                receiptUrl: stripeChargeDetails.receipt_url,
+                fullResponse: stripeChargeDetails,
+              }
               : null,
           };
         }
@@ -415,9 +415,9 @@ exports.getAllBirthdayPartyLeadsSales = async (
           required: !!type, // still only strict join when filtering by type
           where: !!type
             ? {
-                ...(Object.keys(whereBooking).length ? whereBooking : {}),
-                status: "active",
-              }
+              ...(Object.keys(whereBooking).length ? whereBooking : {}),
+              status: "active",
+            }
             : undefined, // <- important: no where when no type, keeps LEFT JOIN
           include: [
             {
@@ -488,11 +488,11 @@ exports.getAllBirthdayPartyLeadsSales = async (
           null;
         const emergency = emergencyObj
           ? {
-              emergencyFirstName: emergencyObj.emergencyFirstName,
-              emergencyLastName: emergencyObj.emergencyLastName,
-              emergencyPhoneNumber: emergencyObj.phoneNumber,
-              emergencyRelation: emergencyObj.relationChild,
-            }
+            emergencyFirstName: emergencyObj.emergencyFirstName,
+            emergencyLastName: emergencyObj.emergencyLastName,
+            emergencyPhoneNumber: emergencyObj.phoneNumber,
+            emergencyRelation: emergencyObj.relationChild,
+          }
           : null;
 
         // Payment + Stripe charge details
@@ -542,17 +542,17 @@ exports.getAllBirthdayPartyLeadsSales = async (
             failureReason: booking.payment.failureReason,
             stripeChargeDetails: stripeChargeDetails
               ? {
-                  id: stripeChargeDetails.id,
-                  amount: stripeChargeDetails.amount / 100,
-                  currency: stripeChargeDetails.currency,
-                  status: stripeChargeDetails.status,
-                  paymentMethod:
-                    stripeChargeDetails.payment_method_details?.card?.brand,
-                  last4:
-                    stripeChargeDetails.payment_method_details?.card?.last4,
-                  receiptUrl: stripeChargeDetails.receipt_url,
-                  fullResponse: stripeChargeDetails,
-                }
+                id: stripeChargeDetails.id,
+                amount: stripeChargeDetails.amount / 100,
+                currency: stripeChargeDetails.currency,
+                status: stripeChargeDetails.status,
+                paymentMethod:
+                  stripeChargeDetails.payment_method_details?.card?.brand,
+                last4:
+                  stripeChargeDetails.payment_method_details?.card?.last4,
+                receiptUrl: stripeChargeDetails.receipt_url,
+                fullResponse: stripeChargeDetails,
+              }
               : null,
           };
         }
@@ -653,9 +653,9 @@ exports.getAllBirthdayPartyLeadsSales = async (
     const topSalesAgent =
       topSalesAgentData && topSalesAgentData.creator
         ? {
-            firstName: topSalesAgentData.creator.firstName,
-            lastName: topSalesAgentData.creator.lastName,
-          }
+          firstName: topSalesAgentData.creator.firstName,
+          lastName: topSalesAgentData.creator.lastName,
+        }
         : null;
 
     console.log({
@@ -770,8 +770,8 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
           required: !!type, // still only strict join when filtering by type
           where: !!type
             ? {
-                ...(Object.keys(whereBooking).length ? whereBooking : {}),
-              }
+              ...(Object.keys(whereBooking).length ? whereBooking : {}),
+            }
             : undefined, // <- important: no where when no type, keeps LEFT JOIN
           include: [
             {
@@ -843,11 +843,11 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
           null;
         const emergency = emergencyObj
           ? {
-              emergencyFirstName: emergencyObj.emergencyFirstName,
-              emergencyLastName: emergencyObj.emergencyLastName,
-              emergencyPhoneNumber: emergencyObj.phoneNumber,
-              emergencyRelation: emergencyObj.relationChild,
-            }
+            emergencyFirstName: emergencyObj.emergencyFirstName,
+            emergencyLastName: emergencyObj.emergencyLastName,
+            emergencyPhoneNumber: emergencyObj.phoneNumber,
+            emergencyRelation: emergencyObj.relationChild,
+          }
           : null;
 
         // Payment + Stripe charge details
@@ -897,17 +897,17 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
             failureReason: booking.payment.failureReason,
             stripeChargeDetails: stripeChargeDetails
               ? {
-                  id: stripeChargeDetails.id,
-                  amount: stripeChargeDetails.amount / 100,
-                  currency: stripeChargeDetails.currency,
-                  status: stripeChargeDetails.status,
-                  paymentMethod:
-                    stripeChargeDetails.payment_method_details?.card?.brand,
-                  last4:
-                    stripeChargeDetails.payment_method_details?.card?.last4,
-                  receiptUrl: stripeChargeDetails.receipt_url,
-                  fullResponse: stripeChargeDetails,
-                }
+                id: stripeChargeDetails.id,
+                amount: stripeChargeDetails.amount / 100,
+                currency: stripeChargeDetails.currency,
+                status: stripeChargeDetails.status,
+                paymentMethod:
+                  stripeChargeDetails.payment_method_details?.card?.brand,
+                last4:
+                  stripeChargeDetails.payment_method_details?.card?.last4,
+                receiptUrl: stripeChargeDetails.receipt_url,
+                fullResponse: stripeChargeDetails,
+              }
               : null,
           };
         }
@@ -1009,9 +1009,9 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
     const topSalesAgent =
       topSalesAgentData && topSalesAgentData.creator
         ? {
-            firstName: topSalesAgentData.creator.firstName,
-            lastName: topSalesAgentData.creator.lastName,
-          }
+          firstName: topSalesAgentData.creator.firstName,
+          lastName: topSalesAgentData.creator.lastName,
+        }
         : null;
 
     console.log({
@@ -1124,18 +1124,18 @@ exports.getBirthdayPartyLeadsById = async (id, adminId, superAdminId) => {
     }));
 
     // 🧩 Collect parent details
-    const parents = (booking.students || [])
-      .map((s) => s.parentDetails)
-      .filter(Boolean)
-      .map((p) => ({
+    const parents = (booking.students || []).flatMap((s) =>
+      (s.parentDetails || []).map((p) => ({
         id: p.id,
+        studentId: s.id, // link parent to correct student
         parentFirstName: p.parentFirstName,
         parentLastName: p.parentLastName,
         parentEmail: p.parentEmail,
         phoneNumber: p.phoneNumber,
         relationChild: p.relationChild,
         howDidHear: p.howDidHear,
-      }));
+      }))
+    );
 
     // 🧩 Get emergency contact
     const emergencyObj =
@@ -1145,12 +1145,12 @@ exports.getBirthdayPartyLeadsById = async (id, adminId, superAdminId) => {
 
     const emergency = emergencyObj
       ? {
-          id: emergencyObj.id,
-          emergencyFirstName: emergencyObj.emergencyFirstName,
-          emergencyLastName: emergencyObj.emergencyLastName,
-          emergencyPhoneNumber: emergencyObj.phoneNumber,
-          emergencyRelation: emergencyObj.relationChild,
-        }
+        id: emergencyObj.id,
+        emergencyFirstName: emergencyObj.emergencyFirstName,
+        emergencyLastName: emergencyObj.emergencyLastName,
+        emergencyPhoneNumber: emergencyObj.phoneNumber,
+        emergencyRelation: emergencyObj.relationChild,
+      }
       : null;
 
     // 💳 Payment + Stripe details
@@ -1199,16 +1199,16 @@ exports.getBirthdayPartyLeadsById = async (id, adminId, superAdminId) => {
         // ✅ Include Stripe charge details
         stripeChargeDetails: stripeChargeDetails
           ? {
-              id: stripeChargeDetails.id,
-              amount: stripeChargeDetails.amount / 100,
-              currency: stripeChargeDetails.currency,
-              status: stripeChargeDetails.status,
-              paymentMethod:
-                stripeChargeDetails.payment_method_details?.card?.brand,
-              last4: stripeChargeDetails.payment_method_details?.card?.last4,
-              receiptUrl: stripeChargeDetails.receipt_url,
-              fullResponse: stripeChargeDetails,
-            }
+            id: stripeChargeDetails.id,
+            amount: stripeChargeDetails.amount / 100,
+            currency: stripeChargeDetails.currency,
+            status: stripeChargeDetails.status,
+            paymentMethod:
+              stripeChargeDetails.payment_method_details?.card?.brand,
+            last4: stripeChargeDetails.payment_method_details?.card?.last4,
+            receiptUrl: stripeChargeDetails.receipt_url,
+            fullResponse: stripeChargeDetails,
+          }
           : null,
       };
     }
@@ -1226,7 +1226,7 @@ exports.getBirthdayPartyLeadsById = async (id, adminId, superAdminId) => {
       updatedAt: leadPlain.updatedAt,
 
       booking: {
-        id:booking.id,
+        id: booking.id,
         leadId: booking.leadId,
         coachId: booking.coachId,
         coach: booking.coach,
@@ -1903,8 +1903,8 @@ exports.getAllBirthdayPartyAnalytics = async (
         lastRevenue > 0
           ? (((currentRevenue - lastRevenue) / lastRevenue) * 100).toFixed(2)
           : currentRevenue > 0
-          ? 100
-          : 0;
+            ? 100
+            : 0;
 
       return {
         name: pkgName,
