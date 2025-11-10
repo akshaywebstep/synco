@@ -7,6 +7,7 @@ const memberController = require("../../controllers/admin/weeklyClass/analytics/
 const freeTrialController = require("../../controllers/admin/weeklyClass/analytics/freeTrialController");
 const saleController = require("../../controllers/admin/weeklyClass/analytics/saleController");
 const capacityController = require("../../controllers/admin/weeklyClass/analytics/capacityController");
+const attendanceController= require("../../controllers/admin/weeklyClass/analytics/attendanceController");
 
 // Weekly class report route
 router.get(
@@ -37,6 +38,13 @@ router.get(
   authMiddleware,
   // permissionMiddleware("weekly-class", "view-report"),
   capacityController.getMonthlyReport
+);
+
+router.get(
+  "/analytics/attendance",
+  authMiddleware,
+  // permissionMiddleware("weekly-class", "view-report"),
+  attendanceController.getMonthlyReport
 );
 
 module.exports = router;

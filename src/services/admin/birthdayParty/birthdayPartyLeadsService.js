@@ -1226,6 +1226,7 @@ exports.getBirthdayPartyLeadsById = async (id, adminId, superAdminId) => {
       updatedAt: leadPlain.updatedAt,
 
       booking: {
+        id:booking.id,
         leadId: booking.leadId,
         coachId: booking.coachId,
         coach: booking.coach,

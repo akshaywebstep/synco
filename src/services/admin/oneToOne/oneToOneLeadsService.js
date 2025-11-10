@@ -1491,6 +1491,7 @@ exports.getOnetoOneLeadsById = async (id, superAdminId, adminId) => {
       updatedAt: leadPlain.updatedAt,
 
       booking: {
+        id: booking.id,
         leadId: booking.leadId,
         coachId: booking.coachId,
         coach: booking.coach,
