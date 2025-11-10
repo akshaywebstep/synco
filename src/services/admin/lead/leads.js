@@ -1049,6 +1049,7 @@ exports.getAllOthersLeads = async (adminId, superAdminId, filters = {}) => {
           as: "bookings",
           include: [
             { model: Venue, as: "venue" },
+            
             { model: ClassSchedule, as: "classSchedule" },
             {
               model: BookingStudentMeta,
@@ -1287,6 +1288,7 @@ exports.getAllOthersLeads = async (adminId, superAdminId, filters = {}) => {
                       createdBy: { [Op.in]: allowedAdminIds },
                     },
                   });
+
                   return {
                     ...venue,
                     classSchedules: classSchedules.map((cs) => cs.dataValues),
