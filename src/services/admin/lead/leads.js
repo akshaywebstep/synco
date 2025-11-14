@@ -29,8 +29,8 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
@@ -641,7 +641,7 @@ exports.getAllForFacebookLeads = async (adminId, superAdminId, filters = {}) => 
           const bookingStatus = (booking.status || "").toLowerCase();
           return statusFilter === "request_to_cancel"
             ? bookingStatus === "request_to_cancel" ||
-                bookingStatus === "cancelled"
+            bookingStatus === "cancelled"
             : bookingStatus === statusFilter;
         })
       );
@@ -664,9 +664,8 @@ exports.getAllForFacebookLeads = async (adminId, superAdminId, filters = {}) => 
       filteredLeads = filteredLeads.filter((lead) => {
         lead.bookings = (lead.bookings || []).filter((booking) =>
           (booking.students || []).some((student) => {
-            const fullName = `${student.studentFirstName || ""} ${
-              student.studentLastName || ""
-            }`.toLowerCase();
+            const fullName = `${student.studentFirstName || ""} ${student.studentLastName || ""
+              }`.toLowerCase();
             return fullName.includes(studentLower);
           })
         );
@@ -717,11 +716,45 @@ exports.getAllForFacebookLeads = async (adminId, superAdminId, filters = {}) => 
         });
 
         const { bookings, ...leadWithoutBookings } = lead.dataValues;
+        let nearestVenues = [];
+        if (lead.postcode && allVenuesList.length > 0) {
+          const coords = await getCoordinatesFromPostcode(lead.postcode);
+          if (coords) {
+            nearestVenues = await Promise.all(
+              allVenuesList
+                .map((v) => ({
+                  ...v.dataValues,
+                  distance: Number(
+                    calculateDistance(
+                      coords.latitude,
+                      coords.longitude,
+                      v.latitude,
+                      v.longitude
+                    ).toFixed(2)
+                  ),
+                }))
+                .sort((a, b) => a.distance - b.distance)
+                .slice(0, 5)
+                .map(async (venue) => {
+                  const classSchedules = await ClassSchedule.findAll({
+                    where: {
+                      venueId: venue.id
+                    },
+                  });
+
+                  return {
+                    ...venue,
+                    classSchedules: classSchedules.map((cs) => cs.dataValues),
+                  };
+                })
+            );
+          }
+        }
 
         return {
           ...leadWithoutBookings,
           bookingData,
-          nearestVenues: [], // No venue-distance calculation in this version
+          nearestVenues, // No venue-distance calculation in this version
         };
       })
     );
@@ -903,7 +936,7 @@ exports.getAllReferallLeads = async (adminId, superAdminId, filters = {}) => {
           const bookingStatus = (booking.status || "").toLowerCase();
           return statusFilter === "request_to_cancel"
             ? bookingStatus === "request_to_cancel" ||
-                bookingStatus === "cancelled"
+            bookingStatus === "cancelled"
             : bookingStatus === statusFilter;
         })
       );
@@ -926,9 +959,8 @@ exports.getAllReferallLeads = async (adminId, superAdminId, filters = {}) => {
       filteredLeads = filteredLeads.filter((lead) => {
         lead.bookings = (lead.bookings || []).filter((booking) =>
           (booking.students || []).some((student) => {
-            const fullName = `${student.studentFirstName || ""} ${
-              student.studentLastName || ""
-            }`.toLowerCase();
+            const fullName = `${student.studentFirstName || ""} ${student.studentLastName || ""
+              }`.toLowerCase();
             return fullName.includes(studentLower);
           })
         );
@@ -979,11 +1011,52 @@ exports.getAllReferallLeads = async (adminId, superAdminId, filters = {}) => {
         });
 
         const { bookings, ...leadWithoutBookings } = lead.dataValues;
+        // -----------------------------------------
+        // NEAREST VENUES CALCULATION
+        // -----------------------------------------
+        let nearestVenues = [];
+
+        if (lead.postcode && allVenuesList.length > 0) {
+          const coords = await getCoordinatesFromPostcode(lead.postcode);
+
+          if (coords) {
+            nearestVenues = await Promise.all(
+              allVenuesList
+                .map((v) => {
+                  const venueObj = v.dataValues;
+
+                  return {
+                    ...venueObj,
+                    distance: Number(
+                      calculateDistance(
+                        coords.latitude,
+                        coords.longitude,
+                        venueObj.latitude,
+                        venueObj.longitude
+                      ).toFixed(2)
+                    ),
+                  };
+                })
+                .sort((a, b) => a.distance - b.distance)
+                .slice(0, 5)
+                .map(async (venue) => {
+                  const classSchedules = await ClassSchedule.findAll({
+                    where: { venueId: venue.id },
+                  });
+
+                  return {
+                    ...venue,
+                    classSchedules: classSchedules.map((cs) => cs.dataValues),
+                  };
+                })
+            );
+          }
+        }
 
         return {
           ...leadWithoutBookings,
           bookingData,
-          nearestVenues: [], // no venue-distance logic changed
+          nearestVenues, // no venue-distance logic changed
         };
       })
     );
@@ -1049,7 +1122,7 @@ exports.getAllOthersLeads = async (adminId, superAdminId, filters = {}) => {
           as: "bookings",
           include: [
             { model: Venue, as: "venue" },
-            
+
             { model: ClassSchedule, as: "classSchedule" },
             {
               model: BookingStudentMeta,
@@ -1170,7 +1243,7 @@ exports.getAllOthersLeads = async (adminId, superAdminId, filters = {}) => {
           const bookingStatus = (booking.status || "").toLowerCase();
           return statusFilter === "request_to_cancel"
             ? bookingStatus === "request_to_cancel" ||
-                bookingStatus === "cancelled"
+            bookingStatus === "cancelled"
             : bookingStatus === statusFilter;
         })
       );
@@ -1198,18 +1271,16 @@ exports.getAllOthersLeads = async (adminId, superAdminId, filters = {}) => {
       filteredLeads = filteredLeads.filter((lead) => {
         lead.bookings = (lead.bookings || []).filter((booking) =>
           (booking.students || []).some((student) => {
-            const fullName = `${student.studentFirstName || ""} ${
-              student.studentLastName || ""
-            }`.toLowerCase();
+            const fullName = `${student.studentFirstName || ""} ${student.studentLastName || ""
+              }`.toLowerCase();
             return fullName.includes(studentLower);
           })
         );
         lead.bookings = lead.bookings.map((booking) => ({
           ...booking,
           students: (booking.students || []).filter((student) => {
-            const fullName = `${student.studentFirstName || ""} ${
-              student.studentLastName || ""
-            }`.toLowerCase();
+            const fullName = `${student.studentFirstName || ""} ${student.studentLastName || ""
+              }`.toLowerCase();
             return fullName.includes(studentLower);
           }),
         }));
@@ -1877,7 +1948,7 @@ exports.getAllLeads = async (adminId, superAdminId, filters = {}) => {
           const bookingStatus = (booking.status || "").toLowerCase();
           return statusFilter === "request_to_cancel"
             ? bookingStatus === "request_to_cancel" ||
-                bookingStatus === "cancelled"
+            bookingStatus === "cancelled"
             : bookingStatus === statusFilter;
         })
       );
@@ -1901,18 +1972,16 @@ exports.getAllLeads = async (adminId, superAdminId, filters = {}) => {
       filteredLeads = filteredLeads.filter((lead) => {
         lead.bookings = (lead.bookings || []).filter((booking) =>
           (booking.students || []).some((student) => {
-            const fullName = `${student.studentFirstName || ""} ${
-              student.studentLastName || ""
-            }`.toLowerCase();
+            const fullName = `${student.studentFirstName || ""} ${student.studentLastName || ""
+              }`.toLowerCase();
             return fullName.includes(studentLower);
           })
         );
         lead.bookings = lead.bookings.map((booking) => ({
           ...booking,
           students: (booking.students || []).filter((student) => {
-            const fullName = `${student.studentFirstName || ""} ${
-              student.studentLastName || ""
-            }`.toLowerCase();
+            const fullName = `${student.studentFirstName || ""} ${student.studentLastName || ""
+              }`.toLowerCase();
             return fullName.includes(studentLower);
           }),
         }));
@@ -1963,7 +2032,47 @@ exports.getAllLeads = async (adminId, superAdminId, filters = {}) => {
         });
 
         const { bookings, ...leadWithoutBookings } = lead.dataValues;
-        return { ...leadWithoutBookings, bookingData };
+        // ✅ Nearby Venues (created by allowed admins)
+        let nearestVenues = [];
+        if (lead.postcode && allVenuesList.length > 0) {
+          const coords = await getCoordinatesFromPostcode(lead.postcode);
+          if (coords) {
+            nearestVenues = await Promise.all(
+              allVenuesList
+                .map((v) => ({
+                  ...v.dataValues,
+                  distance: Number(
+                    calculateDistance(
+                      coords.latitude,
+                      coords.longitude,
+                      v.latitude,
+                      v.longitude
+                    ).toFixed(2)
+                  ),
+                }))
+                .sort((a, b) => a.distance - b.distance)
+                .slice(0, 5)
+                .map(async (venue) => {
+                  const classSchedules = await ClassSchedule.findAll({
+                    where: {
+                      venueId: venue.id
+                    },
+                  });
+
+                  return {
+                    ...venue,
+                    classSchedules: classSchedules.map((cs) => cs.dataValues),
+                  };
+                })
+            );
+          }
+        }
+
+        return {
+          ...leadWithoutBookings,
+          bookingData,
+          nearestVenues,
+        };
       })
     );
 
@@ -2085,16 +2194,16 @@ exports.getLeadandBookingDatabyLeadId = async (leadId) => {
               const paymentGroups =
                 venue.paymentGroupId != null
                   ? await PaymentGroup.findAll({
-                      where: { id: venue.paymentGroupId },
-                      include: [
-                        {
-                          model: PaymentPlan,
-                          as: "paymentPlans",
-                          through: { model: PaymentGroupHasPlan },
-                        },
-                      ],
-                      order: [["createdAt", "DESC"]],
-                    })
+                    where: { id: venue.paymentGroupId },
+                    include: [
+                      {
+                        model: PaymentPlan,
+                        as: "paymentPlans",
+                        through: { model: PaymentGroupHasPlan },
+                      },
+                    ],
+                    order: [["createdAt", "DESC"]],
+                  })
                   : [];
 
               // Term Groups
@@ -2115,8 +2224,8 @@ exports.getLeadandBookingDatabyLeadId = async (leadId) => {
 
               const terms = termGroupIds.length
                 ? await Term.findAll({
-                    where: { termGroupId: { [Op.in]: termGroupIds } },
-                  })
+                  where: { termGroupId: { [Op.in]: termGroupIds } },
+                })
                 : [];
 
               const parsedTerms = terms.map((t) => ({
@@ -2296,7 +2405,7 @@ exports.findAClass = async (filters = {}) => {
           const bookingStatus = (booking.status || "").toLowerCase();
           return statusFilter === "request_to_cancel"
             ? bookingStatus === "request_to_cancel" ||
-                bookingStatus === "cancelled"
+            bookingStatus === "cancelled"
             : bookingStatus === statusFilter;
         })
       );
@@ -2320,18 +2429,16 @@ exports.findAClass = async (filters = {}) => {
       filteredLeads = filteredLeads.filter((lead) => {
         lead.bookings = (lead.bookings || []).filter((booking) =>
           (booking.students || []).some((student) => {
-            const fullName = `${student.studentFirstName || ""} ${
-              student.studentLastName || ""
-            }`.toLowerCase();
+            const fullName = `${student.studentFirstName || ""} ${student.studentLastName || ""
+              }`.toLowerCase();
             return fullName.includes(studentLower);
           })
         );
         lead.bookings = lead.bookings.map((booking) => ({
           ...booking,
           students: (booking.students || []).filter((student) => {
-            const fullName = `${student.studentFirstName || ""} ${
-              student.studentLastName || ""
-            }`.toLowerCase();
+            const fullName = `${student.studentFirstName || ""} ${student.studentLastName || ""
+              }`.toLowerCase();
             return fullName.includes(studentLower);
           }),
         }));
@@ -2414,26 +2521,26 @@ exports.findAClass = async (filters = {}) => {
                   const paymentGroups =
                     venue.paymentGroupId != null
                       ? await PaymentGroup.findAll({
-                          where: { id: venue.paymentGroupId },
-                          include: [
-                            {
-                              model: PaymentPlan,
-                              as: "paymentPlans",
-                              through: {
-                                model: PaymentGroupHasPlan,
-                                attributes: [
-                                  "id",
-                                  "payment_plan_id",
-                                  "payment_group_id",
-                                  "createdBy",
-                                  "createdAt",
-                                  "updatedAt",
-                                ],
-                              },
+                        where: { id: venue.paymentGroupId },
+                        include: [
+                          {
+                            model: PaymentPlan,
+                            as: "paymentPlans",
+                            through: {
+                              model: PaymentGroupHasPlan,
+                              attributes: [
+                                "id",
+                                "payment_plan_id",
+                                "payment_group_id",
+                                "createdBy",
+                                "createdAt",
+                                "updatedAt",
+                              ],
                             },
-                          ],
-                          order: [["createdAt", "DESC"]],
-                        })
+                          },
+                        ],
+                        order: [["createdAt", "DESC"]],
+                      })
                       : [];
 
                   // Term Groups
@@ -2454,18 +2561,18 @@ exports.findAClass = async (filters = {}) => {
 
                   const terms = termGroupIds.length
                     ? await Term.findAll({
-                        where: { termGroupId: { [Op.in]: termGroupIds } },
-                        attributes: [
-                          "id",
-                          "termName",
-                          "startDate",
-                          "endDate",
-                          "termGroupId",
-                          "exclusionDates",
-                          "totalSessions",
-                          "sessionsMap",
-                        ],
-                      })
+                      where: { termGroupId: { [Op.in]: termGroupIds } },
+                      attributes: [
+                        "id",
+                        "termName",
+                        "startDate",
+                        "endDate",
+                        "termGroupId",
+                        "exclusionDates",
+                        "totalSessions",
+                        "sessionsMap",
+                      ],
+                    })
                     : [];
 
                   const parsedTerms = terms.map((t) => ({
