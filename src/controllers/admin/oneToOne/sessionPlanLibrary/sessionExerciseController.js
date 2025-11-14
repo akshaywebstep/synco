@@ -329,7 +329,7 @@ exports.updateSessionExercise = async (req, res) => {
       console.log("📎 Files uploaded:", filesArray.map(f => f.originalname));
     }
 
-    // Validate file extensions
+    // ✅ STEP 1: Validate file extensions
     const allowedExtensions = ["jpg", "jpeg", "png", "webp"];
     for (const file of filesArray) {
       const ext = path.extname(file.originalname).toLowerCase().slice(1);
@@ -349,8 +349,16 @@ exports.updateSessionExercise = async (req, res) => {
     }
     console.log("✅ STEP 2: Found exercise:", existing.data.title);
 
-    // ✅ STEP 3: Upload files (if any)
+    // Existing images (always convert to array)
+    const existingImages = Array.isArray(existing.data.imageUrl)
+      ? existing.data.imageUrl
+      : JSON.parse(existing.data.imageUrl || "[]");
+
+    // ------------------------------------------------------
+    // ✅ STEP 3: Upload new files (if any)
+    // ------------------------------------------------------
     const uploadedUrls = [];
+
     if (filesArray.length > 0) {
       const baseUploadDir = path.join(process.cwd(), "uploads", "temp", "admin", `${adminId}`, "sessionExercise", `${id}`);
       console.log("📂 STEP 3: Base upload directory:", baseUploadDir);
@@ -378,31 +386,35 @@ exports.updateSessionExercise = async (req, res) => {
           }
         } catch (err) {
           console.error("❌ STEP 3b: FTP upload failed for", localPath, err.message);
-        }
-        finally {
+        } finally {
           await fs.promises.unlink(localPath).catch(() => { });
           console.log("🗑️ STEP 3d: Local temp file deleted:", localPath);
         }
       }
     }
 
+    // ------------------------------------------------------
     // ✅ STEP 4: Decide which images to keep
-    if (uploadedUrls.length) {
-      updates.imageUrl = uploadedUrls;
-      console.log("🖼️ Replacing images with new uploads:", uploadedUrls);
+    // ------------------------------------------------------
+    if (uploadedUrls.length > 0) {
+      // 🔥 Append new images — DO NOT REMOVE existing
+      updates.imageUrl = [...existingImages, ...uploadedUrls];
+      console.log("🖼️ Adding new uploaded images to existing:", updates.imageUrl);
     } else if (updates.imageUrl === null) {
+      // 🔥 Only clear all images if user explicitly sends: imageUrl = null
       updates.imageUrl = [];
       console.log("🗑️ Clearing all images");
     } else {
-      updates.imageUrl = Array.isArray(existing.data.imageUrl)
-        ? existing.data.imageUrl
-        : JSON.parse(existing.data.imageUrl || "[]");
+      // 🔥 No new upload → keep old images
+      updates.imageUrl = existingImages;
       console.log("🔄 Keeping existing images:", updates.imageUrl);
     }
 
     updates.updatedBy = adminId;
 
+    // ------------------------------------------------------
     // ✅ STEP 5: Update DB
+    // ------------------------------------------------------
     console.log("📌 STEP 5: Updating exercise in DB");
     const result = await SessionExerciseService.updateSessionExercise(id, updates, adminId);
 
