@@ -13,8 +13,8 @@ async function getBookingAttendanceAnalytics(superAdminId, filters = {}, adminId
         bookedBy,
         createdBy,
         venueId,
-        filterByVenueName,
-        filterByClassName,
+        filterByVenue,
+        filterByClass,
         filterType,
     } = filters;
 
@@ -67,25 +67,39 @@ async function getBookingAttendanceAnalytics(superAdminId, filters = {}, adminId
         {
             model: Venue,
             as: "venue",
+            required: true,
             attributes: ["id", "name", "createdBy"],
             where: {},
         },
         {
             model: ClassSchedule,
             as: "classSchedule",
+            required: true,
             attributes: ["id", "className", "createdBy"],
             where: {},
         },
     ];
 
+    const venueFilterArray = Array.isArray(filterByVenue)
+        ? filterByVenue
+        : filterByVenue
+            ? [filterByVenue]
+            : [];
+
+    const classFilterArray = Array.isArray(filterByClass)
+        ? filterByClass
+        : filterByClass
+            ? [filterByClass]
+            : [];
+
     // 📍 Filter by venue name
-    if (filterByVenueName) {
-        includeConditions[1].where.name = { [Op.like]: `%${filterByVenueName}%` };
+    if (venueFilterArray.length > 0) {
+        includeConditions[1].where.id = { [Op.in]: venueFilterArray };
     }
 
     // 📘 Filter by class name (from ClassSchedule, not Booking)
-    if (filterByClassName) {
-        includeConditions[2].where.className = { [Op.like]: `%${filterByClassName}%` };
+    if (classFilterArray.length > 0) {
+        includeConditions[2].where.id = { [Op.in]: classFilterArray };
     }
 
     // 🧩 Get bookings + students + venues + classes

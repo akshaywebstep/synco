@@ -23,8 +23,8 @@ exports.getMonthlyReport = async (req, res) => {
 
     // ✅ Extract filters from query params (e.g., ?filterByVenueName=..., etc.)
     const filters = {
-      filterByVenueName: req.query.filterByVenueName || null,
-      filterByClassName: req.query.filterByClassName || null,
+      filterByVenue: req.query.filterByVenue || null,
+      filterByClass: req.query.filterByClass || null,
       filterType: req.query.filterType || null,
       bookedBy: req.query.bookedBy || null,
       createdBy: req.query.createdBy || null,
