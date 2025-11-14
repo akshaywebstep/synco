@@ -647,7 +647,9 @@ exports.getAllForFacebookLeads = async (adminId, superAdminId, filters = {}) => 
       );
     }
 
-    const allVenuesList = await Venue.findAll();
+    const allVenuesList = await Venue.findAll({
+      where: { createdBy: { [Op.in]: allowedAdminIds } }
+    });
 
     if (filters.venueName) {
       const nameLower = filters.venueName.toLowerCase();
@@ -717,8 +719,10 @@ exports.getAllForFacebookLeads = async (adminId, superAdminId, filters = {}) => 
 
         const { bookings, ...leadWithoutBookings } = lead.dataValues;
         let nearestVenues = [];
+
         if (lead.postcode && allVenuesList.length > 0) {
           const coords = await getCoordinatesFromPostcode(lead.postcode);
+
           if (coords) {
             nearestVenues = await Promise.all(
               allVenuesList
@@ -736,15 +740,47 @@ exports.getAllForFacebookLeads = async (adminId, superAdminId, filters = {}) => 
                 .sort((a, b) => a.distance - b.distance)
                 .slice(0, 5)
                 .map(async (venue) => {
-                  const classSchedules = await ClassSchedule.findAll({
-                    where: {
-                      venueId: venue.id
-                    },
+
+                  // Debug: show the id you're looking for
+                  console.log("Searching termGroupId:", venue.termGroupId[0]);
+
+                  // Get all terms that use this termGroupId
+                  const allTerms = await Term.findAll({
+                    where: { createdBy: { [Op.in]: allowedAdminIds } }
                   });
 
+                  console.log("Terms found:", allTerms.map(t => t.dataValues));
+
+                  const classSchedules = await ClassSchedule.findAll({
+                    where: { venueId: venue.id }
+
+                  });
+                  // 1️⃣ Get the Payment Group for this venue
+                  const paymentGroup = await PaymentGroup.findOne({
+                    where: { id: venue.paymentGroupId }
+                  });
+
+                  // 2️⃣ Get the Plan IDs from the pivot table
+                  const groupPlanLinks = await PaymentGroupHasPlan.findAll({
+                    where: { payment_group_id: venue.paymentGroupId },
+                    attributes: ['payment_plan_id'] // only return needed column
+                  });
+
+                  // 3️⃣ Extract the plan IDs
+                  const planIds = groupPlanLinks.map(link => link.payment_plan_id);
+
+                  // 4️⃣ Fetch only those payment plans
+                  const paymentPlans = await PaymentPlan.findAll({
+                    where: { id: planIds }
+                  });
                   return {
                     ...venue,
                     classSchedules: classSchedules.map((cs) => cs.dataValues),
+                    terms: allTerms.map(t => t.dataValues),   // return terms here
+                    // Attach payment info
+                    paymentGroup: paymentGroup ? paymentGroup.dataValues : null,
+
+                    paymentPlans: paymentPlans.map(pp => pp.dataValues),
                   };
                 })
             );
@@ -754,8 +790,9 @@ exports.getAllForFacebookLeads = async (adminId, superAdminId, filters = {}) => 
         return {
           ...leadWithoutBookings,
           bookingData,
-          nearestVenues, // No venue-distance calculation in this version
+          nearestVenues,
         };
+
       })
     );
 
@@ -942,7 +979,9 @@ exports.getAllReferallLeads = async (adminId, superAdminId, filters = {}) => {
       );
     }
 
-    const allVenuesList = await Venue.findAll();
+    const allVenuesList = await Venue.findAll({
+      where: { createdBy: { [Op.in]: allowedAdminIds } }
+    });
 
     if (filters.venueName) {
       const nameLower = filters.venueName.toLowerCase();
@@ -1022,31 +1061,61 @@ exports.getAllReferallLeads = async (adminId, superAdminId, filters = {}) => {
           if (coords) {
             nearestVenues = await Promise.all(
               allVenuesList
-                .map((v) => {
-                  const venueObj = v.dataValues;
-
-                  return {
-                    ...venueObj,
-                    distance: Number(
-                      calculateDistance(
-                        coords.latitude,
-                        coords.longitude,
-                        venueObj.latitude,
-                        venueObj.longitude
-                      ).toFixed(2)
-                    ),
-                  };
-                })
+                .map((v) => ({
+                  ...v.dataValues,
+                  distance: Number(
+                    calculateDistance(
+                      coords.latitude,
+                      coords.longitude,
+                      v.latitude,
+                      v.longitude
+                    ).toFixed(2)
+                  ),
+                }))
                 .sort((a, b) => a.distance - b.distance)
                 .slice(0, 5)
                 .map(async (venue) => {
-                  const classSchedules = await ClassSchedule.findAll({
-                    where: { venueId: venue.id },
+
+                  // Debug: show the id you're looking for
+                  console.log("Searching termGroupId:", venue.termGroupId[0]);
+
+                  // Get all terms that use this termGroupId
+                  const allTerms = await Term.findAll({
+                    where: { createdBy: { [Op.in]: allowedAdminIds } }
                   });
 
+                  console.log("Terms found:", allTerms.map(t => t.dataValues));
+
+                  const classSchedules = await ClassSchedule.findAll({
+                    where: { venueId: venue.id }
+
+                  });
+                  // 1️⃣ Get the Payment Group for this venue
+                  const paymentGroup = await PaymentGroup.findOne({
+                    where: { id: venue.paymentGroupId }
+                  });
+
+                  // 2️⃣ Get the Plan IDs from the pivot table
+                  const groupPlanLinks = await PaymentGroupHasPlan.findAll({
+                    where: { payment_group_id: venue.paymentGroupId },
+                    attributes: ['payment_plan_id'] // only return needed column
+                  });
+
+                  // 3️⃣ Extract the plan IDs
+                  const planIds = groupPlanLinks.map(link => link.payment_plan_id);
+
+                  // 4️⃣ Fetch only those payment plans
+                  const paymentPlans = await PaymentPlan.findAll({
+                    where: { id: planIds }
+                  });
                   return {
                     ...venue,
                     classSchedules: classSchedules.map((cs) => cs.dataValues),
+                    terms: allTerms.map(t => t.dataValues),   // return terms here
+                    // Attach payment info
+                    paymentGroup: paymentGroup ? paymentGroup.dataValues : null,
+
+                    paymentPlans: paymentPlans.map(pp => pp.dataValues),
                   };
                 })
             );
@@ -2165,7 +2234,9 @@ exports.getLeadandBookingDatabyLeadId = async (leadId) => {
 
     // ✅ Optional: Get nearest venues
     let nearestVenues = [];
-    const allVenuesList = await Venue.findAll();
+    const allVenuesList = await Venue.findAll({
+      where: { createdBy: { [Op.in]: allowedAdminIds } }
+    });
 
     if (lead.postcode && allVenuesList.length > 0) {
       const coords = await getCoordinatesFromPostcode(lead.postcode);
@@ -2186,73 +2257,47 @@ exports.getLeadandBookingDatabyLeadId = async (leadId) => {
             .sort((a, b) => a.distance - b.distance)
             .slice(0, 5)
             .map(async (venue) => {
-              const classSchedules = await ClassSchedule.findAll({
-                where: { venueId: venue.id },
+
+              // Debug: show the id you're looking for
+              console.log("Searching termGroupId:", venue.termGroupId[0]);
+
+              // Get all terms that use this termGroupId
+              const allTerms = await Term.findAll({
+                where: { createdBy: { [Op.in]: allowedAdminIds } }
               });
 
-              // Payment Groups
-              const paymentGroups =
-                venue.paymentGroupId != null
-                  ? await PaymentGroup.findAll({
-                    where: { id: venue.paymentGroupId },
-                    include: [
-                      {
-                        model: PaymentPlan,
-                        as: "paymentPlans",
-                        through: { model: PaymentGroupHasPlan },
-                      },
-                    ],
-                    order: [["createdAt", "DESC"]],
-                  })
-                  : [];
+              console.log("Terms found:", allTerms.map(t => t.dataValues));
 
-              // Term Groups
-              let termGroupIds = [];
-              if (typeof venue.termGroupId === "string") {
-                try {
-                  termGroupIds = JSON.parse(venue.termGroupId);
-                } catch {
-                  termGroupIds = [];
-                }
-              } else if (Array.isArray(venue.termGroupId)) {
-                termGroupIds = venue.termGroupId;
-              }
+              const classSchedules = await ClassSchedule.findAll({
+                where: { venueId: venue.id }
 
-              const termGroups = termGroupIds.length
-                ? await TermGroup.findAll({ where: { id: termGroupIds } })
-                : [];
+              });
+              // 1️⃣ Get the Payment Group for this venue
+              const paymentGroup = await PaymentGroup.findOne({
+                where: { id: venue.paymentGroupId }
+              });
 
-              const terms = termGroupIds.length
-                ? await Term.findAll({
-                  where: { termGroupId: { [Op.in]: termGroupIds } },
-                })
-                : [];
+              // 2️⃣ Get the Plan IDs from the pivot table
+              const groupPlanLinks = await PaymentGroupHasPlan.findAll({
+                where: { payment_group_id: venue.paymentGroupId },
+                attributes: ['payment_plan_id'] // only return needed column
+              });
 
-              const parsedTerms = terms.map((t) => ({
-                id: t.id,
-                name: t.termName,
-                startDate: t.startDate,
-                endDate: t.endDate,
-                termGroupId: t.termGroupId,
-                exclusionDates:
-                  typeof t.exclusionDates === "string"
-                    ? JSON.parse(t.exclusionDates)
-                    : t.exclusionDates || [],
-                totalSessions: t.totalSessions,
-                sessionsMap:
-                  typeof t.sessionsMap === "string"
-                    ? JSON.parse(t.sessionsMap)
-                    : t.sessionsMap || [],
-              }));
+              // 3️⃣ Extract the plan IDs
+              const planIds = groupPlanLinks.map(link => link.payment_plan_id);
 
+              // 4️⃣ Fetch only those payment plans
+              const paymentPlans = await PaymentPlan.findAll({
+                where: { id: planIds }
+              });
               return {
                 ...venue,
                 classSchedules: classSchedules.map((cs) => cs.dataValues),
-                paymentGroups,
-                termGroups: termGroups.map((tg) => ({
-                  ...tg.dataValues,
-                  terms: parsedTerms.filter((t) => t.termGroupId === tg.id),
-                })),
+                terms: allTerms.map(t => t.dataValues),   // return terms here
+                // Attach payment info
+                paymentGroup: paymentGroup ? paymentGroup.dataValues : null,
+
+                paymentPlans: paymentPlans.map(pp => pp.dataValues),
               };
             })
         );
