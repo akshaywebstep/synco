@@ -341,8 +341,8 @@ exports.createOnetoOneBooking = async (data) => {
               .replace(/{{age}}/g, firstStudent.age || "")
               .replace(/{{gender}}/g, firstStudent.gender || "")
 
-              .replace(/{{relationChild}}/g, data.relationChild || "")
-              .replace(/{{phoneNumber}}/g, data.phoneNumber || "")
+              .replace(/{{relationChild}}/g, "")
+              .replace(/{{phoneNumber}}/g, "")
               .replace(/{{className}}/g, "One to One Coaching")
               .replace(/{{classTime}}/g, data.time || "")
               .replace(/{{startDate}}/g, data.date || "")

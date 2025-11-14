@@ -97,7 +97,7 @@ exports.duplicateSessionExercise = async (oldExerciseId, createdBy) => {
 
     // STEP 2: Create new exercise row (without files yet)
     const newExercise = await SessionExercise.create({
-      title: oldData.title,
+      title: `${oldData.title} (Copy)`,
       duration: oldData.duration,
       description: oldData.description,
       imageUrl: [], // files will be handled separately
