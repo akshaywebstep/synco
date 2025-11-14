@@ -1405,6 +1405,7 @@ exports.getAllOthersLeads = async (adminId, superAdminId, filters = {}) => {
         let nearestVenues = [];
         if (lead.postcode && allVenuesList.length > 0) {
           const coords = await getCoordinatesFromPostcode(lead.postcode);
+
           if (coords) {
             nearestVenues = await Promise.all(
               allVenuesList
@@ -1422,16 +1423,47 @@ exports.getAllOthersLeads = async (adminId, superAdminId, filters = {}) => {
                 .sort((a, b) => a.distance - b.distance)
                 .slice(0, 5)
                 .map(async (venue) => {
-                  const classSchedules = await ClassSchedule.findAll({
-                    where: {
-                      venueId: venue.id,
-                      createdBy: { [Op.in]: allowedAdminIds },
-                    },
+
+                  // Debug: show the id you're looking for
+                  console.log("Searching termGroupId:", venue.termGroupId[0]);
+
+                  // Get all terms that use this termGroupId
+                  const allTerms = await Term.findAll({
+                    where: { createdBy: { [Op.in]: allowedAdminIds } }
                   });
 
+                  console.log("Terms found:", allTerms.map(t => t.dataValues));
+
+                  const classSchedules = await ClassSchedule.findAll({
+                    where: { venueId: venue.id }
+
+                  });
+                  // 1️⃣ Get the Payment Group for this venue
+                  const paymentGroup = await PaymentGroup.findOne({
+                    where: { id: venue.paymentGroupId }
+                  });
+
+                  // 2️⃣ Get the Plan IDs from the pivot table
+                  const groupPlanLinks = await PaymentGroupHasPlan.findAll({
+                    where: { payment_group_id: venue.paymentGroupId },
+                    attributes: ['payment_plan_id'] // only return needed column
+                  });
+
+                  // 3️⃣ Extract the plan IDs
+                  const planIds = groupPlanLinks.map(link => link.payment_plan_id);
+
+                  // 4️⃣ Fetch only those payment plans
+                  const paymentPlans = await PaymentPlan.findAll({
+                    where: { id: planIds }
+                  });
                   return {
                     ...venue,
                     classSchedules: classSchedules.map((cs) => cs.dataValues),
+                    terms: allTerms.map(t => t.dataValues),   // return terms here
+                    // Attach payment info
+                    paymentGroup: paymentGroup ? paymentGroup.dataValues : null,
+
+                    paymentPlans: paymentPlans.map(pp => pp.dataValues),
                   };
                 })
             );
@@ -1855,7 +1887,8 @@ exports.getAllLeads = async (adminId, superAdminId, filters = {}) => {
     // ✅ Build WHERE condition for leads
     const whereLead = {};
 
-    // ✅ Super Admin logic
+    let allowedAdminIds = [];
+
     if (superAdminId && superAdminId === adminId) {
       // 🟢 Super Admin → fetch all admins under them + self
       const managedAdmins = await Admin.findAll({
@@ -1864,12 +1897,15 @@ exports.getAllLeads = async (adminId, superAdminId, filters = {}) => {
       });
       const adminIds = managedAdmins.map((a) => a.id);
       adminIds.push(superAdminId);
+      allowedAdminIds = adminIds;
       whereLead.createdBy = { [Op.in]: adminIds };
     } else if (superAdminId && adminId) {
       // 🟢 Admin → fetch own + super admin’s leads
+      allowedAdminIds = [adminId, superAdminId];
       whereLead.createdBy = { [Op.in]: [adminId, superAdminId] };
     } else {
       // 🟢 Fallback
+      allowedAdminIds = [adminId];
       whereLead.createdBy = adminId;
     }
 
@@ -2024,7 +2060,10 @@ exports.getAllLeads = async (adminId, superAdminId, filters = {}) => {
     }
 
     // ✅ Venue name filter
-    let allVenuesList = await Venue.findAll({ where: whereLead });
+    // let allVenuesList = await Venue.findAll({ where: whereLead });
+    const allVenuesList = await Venue.findAll({
+      where: { createdBy: { [Op.in]: allowedAdminIds } }
+    });
     if (filters.venueName) {
       const nameLower = filters.venueName.toLowerCase();
       filteredLeads = filteredLeads.filter((lead) => {
@@ -2105,6 +2144,7 @@ exports.getAllLeads = async (adminId, superAdminId, filters = {}) => {
         let nearestVenues = [];
         if (lead.postcode && allVenuesList.length > 0) {
           const coords = await getCoordinatesFromPostcode(lead.postcode);
+
           if (coords) {
             nearestVenues = await Promise.all(
               allVenuesList
@@ -2122,15 +2162,47 @@ exports.getAllLeads = async (adminId, superAdminId, filters = {}) => {
                 .sort((a, b) => a.distance - b.distance)
                 .slice(0, 5)
                 .map(async (venue) => {
-                  const classSchedules = await ClassSchedule.findAll({
-                    where: {
-                      venueId: venue.id
-                    },
+
+                  // Debug: show the id you're looking for
+                  console.log("Searching termGroupId:", venue.termGroupId[0]);
+
+                  // Get all terms that use this termGroupId
+                  const allTerms = await Term.findAll({
+                    where: { createdBy: { [Op.in]: allowedAdminIds } }
                   });
 
+                  console.log("Terms found:", allTerms.map(t => t.dataValues));
+
+                  const classSchedules = await ClassSchedule.findAll({
+                    where: { venueId: venue.id }
+
+                  });
+                  // 1️⃣ Get the Payment Group for this venue
+                  const paymentGroup = await PaymentGroup.findOne({
+                    where: { id: venue.paymentGroupId }
+                  });
+
+                  // 2️⃣ Get the Plan IDs from the pivot table
+                  const groupPlanLinks = await PaymentGroupHasPlan.findAll({
+                    where: { payment_group_id: venue.paymentGroupId },
+                    attributes: ['payment_plan_id'] // only return needed column
+                  });
+
+                  // 3️⃣ Extract the plan IDs
+                  const planIds = groupPlanLinks.map(link => link.payment_plan_id);
+
+                  // 4️⃣ Fetch only those payment plans
+                  const paymentPlans = await PaymentPlan.findAll({
+                    where: { id: planIds }
+                  });
                   return {
                     ...venue,
                     classSchedules: classSchedules.map((cs) => cs.dataValues),
+                    terms: allTerms.map(t => t.dataValues),   // return terms here
+                    // Attach payment info
+                    paymentGroup: paymentGroup ? paymentGroup.dataValues : null,
+
+                    paymentPlans: paymentPlans.map(pp => pp.dataValues),
                   };
                 })
             );
