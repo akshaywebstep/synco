@@ -53,6 +53,10 @@ exports.getMonthlyReport = async (req, res) => {
       duration: Number(req.query.paymentPlanDuration) || 0,
     },
     admin: { name: req.query.agentName?.trim() || "" },
+    venueId: req.query.venueId ? Number(req.query.venueId) : null,
+    classScheduleId: req.query.classScheduleId ? Number(req.query.classScheduleId) : null,
+    age: req.query.age || "allAges",
+    period: req.query.period || "",
   };
 
   if (DEBUG) {

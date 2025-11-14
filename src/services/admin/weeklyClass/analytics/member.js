@@ -145,6 +145,8 @@ function calculateDurationOfMembership(bookings) {
   return result;
 }
 
+const usedVenues = new Map();
+
 // Group bookings by Year → Month
 function groupBookingsByYearMonth(bookings, filter) {
   if (!bookings || bookings.length === 0) return {};
@@ -195,7 +197,6 @@ function groupBookingsByYearMonth(bookings, filter) {
     const newStudents = [];
     const enrolledStudents = { byAge: {}, byGender: {} };
     const paymentPlansTrend = [];
-
     monthBookings.forEach((b) => {
       let valid = true;
 
@@ -223,6 +224,8 @@ function groupBookingsByYearMonth(bookings, filter) {
         }
       }
 
+      filteredBookings.push(b);
+
       // Student filter
       if (filter.student?.name?.trim()) {
         const search = filter.student.name.trim().toLowerCase();
@@ -238,6 +241,31 @@ function groupBookingsByYearMonth(bookings, filter) {
       if (valid && filter.venue?.name?.trim()) {
         const search = filter.venue.name.trim().toLowerCase();
         valid = (b.classSchedule?.venue?.name || "").toLowerCase() === search;
+      }
+
+      // ✅ New Age Filter
+      if (valid && filter.age) {
+        if (filter.age === "under18") {
+          valid = b.students?.some((s) => Number(s.age) < 18);
+        } else if (filter.age === "18-25") {
+          valid = b.students?.some((s) => Number(s.age) >= 18 && Number(s.age) <= 25);
+        } else if (filter.age === "allAges") {
+          valid = true; // show all
+        }
+      }
+
+      if (!valid) return; // skip this booking if age doesn't match
+
+      // ✅ New Date Period Filter
+      if (valid && filter.period) {
+        const now = moment();
+        if (filter.period === "thisMonth") {
+          valid = b.createdAt && moment(b.createdAt).isSame(now, "month");
+        } else if (filter.period === "thisQuarter") {
+          valid = b.createdAt && moment(b.createdAt).quarter() === now.quarter();
+        } else if (filter.period === "thisYear") {
+          valid = b.createdAt && moment(b.createdAt).isSame(now, "year");
+        }
       }
 
       // PaymentPlan filter
@@ -262,6 +290,12 @@ function groupBookingsByYearMonth(bookings, filter) {
       }
 
       if (valid) filteredBookings.push(b);
+
+      // Collect venue if it exists
+      const venue = b.classSchedule?.venue;
+      if (venue && venue.id) {
+        usedVenues.set(venue.id, { id: venue.id, name: venue.name });
+      }
 
       // Students
       b.students.forEach((s) => {
@@ -457,6 +491,14 @@ const getMonthlyReport = async (filters) => {
     const whereVenue = {};
     const whereSchedule = {};
     const whereLead = {};
+    // venueId & classScheduleId
+    if (filters.venueId) {
+      // numeric compare
+      whereVenue.id = Number(filters.venueId);
+    }
+    if (filters.classScheduleId) {
+      whereSchedule.id = Number(filters.classScheduleId);
+    }
 
     // ✅ Access Control Logic
     if (superAdminId && superAdminId === adminId) {
@@ -534,7 +576,7 @@ const getMonthlyReport = async (filters) => {
     });
 
     // ✅ Group by year and month
-    const yealyGrouped = groupBookingsByYearMonth(bookings, filters);
+    const yealyGrouped = groupBookingsByYearMonth(bookings, filters, usedVenues);
 
     // ✅ Overall Sales
     const overallSales = {
@@ -561,7 +603,7 @@ const getMonthlyReport = async (filters) => {
     return {
       status: true,
       message: "Monthly class report generated successfully.",
-      data: { yealyGrouped, overallSales },
+      data: { yealyGrouped, overallSales, allVenues: Array.from(usedVenues.values()) },
     };
   } catch (error) {
     console.error("❌ Sequelize Error:", error);
