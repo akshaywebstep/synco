@@ -102,13 +102,13 @@ function groupBookingsByYearMonth(bookings, filter) {
         const attendedCount = countAttendedTrials(monthBookings);
 
         const attendanceRate = freeTrialsCount > 0
-            ? (attendedCount / freeTrialsCount) * 100
+            ? Number(((attendedCount / freeTrialsCount) * 100).toFixed(2))
             : 0;
 
         const trialToMemberCount = countTrialToMember(monthBookings);
 
         const conversionRate = freeTrialsCount > 0
-            ? (trialToMemberCount / freeTrialsCount) * 100
+            ? Number(((trialToMemberCount / freeTrialsCount) * 100).toFixed(2))
             : 0;
 
         const rebookCount = countRebook(monthBookings);

@@ -325,9 +325,36 @@ function groupBookingsByYearMonth(bookings, filter) {
       (a, b) => b.totalSales.totalRevenue - a.totalSales.totalRevenue
     );
 
-    if (!grouped[yearKey]) grouped[yearKey] = { monthlyGrouped: {} };
+    // ─────────────────────────────────────────────
+    // Ensure YEAR is initialized
+    // ─────────────────────────────────────────────
+    if (!grouped[yearKey]) {
+      grouped[yearKey] = {
+        monthlyGrouped: {},
+        yearSourceSummary: { referral: 0, facebook: 0, others: 0 },
+      };
+    }
+
+    // ─────────────────────────────────────────────
+    // Ensure MONTH is initialized
+    // ─────────────────────────────────────────────
+    if (!grouped[yearKey].monthlyGrouped[monthKey]) {
+      grouped[yearKey].monthlyGrouped[monthKey] = {};
+    }
+
+    // Calculate membership sources for this month
+    const monthSource = sourceOfMembership(filteredBookings);
+
+    // Add monthly values → yearly totals
+    grouped[yearKey].yearSourceSummary.referral += monthSource.referral;
+    grouped[yearKey].yearSourceSummary.facebook += monthSource.facebook;
+    grouped[yearKey].yearSourceSummary.others += monthSource.others;
+
+    // Save month-level grouping
     grouped[yearKey].monthlyGrouped[monthKey] = {
+      ...grouped[yearKey].monthlyGrouped[monthKey],
       bookings: filteredBookings,
+      sourceOfMembership: monthSource,   // ← added correctly
       totalSales,
       topAgents,
       salesTrend: {},
@@ -403,6 +430,21 @@ function groupBookingsByYearMonth(bookings, filter) {
   });
 
   return grouped;
+}
+
+function sourceOfMembership(bookings) {
+  const stats = { referall: 0, facebook: 0, others: 0 };
+
+  bookings.forEach((b) => {
+    const status = b?.lead?.status?.toLowerCase();
+    if (!status) return;
+
+    if (status === "referall" || status === "referral") stats.referall++;
+    else if (status === "facebook") stats.facebook++;
+    else stats.others++;
+  });
+
+  return stats;
 }
 
 // Main Report
