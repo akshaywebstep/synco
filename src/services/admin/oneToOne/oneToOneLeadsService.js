@@ -109,6 +109,7 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
               ],
             },
             { model: OneToOnePayment, as: "payment" },
+             { model: Admin, as: "coach" },
           ],
         },
       ],
@@ -236,6 +237,7 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
           booking: {
             leadId: booking.leadId,
             coachId: booking.coachId,
+            coach: booking.coach,
             type: booking.type,
             location: booking.location,
             address: booking.address,
@@ -963,6 +965,7 @@ exports.getAllOnetoOneLeadsSalesAll = async (
             },
             { model: OneToOnePayment, as: "payment" },
             { model: PaymentPlan, as: "paymentPlan" },
+             { model: Admin, as: "coach" },
           ],
         },
       ],
