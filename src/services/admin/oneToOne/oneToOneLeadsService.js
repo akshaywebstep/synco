@@ -2538,7 +2538,7 @@ exports.sendEmailToFirstParentWithBooking = async (leadIds = []) => {
     // ✅ Final Response
     return {
       status: true,
-      message: `Emails sent to ${totalSent} first parents successfully.`,
+      message: `Emails sent to parents successfully.`,
       totalSent,
       sentTo,
       skipped,

@@ -53,6 +53,9 @@ exports.createBirthdayPartyBooking = async (data) => {
         let paymentPlan = null;
         let baseAmount = 0;
 
+        // ------------------------
+        // BASE AMOUNT
+        // ------------------------
         if (data.paymentPlanId) {
             paymentPlan = await PaymentPlan.findByPk(data.paymentPlanId);
             if (!paymentPlan) throw new Error("Invalid payment plan ID");
@@ -63,16 +66,70 @@ exports.createBirthdayPartyBooking = async (data) => {
         let discountAmount = 0;
         let finalAmount = baseAmount;
 
+        // ------------------------
+        // DISCOUNT LOGIC
+        // ------------------------
         if (data.discountId) {
             discount = await Discount.findByPk(data.discountId);
             if (!discount) throw new Error("Invalid discount ID");
 
-            if (discount.value_type === "percentage") {
-                discountAmount = (baseAmount * discount.value) / 100;
-            } else if (discount.value_type === "fixed") {
-                discountAmount = discount.value;
+            const now = new Date();
+
+            // 1️⃣ Check active dates
+            if (discount.start_datetime && now < new Date(discount.start_datetime)) {
+                throw new Error(`Discount code ${discount.code} is not active yet.`);
             }
 
+            if (discount.end_datetime && now > new Date(discount.end_datetime)) {
+                throw new Error(`Discount code ${discount.code} has expired.`);
+            }
+
+            // 2️⃣ Total usage limit
+            if (discount.limit_total_uses !== null) {
+                const totalUsed = await BirthdayPartyBooking.count({
+                    where: { discountId: discount.id },
+                });
+
+                if (totalUsed >= discount.limit_total_uses) {
+                    throw new Error(
+                        `Discount code ${discount.code} has reached total usage limit.`
+                    );
+                }
+            }
+
+            // 3️⃣ Limit per customer — PER STUDENT
+            if (discount.limit_per_customer !== null) {
+                const firstStudent = data.students?.[0];
+
+                if (firstStudent) {
+                    const studentUses = await BirthdayPartyBooking.count({
+                        include: [
+                            {
+                                model: BirthdayPartyStudent,
+                                as: "students",
+                                required: true,
+                                where: {
+                                    studentFirstName: firstStudent.studentFirstName,
+                                    studentLastName: firstStudent.studentLastName,
+                                    dateOfBirth: firstStudent.dateOfBirth,
+                                },
+                            },
+                        ],
+                        where: { discountId: discount.id },
+                    });
+
+                    if (studentUses >= discount.limit_per_customer) {
+                        throw new Error(
+                            `Discount code ${discount.code} already used maximum times by this student.`
+                        );
+                    }
+                }
+            }
+
+            // 4️⃣ APPLY DISCOUNT USING discount.value DIRECTLY
+            discountAmount = discount.value || 0;
+
+            // 5️⃣ Final amount
             finalAmount = Math.max(baseAmount - discountAmount, 0);
         }
 
@@ -275,6 +332,19 @@ exports.createBirthdayPartyBooking = async (data) => {
                             .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
                             .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png");
 
+                        console.log(
+                            `📧 Confirmation email sent to ${firstParent.parentEmail}`
+                        );
+                        await sendEmail(emailConfig, {
+                            recipient: [
+                                {
+                                    name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
+                                    email: firstParent.parentEmail,
+                                },
+                            ],
+                            subject,
+                            htmlBody,
+                        });
                         console.log(
                             `📧 Confirmation email sent to ${firstParent.parentEmail}`
                         );

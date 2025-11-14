@@ -49,14 +49,15 @@ exports.createOnetoOneBooking = async (data) => {
       }
     }
 
-    // 1️⃣ Calculate base amount & discount
+    // 1️⃣ Load payment plan
     let paymentPlan = null;
     let baseAmount = 0;
 
     if (data.paymentPlanId) {
       paymentPlan = await PaymentPlan.findByPk(data.paymentPlanId);
       if (!paymentPlan) throw new Error("Invalid payment plan ID");
-      baseAmount = paymentPlan.price || 0;
+
+      baseAmount = Number(paymentPlan.price || 0);
     }
 
     let discount = null;
@@ -67,13 +68,72 @@ exports.createOnetoOneBooking = async (data) => {
       discount = await Discount.findByPk(data.discountId);
       if (!discount) throw new Error("Invalid discount ID");
 
-      if (discount.value_type === "percentage") {
-        discountAmount = (baseAmount * discount.value) / 100;
-      } else if (discount.value_type === "fixed") {
-        discountAmount = discount.value;
+      const now = new Date();
+
+      // -----------------------------
+      // 1️⃣ VALIDATE DATE RANGE
+      // -----------------------------
+      if (discount.start_datetime && now < new Date(discount.start_datetime)) {
+        throw new Error(`Discount code ${discount.code} is not active yet.`);
       }
 
-      finalAmount = Math.max(baseAmount - discountAmount, 0);
+      if (discount.end_datetime && now > new Date(discount.end_datetime)) {
+        throw new Error(`Discount code ${discount.code} has expired.`);
+      }
+
+      // -----------------------------
+      // 2️⃣ CHECK TOTAL USE LIMIT
+      // -----------------------------
+      if (discount.limit_total_uses !== null) {
+        const totalUsed = await OneToOneBooking.count({
+          where: { discountId: discount.id },
+        });
+
+        if (totalUsed >= discount.limit_total_uses) {
+          throw new Error(
+            `Discount code ${discount.code} has reached its total usage limit.`
+          );
+        }
+      }
+
+      // -----------------------------
+      // 3️⃣ LIMIT PER STUDENT
+      // -----------------------------
+      if (discount.limit_per_customer !== null) {
+        const firstStudent = data.students?.[0];
+
+        if (firstStudent) {
+          const studentUses = await OneToOneBooking.count({
+            include: [
+              {
+                model: OneToOneStudent,
+                as: "students",
+                required: true,
+                where: {
+                  studentFirstName: firstStudent.studentFirstName,
+                  studentLastName: firstStudent.studentLastName,
+                  dateOfBirth: firstStudent.dateOfBirth,
+                },
+              },
+            ],
+            where: { discountId: discount.id },
+          });
+
+          if (studentUses >= discount.limit_per_customer) {
+            throw new Error(
+              `Discount code ${discount.code} already used maximum times by this student.`
+            );
+          }
+        }
+      }
+
+      // -----------------------------
+      // 4️⃣ USE DISCOUNT VALUE AS FINAL PRICE
+      // -----------------------------
+      finalAmount = Number(discount.value);   // 🔥 final price = discount.value
+
+      // also store discountAmount for record (optional)
+      discountAmount = baseAmount - finalAmount;
     }
 
     // 2️⃣ Create booking
