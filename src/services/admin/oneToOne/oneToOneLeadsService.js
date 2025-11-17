@@ -109,7 +109,7 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
               ],
             },
             { model: OneToOnePayment, as: "payment" },
-             { model: Admin, as: "coach" },
+            { model: Admin, as: "coach" },
           ],
         },
       ],
@@ -948,12 +948,10 @@ exports.getAllOnetoOneLeadsSalesAll = async (
         {
           model: OneToOneBooking,
           as: "booking",
-          required: !!type, // still only strict join when filtering by type
-          where: !!type
-            ? {
-              ...(Object.keys(whereBooking).length ? whereBooking : {}),
-            }
-            : undefined, // <- important: no where when no type, keeps LEFT JOIN
+          required: true,
+          // still only strict join when filtering by type
+          where: Object.keys(whereBooking).length ? whereBooking : undefined,
+
           include: [
             {
               model: OneToOneStudent,
@@ -965,7 +963,7 @@ exports.getAllOnetoOneLeadsSalesAll = async (
             },
             { model: OneToOnePayment, as: "payment" },
             { model: PaymentPlan, as: "paymentPlan" },
-             { model: Admin, as: "coach" },
+            { model: Admin, as: "coach" },
           ],
         },
       ],

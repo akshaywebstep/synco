@@ -57,11 +57,14 @@ exports.getMonthlyReport = async (req, res) => {
     superAdminId,
     student: { name: req.query.studentName?.trim() || "" },
     venue: { name: req.query.venueName?.trim() || "" },
+    venueId: req.query.venueId ? Number(req.query.venueId) : null,
     paymentPlan: {
       interval: req.query.paymentPlanInterval?.trim() || "",
       duration: Number(req.query.paymentPlanDuration) || 0,
     },
     admin: { name: req.query.agentName?.trim() || "" },
+     age: req.query.age || "allAges",
+    period: req.query.period || "",
   };
 
   // if (DEBUG) {
