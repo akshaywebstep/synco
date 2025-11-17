@@ -706,7 +706,8 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
       return { status: false, message: "Invalid admin ID.", data: [] };
     }
 
-    const { fromDate, toDate, type, studentName, packageInterest, partyDate } =
+    const { fromDate, toDate, type, studentName, packageInterest, partyDate, source, coach,
+      agent, address } =
       filters;
 
     const whereLead = {};
@@ -752,6 +753,60 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
       whereLead.partyDate = { [Op.eq]: partyDate.toLowerCase() };
     }
 
+    if (source) {
+      whereLead.source = { [Op.eq]: source.toLowerCase() };
+    }
+    // ✅ Address filter
+    if (address) {
+      whereBooking.address = {
+        [Op.like]: `%${address}%`,   // allows partial match
+      };
+    }
+
+    // ✅ Agent filter
+    if (agent) {
+      let agentIds = [];
+
+      if (Array.isArray(agent)) {
+        // Handles ?agent=1&agent=6
+        agentIds = agent.map((id) => Number(id)).filter(Boolean);
+      } else if (typeof agent === "string") {
+        // Handles ?agent=1,6
+        agentIds = agent
+          .split(",")
+          .map((id) => Number(id.trim()))
+          .filter(Boolean);
+      }
+
+      if (agentIds.length > 0) {
+        whereLead.createdBy = { [Op.in]: agentIds };
+        console.log("🧩 Agent filter applied:", agentIds);
+      }
+    }
+
+    // ✅ Coach filter
+    if (coach) {
+      let coachIds = [];
+
+      if (Array.isArray(coach)) {
+        // Handles ?coach=2&coach=5
+        coachIds = coach.map((id) => Number(id)).filter(Boolean);
+      } else if (typeof coach === "string") {
+        // Handles ?coach=2,5
+        coachIds = coach
+          .split(",")
+          .map((id) => Number(id.trim()))
+          .filter(Boolean);
+      }
+
+      if (coachIds.length > 0) {
+        whereBooking.coachId = { [Op.in]: coachIds };
+        console.log("🧩 Coach filter applied:", coachIds);
+      }
+    }
+
+    const hasBookingFilters = Object.keys(whereBooking).length > 0;
+
     const leads = await BirthdayPartyLead.findAll({
       where: {
         ...whereLead,
@@ -767,12 +822,19 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
         {
           model: BirthdayPartyBooking,
           as: "booking",
-          required: !!type, // still only strict join when filtering by type
-          where: !!type
-            ? {
-              ...(Object.keys(whereBooking).length ? whereBooking : {}),
-            }
-            : undefined, // <- important: no where when no type, keeps LEFT JOIN
+
+          // JOIN LOGIC
+          required: type ? true : hasBookingFilters,
+
+          // WHERE LOGIC
+          where:
+            type || hasBookingFilters
+              ? {
+                ...(type ? { type: { [Op.eq]: type.toLowerCase() } } : {}),
+                ...whereBooking,
+              }
+              : undefined,
+
           include: [
             {
               model: BirthdayPartyStudent,
@@ -786,7 +848,8 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
             { model: PaymentPlan, as: "paymentPlan" },
             { model: Admin, as: "coach" },
           ],
-        },
+        }
+
       ],
     });
 
@@ -1018,11 +1081,76 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
       topSalesAgent,
     });
 
+    // ✅ Agent List (super admin + managed admins)
+    let agentList = [];
+    if (superAdminId === adminId) {
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id", "firstName", "lastName", "email"],
+      });
+      agentList = managedAdmins.map((a) => ({
+        id: a.id,
+        name: `${a.firstName || ""} ${a.lastName || ""}`.trim() || a.email,
+      }));
+
+      const superAdmin = await Admin.findByPk(superAdminId, {
+        attributes: ["id", "firstName", "lastName", "email"],
+      });
+      if (superAdmin) {
+        agentList.unshift({
+          id: superAdmin.id,
+          name:
+            `${superAdmin.firstName || ""} ${superAdmin.lastName || ""
+              }`.trim() || superAdmin.email,
+        });
+      }
+    } else {
+      const admin = await Admin.findByPk(adminId, {
+        attributes: ["id", "firstName", "lastName", "email"],
+      });
+      if (admin) {
+        agentList.push({
+          id: admin.id,
+          name:
+            `${admin.firstName || ""} ${admin.lastName || ""}`.trim() ||
+            admin.email,
+        });
+      }
+    }
+
+    // ✅ Coach List (from all bookings)
+    const coachIds = [
+      ...new Set(
+        formattedData.map((lead) => lead.booking?.coachId).filter(Boolean)
+      ),
+    ];
+
+    let coachList = [];
+    if (coachIds.length) {
+      const coaches = await Admin.findAll({
+        where: { id: { [Op.in]: coachIds } },
+        attributes: ["id", "firstName", "lastName", "email"],
+      });
+      coachList = coaches.map((c) => ({
+        id: c.id,
+        name: `${c.firstName || ""} ${c.lastName || ""}`.trim() || c.email,
+      }));
+    }
+
+    // ✅ Address List (from all bookings)
+    const addressListRaw = formattedData
+      .map((lead) => lead?.booking?.address)
+      .filter((addr) => addr && addr !== "");
+
+    const uniqueAddress = [...new Set(addressListRaw)];
+
+    const allAddress = uniqueAddress.map((a) => ({ address: a }));
+
     // ✅ Final Response
-    if (!filteredLeads.length) {
+    if (!formattedData.length) {
       return {
         status: true,
-        message: "No leads found for the selected filters.",
+        message: "No birthday party leads found for the selected filters.",
         summary: {
           totalLeads,
           newLeads,
@@ -1030,12 +1158,16 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
           sourceOfBookings: sourceCount,
           topSalesAgent,
         },
+        agentList,
+        coachList,
+        allAddress,
+        data: [],
       };
     }
 
     return {
       status: true,
-      message: "Fetched One-to-One leads successfully.",
+      message: "Fetched Birthday Party leads successfully.",
       summary: {
         totalLeads,
         newLeads,
@@ -1043,6 +1175,9 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
         sourceOfBookings: sourceCount,
         topSalesAgent,
       },
+      agentList,
+      coachList,
+      allAddress,
       data: formattedData,
     };
   } catch (error) {

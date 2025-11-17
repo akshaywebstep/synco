@@ -237,7 +237,8 @@ exports.getAllBirthdayPartyLeadsSales = async (req, res) => {
 // ✅ Get Sales and Leads
 exports.getAllBirthdayPartyLeadsSalesAll = async (req, res) => {
   const adminId = req.admin?.id;
-  if (DEBUG) console.log("📥 Fetching all One-to-One leads...");
+  if (DEBUG) console.log("📥 Fetching all Birthday Party leads...");
+
   try {
     if (!adminId) {
       return res.status(401).json({
@@ -246,10 +247,11 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (req, res) => {
       });
     }
 
-    // ✅ Identify super admin
+    // Identify super admin
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
     const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
 
+    // Collect filters
     const filters = {
       fromDate: req.query.fromDate,
       toDate: req.query.toDate,
@@ -257,9 +259,13 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (req, res) => {
       studentName: req.query.studentName,
       packageInterest: req.query.packageInterest,
       partyDate: req.query.partyDate,
+      source: req.query.source,
+      agent: req.query.agent,
+      coach: req.query.coach,
+      address: req.query.address,
     };
 
-    // ✅ Fetch data (pass both admin and superAdmin)
+    // Get data from service
     const result = await birthdayPartyLeadService.getAllBirthdayPartyLeadsSalesAll(
       superAdminId,
       adminId,
@@ -267,11 +273,10 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (req, res) => {
     );
 
     if (!result.status) {
-      if (DEBUG) console.log("⚠️ Fetch failed:", result.message);
       await logActivity(req, PANEL, MODULE, "list", result, false);
       return res.status(500).json({
         status: false,
-        message: result.message || "Failed to fetch leads.",
+        message: result.message || "Failed to fetch birthday party leads.",
       });
     }
 
@@ -281,8 +286,7 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (req, res) => {
       MODULE,
       "list",
       {
-        oneLineMessage: `Fetched ${result.data?.length || 0
-          } Birthday Party leads for admin ${adminId}.`,
+        oneLineMessage: `Fetched ${result.data?.length || 0} Birthday Party leads for admin ${adminId}.`,
       },
       true
     );
@@ -291,10 +295,13 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (req, res) => {
       status: true,
       message: "Fetched Birthday Party leads successfully.",
       summary: result.summary,
+      agentList: result.agentList,
+      coachList: result.coachList,
+      allAddress: result.allAddress,
       data: result.data,
     });
   } catch (error) {
-    console.error("❌ Server error (getAllBirthdayPartyLeads):", error);
+    console.error("❌ Server error (getAllBirthdayPartyLeadsSalesAll):", error);
 
     await logActivity(
       req,
@@ -304,9 +311,10 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (req, res) => {
       { oneLineMessage: error.message },
       false
     );
+
     return res.status(500).json({
       status: false,
-      message: "Server error while fetching leads.",
+      message: "Server error while fetching Birthday Party leads.",
       error: DEBUG ? error.message : undefined,
     });
   }
