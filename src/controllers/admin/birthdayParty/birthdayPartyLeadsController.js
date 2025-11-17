@@ -393,6 +393,7 @@ exports.updateBirthdayPartyLeadById = async (req, res) => {
     // ✅ Call service to update lead
     const updateResult = await birthdayPartyLeadService.updateBirthdayPartyLeadById(
       id,
+      req.admin?.superAdminId || null,
       adminId,
       updateData
     );
