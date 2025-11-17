@@ -545,7 +545,7 @@ exports.sendEmailToFirstParentWithBooking = async (req, res) => {
     }
 
     // ✅ Step 4: Handle success result
-    console.log(`✅ Successfully sent ${result.totalSent} emails.`);
+    console.log(`✅ Successfully sent emails.`);
     if (result.sentTo?.length) {
       console.log("📧 Emails sent to:", result.sentTo);
     }

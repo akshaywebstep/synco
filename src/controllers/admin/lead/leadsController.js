@@ -723,8 +723,13 @@ exports.getAllLeads = async (req, res) => {
   }
 };
 exports.getLeadandBookingDatabyLeadId = async (req, res) => {
+  const adminId = req.admin?.id;
+
   try {
     const { leadId } = req.params;
+
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
     if (!leadId) {
       return res.status(400).json({
@@ -733,7 +738,12 @@ exports.getLeadandBookingDatabyLeadId = async (req, res) => {
       });
     }
 
-    const result = await LeadService.getLeadandBookingDatabyLeadId(leadId);
+    // ✔ Correct function call
+    const result = await LeadService.getLeadandBookingDatabyLeadId(
+      leadId,
+      superAdminId,
+      adminId
+    );
 
     if (!result.status) {
       await logActivity(req, PANEL, MODULE, "read", result, false);
@@ -752,14 +762,8 @@ exports.getLeadandBookingDatabyLeadId = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ getLeadandBookingDatabyLeadId Controller Error:", error);
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "read",
-      { error: error.message },
-      false
-    );
+
+    await logActivity(req, PANEL, MODULE, "read", { error: error.message }, false);
 
     return res.status(500).json({
       status: false,

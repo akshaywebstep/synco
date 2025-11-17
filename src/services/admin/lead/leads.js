@@ -2230,7 +2230,7 @@ exports.getAllLeads = async (adminId, superAdminId, filters = {}) => {
   }
 };
 
-exports.getLeadandBookingDatabyLeadId = async (leadId) => {
+exports.getLeadandBookingDatabyLeadId = async (leadId, superAdminId, adminId) => {
   try {
     if (!leadId || isNaN(Number(leadId))) {
       return {
@@ -2240,7 +2240,26 @@ exports.getLeadandBookingDatabyLeadId = async (leadId) => {
       };
     }
 
-    // ✅ Fetch a single lead with full booking hierarchy
+    // ----------------------------------------------------
+    // 🔐 ALLOWED ADMINS FIXED
+    // ----------------------------------------------------
+    let allowedAdminIds = [adminId];
+
+    if (superAdminId && superAdminId === adminId) {
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id"],
+      });
+
+      allowedAdminIds = [
+        superAdminId,
+        ...managedAdmins.map(a => a.id),
+      ];
+    }
+
+    // ----------------------------------------------------
+    // 📌 Fetch Lead and related bookings
+    // ----------------------------------------------------
     const lead = await Lead.findOne({
       where: { id: Number(leadId) },
       include: [
@@ -2258,37 +2277,9 @@ exports.getLeadandBookingDatabyLeadId = async (leadId) => {
             {
               model: BookingStudentMeta,
               as: "students",
-              attributes: [
-                "studentFirstName",
-                "studentLastName",
-                "dateOfBirth",
-                "age",
-                "gender",
-                "medicalInformation",
-              ],
               include: [
-                {
-                  model: BookingParentMeta,
-                  as: "parents",
-                  attributes: [
-                    "parentFirstName",
-                    "parentLastName",
-                    "parentEmail",
-                    "parentPhoneNumber",
-                    "relationToChild",
-                    "howDidYouHear",
-                  ],
-                },
-                {
-                  model: BookingEmergencyMeta,
-                  as: "emergencyContacts",
-                  attributes: [
-                    "emergencyFirstName",
-                    "emergencyLastName",
-                    "emergencyPhoneNumber",
-                    "emergencyRelation",
-                  ],
-                },
+                { model: BookingParentMeta, as: "parents" },
+                { model: BookingEmergencyMeta, as: "emergencyContacts" },
               ],
             },
           ],
@@ -2297,21 +2288,21 @@ exports.getLeadandBookingDatabyLeadId = async (leadId) => {
     });
 
     if (!lead) {
-      return {
-        status: false,
-        message: "Lead not found.",
-        data: [],
-      };
+      return { status: false, message: "Lead not found.", data: [] };
     }
 
-    // ✅ Optional: Get nearest venues
-    let nearestVenues = [];
+    // ----------------------------------------------------
+    // 🏫 VENUES with access control
+    // ----------------------------------------------------
     const allVenuesList = await Venue.findAll({
-      where: { createdBy: { [Op.in]: allowedAdminIds } }
+      where: { createdBy: { [Op.in]: allowedAdminIds } },
     });
+
+    let nearestVenues = [];
 
     if (lead.postcode && allVenuesList.length > 0) {
       const coords = await getCoordinatesFromPostcode(lead.postcode);
+
       if (coords) {
         nearestVenues = await Promise.all(
           allVenuesList
@@ -2329,58 +2320,44 @@ exports.getLeadandBookingDatabyLeadId = async (leadId) => {
             .sort((a, b) => a.distance - b.distance)
             .slice(0, 5)
             .map(async (venue) => {
-
-              // Debug: show the id you're looking for
-              console.log("Searching termGroupId:", venue.termGroupId[0]);
-
-              // Get all terms that use this termGroupId
               const allTerms = await Term.findAll({
-                where: { createdBy: { [Op.in]: allowedAdminIds } }
+                where: { createdBy: { [Op.in]: allowedAdminIds } },
               });
-
-              console.log("Terms found:", allTerms.map(t => t.dataValues));
 
               const classSchedules = await ClassSchedule.findAll({
-                where: { venueId: venue.id }
-
+                where: { venueId: venue.id },
               });
-              // 1️⃣ Get the Payment Group for this venue
+
               const paymentGroup = await PaymentGroup.findOne({
-                where: { id: venue.paymentGroupId }
+                where: { id: venue.paymentGroupId },
               });
 
-              // 2️⃣ Get the Plan IDs from the pivot table
               const groupPlanLinks = await PaymentGroupHasPlan.findAll({
                 where: { payment_group_id: venue.paymentGroupId },
-                attributes: ['payment_plan_id'] // only return needed column
+                attributes: ["payment_plan_id"],
               });
 
-              // 3️⃣ Extract the plan IDs
-              const planIds = groupPlanLinks.map(link => link.payment_plan_id);
+              const planIds = groupPlanLinks.map((l) => l.payment_plan_id);
 
-              // 4️⃣ Fetch only those payment plans
               const paymentPlans = await PaymentPlan.findAll({
-                where: { id: planIds }
+                where: { id: planIds },
               });
+
               return {
                 ...venue,
-                classSchedules: classSchedules.map((cs) => cs.dataValues),
-                terms: allTerms.map(t => t.dataValues),   // return terms here
-                // Attach payment info
+                classSchedules: classSchedules.map((c) => c.dataValues),
+                terms: allTerms.map((t) => t.dataValues),
                 paymentGroup: paymentGroup ? paymentGroup.dataValues : null,
-
-                paymentPlans: paymentPlans.map(pp => pp.dataValues),
+                paymentPlans: paymentPlans.map((p) => p.dataValues),
               };
             })
         );
       }
     }
 
-    // ✅ Response
     return {
       status: true,
-      message:
-        "Lead with full booking data and nearest venues retrieved successfully.",
+      message: "Lead with full booking data and nearest venues retrieved successfully.",
       data: {
         ...lead.dataValues,
         nearestVenues,

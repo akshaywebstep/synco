@@ -2279,7 +2279,7 @@ exports.sendEmailToFirstParentWithBooking = async (leadIds = []) => {
               as: "students",
               include: [{ model: BirthdayPartyParent, as: "parentDetails" }],
             },
-            { model: OneToOnePayment, as: "payment" },
+            { model: BirthdayPartyPayment, as: "payment" },
           ],
         },
       ],
