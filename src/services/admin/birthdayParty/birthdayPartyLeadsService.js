@@ -1388,12 +1388,19 @@ exports.getBirthdayPartyLeadsById = async (id, adminId, superAdminId) => {
   }
 };
 
-exports.updateBirthdayPartyLeadById = async (id, adminId, updateData) => {
+exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateData) => {
   const t = await sequelize.transaction();
   try {
-    // Step 1: Fetch lead + booking
+    console.log("🎉 Fetching Birthday Party Lead ID:", id);
+
     const lead = await BirthdayPartyLead.findOne({
-      where: { id, createdBy: adminId },
+      where: {
+        id,
+        [Op.or]: [
+          { createdBy: adminId },
+          { createdBy: superAdminId }
+        ]
+      },
       include: [
         {
           model: BirthdayPartyBooking,
@@ -1414,57 +1421,56 @@ exports.updateBirthdayPartyLeadById = async (id, adminId, updateData) => {
     });
 
     if (!lead) {
+      console.log("⚠️ Lead not found or unauthorized");
       await t.rollback();
-      return { status: false, message: "Lead not found or unauthorized." };
+      return { status: false, message: "Birthday Party lead not found or unauthorized." };
     }
 
     const booking = lead.booking;
     if (!booking) {
+      console.log("⚠️ Booking not found");
       await t.rollback();
-      return { status: false, message: "Booking not found for this lead." };
+      return { status: false, message: "Birthday Party booking not found for this lead." };
     }
 
     // ======================================================
-    // 🧩 STUDENTS: Add new or update existing
+    // 🧒 STUDENTS
     // ======================================================
-    if (Array.isArray(updateData.student) && updateData.student.length) {
-      for (const studentData of updateData.student) {
-        if (studentData.id) {
-          // ✅ Update existing
+    if (updateData?.student && Array.isArray(updateData.student)) {
+      console.log("🔹 Updating students…");
+
+      for (const s of updateData.student) {
+        if (s.id) {
           const existingStudent = await BirthdayPartyStudent.findOne({
-            where: { id: studentData.id, BirthdayPartyBookingId: booking.id },
+            where: { id: s.id, BirthdayPartyBookingId: booking.id },
             transaction: t,
           });
+
           if (existingStudent) {
+            console.log(`🔄 Updating student #${s.id}`);
             await existingStudent.update(
               {
-                studentFirstName:
-                  studentData.studentFirstName ??
-                  existingStudent.studentFirstName,
-                studentLastName:
-                  studentData.studentLastName ??
-                  existingStudent.studentLastName,
-                dateOfBirth:
-                  studentData.dateOfBirth ?? existingStudent.dateOfBirth,
-                age: studentData.age ?? existingStudent.age,
-                gender: studentData.gender ?? existingStudent.gender,
-                medicalInfo:
-                  studentData.medicalInfo ?? existingStudent.medicalInfo,
+                studentFirstName: s.studentFirstName ?? existingStudent.studentFirstName,
+                studentLastName: s.studentLastName ?? existingStudent.studentLastName,
+                dateOfBirth: s.dateOfBirth ?? existingStudent.dateOfBirth,
+                age: s.age ?? existingStudent.age,
+                gender: s.gender ?? existingStudent.gender,
+                medicalInfo: s.medicalInfo ?? existingStudent.medicalInfo,
               },
               { transaction: t }
             );
           }
         } else {
-          // ✅ Create new student
+          console.log("➕ Creating new student…");
           await BirthdayPartyStudent.create(
             {
-              birthdayPartyBookingId: booking.id,
-              studentFirstName: studentData.studentFirstName,
-              studentLastName: studentData.studentLastName,
-              dateOfBirth: studentData.dateOfBirth,
-              age: studentData.age,
-              gender: studentData.gender,
-              medicalInfo: studentData.medicalInfo,
+              BirthdayPartyBookingId: booking.id,
+              studentFirstName: s.studentFirstName,
+              studentLastName: s.studentLastName,
+              dateOfBirth: s.dateOfBirth,
+              age: s.age,
+              gender: s.gender,
+              medicalInfo: s.medicalInfo,
             },
             { transaction: t }
           );
@@ -1473,49 +1479,43 @@ exports.updateBirthdayPartyLeadById = async (id, adminId, updateData) => {
     }
 
     // ======================================================
-    // 👨‍👩‍👧 PARENTS: Add new or update existing
+    // 👨‍👩‍👧 PARENTS
     // ======================================================
-    if (
-      Array.isArray(updateData.parentDetails) &&
-      updateData.parentDetails.length
-    ) {
-      for (const parentData of updateData.parentDetails) {
-        if (parentData.id) {
-          // ✅ Update existing parent
+    if (updateData?.parentDetails && Array.isArray(updateData.parentDetails)) {
+      console.log("🔹 Updating parent details…");
+
+      for (const p of updateData.parentDetails) {
+        if (p.id) {
           const existingParent = await BirthdayPartyParent.findOne({
-            where: { id: parentData.id },
+            where: { id: p.id },
             transaction: t,
           });
 
           if (existingParent) {
+            console.log(`🔄 Updating parent #${p.id}`);
             await existingParent.update(
               {
-                parentFirstName:
-                  parentData.parentFirstName ?? existingParent.parentFirstName,
-                parentLastName:
-                  parentData.parentLastName ?? existingParent.parentLastName,
-                parentEmail:
-                  parentData.parentEmail ?? existingParent.parentEmail,
-                phoneNumber:
-                  parentData.phoneNumber ?? existingParent.phoneNumber,
-                relationChild:
-                  parentData.relationChild ?? existingParent.relationChild,
-                howDidHear: parentData.howDidHear ?? existingParent.howDidHear,
+                parentFirstName: p.parentFirstName ?? existingParent.parentFirstName,
+                parentLastName: p.parentLastName ?? existingParent.parentLastName,
+                parentEmail: p.parentEmail ?? existingParent.parentEmail,
+                phoneNumber: p.phoneNumber ?? existingParent.phoneNumber,
+                relationChild: p.relationChild ?? existingParent.relationChild,
+                howDidHear: p.howDidHear ?? existingParent.howDidHear,
               },
               { transaction: t }
             );
           }
-        } else if (parentData.oneToOneStudentId) {
-          // ✅ Add new parent for a student
+        } else if (p.studentId) {
+          console.log("➕ Creating new parent…");
           await BirthdayPartyParent.create(
             {
-              birthdayPartyStudentId: parentData.oneToOneStudentId,
-              parentFirstName: parentData.parentFirstName,
-              parentLastName: parentData.parentLastName,
-              parentEmail: parentData.parentEmail,
-              phoneNumber: parentData.phoneNumber,
-              relationChild: parentData.relationChild,
-              howDidHear: parentData.howDidHear,
+              studentId: p.studentId,
+              parentFirstName: p.parentFirstName,
+              parentLastName: p.parentLastName,
+              parentEmail: p.parentEmail,
+              phoneNumber: p.phoneNumber,
+              relationChild: p.relationChild,
+              howDidHear: p.howDidHear,
             },
             { transaction: t }
           );
@@ -1524,9 +1524,9 @@ exports.updateBirthdayPartyLeadById = async (id, adminId, updateData) => {
     }
 
     // ======================================================
-    // 🚨 EMERGENCY DETAILS: Update only
+    // 🚨 EMERGENCY DETAILS
     // ======================================================
-    if (updateData.emergencyDetails && updateData.emergencyDetails.id) {
+    if (updateData?.emergencyDetails && updateData.emergencyDetails.id) {
       const e = updateData.emergencyDetails;
 
       const existingEmergency = await BirthdayPartyEmergency.findOne({
@@ -1535,12 +1535,11 @@ exports.updateBirthdayPartyLeadById = async (id, adminId, updateData) => {
       });
 
       if (existingEmergency) {
+        console.log(`🔄 Updating emergency contact #${e.id}`);
         await existingEmergency.update(
           {
-            emergencyFirstName:
-              e.emergencyFirstName ?? existingEmergency.emergencyFirstName,
-            emergencyLastName:
-              e.emergencyLastName ?? existingEmergency.emergencyLastName,
+            emergencyFirstName: e.emergencyFirstName ?? existingEmergency.emergencyFirstName,
+            emergencyLastName: e.emergencyLastName ?? existingEmergency.emergencyLastName,
             phoneNumber: e.phoneNumber ?? existingEmergency.phoneNumber,
             relationChild: e.relationChild ?? existingEmergency.relationChild,
           },
@@ -1549,19 +1548,19 @@ exports.updateBirthdayPartyLeadById = async (id, adminId, updateData) => {
       }
     }
 
-    // ✅ Commit
+    // ======================================================
+    // ✔ Commit
+    // ======================================================
     await t.commit();
+    console.log("✅ Birthday Party lead updated successfully");
 
-    // ✅ Return updated full data
-    const refreshed = await exports.getBirthdayPartyLeadsById(id, adminId);
     return {
       status: true,
-      message: "Lead updated successfully.",
-      data: refreshed.data,
+      message: "Birthday Party lead updated successfully.",
     };
   } catch (error) {
     await t.rollback();
-    console.error("❌ Error updating one-to-one lead:", error);
+    console.error("❌ Error updating Birthday Party lead:", error);
     return { status: false, message: error.message };
   }
 };
