@@ -61,12 +61,17 @@ const BirthdayPartyBooking = sequelize.define(
       comment: "Full address of the birthday party venue",
     },
 
-    date: {
-      type: DataTypes.DATEONLY,
-      allowNull: false,
-      comment: "Party date",
-    },
+    // date: {
+    //   type: DataTypes.DATEONLY,
+    //   allowNull: false,
+    //   comment: "Party date",
+    // },
 
+    date: {
+      type: DataTypes.DATE,   // <— stores date + time
+      allowNull: false,
+      comment: "Party date & time",
+    },
     time: {
       type: DataTypes.STRING,
       allowNull: false,
