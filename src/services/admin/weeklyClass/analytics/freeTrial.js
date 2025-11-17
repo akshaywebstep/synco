@@ -15,6 +15,8 @@ const {
     Admin,
 } = require("../../../../models");
 
+const usedVenues = new Map();
+
 // Helper functions
 function countFreeTrials(bookings) {
     return bookings.reduce((sum, b) => {
@@ -77,6 +79,86 @@ function calcPercentageDiff(currentStats, lastStats, isYear = false) {
         color: diff >= 0 ? "green" : "red",
         message: diff >= 0 ? `Increased by ${Math.abs(diff.toFixed(2))}%` : `Decreased by ${Math.abs(diff.toFixed(2))}%`,
         ...(isYear ? { currentYearStats: currentStats, lastYearStats: lastStats } : { currentMonthStats: currentStats, lastMonthStats: lastStats })
+    };
+}
+
+function facebookPerformance(bookings) {
+    if (!bookings || bookings.length === 0) {
+        return {
+            leadsGenerated: 0,
+            trialsBooked: 0,
+            trialsAttended: 0,
+            membershipsSold: 0,
+            conversionRate: 0,
+        };
+    }
+
+    const fb = bookings.filter(
+        b => b.lead?.status?.toLowerCase() === "facebook"
+    );
+
+    const leadsGenerated = fb.length;
+
+    const trialsBooked = fb.filter(
+        b => b.type === "free" || b.trialDate !== null
+    ).length;
+
+    const trialsAttended = fb.reduce((sum, b) => {
+        if (!b.students) return sum;
+        return sum + b.students.filter(s => s.attendance === "attended").length;
+    }, 0);
+
+    // Memberships sold (booking.status === "active")
+    const membershipsSold = fb.filter(
+        b => b.status?.toLowerCase() === "active"
+    ).length;
+
+    const conversionRate =
+        leadsGenerated > 0
+            ? Number(((membershipsSold / leadsGenerated) * 100).toFixed(2))
+            : 0;
+
+    return {
+        leadsGenerated,
+        trialsBooked,
+        trialsAttended,
+        membershipsSold,
+        conversionRate
+    };
+}
+
+function calcFacebookDiff(current, last, isYear = false) {
+
+    // Handles missing or empty
+    if (!current) current = { leadsGenerated: 0, trialsBooked: 0, trialsAttended: 0, membershipsSold: 0, conversionRate: 0 };
+    if (!last) last = { leadsGenerated: 0, trialsBooked: 0, trialsAttended: 0, membershipsSold: 0, conversionRate: 0 };
+
+    const currentTotal = current.leadsGenerated ?? 0;
+    const lastTotal = last.leadsGenerated ?? 0;
+
+    if (currentTotal === 0 && lastTotal === 0) {
+        return {
+            percent: 0,
+            color: "gray",
+            message: "No change",
+            ...(isYear
+                ? { currentYearStats: current, lastYearStats: last }
+                : { currentMonthStats: current, lastMonthStats: last }
+            ),
+        };
+    }
+
+    const diff = ((currentTotal - lastTotal) / (lastTotal || 1)) * 100;
+
+    return {
+        percent: Math.abs(diff.toFixed(2)),
+        color: diff >= 0 ? "green" : "red",
+        message: diff >= 0 ? `Increased by ${Math.abs(diff.toFixed(2))}%`
+            : `Decreased by ${Math.abs(diff.toFixed(2))}%`,
+        ...(isYear
+            ? { currentYearStats: current, lastYearStats: last }
+            : { currentMonthStats: current, lastMonthStats: last }
+        ),
     };
 }
 
@@ -193,6 +275,11 @@ function groupBookingsByYearMonth(bookings, filter) {
                 valid = ((b.classSchedule?.venue?.name || "").toLowerCase() === search);
             }
 
+            // Venue ID filter
+            if (valid && filter.venueId) {
+                valid = Number(b.classSchedule?.venue?.id) === Number(filter.venueId);
+            }
+
             // PaymentPlan filter
             if (valid && filter.paymentPlan?.interval?.trim() && filter.paymentPlan.duration > 0) {
                 const searchInterval = filter.paymentPlan.interval.trim().toLowerCase();
@@ -222,6 +309,37 @@ function groupBookingsByYearMonth(bookings, filter) {
                 const gender = (s.gender || "other").toLowerCase();
                 enrolledStudents.byGender[gender] = (enrolledStudents.byGender[gender] || 0) + 1;
             });
+
+            // Age filter
+            if (valid && filter.age) {
+                if (filter.age === "under18") {
+                    valid = b.students?.some(s => Number(s.age) < 18);
+                } else if (filter.age === "18-25") {
+                    valid = b.students?.some(s => Number(s.age) >= 18 && Number(s.age) <= 25);
+                } else if (filter.age === "allAges") {
+                    valid = true;
+                }
+            }
+
+            // Period filter
+            if (valid && filter.period) {
+                const now = moment();
+                if (filter.period === "thisMonth") {
+                    valid = moment(b.createdAt).isSame(now, "month");
+                } else if (filter.period === "thisQuarter") {
+                    valid = moment(b.createdAt).quarter() === now.quarter();
+                } else if (filter.period === "thisYear") {
+                    valid = moment(b.createdAt).isSame(now, "year");
+                }
+            }
+
+            if (valid) filteredBookings.push(b);
+
+            // Collect venue if it exists
+            const venue = b.classSchedule?.venue;
+            if (venue && venue.id) {
+                usedVenues.set(venue.id, { id: venue.id, name: venue.name });
+            }
 
             // Agents
             const admin = b.bookedByAdmin;
@@ -261,8 +379,10 @@ function groupBookingsByYearMonth(bookings, filter) {
         const agentSummary = Object.values(agents).sort((a, b) => b.freeTrialTrend.freeTrialsCount - a.freeTrialTrend.freeTrialsCount);
 
         if (!grouped[yearKey]) grouped[yearKey] = { monthlyGrouped: {} };
+        const fbPerformance = facebookPerformance(monthBookings);
 
-        grouped[yearKey].monthlyGrouped[monthKey] = { bookings: filteredBookings, freeTrialTrend, agentSummary, enrolledStudents, paymentPlansTrend, marketingChannelPerformance };
+        // grouped[yearKey].monthlyGrouped[monthKey] = { bookings: filteredBookings, freeTrialTrend, agentSummary, enrolledStudents, paymentPlansTrend, marketingChannelPerformance };
+        grouped[yearKey].monthlyGrouped[monthKey] = { bookings: filteredBookings, freeTrialTrend, agentSummary, enrolledStudents, paymentPlansTrend, marketingChannelPerformance, facebookPerformance: fbPerformance };
 
         current.add(1, "month");
     }
@@ -274,6 +394,7 @@ function groupBookingsByYearMonth(bookings, filter) {
             const monthData = grouped[yearKey].monthlyGrouped[monthKey];
             if (i === 0) {
                 monthData.freeTrialTrend = calcPercentageDiff(monthData.freeTrialTrend, null);
+                monthData.facebookPerformance = calcFacebookDiff(monthData.facebookPerformance, null);
                 monthData.agentSummary = monthData.agentSummary.map(agent => {
                     const { freeTrialTrend, ...rest } = agent;
                     return { ...rest, freeTrialTrend: calcPercentageDiff(freeTrialTrend, null) };
@@ -281,6 +402,11 @@ function groupBookingsByYearMonth(bookings, filter) {
             } else {
                 const lastMonthKey = months[i - 1];
                 const lastMonthData = grouped[yearKey].monthlyGrouped[lastMonthKey];
+
+                monthData.facebookPerformance = calcFacebookDiff(
+                    monthData.facebookPerformance,
+                    lastMonthData.facebookPerformance
+                );
 
                 monthData.freeTrialTrend = calcPercentageDiff(monthData.freeTrialTrend, lastMonthData.freeTrialTrend);
                 monthData.agentSummary = monthData.agentSummary.map(agent => {
@@ -295,7 +421,13 @@ function groupBookingsByYearMonth(bookings, filter) {
         const yearTotal = { freeTrialsCount: 0, attendedCount: 0, attendanceRate: 0, trialToMemberCount: 0, conversionRate: 0, rebookCount: 0 };
         const lastYearTotal = grouped[String(Number(yearKey) - 1)]?.yearlyTotal || null;
         const yearlyMarketingPerformance = {};
-
+        const yearlyFacebook = {
+            leadsGenerated: 0,
+            trialsBooked: 0,
+            trialsAttended: 0,
+            membershipsSold: 0,
+            conversionRate: 0
+        };
         Object.values(grouped[yearKey].monthlyGrouped).forEach(m => {
             const monthStats = m.freeTrialTrend.currentMonthStats;
 
@@ -307,6 +439,17 @@ function groupBookingsByYearMonth(bookings, filter) {
             yearTotal.conversionRate += monthStats.conversionRate;
             yearTotal.rebookCount += monthStats.rebookCount;
 
+            const fb = m.facebookPerformance.currentMonthStats;
+
+            yearlyFacebook.leadsGenerated += fb.leadsGenerated;
+            yearlyFacebook.trialsBooked += fb.trialsBooked;
+            yearlyFacebook.trialsAttended += fb.trialsAttended;
+            yearlyFacebook.membershipsSold += fb.membershipsSold;
+            yearlyFacebook.conversionRate =
+                yearlyFacebook.leadsGenerated > 0
+                    ? Number(((yearlyFacebook.membershipsSold / yearlyFacebook.leadsGenerated) * 100).toFixed(2))
+                    : 0;
+
             // ✅ Combine marketing channel performance across months
             const monthlyMarketing = m.marketingChannelPerformance || {};
             Object.entries(monthlyMarketing).forEach(([channel, count]) => {
@@ -314,6 +457,11 @@ function groupBookingsByYearMonth(bookings, filter) {
                     (yearlyMarketingPerformance[channel] || 0) + count;
             });
         });
+        grouped[yearKey].facebookPerformance = calcPercentageDiff(
+            yearlyFacebook,
+            grouped[String(Number(yearKey) - 1)]?.facebookPerformance?.currentYearStats,
+            true
+        );
 
         // ✅ Store yearly marketing performance directly under the year group
         grouped[yearKey].marketingChannelPerformance = yearlyMarketingPerformance;
@@ -348,7 +496,7 @@ const getMonthlyReport = async (filters) => {
             ],
         });
 
-        const yealyGrouped = groupBookingsByYearMonth(bookings, filters);
+        const yealyGrouped = groupBookingsByYearMonth(bookings, filters, usedVenues);
 
         // Overall Sales
         const overallTrends = { freeTrialsCount: 0, attendedCount: 0, attendanceRate: 0, trialToMemberCount: 0, conversionRate: 0, rebookCount: 0 };
@@ -372,7 +520,7 @@ const getMonthlyReport = async (filters) => {
             });
         });
 
-        return { status: true, message: "Monthly class report generated successfully.", data: { yealyGrouped, overallTrends, overallMarketingPerformance } };
+        return { status: true, message: "Monthly class report generated successfully.", data: { yealyGrouped, overallTrends, overallMarketingPerformance, allVenues: Array.from(usedVenues.values()) } };
     } catch (error) {
         console.error("❌ Sequelize Error:", error);
         return { status: false, message: error?.parent?.sqlMessage || error?.message || "Error occurred while generating monthly class report." };

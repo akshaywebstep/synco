@@ -37,6 +37,7 @@ exports.createBooking = async (req, res) => {
     requiredFields: [
       "totalStudents",
       "classScheduleId",
+      "interest",
       "startDate",
       "students", // array, validate inside loop
       "parents", // array, validate inside loop

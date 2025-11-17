@@ -17,50 +17,22 @@ exports.getMonthlyReport = async (req, res) => {
             console.log("📥 Filters:", JSON.stringify(req.query, null, 2));
         }
     }
+
     try {
         // ✅ Get super admin of this admin
         const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
         const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? adminId;
 
-        // (Optional) Future filters
+        // ✅ Extract filters from query (e.g., age, period)
         const filters = req.query || {};
 
-        // ✅ Generate capacity widgets report
-        const reportResult = await capacityAnalytics.getCapacityWidgets(
-            superAdminId,
-            filters,
-            adminId
-        );
-
-        // ✅ Generate month-wise trend report
-        const monthWiseResult = await capacityAnalytics.getCapacityMonthWise(
-            superAdminId,
-            filters,
-            adminId
-        );
-
-        const getHighDemandVenue = await capacityAnalytics.getHighDemandVenue(
-            superAdminId,
-            filters,
-            adminId
-        );
-
-        const getCapacityByVenue = await capacityAnalytics.getCapacityByVenue(
-            superAdminId,
-            filters,
-            adminId
-        );
-
-        const capacityByClass = await capacityAnalytics.capacityByClass(
-            superAdminId,
-            filters,
-            adminId
-        );
-        const membershipPlans = await capacityAnalytics.membershipPlans(
-            superAdminId,
-            filters,
-            adminId
-        );
+        // --- Generate all reports ---
+        const reportResult = await capacityAnalytics.getCapacityWidgets(superAdminId, filters, adminId);
+        const monthWiseResult = await capacityAnalytics.getCapacityMonthWise(superAdminId, filters, adminId);
+        const getHighDemandVenue = await capacityAnalytics.getHighDemandVenue(superAdminId, filters, adminId);
+        const getCapacityByVenue = await capacityAnalytics.getCapacityByVenue(superAdminId, filters, adminId);
+        const capacityByClass = await capacityAnalytics.capacityByClass(superAdminId, filters, adminId);
+        const membershipPlans = await capacityAnalytics.membershipPlans(superAdminId, filters, adminId);
 
         const successMessage = "Capacity analytics report generated successfully.";
         if (DEBUG) console.log("✅", successMessage);
@@ -75,7 +47,7 @@ exports.getMonthlyReport = async (req, res) => {
             true
         );
 
-        // ✅ Combine both results into one response
+        // ✅ Return combined response
         return res.status(200).json({
             status: true,
             message: successMessage,

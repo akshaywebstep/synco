@@ -1357,6 +1357,7 @@ exports.getBirthdayPartyLeadsById = async (id, adminId, superAdminId) => {
       partyDate: leadPlain.partyDate,
       source: leadPlain.source,
       status: leadPlain.status,
+      serviceType: leadPlain.serviceType,
       createdBy: leadPlain.createdBy,
       createdAt: leadPlain.createdAt,
       updatedAt: leadPlain.updatedAt,

@@ -1,6 +1,6 @@
 const { Op, Sequelize } = require("sequelize");
 const moment = require("moment");
-const { Booking, ClassSchedule, Venue, PaymentPlan, Admin } = require("../../../../models");
+const { Booking, ClassSchedule, Venue, PaymentPlan, Admin, BookingStudentMeta } = require("../../../../models");
 
 // 🔹 Helper: Build admin filter depending on role
 async function getAdminFilter(superAdminId, adminId) {
@@ -31,46 +31,53 @@ async function getTotalCapacity(adminIds) {
 }
 
 // 🔹 Helper: total occupied spaces (confirmed/active)
-async function getOccupiedSpaces(periodStart, periodEnd, adminIds) {
-    const where = {
-        status: { [Op.in]: ["active", "not_attended", "attended", "pending"] },
-        bookedBy: { [Op.in]: adminIds },
-    };
-
-    if (periodStart && periodEnd) {
-        where.createdAt = { [Op.between]: [periodStart, periodEnd] };
-    }
-
-    return Booking.count({ where });
-}
-
-// 🔹 Helper: total revenue (from PaymentPlan)
-async function getTotalRevenue(periodStart, periodEnd, adminIds) {
-    const where = {
-        status: { [Op.in]: ["active"] },
-        bookedBy: { [Op.in]: adminIds },
-    };
-
-    if (periodStart && periodEnd) {
-        where.createdAt = { [Op.between]: [periodStart, periodEnd] };
-    }
-
-    const bookings = await Booking.findAll({
-        where,
+async function getOccupiedSpaces(periodStart, periodEnd, adminIds, filters) {
+    // Fetch bookings with single student per row
+    const bookingStudents = await BookingStudentMeta.findAll({
         include: [
             {
-                model: PaymentPlan,
-                as: "paymentPlan", // ✅ use alias if defined
-                attributes: ["price"],
+                model: Booking,
+                as: "booking",
                 required: true,
-            },
+                where: {
+                    status: { [Op.in]: ["active", "not_attended", "attended", "pending"] },
+                    bookedBy: { [Op.in]: adminIds },
+                    ...(periodStart && periodEnd
+                        ? { createdAt: { [Op.between]: [periodStart, periodEnd] } }
+                        : {})
+                },
+                attributes: ["id", "createdAt"]
+            }
         ],
+        attributes: ["id", "age", "bookingTrialId"]
     });
 
-    const totalRevenue = bookings.reduce(
-        (sum, b) => sum + (b.paymentPlan?.price || 0),
-        0
-    );
+    // Each row is already a single student
+    const filtered = bookingStudents.filter(b => applyFilters(b, filters));
+
+    return filtered.length;
+}
+
+async function getTotalRevenue(periodStart, periodEnd, adminIds, filters) {
+    const bookings = await Booking.findAll({
+        where: {
+            status: { [Op.in]: ["active"] },
+            bookedBy: { [Op.in]: adminIds },
+            ...(periodStart && periodEnd ? { createdAt: { [Op.between]: [periodStart, periodEnd] } } : {})
+        },
+        include: [
+            { model: PaymentPlan, as: "paymentPlan", attributes: ["price"], required: true },
+            { model: BookingStudentMeta, as: "students", attributes: ["age"], required: true } // one row per student
+        ]
+    });
+
+    // Flatten to individual students for filtering
+    const filteredStudents = bookings.flatMap(b =>
+        b.students.map(s => ({ ...s.get(), booking: b }))
+    ).filter(s => applyFilters(s, filters));
+
+    // Sum revenue based on filtered students
+    const totalRevenue = filteredStudents.reduce((sum, s) => sum + (s.booking.paymentPlan?.price || 0), 0);
 
     return totalRevenue;
 }
@@ -88,8 +95,8 @@ async function getCapacityMonthWise(superAdminId, filters, adminId) {
             createdBy: { [Op.in]: adminIds },
             createdAt: {
                 [Op.between]: [
-                    moment().year(prevYear).startOf("year").toDate(),
-                    moment().year(currentYear).endOf("year").toDate(),
+                    moment().startOf("month").toDate(),
+                    moment().endOf("month").toDate(),
                 ],
             },
         },
@@ -252,6 +259,43 @@ async function getCapacityByVenue(superAdminId, filters, adminId) {
     return result.sort((a, b) => b.value - a.value).slice(0, 5);
 }
 
+function applyFilters(bookingStudent, filter) {
+    let valid = true;
+
+    // Age filter
+    if (valid && filter.age) {
+        valid = bookingStudent.age != null; // only continue if age exists
+        if (valid) {
+            if (filter.age === "under18") {
+                valid = Number(bookingStudent.age) < 18;
+            } else if (filter.age === "18-25") {
+                valid = Number(bookingStudent.age) >= 18 && Number(bookingStudent.age) <= 25;
+            } else if (filter.age === "allAges") {
+                valid = true;
+            }
+        }
+    }
+
+    // Period filter
+    if (valid && filter.period) {
+        const now = moment();
+        const createdAt = bookingStudent.booking?.createdAt;
+        if (!createdAt) return false; // safeguard
+
+        const bookingDate = moment(createdAt);
+
+        if (filter.period === "thisMonth") {
+            valid = bookingDate.isSame(now, "month");
+        } else if (filter.period === "thisQuarter") {
+            valid = bookingDate.quarter() === now.quarter();
+        } else if (filter.period === "thisYear") {
+            valid = bookingDate.isSame(now, "year");
+        }
+    }
+
+    return valid;
+}
+
 // 🔹 Membership / Payment Plan Breakdown
 async function membershipPlans(superAdminId, filters, adminId) {
     // 1️⃣ Get list of admin IDs to include
@@ -347,7 +391,11 @@ async function capacityByClass(superAdminId, filters, adminId) {
         order: [[Booking.sequelize.literal("usedCount"), "DESC"]],
     });
 
-    const result = classes
+    // 2️⃣ Apply filters
+    const filteredClasses = classes.filter(c => applyFilters(c, filters));
+
+    // 3️⃣ Map to final result
+    const result = filteredClasses
         .filter(c => (c.classSchedule?.capacity || 0) > 0)
         .map((c) => {
             const capacity = c.classSchedule.capacity;
@@ -358,14 +406,14 @@ async function capacityByClass(superAdminId, filters, adminId) {
                 classScheduleId: c.classScheduleId,
                 className: c.classSchedule?.className || "N/A",
                 capacity,
-                usedCount: Number(usedCount.toFixed(3)),        // e.g. 10.234
-                percentageUsed: `${percentageUsed.toFixed(2)}%`, // e.g. "75.00%"
+                usedCount: Number(usedCount.toFixed(3)),
+                percentageUsed: `${percentageUsed.toFixed(2)}%`,
             };
         })
         .sort((a, b) => parseFloat(b.percentageUsed) - parseFloat(a.percentageUsed))
         .slice(0, 5);
 
-    return result.slice(0, 5); // top 5 classes
+    return result; // top 5 classes
 }
 
 // 🔹 Main: capacity dashboard summary
@@ -380,11 +428,13 @@ async function getCapacityWidgets(superAdminId, filters, adminId) {
 
     // --- Current period ---
     const totalCapacity = await getTotalCapacity(adminIds);
-    const occupiedCurrent = await getOccupiedSpaces(currentStart, currentEnd, adminIds);
-    const revenueCurrent = await getTotalRevenue(currentStart, currentEnd, adminIds);
+    const occupiedCurrent = await getOccupiedSpaces(currentStart, currentEnd, adminIds, filters || {});
+    const occupiedPrev = await getOccupiedSpaces(prevStart, prevEnd, adminIds, filters || {});
+
+    // const occupiedCurrent = await getOccupiedSpaces(currentStart, currentEnd, adminIds);
+    // const revenueCurrent = await getTotalRevenue(currentStart, currentEnd, adminIds);
 
     // --- Previous period ---
-    const occupiedPrev = await getOccupiedSpaces(prevStart, prevEnd, adminIds);
     const revenuePrev = await getTotalRevenue(prevStart, prevEnd, adminIds);
 
     // --- Derived metrics ---
