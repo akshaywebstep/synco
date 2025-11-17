@@ -58,7 +58,7 @@ async function getOccupiedSpaces(periodStart, periodEnd, adminIds, filters) {
     return filtered.length;
 }
 
-async function getTotalRevenue(periodStart, periodEnd, adminIds, filters) {
+async function getTotalRevenue(periodStart, periodEnd, adminIds, filters = {}) {
     const bookings = await Booking.findAll({
         where: {
             status: { [Op.in]: ["active"] },
@@ -67,16 +67,20 @@ async function getTotalRevenue(periodStart, periodEnd, adminIds, filters) {
         },
         include: [
             { model: PaymentPlan, as: "paymentPlan", attributes: ["price"], required: true },
-            { model: BookingStudentMeta, as: "students", attributes: ["age"], required: true } // one row per student
+            { model: BookingStudentMeta, as: "students", attributes: ["age"], required: false } // <--- allow no students
         ]
     });
 
-    // Flatten to individual students for filtering
+    // Flatten to individual students safely
     const filteredStudents = bookings.flatMap(b =>
-        b.students.map(s => ({ ...s.get(), booking: b }))
-    ).filter(s => applyFilters(s, filters));
+        (b.students || []).map(s => ({ ...s.get(), booking: b }))
+    ).filter(s => {
+        // safe check
+        if (!s || s.age == null) return false;
+        return applyFilters(s, filters);
+    });
 
-    // Sum revenue based on filtered students
+    // Sum revenue
     const totalRevenue = filteredStudents.reduce((sum, s) => sum + (s.booking.paymentPlan?.price || 0), 0);
 
     return totalRevenue;
