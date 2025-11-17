@@ -30,9 +30,9 @@ const BirthdayPartyLead = sequelize.define(
         },
 
         partyDate: {
-            type: DataTypes.DATEONLY,
+            type: DataTypes.DATE,   // <— date + time
             allowNull: true,
-            comment: "Planned date of the birthday party",
+            comment: "Planned date & time of the birthday party",
         },
 
         packageInterest: {
@@ -91,21 +91,21 @@ const BirthdayPartyLead = sequelize.define(
 );
 // ✅ Associations (if needed)
 BirthdayPartyLead.associate = (models) => {
-  // Example: Lead created by an admin
-  BirthdayPartyLead.belongsTo(models.Admin, {
-    foreignKey: "createdBy",
-    as: "creator",
-  });
+    // Example: Lead created by an admin
+    BirthdayPartyLead.belongsTo(models.Admin, {
+        foreignKey: "createdBy",
+        as: "creator",
+    });
 
-  BirthdayPartyLead.belongsTo(models.Admin, {
-    foreignKey: "deletedBy",
-    as: "deleter",
-  });
+    BirthdayPartyLead.belongsTo(models.Admin, {
+        foreignKey: "deletedBy",
+        as: "deleter",
+    });
 
-  BirthdayPartyLead.hasOne(models.BirthdayPartyBooking, {
-    foreignKey: "leadId",
-    as: "booking",
-  });
+    BirthdayPartyLead.hasOne(models.BirthdayPartyBooking, {
+        foreignKey: "leadId",
+        as: "booking",
+    });
 };
 
 module.exports = BirthdayPartyLead;

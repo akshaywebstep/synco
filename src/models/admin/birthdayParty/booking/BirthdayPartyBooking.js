@@ -72,8 +72,13 @@ const BirthdayPartyBooking = sequelize.define(
       allowNull: false,
       comment: "Party date & time",
     },
+    // time: {
+    //   type: DataTypes.STRING,
+    //   allowNull: false,
+    //   comment: "Start time of the party",
+    // },
     time: {
-      type: DataTypes.STRING,
+      type: DataTypes.TIME,   // <— stores ONLY time (HH:mm:ss)
       allowNull: false,
       comment: "Start time of the party",
     },

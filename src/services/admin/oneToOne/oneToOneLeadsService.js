@@ -950,8 +950,11 @@ exports.getAllOnetoOneLeadsSalesAll = async (
           as: "booking",
           required: true,
           // still only strict join when filtering by type
-          where: Object.keys(whereBooking).length ? whereBooking : undefined,
-
+          where: !!type
+            ? {
+              ...(Object.keys(whereBooking).length ? whereBooking : {}),
+            }
+            : undefined, // <- important: no where when no type, keeps LEFT JOIN
           include: [
             {
               model: OneToOneStudent,

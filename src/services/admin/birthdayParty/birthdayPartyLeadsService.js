@@ -1219,6 +1219,7 @@ exports.getBirthdayPartyLeadsById = async (id, adminId, superAdminId) => {
       childName: leadPlain.childName,
       age: leadPlain.age,
       packageInterest: leadPlain.packageInterest,
+      partyDate: leadPlain.partyDate,
       source: leadPlain.source,
       status: leadPlain.status,
       createdBy: leadPlain.createdBy,
@@ -2123,78 +2124,78 @@ exports.getAllBirthdayPartyAnalytics = async (
 
 exports.sendEmailToFirstParentWithBooking = async (leadIds = []) => {
   try {
+    console.log("📥 Received leadIds:", leadIds);
+
     if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
+      console.log("❌ No leadIds provided");
       return { status: false, message: "Please provide at least one leadId." };
     }
 
-    // 🧩 Fetch only the leads with the selected IDs that have at least one booking
+    // Fetch leads with bookings
     const leadsWithBooking = await BirthdayPartyLead.findAll({
       where: { id: leadIds },
       include: [
         {
           model: BirthdayPartyBooking,
           as: "booking",
-          required: true, // ensures only leads with booking are returned
+          required: true,
           include: [
             {
               model: BirthdayPartyStudent,
               as: "students",
               include: [{ model: BirthdayPartyParent, as: "parentDetails" }],
             },
-            { model: BirthdayPartyPayment, as: "payment" },
+            { model: OneToOnePayment, as: "payment" },
           ],
         },
       ],
     });
 
+    console.log("📦 Leads with booking fetched:", leadsWithBooking.length);
+
     if (!leadsWithBooking.length) {
-      return {
-        status: false,
-        message: "No matching leads found with active bookings.",
-      };
+      return { status: false, message: "No matching leads found with active bookings." };
     }
 
-    // ⚙️ Email configuration
-    const emailConfigResult = await getEmailConfig(
-      "admin",
-      "birthday-party-booking-sendEmail"
-    );
+    // Email configuration
+    const emailConfigResult = await getEmailConfig("admin", "one-to-one-booking-sendEmail");
     if (!emailConfigResult.status) {
+      console.log("❌ Email configuration not found");
       return { status: false, message: "Email configuration not found." };
     }
 
     const { emailConfig, htmlTemplate, subject } = emailConfigResult;
+    console.log("✅ Email configuration fetched");
 
     let totalSent = 0;
     const sentTo = [];
     const skipped = [];
     const errors = [];
 
-    // 🧭 Process each selected lead
     for (const lead of leadsWithBooking) {
+      console.log(`\n🔹 Processing leadId=${lead.id}`);
       try {
         const booking = lead.booking;
+
         if (!booking || !booking.students || booking.students.length === 0) {
-          skipped.push({
-            leadId: lead.id,
-            reason: "No students found in booking.",
-          });
+          skipped.push({ leadId: lead.id, reason: "No students found in booking" });
+          console.log("⏭ Skipped: No students found in booking");
           continue;
         }
 
-        // 👨‍👩‍👧 Get the first parent from the first student (only one email per booking)
+        // Get the first student and parent
         const firstStudent = booking.students[0];
-        const firstParent = firstStudent.parentDetails;
+        const firstParent = firstStudent.parentDetails?.[0] || firstStudent.parent || null;
+        const parentEmail = firstParent?.parentEmail || firstParent?.email;
 
-        if (!firstParent || !firstParent.parentEmail) {
-          skipped.push({
-            leadId: lead.id,
-            reason: "No valid parent email found.",
-          });
+        if (!firstParent || !parentEmail) {
+          skipped.push({ leadId: lead.id, reason: "No valid parent email" });
+          console.log("⏭ Skipped: No valid parent email found");
           continue;
         }
 
-        // 📅 Booking & Payment Info
+        console.log("👨‍👩‍👧 Sending to parent:", parentEmail);
+
         const bookingDate = booking.date || "TBA";
         const bookingTime = booking.time || "TBA";
         const location = booking.location || "Not specified";
@@ -2203,19 +2204,15 @@ exports.sendEmailToFirstParentWithBooking = async (leadIds = []) => {
         const paymentStatus = booking.payment?.paymentStatus || "unknown";
         const paymentAmount = booking.payment?.amount || "0.00";
 
-        // 🧒 Student Info (all students)
         const studentNames = booking.students
           .map((s) => `${s.studentFirstName} ${s.studentLastName}`)
           .join(", ");
 
-        // 🧠 Replace placeholders in email template
         const finalHtml = htmlTemplate
-          .replace(
-            /{{parentName}}/g,
-            `${firstParent.parentFirstName} ${firstParent.parentLastName}`.trim()
-          )
+          .replace(/{{parentName}}/g, `${firstParent.parentFirstName || ""} ${firstParent.parentLastName || ""}`.trim())
           .replace(/{{studentNames}}/g, studentNames)
           .replace(/{{packageName}}/g, packageName)
+          .replace(/{{location}}/g, location)
           .replace(/{{address}}/g, address)
           .replace(/{{date}}/g, bookingDate)
           .replace(/{{time}}/g, bookingTime)
@@ -2225,29 +2222,17 @@ exports.sendEmailToFirstParentWithBooking = async (leadIds = []) => {
           .replace(/{{appName}}/g, "Synco")
           .replace(/{{year}}/g, new Date().getFullYear());
 
-        const recipient = [
-          {
-            name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
-            email: firstParent.parentEmail,
-          },
-        ];
+        const recipient = [{ name: `${firstParent.parentFirstName || ""} ${firstParent.parentLastName || ""}`.trim(), email: parentEmail }];
 
-        // 📧 Send the email
-        const sendResult = await sendEmail(emailConfig, {
-          recipient,
-          subject,
-          htmlBody: finalHtml,
-        });
+        const sendResult = await sendEmail(emailConfig, { recipient, subject, htmlBody: finalHtml });
 
         if (sendResult.status) {
           totalSent++;
-          sentTo.push(firstParent.parentEmail);
+          sentTo.push(parentEmail);
+          console.log("✅ Email sent successfully");
         } else {
-          errors.push({
-            leadId: lead.id,
-            parentEmail: firstParent.parentEmail,
-            error: sendResult.message,
-          });
+          errors.push({ leadId: lead.id, parentEmail, error: sendResult.message });
+          console.log("❌ Email failed:", sendResult.message);
         }
       } catch (err) {
         console.error(`❌ Error sending email for lead ${lead.id}:`, err);
@@ -2255,15 +2240,8 @@ exports.sendEmailToFirstParentWithBooking = async (leadIds = []) => {
       }
     }
 
-    // ✅ Final Response
-    return {
-      status: true,
-      message: `Emails sent to ${totalSent} first parents successfully.`,
-      totalSent,
-      sentTo,
-      skipped,
-      errors,
-    };
+    console.log("\n📊 Summary:", { totalSent, sentTo, skipped, errors });
+    return { status: true, message: "Emails send successfully.", totalSent, sentTo, skipped, errors };
   } catch (error) {
     console.error("❌ sendEmailToFirstParentWithBooking Error:", error);
     return { status: false, message: error.message };
