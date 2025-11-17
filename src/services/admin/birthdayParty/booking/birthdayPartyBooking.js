@@ -317,7 +317,7 @@ exports.createBirthdayPartyBooking = async (data) => {
                             .replace(/{{studentFirstName}}/g, firstStudent.studentFirstName || "")
                             .replace(/{{studentLastName}}/g, firstStudent.studentLastName || "")
                             .replace(/{{studentName}}/g, `${firstStudent.studentFirstName || ""} ${firstStudent.studentLastName || ""}`)
-                            .replace(/{{address}}/g, data.address || "")
+                           .replace(/{{address}}/g, booking?.address || booking?.location || data.address || "")
                             .replace(/{{age}}/g, firstStudent.age || "")
                             .replace(/{{gender}}/g, firstStudent.gender || "")
                             .replace(/{{relationChild}}/g, firstParent.relationChild || "")
