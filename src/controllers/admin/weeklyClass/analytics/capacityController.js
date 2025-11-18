@@ -29,10 +29,13 @@ exports.getMonthlyReport = async (req, res) => {
         // --- Generate all reports ---
         const reportResult = await capacityAnalytics.getCapacityWidgets(superAdminId, filters, adminId);
         const monthWiseResult = await capacityAnalytics.getCapacityMonthWise(superAdminId, filters, adminId);
-        const getHighDemandVenue = await capacityAnalytics.getHighDemandVenue(superAdminId, filters, adminId);
-        const getCapacityByVenue = await capacityAnalytics.getCapacityByVenue(superAdminId, filters, adminId);
+        const highDemandVenue = await capacityAnalytics.getHighDemandVenue(superAdminId, filters, adminId);
+        const capacityByVenue = await capacityAnalytics.getCapacityByVenue(superAdminId, filters, adminId);
         const capacityByClass = await capacityAnalytics.capacityByClass(superAdminId, filters, adminId);
         const membershipPlans = await capacityAnalytics.membershipPlans(superAdminId, filters, adminId);
+
+        // ✅ Get venues created by this admin/super-admin
+        const venuesByAdmin = await capacityAnalytics.getVenuesByAdmin(superAdminId, adminId);
 
         const successMessage = "Capacity analytics report generated successfully.";
         if (DEBUG) console.log("✅", successMessage);
@@ -54,10 +57,11 @@ exports.getMonthlyReport = async (req, res) => {
             data: {
                 summary: reportResult,
                 charts: monthWiseResult,
-                highDemandVenue: getHighDemandVenue,
-                getCapacityByVenue,
+                highDemandVenue,
+                capacityByVenue,
                 membershipPlans,
                 capacityByClass,
+                venuesByAdmin, // <-- called correctly
             },
         });
     } catch (error) {

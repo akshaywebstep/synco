@@ -297,7 +297,6 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (req, res) => {
       summary: result.summary,
       agentList: result.agentList,
       coachList: result.coachList,
-      allAddress: result.allAddress,
       data: result.data,
     });
   } catch (error) {

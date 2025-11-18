@@ -31,9 +31,8 @@ async function getTotalCapacity(adminIds) {
 }
 
 // 🔹 Helper: total occupied spaces (confirmed/active)
-async function getOccupiedSpaces(periodStart, periodEnd, adminIds, filters) {
-    // Fetch bookings with single student per row
-    const bookingStudents = await BookingStudentMeta.findAll({
+async function getOccupiedSpaces(periodStart, periodEnd, adminIds, filters = {}) {
+    const students = await BookingStudentMeta.findAll({
         include: [
             {
                 model: Booking,
@@ -42,22 +41,21 @@ async function getOccupiedSpaces(periodStart, periodEnd, adminIds, filters) {
                 where: {
                     status: { [Op.in]: ["active", "not_attended", "attended", "pending"] },
                     bookedBy: { [Op.in]: adminIds },
-                    ...(periodStart && periodEnd
-                        ? { createdAt: { [Op.between]: [periodStart, periodEnd] } }
-                        : {})
+                    ...(periodStart && periodEnd ? { createdAt: { [Op.between]: [periodStart, periodEnd] } } : {})
                 },
-                attributes: ["id", "createdAt"]
+                attributes: ["id", "createdAt", "paymentPlanId", "bookedBy"]
             }
         ],
         attributes: ["id", "age", "bookingTrialId"]
     });
 
-    // Each row is already a single student
-    const filtered = bookingStudents.filter(b => applyFilters(b, filters));
+    // Each row is already a student
+    const filtered = students.filter(s => s.age != null && applyFilters(s, filters));
 
     return filtered.length;
 }
 
+// 🔹 Helper: total revenue (from PaymentPlan)
 async function getTotalRevenue(periodStart, periodEnd, adminIds, filters = {}) {
     const bookings = await Booking.findAll({
         where: {
@@ -67,21 +65,15 @@ async function getTotalRevenue(periodStart, periodEnd, adminIds, filters = {}) {
         },
         include: [
             { model: PaymentPlan, as: "paymentPlan", attributes: ["price"], required: true },
-            { model: BookingStudentMeta, as: "students", attributes: ["age"], required: false } // <--- allow no students
+            { model: BookingStudentMeta, as: "students", attributes: ["age"], required: false }
         ]
     });
 
-    // Flatten to individual students safely
-    const filteredStudents = bookings.flatMap(b =>
+    const students = bookings.flatMap(b =>
         (b.students || []).map(s => ({ ...s.get(), booking: b }))
-    ).filter(s => {
-        // safe check
-        if (!s || s.age == null) return false;
-        return applyFilters(s, filters);
-    });
+    ).filter(s => s.age != null && applyFilters(s, filters));
 
-    // Sum revenue
-    const totalRevenue = filteredStudents.reduce((sum, s) => sum + (s.booking.paymentPlan?.price || 0), 0);
+    const totalRevenue = students.reduce((sum, s) => sum + (s.booking.paymentPlan?.price || 0), 0);
 
     return totalRevenue;
 }
@@ -300,6 +292,26 @@ function applyFilters(bookingStudent, filter) {
     return valid;
 }
 
+async function getVenuesByAdmin(superAdminId, adminId) {
+    // 1️⃣ Get admin IDs allowed for this query
+    const adminIds = await getAdminFilter(superAdminId, adminId);
+
+    // 2️⃣ Query venues created by these admins
+    const venues = await Venue.findAll({
+        where: {
+            createdBy: { [Op.in]: adminIds },
+        },
+        attributes: ["id", "name", "area", "address"], // include fields you need
+        order: [["name", "ASC"]], // optional sorting by name
+    });
+
+    // 3️⃣ Map result
+    return venues.map(v => ({
+        venueId: v.id,
+        name: v.name || v.area || v.address || "Unknown Venue",
+    }));
+}
+
 // 🔹 Membership / Payment Plan Breakdown
 async function membershipPlans(superAdminId, filters, adminId) {
     // 1️⃣ Get list of admin IDs to include
@@ -436,10 +448,10 @@ async function getCapacityWidgets(superAdminId, filters, adminId) {
     const occupiedPrev = await getOccupiedSpaces(prevStart, prevEnd, adminIds, filters || {});
 
     // const occupiedCurrent = await getOccupiedSpaces(currentStart, currentEnd, adminIds);
-    // const revenueCurrent = await getTotalRevenue(currentStart, currentEnd, adminIds);
+    const revenueCurrent = await getTotalRevenue(currentStart, currentEnd, adminIds,filters);
 
     // --- Previous period ---
-    const revenuePrev = await getTotalRevenue(prevStart, prevEnd, adminIds);
+    const revenuePrev = await getTotalRevenue(prevStart, prevEnd, adminIds,filters);
 
     // --- Derived metrics ---
     const occupancyRate = totalCapacity ? (occupiedCurrent / totalCapacity) * 100 : 0;
@@ -483,5 +495,5 @@ async function getCapacityWidgets(superAdminId, filters, adminId) {
 }
 
 module.exports = {
-    getCapacityWidgets, getCapacityMonthWise, getHighDemandVenue, getCapacityByVenue, membershipPlans, capacityByClass
+    getCapacityWidgets, getCapacityMonthWise, getHighDemandVenue, getCapacityByVenue, membershipPlans, capacityByClass,getVenuesByAdmin  
 };

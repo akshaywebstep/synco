@@ -979,6 +979,7 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
           ...leadPlain,
           creator: leadPlain.creator,
           booking: {
+            id: booking.id,
             leadId: booking.leadId,
             coachId: booking.coachId,
             coach: booking.coach,
@@ -1137,15 +1138,6 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
       }));
     }
 
-    // ✅ Address List (from all bookings)
-    const addressListRaw = formattedData
-      .map((lead) => lead?.booking?.address)
-      .filter((addr) => addr && addr !== "");
-
-    const uniqueAddress = [...new Set(addressListRaw)];
-
-    const allAddress = uniqueAddress.map((a) => ({ address: a }));
-
     // ✅ Final Response
     if (!formattedData.length) {
       return {
@@ -1160,7 +1152,6 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
         },
         agentList,
         coachList,
-        allAddress,
         data: [],
       };
     }
@@ -1177,7 +1168,6 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
       },
       agentList,
       coachList,
-      allAddress,
       data: formattedData,
     };
   } catch (error) {
