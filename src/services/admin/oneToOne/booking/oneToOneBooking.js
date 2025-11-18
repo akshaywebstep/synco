@@ -156,87 +156,56 @@ exports.createOnetoOneBooking = async (data) => {
       { transaction }
     );
 
-    // -----------------------------
-    // 1️⃣ Validate required main fields
-    // -----------------------------
-    const requiredFields = [
-      "leadId",
-      "coachId",
-      "location",
-      "address",
-      "date",
-      "time",
-      "totalStudents",
-      "areaWorkOn",
-    ];
+    // 3️⃣ Create students, parents, emergency
+    const students = await Promise.all(
+      (data.students || []).map((s) =>
+        OneToOneStudent.create(
+          {
+            oneToOneBookingId: booking.id,
+            studentFirstName: s.studentFirstName,
+            studentLastName: s.studentLastName,
+            dateOfBirth: s.dateOfBirth,
+            age: s.age,
+            gender: s.gender,
+            medicalInfo: s.medicalInfo,
+          },
+          { transaction }
+        )
+      )
+    );
 
-    for (const field of requiredFields) {
-      if (!data[field] || data[field] === "") {
-        throw new Error(`${field.charAt(0).toUpperCase() + field.slice(1)} is required`);
+    const firstStudent = students[0];
+    if (firstStudent) {
+      if (data.parents?.length) {
+        await Promise.all(
+          data.parents.map((p) =>
+            OneToOneParent.create(
+              {
+                studentId: firstStudent.id,
+                parentFirstName: p.parentFirstName,
+                parentLastName: p.parentLastName,
+                parentEmail: p.parentEmail,
+                phoneNumber: p.phoneNumber,
+                relationChild: p.relationChild,
+                howDidHear: p.howDidHear,
+              },
+              { transaction }
+            )
+          )
+        );
       }
-    }
 
-    // -----------------------------
-    // 2️⃣ Validate students
-    // -----------------------------
-    if (!Array.isArray(data.students) || data.students.length === 0) {
-      throw new Error("At least one student is required");
-    }
-
-    const studentFieldLabels = {
-      studentFirstName: "First Name",
-      studentLastName: "Last Name",
-      dateOfBirth: "Date of Birth",
-    };
-
-    data.students.forEach((student, index) => {
-      for (const field of Object.keys(studentFieldLabels)) {
-        if (!student[field] || student[field] === "") {
-          throw new Error(`Student ${index + 1} ${studentFieldLabels[field]} is required`);
-        }
-      }
-    });
-
-    // -----------------------------
-    // 3️⃣ Validate parents
-    // -----------------------------
-    if (!Array.isArray(data.parents) || data.parents.length === 0) {
-      throw new Error("At least one parent is required");
-    }
-
-    const parentFieldLabels = {
-      parentFirstName: "First Name",
-      parentLastName: "Last Name",
-      parentEmail: "Email",
-      phoneNumber: "Phone Number",
-      relationChild: "Relation to Child",
-    };
-
-    data.parents.forEach((parent, index) => {
-      for (const field of Object.keys(parentFieldLabels)) {
-        if (!parent[field] || parent[field] === "") {
-          throw new Error(`Parent ${index + 1} ${parentFieldLabels[field]} is required`);
-        }
-      }
-    });
-
-    // -----------------------------
-    // 4️⃣ Validate emergency contact
-    // -----------------------------
-    const emergencyLabels = {
-      emergencyFirstName: "First Name",
-      emergencyLastName: "Last Name",
-      emergencyPhoneNumber: "Phone Number",
-      emergencyRelation: "Relation to Child",
-    };
-
-    if (!data.emergency) {
-      throw new Error("Emergency contact details are required");
-    }
-
-    for (const field of Object.keys(emergencyLabels)) {
-      if (!data.emergency[field] || data.emergency[field] === "") {
-        throw new Error(`Emergency ${emergencyLabels[field]} is required`);
+      if (data.emergency) {
+        await OneToOneEmergency.create(
+          {
+            studentId: firstStudent.id,
+            emergencyFirstName: data.emergency.emergencyFirstName,
+            emergencyLastName: data.emergency.emergencyLastName,
+            phoneNumber: data.emergency.emergencyPhoneNumber,
+            relationChild: data.emergency.emergencyRelation,
+          },
+          { transaction }
+        );
       }
     }
 
