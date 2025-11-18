@@ -14,7 +14,7 @@ const {
 router.post(
   "/booking/create",
   authMiddleware,
-  permissionMiddleware("one-to-one-lead", "create"),
+  permissionMiddleware("one-to-one-booking", "create"),
   createOnetoOneBooking
 );
 
