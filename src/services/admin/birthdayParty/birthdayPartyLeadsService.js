@@ -2519,7 +2519,7 @@ exports.sendEmailToFirstParentWithBooking = async (leadIds = []) => {
     }
 
     // Email configuration
-    const emailConfigResult = await getEmailConfig("admin", "one-to-one-booking-sendEmail");
+    const emailConfigResult = await getEmailConfig("admin", "birthday-party-booking-sendEmail");
     if (!emailConfigResult.status) {
       console.log("❌ Email configuration not found");
       return { status: false, message: "Email configuration not found." };
