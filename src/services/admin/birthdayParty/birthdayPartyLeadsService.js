@@ -1521,7 +1521,7 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
         }
 
         // ---------- CREATE (STRICT: DO NOT SAVE EMPTY) ----------
-        const required = [
+        const requiredParentFields = [
           "parentFirstName",
           "parentLastName",
           "parentEmail",
@@ -1578,7 +1578,7 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
       }
 
       // ---------- CREATE (STRICT: DO NOT SAVE EMPTY) ----------
-      const required = [
+      const requiredEmergency = [
         "emergencyFirstName",
         "emergencyLastName",
         "phoneNumber",
