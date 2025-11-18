@@ -1444,6 +1444,9 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
     // ======================================================
     // 🧒 STUDENTS (WITH VALIDATION)
     // ======================================================
+    // ======================================================
+    // 🧒 STUDENTS (STRICT VALIDATION)
+    // ======================================================
     if (updateData?.student && Array.isArray(updateData.student)) {
       for (const s of updateData.student) {
 
@@ -1470,19 +1473,13 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
           continue;
         }
 
-        // ---------- CREATE (VALIDATION ADDED) ----------
-        const studentRequired = [
-          "studentFirstName",
-          "studentLastName",
-          "dateOfBirth",
-          "age",
-          "gender"
-        ];
+        // ---------- CREATE (STRICT: DO NOT SAVE EMPTY) ----------
+        const required = ["studentFirstName", "studentLastName", "dateOfBirth", "age", "gender"];
 
-        const missing = studentRequired.filter(f => !s[f]);
+        const missing = required.filter(f => !s[f] || String(s[f]).trim() === "");
         if (missing.length > 0) {
-          await t.rollback();
-          return { status: false, message: `Missing required student fields: ${missing.join(", ")}` };
+          console.log("❌ Student skipped — empty fields");
+          continue;
         }
 
         await BirthdayPartyStudent.create(
@@ -1493,7 +1490,7 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
             dateOfBirth: s.dateOfBirth,
             age: s.age,
             gender: s.gender,
-            medicalInfo: s.medicalInfo,
+            medicalInfo: s.medicalInfo ?? "",
           },
           { transaction: t }
         );
@@ -1529,35 +1526,34 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
           continue;
         }
 
-        // ---------- CREATE (VALIDATION ADDED) ----------
-        if (p.studentId) {
-          const requiredParentFields = [
-            "parentFirstName",
-            "parentLastName",
-            "parentEmail",
-            "phoneNumber",
-            "relationChild"
-          ];
+        // ---------- CREATE (STRICT: DO NOT SAVE EMPTY) ----------
+        const required = [
+          "parentFirstName",
+          "parentLastName",
+          "parentEmail",
+          "phoneNumber",
+          "relationChild",
+          "studentId"
+        ];
 
-          const missing = requiredParentFields.filter(f => !p[f]);
-          if (missing.length > 0) {
-            await t.rollback();
-            return { status: false, message: `Missing required parent fields: ${missing.join(", ")}` };
-          }
-
-          await BirthdayPartyParent.create(
-            {
-              studentId: p.studentId,
-              parentFirstName: p.parentFirstName,
-              parentLastName: p.parentLastName,
-              parentEmail: p.parentEmail,
-              phoneNumber: p.phoneNumber,
-              relationChild: p.relationChild,
-              howDidHear: p.howDidHear,
-            },
-            { transaction: t }
-          );
+        const missing = required.filter(f => !p[f] || String(p[f]).trim() === "");
+        if (missing.length > 0) {
+          console.log("❌ Parent skipped — empty fields");
+          continue;
         }
+
+        await BirthdayPartyParent.create(
+          {
+            studentId: p.studentId,
+            parentFirstName: p.parentFirstName,
+            parentLastName: p.parentLastName,
+            parentEmail: p.parentEmail,
+            phoneNumber: p.phoneNumber,
+            relationChild: p.relationChild,
+            howDidHear: p.howDidHear ?? "",
+          },
+          { transaction: t }
+        );
       }
     }
 
@@ -1585,10 +1581,11 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
             { transaction: t }
           );
         }
+        return; // skip creation
       }
 
-      // ---------- CREATE (VALIDATION ADDED) ----------
-      const requiredEmergency = [
+      // ---------- CREATE (STRICT: DO NOT SAVE EMPTY) ----------
+      const required = [
         "emergencyFirstName",
         "emergencyLastName",
         "phoneNumber",
@@ -1596,10 +1593,10 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
         "studentId"
       ];
 
-      const missing = requiredEmergency.filter(f => !e[f]);
+      const missing = required.filter(f => !e[f] || String(e[f]).trim() === "");
       if (missing.length > 0) {
-        await t.rollback();
-        return { status: false, message: `Missing required emergency fields: ${missing.join(", ")}` };
+        console.log("❌ Emergency skipped — empty fields");
+        return;
       }
 
       await BirthdayPartyEmergency.create(

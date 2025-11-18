@@ -1634,53 +1634,52 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
       await t.rollback();
       return { status: false, message: "Booking not found for this lead." };
     }
-
     // ======================================================
-    // 🧩 STUDENTS (VALIDATION)
+    // 🧩 STUDENTS (STRICT VALIDATION)
     // ======================================================
     if (Array.isArray(updateData?.student)) {
-      for (const studentData of updateData.student) {
-        
-        // UPDATE EXISTING
-        if (studentData.id) {
+      for (const s of updateData.student) {
+
+        // ---------- UPDATE ----------
+        if (s.id) {
           const existingStudent = await OneToOneStudent.findOne({
-            where: { id: studentData.id, oneToOneBookingId: booking.id },
+            where: { id: s.id, oneToOneBookingId: booking.id },
             transaction: t,
           });
           if (!existingStudent) continue;
 
           await existingStudent.update(
             {
-              studentFirstName: studentData.studentFirstName ?? existingStudent.studentFirstName,
-              studentLastName: studentData.studentLastName ?? existingStudent.studentLastName,
-              dateOfBirth: studentData.dateOfBirth ?? existingStudent.dateOfBirth,
-              age: studentData.age ?? existingStudent.age,
-              gender: studentData.gender ?? existingStudent.gender,
-              medicalInfo: studentData.medicalInfo ?? existingStudent.medicalInfo,
+              studentFirstName: s.studentFirstName ?? existingStudent.studentFirstName,
+              studentLastName: s.studentLastName ?? existingStudent.studentLastName,
+              dateOfBirth: s.dateOfBirth ?? existingStudent.dateOfBirth,
+              age: s.age ?? existingStudent.age,
+              gender: s.gender ?? existingStudent.gender,
+              medicalInfo: s.medicalInfo ?? existingStudent.medicalInfo,
             },
             { transaction: t }
           );
           continue;
         }
 
-        // CREATE NEW (VALIDATE REQUIRED FIELDS)
-        const studentRequired = ["studentFirstName", "studentLastName", "dateOfBirth", "age", "gender"];
-        const missing = studentRequired.filter(f => !studentData[f]);
+        // ---------- CREATE NEW ----------
+        const required = ["studentFirstName", "studentLastName", "dateOfBirth", "age", "gender"];
+        const missing = required.filter(f => !s[f] || String(s[f]).trim() === "");
 
-        if (missing.length) {
-          await t.rollback();
-          return { status: false, message: `Missing required student fields: ${missing.join(", ")}` };
+        if (missing.length > 0) {
+          console.log("❌ Student skipped (missing fields):", missing);
+          continue; // ❗ skip creation, DO NOT error
         }
 
         await OneToOneStudent.create(
           {
             oneToOneBookingId: booking.id,
-            studentFirstName: studentData.studentFirstName,
-            studentLastName: studentData.studentLastName,
-            dateOfBirth: studentData.dateOfBirth,
-            age: studentData.age,
-            gender: studentData.gender,
-            medicalInfo: studentData.medicalInfo,
+            studentFirstName: s.studentFirstName,
+            studentLastName: s.studentLastName,
+            dateOfBirth: s.dateOfBirth,
+            age: s.age,
+            gender: s.gender,
+            medicalInfo: s.medicalInfo ?? "",
           },
           { transaction: t }
         );
@@ -1688,27 +1687,27 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
     }
 
     // ======================================================
-    // 👨‍👩‍👧 PARENTS (VALIDATION)
+    // 👨‍👩‍👧 PARENTS (STRICT VALIDATION)
     // ======================================================
     if (Array.isArray(updateData?.parentDetails)) {
-      for (const parentData of updateData.parentDetails) {
+      for (const p of updateData.parentDetails) {
 
-        // UPDATE EXISTING
-        if (parentData.id) {
+        // ---------- UPDATE ----------
+        if (p.id) {
           const existingParent = await OneToOneParent.findOne({
-            where: { id: parentData.id },
+            where: { id: p.id },
             transaction: t,
           });
 
           if (existingParent) {
             await existingParent.update(
               {
-                parentFirstName: parentData.parentFirstName ?? existingParent.parentFirstName,
-                parentLastName: parentData.parentLastName ?? existingParent.parentLastName,
-                parentEmail: parentData.parentEmail ?? existingParent.parentEmail,
-                phoneNumber: parentData.phoneNumber ?? existingParent.phoneNumber,
-                relationChild: parentData.relationChild ?? existingParent.relationChild,
-                howDidHear: parentData.howDidHear ?? existingParent.howDidHear,
+                parentFirstName: p.parentFirstName ?? existingParent.parentFirstName,
+                parentLastName: p.parentLastName ?? existingParent.parentLastName,
+                parentEmail: p.parentEmail ?? existingParent.parentEmail,
+                phoneNumber: p.phoneNumber ?? existingParent.phoneNumber,
+                relationChild: p.relationChild ?? existingParent.relationChild,
+                howDidHear: p.howDidHear ?? existingParent.howDidHear,
               },
               { transaction: t }
             );
@@ -1716,47 +1715,45 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
           continue;
         }
 
-        // CREATE NEW (VALIDATE REQUIRED FIELDS)
-        if (parentData.studentId) {
-          const requiredParentFields = [
-            "parentFirstName",
-            "parentLastName",
-            "parentEmail",
-            "phoneNumber",
-            "relationChild"
-          ];
+        // ---------- CREATE NEW ----------
+        const requiredParentFields = [
+          "parentFirstName",
+          "parentLastName",
+          "parentEmail",
+          "phoneNumber",
+          "relationChild",
+          "studentId"
+        ];
 
-          const missing = requiredParentFields.filter(f => !parentData[f]);
+        const missing = requiredParentFields.filter(f => !p[f] || String(p[f]).trim() === "");
 
-          if (missing.length) {
-            await t.rollback();
-            return { status: false, message: `Missing required parent fields: ${missing.join(", ")}` };
-          }
-
-          await OneToOneParent.create(
-            {
-              studentId: parentData.studentId,
-              parentFirstName: parentData.parentFirstName,
-              parentLastName: parentData.parentLastName,
-              parentEmail: parentData.parentEmail,
-              phoneNumber: parentData.phoneNumber,
-              relationChild: parentData.relationChild,
-              howDidHear: parentData.howDidHear,
-            },
-            { transaction: t }
-          );
-          continue;
+        if (missing.length > 0) {
+          console.log("❌ Parent skipped (missing fields):", missing);
+          continue; // ❗ do NOT save empty object
         }
+
+        await OneToOneParent.create(
+          {
+            studentId: p.studentId,
+            parentFirstName: p.parentFirstName,
+            parentLastName: p.parentLastName,
+            parentEmail: p.parentEmail,
+            phoneNumber: p.phoneNumber,
+            relationChild: p.relationChild,
+            howDidHear: p.howDidHear ?? "",
+          },
+          { transaction: t }
+        );
       }
     }
 
     // ======================================================
-    // 🚨 EMERGENCY DETAILS (VALIDATION)
+    // 🚨 EMERGENCY DETAILS (STRICT VALIDATION)
     // ======================================================
     if (updateData?.emergencyDetails) {
       const e = updateData.emergencyDetails;
 
-      // UPDATE EXISTING
+      // ---------- UPDATE ----------
       if (e.id) {
         const existingEmergency = await OneToOneEmergency.findOne({
           where: { id: e.id },
@@ -1774,34 +1771,35 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
             { transaction: t }
           );
         }
-      } else {
-        // CREATE NEW (VALIDATE REQUIRED FIELDS)
-        const requiredEmergency = [
-          "emergencyFirstName",
-          "emergencyLastName",
-          "phoneNumber",
-          "relationChild",
-          "studentId",
-        ];
-
-        const missing = requiredEmergency.filter(f => !e[f]);
-
-        if (missing.length) {
-          await t.rollback();
-          return { status: false, message: `Missing required emergency fields: ${missing.join(", ")}` };
-        }
-
-        await OneToOneEmergency.create(
-          {
-            studentId: e.studentId,
-            emergencyFirstName: e.emergencyFirstName,
-            emergencyLastName: e.emergencyLastName,
-            phoneNumber: e.phoneNumber,
-            relationChild: e.relationChild,
-          },
-          { transaction: t }
-        );
+        return; // skip creation section
       }
+
+      // ---------- CREATE NEW ----------
+      const requiredEmergency = [
+        "emergencyFirstName",
+        "emergencyLastName",
+        "phoneNumber",
+        "relationChild",
+        "studentId"
+      ];
+
+      const missing = requiredEmergency.filter(f => !e[f] || String(e[f]).trim() === "");
+
+      if (missing.length > 0) {
+        console.log("❌ Emergency skipped (missing fields):", missing);
+        return; // ❗ skip creation, DO NOT error
+      }
+
+      await OneToOneEmergency.create(
+        {
+          studentId: e.studentId,
+          emergencyFirstName: e.emergencyFirstName,
+          emergencyLastName: e.emergencyLastName,
+          phoneNumber: e.phoneNumber,
+          relationChild: e.relationChild,
+        },
+        { transaction: t }
+      );
     }
 
     await t.commit();
