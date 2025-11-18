@@ -1409,10 +1409,7 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
     const lead = await BirthdayPartyLead.findOne({
       where: {
         id,
-        [Op.or]: [
-          { createdBy: adminId },
-          { createdBy: superAdminId }
-        ]
+        [Op.or]: [{ createdBy: adminId }, { createdBy: superAdminId }]
       },
       include: [
         {
@@ -1434,25 +1431,23 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
     });
 
     if (!lead) {
-      console.log("⚠️ Lead not found or unauthorized");
       await t.rollback();
       return { status: false, message: "Birthday Party lead not found or unauthorized." };
     }
 
     const booking = lead.booking;
     if (!booking) {
-      console.log("⚠️ Booking not found");
       await t.rollback();
       return { status: false, message: "Birthday Party booking not found for this lead." };
     }
 
     // ======================================================
-    // 🧒 STUDENTS
+    // 🧒 STUDENTS (WITH VALIDATION)
     // ======================================================
     if (updateData?.student && Array.isArray(updateData.student)) {
-      console.log("🔹 Updating students…");
-
       for (const s of updateData.student) {
+
+        // ---------- UPDATE ----------
         if (s.id) {
           const existingStudent = await BirthdayPartyStudent.findOne({
             where: { id: s.id, BirthdayPartyBookingId: booking.id },
@@ -1460,7 +1455,6 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
           });
 
           if (existingStudent) {
-            console.log(`🔄 Updating student #${s.id}`);
             await existingStudent.update(
               {
                 studentFirstName: s.studentFirstName ?? existingStudent.studentFirstName,
@@ -1473,31 +1467,46 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
               { transaction: t }
             );
           }
-        } else {
-          console.log("➕ Creating new student…");
-          await BirthdayPartyStudent.create(
-            {
-              BirthdayPartyBookingId: booking.id,
-              studentFirstName: s.studentFirstName,
-              studentLastName: s.studentLastName,
-              dateOfBirth: s.dateOfBirth,
-              age: s.age,
-              gender: s.gender,
-              medicalInfo: s.medicalInfo,
-            },
-            { transaction: t }
-          );
+          continue;
         }
+
+        // ---------- CREATE (VALIDATION ADDED) ----------
+        const studentRequired = [
+          "studentFirstName",
+          "studentLastName",
+          "dateOfBirth",
+          "age",
+          "gender"
+        ];
+
+        const missing = studentRequired.filter(f => !s[f]);
+        if (missing.length > 0) {
+          await t.rollback();
+          return { status: false, message: `Missing required student fields: ${missing.join(", ")}` };
+        }
+
+        await BirthdayPartyStudent.create(
+          {
+            BirthdayPartyBookingId: booking.id,
+            studentFirstName: s.studentFirstName,
+            studentLastName: s.studentLastName,
+            dateOfBirth: s.dateOfBirth,
+            age: s.age,
+            gender: s.gender,
+            medicalInfo: s.medicalInfo,
+          },
+          { transaction: t }
+        );
       }
     }
 
     // ======================================================
-    // 👨‍👩‍👧 PARENTS
+    // 👨‍👩‍👧 PARENTS (WITH VALIDATION)
     // ======================================================
     if (updateData?.parentDetails && Array.isArray(updateData.parentDetails)) {
-      console.log("🔹 Updating parent details…");
-
       for (const p of updateData.parentDetails) {
+
+        // ---------- UPDATE ----------
         if (p.id) {
           const existingParent = await BirthdayPartyParent.findOne({
             where: { id: p.id },
@@ -1505,7 +1514,6 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
           });
 
           if (existingParent) {
-            console.log(`🔄 Updating parent #${p.id}`);
             await existingParent.update(
               {
                 parentFirstName: p.parentFirstName ?? existingParent.parentFirstName,
@@ -1518,8 +1526,25 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
               { transaction: t }
             );
           }
-        } else if (p.studentId) {
-          console.log("➕ Creating new parent…");
+          continue;
+        }
+
+        // ---------- CREATE (VALIDATION ADDED) ----------
+        if (p.studentId) {
+          const requiredParentFields = [
+            "parentFirstName",
+            "parentLastName",
+            "parentEmail",
+            "phoneNumber",
+            "relationChild"
+          ];
+
+          const missing = requiredParentFields.filter(f => !p[f]);
+          if (missing.length > 0) {
+            await t.rollback();
+            return { status: false, message: `Missing required parent fields: ${missing.join(", ")}` };
+          }
+
           await BirthdayPartyParent.create(
             {
               studentId: p.studentId,
@@ -1537,46 +1562,244 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
     }
 
     // ======================================================
-    // 🚨 EMERGENCY DETAILS
+    // 🚨 EMERGENCY DETAILS (WITH VALIDATION)
     // ======================================================
-    if (updateData?.emergencyDetails && updateData.emergencyDetails.id) {
+    if (updateData?.emergencyDetails) {
       const e = updateData.emergencyDetails;
 
-      const existingEmergency = await BirthdayPartyEmergency.findOne({
-        where: { id: e.id },
-        transaction: t,
-      });
+      // ---------- UPDATE ----------
+      if (e.id) {
+        const existingEmergency = await BirthdayPartyEmergency.findOne({
+          where: { id: e.id },
+          transaction: t,
+        });
 
-      if (existingEmergency) {
-        console.log(`🔄 Updating emergency contact #${e.id}`);
-        await existingEmergency.update(
-          {
-            emergencyFirstName: e.emergencyFirstName ?? existingEmergency.emergencyFirstName,
-            emergencyLastName: e.emergencyLastName ?? existingEmergency.emergencyLastName,
-            phoneNumber: e.phoneNumber ?? existingEmergency.phoneNumber,
-            relationChild: e.relationChild ?? existingEmergency.relationChild,
-          },
-          { transaction: t }
-        );
+        if (existingEmergency) {
+          await existingEmergency.update(
+            {
+              emergencyFirstName: e.emergencyFirstName ?? existingEmergency.emergencyFirstName,
+              emergencyLastName: e.emergencyLastName ?? existingEmergency.emergencyLastName,
+              phoneNumber: e.phoneNumber ?? existingEmergency.phoneNumber,
+              relationChild: e.relationChild ?? existingEmergency.relationChild,
+            },
+            { transaction: t }
+          );
+        }
+        continue;
       }
+
+      // ---------- CREATE (VALIDATION ADDED) ----------
+      const requiredEmergency = [
+        "emergencyFirstName",
+        "emergencyLastName",
+        "phoneNumber",
+        "relationChild",
+        "studentId"
+      ];
+
+      const missing = requiredEmergency.filter(f => !e[f]);
+      if (missing.length > 0) {
+        await t.rollback();
+        return { status: false, message: `Missing required emergency fields: ${missing.join(", ")}` };
+      }
+
+      await BirthdayPartyEmergency.create(
+        {
+          studentId: e.studentId,
+          emergencyFirstName: e.emergencyFirstName,
+          emergencyLastName: e.emergencyLastName,
+          phoneNumber: e.phoneNumber,
+          relationChild: e.relationChild,
+        },
+        { transaction: t }
+      );
     }
 
-    // ======================================================
-    // ✔ Commit
-    // ======================================================
     await t.commit();
-    console.log("✅ Birthday Party lead updated successfully");
+    return { status: true, message: "Birthday Party lead updated successfully." };
 
-    return {
-      status: true,
-      message: "Birthday Party lead updated successfully.",
-    };
   } catch (error) {
     await t.rollback();
-    console.error("❌ Error updating Birthday Party lead:", error);
     return { status: false, message: error.message };
   }
 };
+
+// exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateData) => {
+//   const t = await sequelize.transaction();
+//   try {
+//     console.log("🎉 Fetching Birthday Party Lead ID:", id);
+
+//     const lead = await BirthdayPartyLead.findOne({
+//       where: {
+//         id,
+//         [Op.or]: [
+//           { createdBy: adminId },
+//           { createdBy: superAdminId }
+//         ]
+//       },
+//       include: [
+//         {
+//           model: BirthdayPartyBooking,
+//           as: "booking",
+//           include: [
+//             {
+//               model: BirthdayPartyStudent,
+//               as: "students",
+//               include: [
+//                 { model: BirthdayPartyParent, as: "parentDetails" },
+//                 { model: BirthdayPartyEmergency, as: "emergencyDetails" },
+//               ],
+//             },
+//           ],
+//         },
+//       ],
+//       transaction: t,
+//     });
+
+//     if (!lead) {
+//       console.log("⚠️ Lead not found or unauthorized");
+//       await t.rollback();
+//       return { status: false, message: "Birthday Party lead not found or unauthorized." };
+//     }
+
+//     const booking = lead.booking;
+//     if (!booking) {
+//       console.log("⚠️ Booking not found");
+//       await t.rollback();
+//       return { status: false, message: "Birthday Party booking not found for this lead." };
+//     }
+
+//     // ======================================================
+//     // 🧒 STUDENTS
+//     // ======================================================
+//     if (updateData?.student && Array.isArray(updateData.student)) {
+//       console.log("🔹 Updating students…");
+
+//       for (const s of updateData.student) {
+//         if (s.id) {
+//           const existingStudent = await BirthdayPartyStudent.findOne({
+//             where: { id: s.id, BirthdayPartyBookingId: booking.id },
+//             transaction: t,
+//           });
+
+//           if (existingStudent) {
+//             console.log(`🔄 Updating student #${s.id}`);
+//             await existingStudent.update(
+//               {
+//                 studentFirstName: s.studentFirstName ?? existingStudent.studentFirstName,
+//                 studentLastName: s.studentLastName ?? existingStudent.studentLastName,
+//                 dateOfBirth: s.dateOfBirth ?? existingStudent.dateOfBirth,
+//                 age: s.age ?? existingStudent.age,
+//                 gender: s.gender ?? existingStudent.gender,
+//                 medicalInfo: s.medicalInfo ?? existingStudent.medicalInfo,
+//               },
+//               { transaction: t }
+//             );
+//           }
+//         } else {
+//           console.log("➕ Creating new student…");
+//           await BirthdayPartyStudent.create(
+//             {
+//               BirthdayPartyBookingId: booking.id,
+//               studentFirstName: s.studentFirstName,
+//               studentLastName: s.studentLastName,
+//               dateOfBirth: s.dateOfBirth,
+//               age: s.age,
+//               gender: s.gender,
+//               medicalInfo: s.medicalInfo,
+//             },
+//             { transaction: t }
+//           );
+//         }
+//       }
+//     }
+
+//     // ======================================================
+//     // 👨‍👩‍👧 PARENTS
+//     // ======================================================
+//     if (updateData?.parentDetails && Array.isArray(updateData.parentDetails)) {
+//       console.log("🔹 Updating parent details…");
+
+//       for (const p of updateData.parentDetails) {
+//         if (p.id) {
+//           const existingParent = await BirthdayPartyParent.findOne({
+//             where: { id: p.id },
+//             transaction: t,
+//           });
+
+//           if (existingParent) {
+//             console.log(`🔄 Updating parent #${p.id}`);
+//             await existingParent.update(
+//               {
+//                 parentFirstName: p.parentFirstName ?? existingParent.parentFirstName,
+//                 parentLastName: p.parentLastName ?? existingParent.parentLastName,
+//                 parentEmail: p.parentEmail ?? existingParent.parentEmail,
+//                 phoneNumber: p.phoneNumber ?? existingParent.phoneNumber,
+//                 relationChild: p.relationChild ?? existingParent.relationChild,
+//                 howDidHear: p.howDidHear ?? existingParent.howDidHear,
+//               },
+//               { transaction: t }
+//             );
+//           }
+//         } else if (p.studentId) {
+//           console.log("➕ Creating new parent…");
+//           await BirthdayPartyParent.create(
+//             {
+//               studentId: p.studentId,
+//               parentFirstName: p.parentFirstName,
+//               parentLastName: p.parentLastName,
+//               parentEmail: p.parentEmail,
+//               phoneNumber: p.phoneNumber,
+//               relationChild: p.relationChild,
+//               howDidHear: p.howDidHear,
+//             },
+//             { transaction: t }
+//           );
+//         }
+//       }
+//     }
+
+//     // ======================================================
+//     // 🚨 EMERGENCY DETAILS
+//     // ======================================================
+//     if (updateData?.emergencyDetails && updateData.emergencyDetails.id) {
+//       const e = updateData.emergencyDetails;
+
+//       const existingEmergency = await BirthdayPartyEmergency.findOne({
+//         where: { id: e.id },
+//         transaction: t,
+//       });
+
+//       if (existingEmergency) {
+//         console.log(`🔄 Updating emergency contact #${e.id}`);
+//         await existingEmergency.update(
+//           {
+//             emergencyFirstName: e.emergencyFirstName ?? existingEmergency.emergencyFirstName,
+//             emergencyLastName: e.emergencyLastName ?? existingEmergency.emergencyLastName,
+//             phoneNumber: e.phoneNumber ?? existingEmergency.phoneNumber,
+//             relationChild: e.relationChild ?? existingEmergency.relationChild,
+//           },
+//           { transaction: t }
+//         );
+//       }
+//     }
+
+//     // ======================================================
+//     // ✔ Commit
+//     // ======================================================
+//     await t.commit();
+//     console.log("✅ Birthday Party lead updated successfully");
+
+//     return {
+//       status: true,
+//       message: "Birthday Party lead updated successfully.",
+//     };
+//   } catch (error) {
+//     await t.rollback();
+//     console.error("❌ Error updating Birthday Party lead:", error);
+//     return { status: false, message: error.message };
+//   }
+// };
 
 // Get All One-to-One Analytics
 exports.getAllBirthdayPartyAnalytics = async (

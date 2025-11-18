@@ -1599,15 +1599,11 @@ exports.getOnetoOneLeadsById = async (id, superAdminId, adminId) => {
 exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) => {
   const t = await sequelize.transaction();
   try {
-    console.log("🔹 Fetching lead with ID:", id);
 
     const lead = await oneToOneLeads.findOne({
       where: {
         id,
-        [Op.or]: [
-          { createdBy: adminId },
-          { createdBy: superAdminId }
-        ]
+        [Op.or]: [{ createdBy: adminId }, { createdBy: superAdminId }]
       },
       include: [
         {
@@ -1629,81 +1625,82 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
     });
 
     if (!lead) {
-      console.log("⚠️ Lead not found or unauthorized");
       await t.rollback();
       return { status: false, message: "Lead not found or unauthorized." };
     }
 
     const booking = lead.booking;
     if (!booking) {
-      console.log("⚠️ Booking not found for this lead");
       await t.rollback();
       return { status: false, message: "Booking not found for this lead." };
     }
 
     // ======================================================
-    // 🧩 STUDENTS
+    // 🧩 STUDENTS (VALIDATION)
     // ======================================================
-    if (updateData?.student && Array.isArray(updateData.student) && updateData.student.length) {
-      console.log("🔹 Updating/creating students:", updateData.student);
+    if (Array.isArray(updateData?.student)) {
       for (const studentData of updateData.student) {
+        
+        // UPDATE EXISTING
         if (studentData.id) {
           const existingStudent = await OneToOneStudent.findOne({
             where: { id: studentData.id, oneToOneBookingId: booking.id },
             transaction: t,
           });
-          if (existingStudent) {
-            console.log(`🔄 Updating existing student id=${studentData.id}`);
-            await existingStudent.update(
-              {
-                studentFirstName: studentData.studentFirstName ?? existingStudent.studentFirstName,
-                studentLastName: studentData.studentLastName ?? existingStudent.studentLastName,
-                dateOfBirth: studentData.dateOfBirth ?? existingStudent.dateOfBirth,
-                age: studentData.age ?? existingStudent.age,
-                gender: studentData.gender ?? existingStudent.gender,
-                medicalInfo: studentData.medicalInfo ?? existingStudent.medicalInfo,
-              },
-              { transaction: t }
-            );
-            console.log(`✅ Updated student id=${studentData.id}`);
-          } else {
-            console.log(`⚠️ Student id=${studentData.id} not found, skipping`);
-          }
-        } else {
-          console.log("➕ Creating new student:", studentData);
-          await OneToOneStudent.create(
+          if (!existingStudent) continue;
+
+          await existingStudent.update(
             {
-              oneToOneBookingId: booking.id,
-              studentFirstName: studentData.studentFirstName,
-              studentLastName: studentData.studentLastName,
-              dateOfBirth: studentData.dateOfBirth,
-              age: studentData.age,
-              gender: studentData.gender,
-              medicalInfo: studentData.medicalInfo,
+              studentFirstName: studentData.studentFirstName ?? existingStudent.studentFirstName,
+              studentLastName: studentData.studentLastName ?? existingStudent.studentLastName,
+              dateOfBirth: studentData.dateOfBirth ?? existingStudent.dateOfBirth,
+              age: studentData.age ?? existingStudent.age,
+              gender: studentData.gender ?? existingStudent.gender,
+              medicalInfo: studentData.medicalInfo ?? existingStudent.medicalInfo,
             },
             { transaction: t }
           );
-          console.log(`✅ Created new student: ${studentData.studentFirstName} ${studentData.studentLastName}`);
+          continue;
         }
+
+        // CREATE NEW (VALIDATE REQUIRED FIELDS)
+        const studentRequired = ["studentFirstName", "studentLastName", "dateOfBirth", "age", "gender"];
+        const missing = studentRequired.filter(f => !studentData[f]);
+
+        if (missing.length) {
+          await t.rollback();
+          return { status: false, message: `Missing required student fields: ${missing.join(", ")}` };
+        }
+
+        await OneToOneStudent.create(
+          {
+            oneToOneBookingId: booking.id,
+            studentFirstName: studentData.studentFirstName,
+            studentLastName: studentData.studentLastName,
+            dateOfBirth: studentData.dateOfBirth,
+            age: studentData.age,
+            gender: studentData.gender,
+            medicalInfo: studentData.medicalInfo,
+          },
+          { transaction: t }
+        );
       }
     }
 
     // ======================================================
-    // 👨‍👩‍👧 PARENTS
+    // 👨‍👩‍👧 PARENTS (VALIDATION)
     // ======================================================
-    if (updateData?.parentDetails && Array.isArray(updateData.parentDetails)) {
-      console.log("🔹 Updating/creating parent details:", updateData.parentDetails);
-
+    if (Array.isArray(updateData?.parentDetails)) {
       for (const parentData of updateData.parentDetails) {
+
+        // UPDATE EXISTING
         if (parentData.id) {
-          console.log(`🔄 Attempting to update existing parent id=${parentData.id}`);
           const existingParent = await OneToOneParent.findOne({
             where: { id: parentData.id },
             transaction: t,
           });
 
           if (existingParent) {
-            console.log(`✅ Found parent id=${parentData.id}, updating fields`);
             await existingParent.update(
               {
                 parentFirstName: parentData.parentFirstName ?? existingParent.parentFirstName,
@@ -1715,13 +1712,28 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
               },
               { transaction: t }
             );
-            console.log('Parent updated:', existingParent.toJSON());
-          } else {
-            console.log(`⚠️ Parent id=${parentData.id} not found, cannot update`);
           }
-        } else if (parentData.studentId) {
-          console.log(`➕ Creating new parent for studentId=${parentData.studentId}`);
-          const newParent = await OneToOneParent.create(
+          continue;
+        }
+
+        // CREATE NEW (VALIDATE REQUIRED FIELDS)
+        if (parentData.studentId) {
+          const requiredParentFields = [
+            "parentFirstName",
+            "parentLastName",
+            "parentEmail",
+            "phoneNumber",
+            "relationChild"
+          ];
+
+          const missing = requiredParentFields.filter(f => !parentData[f]);
+
+          if (missing.length) {
+            await t.rollback();
+            return { status: false, message: `Missing required parent fields: ${missing.join(", ")}` };
+          }
+
+          await OneToOneParent.create(
             {
               studentId: parentData.studentId,
               parentFirstName: parentData.parentFirstName,
@@ -1733,53 +1745,258 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
             },
             { transaction: t }
           );
-          console.log('Parent created:', newParent.toJSON());
-        } else {
-          console.log("⚠️ Skipping parent entry (no id or studentId provided):", parentData);
+          continue;
         }
       }
     }
 
     // ======================================================
-    // 🚨 EMERGENCY DETAILS
+    // 🚨 EMERGENCY DETAILS (VALIDATION)
     // ======================================================
-    if (updateData?.emergencyDetails && updateData.emergencyDetails.id) {
-      console.log(`🔄 Updating emergency details id=${updateData.emergencyDetails.id}`);
+    if (updateData?.emergencyDetails) {
       const e = updateData.emergencyDetails;
-      const existingEmergency = await OneToOneEmergency.findOne({
-        where: { id: e.id },
-        transaction: t,
-      });
-      if (existingEmergency) {
-        await existingEmergency.update(
+
+      // UPDATE EXISTING
+      if (e.id) {
+        const existingEmergency = await OneToOneEmergency.findOne({
+          where: { id: e.id },
+          transaction: t,
+        });
+
+        if (existingEmergency) {
+          await existingEmergency.update(
+            {
+              emergencyFirstName: e.emergencyFirstName ?? existingEmergency.emergencyFirstName,
+              emergencyLastName: e.emergencyLastName ?? existingEmergency.emergencyLastName,
+              phoneNumber: e.phoneNumber ?? existingEmergency.phoneNumber,
+              relationChild: e.relationChild ?? existingEmergency.relationChild,
+            },
+            { transaction: t }
+          );
+        }
+      } else {
+        // CREATE NEW (VALIDATE REQUIRED FIELDS)
+        const requiredEmergency = [
+          "emergencyFirstName",
+          "emergencyLastName",
+          "phoneNumber",
+          "relationChild",
+          "studentId",
+        ];
+
+        const missing = requiredEmergency.filter(f => !e[f]);
+
+        if (missing.length) {
+          await t.rollback();
+          return { status: false, message: `Missing required emergency fields: ${missing.join(", ")}` };
+        }
+
+        await OneToOneEmergency.create(
           {
-            emergencyFirstName: e.emergencyFirstName ?? existingEmergency.emergencyFirstName,
-            emergencyLastName: e.emergencyLastName ?? existingEmergency.emergencyLastName,
-            phoneNumber: e.phoneNumber ?? existingEmergency.phoneNumber,
-            relationChild: e.relationChild ?? existingEmergency.relationChild,
+            studentId: e.studentId,
+            emergencyFirstName: e.emergencyFirstName,
+            emergencyLastName: e.emergencyLastName,
+            phoneNumber: e.phoneNumber,
+            relationChild: e.relationChild,
           },
           { transaction: t }
         );
-        console.log(`✅ Updated emergency details id=${e.id}`);
-      } else {
-        console.log(`⚠️ Emergency details id=${e.id} not found, skipping`);
       }
     }
 
-    // Commit transaction
     await t.commit();
-    console.log("✅ Transaction committed successfully");
+    return { status: true, message: "Lead updated successfully." };
 
-    return {
-      status: true,
-      message: "Lead updated successfully.",
-    };
   } catch (error) {
     await t.rollback();
-    console.error("❌ Error updating one-to-one lead:", error);
     return { status: false, message: error.message };
   }
 };
+
+// exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) => {
+//   const t = await sequelize.transaction();
+//   try {
+//     console.log("🔹 Fetching lead with ID:", id);
+
+//     const lead = await oneToOneLeads.findOne({
+//       where: {
+//         id,
+//         [Op.or]: [
+//           { createdBy: adminId },
+//           { createdBy: superAdminId }
+//         ]
+//       },
+//       include: [
+//         {
+//           model: OneToOneBooking,
+//           as: "booking",
+//           include: [
+//             {
+//               model: OneToOneStudent,
+//               as: "students",
+//               include: [
+//                 { model: OneToOneParent, as: "parentDetails" },
+//                 { model: OneToOneEmergency, as: "emergencyDetails" },
+//               ],
+//             },
+//           ],
+//         },
+//       ],
+//       transaction: t,
+//     });
+
+//     if (!lead) {
+//       console.log("⚠️ Lead not found or unauthorized");
+//       await t.rollback();
+//       return { status: false, message: "Lead not found or unauthorized." };
+//     }
+
+//     const booking = lead.booking;
+//     if (!booking) {
+//       console.log("⚠️ Booking not found for this lead");
+//       await t.rollback();
+//       return { status: false, message: "Booking not found for this lead." };
+//     }
+
+//     // ======================================================
+//     // 🧩 STUDENTS
+//     // ======================================================
+//     if (updateData?.student && Array.isArray(updateData.student) && updateData.student.length) {
+//       console.log("🔹 Updating/creating students:", updateData.student);
+//       for (const studentData of updateData.student) {
+//         if (studentData.id) {
+//           const existingStudent = await OneToOneStudent.findOne({
+//             where: { id: studentData.id, oneToOneBookingId: booking.id },
+//             transaction: t,
+//           });
+//           if (existingStudent) {
+//             console.log(`🔄 Updating existing student id=${studentData.id}`);
+//             await existingStudent.update(
+//               {
+//                 studentFirstName: studentData.studentFirstName ?? existingStudent.studentFirstName,
+//                 studentLastName: studentData.studentLastName ?? existingStudent.studentLastName,
+//                 dateOfBirth: studentData.dateOfBirth ?? existingStudent.dateOfBirth,
+//                 age: studentData.age ?? existingStudent.age,
+//                 gender: studentData.gender ?? existingStudent.gender,
+//                 medicalInfo: studentData.medicalInfo ?? existingStudent.medicalInfo,
+//               },
+//               { transaction: t }
+//             );
+//             console.log(`✅ Updated student id=${studentData.id}`);
+//           } else {
+//             console.log(`⚠️ Student id=${studentData.id} not found, skipping`);
+//           }
+//         } else {
+//           console.log("➕ Creating new student:", studentData);
+//           await OneToOneStudent.create(
+//             {
+//               oneToOneBookingId: booking.id,
+//               studentFirstName: studentData.studentFirstName,
+//               studentLastName: studentData.studentLastName,
+//               dateOfBirth: studentData.dateOfBirth,
+//               age: studentData.age,
+//               gender: studentData.gender,
+//               medicalInfo: studentData.medicalInfo,
+//             },
+//             { transaction: t }
+//           );
+//           console.log(`✅ Created new student: ${studentData.studentFirstName} ${studentData.studentLastName}`);
+//         }
+//       }
+//     }
+
+//     // ======================================================
+//     // 👨‍👩‍👧 PARENTS
+//     // ======================================================
+//     if (updateData?.parentDetails && Array.isArray(updateData.parentDetails)) {
+//       console.log("🔹 Updating/creating parent details:", updateData.parentDetails);
+
+//       for (const parentData of updateData.parentDetails) {
+//         if (parentData.id) {
+//           console.log(`🔄 Attempting to update existing parent id=${parentData.id}`);
+//           const existingParent = await OneToOneParent.findOne({
+//             where: { id: parentData.id },
+//             transaction: t,
+//           });
+
+//           if (existingParent) {
+//             console.log(`✅ Found parent id=${parentData.id}, updating fields`);
+//             await existingParent.update(
+//               {
+//                 parentFirstName: parentData.parentFirstName ?? existingParent.parentFirstName,
+//                 parentLastName: parentData.parentLastName ?? existingParent.parentLastName,
+//                 parentEmail: parentData.parentEmail ?? existingParent.parentEmail,
+//                 phoneNumber: parentData.phoneNumber ?? existingParent.phoneNumber,
+//                 relationChild: parentData.relationChild ?? existingParent.relationChild,
+//                 howDidHear: parentData.howDidHear ?? existingParent.howDidHear,
+//               },
+//               { transaction: t }
+//             );
+//             console.log('Parent updated:', existingParent.toJSON());
+//           } else {
+//             console.log(`⚠️ Parent id=${parentData.id} not found, cannot update`);
+//           }
+//         } else if (parentData.studentId) {
+//           console.log(`➕ Creating new parent for studentId=${parentData.studentId}`);
+//           const newParent = await OneToOneParent.create(
+//             {
+//               studentId: parentData.studentId,
+//               parentFirstName: parentData.parentFirstName,
+//               parentLastName: parentData.parentLastName,
+//               parentEmail: parentData.parentEmail,
+//               phoneNumber: parentData.phoneNumber,
+//               relationChild: parentData.relationChild,
+//               howDidHear: parentData.howDidHear,
+//             },
+//             { transaction: t }
+//           );
+//           console.log('Parent created:', newParent.toJSON());
+//         } else {
+//           console.log("⚠️ Skipping parent entry (no id or studentId provided):", parentData);
+//         }
+//       }
+//     }
+
+//     // ======================================================
+//     // 🚨 EMERGENCY DETAILS
+//     // ======================================================
+//     if (updateData?.emergencyDetails && updateData.emergencyDetails.id) {
+//       console.log(`🔄 Updating emergency details id=${updateData.emergencyDetails.id}`);
+//       const e = updateData.emergencyDetails;
+//       const existingEmergency = await OneToOneEmergency.findOne({
+//         where: { id: e.id },
+//         transaction: t,
+//       });
+//       if (existingEmergency) {
+//         await existingEmergency.update(
+//           {
+//             emergencyFirstName: e.emergencyFirstName ?? existingEmergency.emergencyFirstName,
+//             emergencyLastName: e.emergencyLastName ?? existingEmergency.emergencyLastName,
+//             phoneNumber: e.phoneNumber ?? existingEmergency.phoneNumber,
+//             relationChild: e.relationChild ?? existingEmergency.relationChild,
+//           },
+//           { transaction: t }
+//         );
+//         console.log(`✅ Updated emergency details id=${e.id}`);
+//       } else {
+//         console.log(`⚠️ Emergency details id=${e.id} not found, skipping`);
+//       }
+//     }
+
+//     // Commit transaction
+//     await t.commit();
+//     console.log("✅ Transaction committed successfully");
+
+//     return {
+//       status: true,
+//       message: "Lead updated successfully.",
+//     };
+//   } catch (error) {
+//     await t.rollback();
+//     console.error("❌ Error updating one-to-one lead:", error);
+//     return { status: false, message: error.message };
+//   }
+// };
 
 // Get All One-to-One Analytics
 exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
