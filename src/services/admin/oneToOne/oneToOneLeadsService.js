@@ -371,8 +371,16 @@ exports.getAllOnetoOneLeadsSales = async (
       adminIds.push(superAdminId); // include the super admin
       whereLead.createdBy = { [Op.in]: adminIds };
     } else {
-      // ✅ Normal Admin → only their own leads
-      whereLead.createdBy = adminId;
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id"],
+      });
+
+      const adminIds = managedAdmins.map(a => a.id);
+      adminIds.push(superAdminId);  // include super admin
+      adminIds.push(adminId);       // include current admin
+
+      whereLead.createdBy = { [Op.in]: adminIds };
     }
 
     // ✅ Date filter
@@ -864,8 +872,16 @@ exports.getAllOnetoOneLeadsSalesAll = async (
 
       whereLead.createdBy = { [Op.in]: adminIds };
     } else {
-      // 🧩 Normal Admin: only see own leads
-      whereLead.createdBy = adminId;
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id"],
+      });
+
+      const adminIds = managedAdmins.map(a => a.id);
+      adminIds.push(superAdminId);  // include super admin
+      adminIds.push(adminId);       // include current admin
+
+      whereLead.createdBy = { [Op.in]: adminIds };
     }
 
     if (fromDate && toDate) {
@@ -1336,8 +1352,16 @@ exports.getOnetoOneLeadsById = async (id, superAdminId, adminId) => {
 
       whereLead.createdBy = { [Op.in]: adminIds };
     } else {
-      // 🧩 Normal Admin: only see own leads
-      whereLead.createdBy = adminId;
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id"],
+      });
+
+      const adminIds = managedAdmins.map(a => a.id);
+      adminIds.push(superAdminId);  // include super admin
+      adminIds.push(adminId);       // include current admin
+
+      whereLead.createdBy = { [Op.in]: adminIds };
     }
 
     // ✅ Merge whereLead into the query
@@ -1736,8 +1760,16 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
 
       whereLead.createdBy = { [Op.in]: adminIds };
     } else {
-      // Normal admin — include only own leads
-      whereLead.createdBy = adminId;
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id"],
+      });
+
+      const adminIds = managedAdmins.map(a => a.id);
+      adminIds.push(superAdminId);  // include super admin
+      adminIds.push(adminId);       // include current admin
+
+      whereLead.createdBy = { [Op.in]: adminIds };
     }
     // 🗓️ Define date ranges dynamically based on filterType
     let startDate, endDate;

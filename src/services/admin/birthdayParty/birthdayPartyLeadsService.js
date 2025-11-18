@@ -367,8 +367,11 @@ exports.getAllBirthdayPartyLeadsSales = async (
       const adminIds = managedAdmins.map((a) => a.id);
       adminIds.push(superAdminId); // include the super admin
       whereLead.createdBy = { [Op.in]: adminIds };
+    } else if (superAdminId && adminId) {
+      // 🟢 Admin → fetch own + super admin’s leads
+      whereLead.createdBy = { [Op.in]: [adminId, superAdminId] };
     } else {
-      // ✅ Normal Admin → only their own leads
+      // 🟢 Fallback (in case no superAdminId found)
       whereLead.createdBy = adminId;
     }
 
@@ -725,8 +728,11 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
       adminIds.push(superAdminId); // include the super admin themselves
 
       whereLead.createdBy = { [Op.in]: adminIds };
+    } else if (superAdminId && adminId) {
+      // 🟢 Admin → fetch own + super admin’s leads
+      whereLead.createdBy = { [Op.in]: [adminId, superAdminId] };
     } else {
-      // 🧩 Normal Admin: only see own leads
+      // 🟢 Fallback (in case no superAdminId found)
       whereLead.createdBy = adminId;
     }
 
@@ -1194,7 +1200,11 @@ exports.getBirthdayPartyLeadsById = async (id, adminId, superAdminId) => {
       const adminIds = managedAdmins.map((a) => a.id);
       adminIds.push(superAdminId);
       whereLead.createdBy = { [Op.in]: adminIds };
+    } else if (superAdminId && adminId) {
+      // 🟢 Admin → fetch own + super admin’s leads
+      whereLead.createdBy = { [Op.in]: [adminId, superAdminId] };
     } else {
+      // 🟢 Fallback (in case no superAdminId found)
       whereLead.createdBy = adminId;
     }
 
@@ -1353,7 +1363,7 @@ exports.getBirthdayPartyLeadsById = async (id, adminId, superAdminId) => {
 
       booking: {
         id: booking.id,
-        serviceType:booking.serviceType,
+        serviceType: booking.serviceType,
         leadId: booking.leadId,
         coachId: booking.coachId,
         coach: booking.coach,
@@ -1577,8 +1587,11 @@ exports.getAllBirthdayPartyAnalytics = async (
       adminIds.push(superAdminId);
 
       whereLead.createdBy = { [Op.in]: adminIds };
+    } else if (superAdminId && adminId) {
+      // 🟢 Admin → fetch own + super admin’s leads
+      whereLead.createdBy = { [Op.in]: [adminId, superAdminId] };
     } else {
-      // Normal admin — include only own leads
+      // 🟢 Fallback (in case no superAdminId found)
       whereLead.createdBy = adminId;
     }
     // 🗓️ Define date ranges dynamically based on filterType

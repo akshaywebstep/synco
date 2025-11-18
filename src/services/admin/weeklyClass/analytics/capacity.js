@@ -2,6 +2,13 @@ const { Op, Sequelize } = require("sequelize");
 const moment = require("moment");
 const { Booking, ClassSchedule, Venue, PaymentPlan, Admin, BookingStudentMeta } = require("../../../../models");
 
+function applyVenueFilter(where, filters) {
+    if (filters?.venueId) {
+        where.venueId = filters.venueId;
+    }
+    return where;
+}
+
 // 🔹 Helper: Build admin filter depending on role
 async function getAdminFilter(superAdminId, adminId) {
     // ✅ If super admin → all admins under them + self
@@ -20,10 +27,13 @@ async function getAdminFilter(superAdminId, adminId) {
     return [adminId];
 }
 
-// 🔹 Helper: total class capacity
-async function getTotalCapacity(adminIds) {
+async function getTotalCapacity(adminIds, filters = {}) {
+    const where = { createdBy: { [Op.in]: adminIds } };
+
+    applyVenueFilter(where, filters);
+
     const classSchedules = await ClassSchedule.findAll({
-        where: { createdBy: { [Op.in]: adminIds } },
+        where,
         attributes: ["capacity"],
     });
 
@@ -57,25 +67,45 @@ async function getOccupiedSpaces(periodStart, periodEnd, adminIds, filters = {})
 
 // 🔹 Helper: total revenue (from PaymentPlan)
 async function getTotalRevenue(periodStart, periodEnd, adminIds, filters = {}) {
+    // 🔹 Build proper where clause
+    const bookingsWhere = {
+        status: { [Op.in]: ["active"] },
+        bookedBy: { [Op.in]: adminIds },
+        ...(periodStart && periodEnd ? { createdAt: { [Op.between]: [periodStart, periodEnd] } } : {})
+    };
+
+    // 🔹 Apply venue filter properly
+    applyVenueFilter(bookingsWhere, filters);
+
+    // 🔹 Query bookings
     const bookings = await Booking.findAll({
-        where: {
-            status: { [Op.in]: ["active"] },
-            bookedBy: { [Op.in]: adminIds },
-            ...(periodStart && periodEnd ? { createdAt: { [Op.between]: [periodStart, periodEnd] } } : {})
-        },
+        where: bookingsWhere,
         include: [
-            { model: PaymentPlan, as: "paymentPlan", attributes: ["price"], required: true },
-            { model: BookingStudentMeta, as: "students", attributes: ["age"], required: false }
+            {
+                model: PaymentPlan,
+                as: "paymentPlan",
+                attributes: ["price"],
+                required: true
+            },
+            {
+                model: BookingStudentMeta,
+                as: "students",
+                attributes: ["age"],
+                required: false
+            }
         ]
     });
 
+    // 🔹 Flatten students + filter by age/etc.
     const students = bookings.flatMap(b =>
         (b.students || []).map(s => ({ ...s.get(), booking: b }))
     ).filter(s => s.age != null && applyFilters(s, filters));
 
-    const totalRevenue = students.reduce((sum, s) => sum + (s.booking.paymentPlan?.price || 0), 0);
-
-    return totalRevenue;
+    // 🔹 Sum revenue
+    return students.reduce(
+        (sum, s) => sum + (s.booking.paymentPlan?.price || 0),
+        0
+    );
 }
 
 // 🔹 Helper: month-wise capacity trend (current vs previous year)
@@ -137,22 +167,19 @@ async function getCapacityMonthWise(superAdminId, filters, adminId) {
 
 // 🔹 High Demand Venues (group by venueId → show venue.address or venue.area)
 async function getHighDemandVenue(superAdminId, filters, adminId) {
-    // 1️⃣ Determine which admin(s) to include
     const adminIds = await getAdminFilter(superAdminId, adminId);
 
-    // 2️⃣ Build WHERE clause
     const where = {
         bookedBy: { [Op.in]: adminIds },
     };
+    applyVenueFilter(where, filters);
 
-    // Optional: filter only current month’s bookings
     if (filters?.period === "thisMonth") {
         const start = moment().startOf("month").toDate();
         const end = moment().endOf("month").toDate();
         where.createdAt = { [Op.between]: [start, end] };
     }
 
-    // 3️⃣ Group bookings by venueId and count
     const venues = await Booking.findAll({
         where,
         attributes: [
@@ -162,35 +189,36 @@ async function getHighDemandVenue(superAdminId, filters, adminId) {
         include: [
             {
                 model: Venue,
-                as: "venue", // make sure association exists
-                attributes: ["id", "area", "address"], // adjust per your Venue model
+                as: "venue",
+                attributes: ["id", "name", "area", "address"],
+                where: { deletedAt: null },  // 👈 EXCLUDE soft-deleted venues
+                required: true,               // 👈 INNER JOIN (no venue = no result)
             },
         ],
-        group: ["venueId", "venue.id", "venue.area", "venue.address"],
+        group: ["venueId", "venue.id", "venue.name", "venue.area", "venue.address"],
         order: [[Booking.sequelize.literal("count"), "DESC"]],
     });
 
-    // 4️⃣ Compute total bookings
     const totalBookings = venues.reduce((sum, v) => sum + Number(v.getDataValue("count")), 0);
 
-    // 5️⃣ Format output for frontend
-    const result = venues.map((v) => {
-        const count = Number(v.getDataValue("count"));
-        const percentage = totalBookings ? ((count / totalBookings) * 100).toFixed(0) : 0;
+    return venues
+        .map(v => {
+            const count = Number(v.getDataValue("count"));
+            const percentage = totalBookings ? ((count / totalBookings) * 100).toFixed(0) : 0;
 
-        const venueName = v.venue?.area || v.venue?.address || "Unknown Venue";
+            const venue = v.venue;
+            const name = venue.name || venue.area || venue.address;
 
-        return {
-            venueId: v.venueId,
-            name: venueName,
-            count,
-            percentage: `${percentage}%`,
-            value: Number(percentage),
-        };
-    });
-
-    // 6️⃣ Return top 5 by demand
-    return result.sort((a, b) => b.value - a.value).slice(0, 5);
+            return {
+                venueId: v.venue.id,
+                name,
+                count,
+                percentage: `${percentage}%`,
+                value: Number(percentage),
+            };
+        })
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 5);
 }
 
 async function getCapacityByVenue(superAdminId, filters, adminId) {
@@ -289,26 +317,62 @@ function applyFilters(bookingStudent, filter) {
         }
     }
 
+    // Venue filter
+    if (valid && filter.venueId) {
+        const bookingVenueId = bookingStudent.booking?.venueId;
+        valid = bookingVenueId === filter.venueId;
+    }
+
     return valid;
+
 }
 
-async function getVenuesByAdmin(superAdminId, adminId) {
-    // 1️⃣ Get admin IDs allowed for this query
+async function getVenuesByAdmin(superAdminId, adminId, filters = {}) {
     const adminIds = await getAdminFilter(superAdminId, adminId);
 
-    // 2️⃣ Query venues created by these admins
+    // --- Base WHERE for Bookings ---
+    const where = {
+        bookedBy: { [Op.in]: adminIds }
+    };
+
+    // 🔹 Apply period filter
+    if (filters.period === "thisMonth") {
+        where.createdAt = {
+            [Op.between]: [
+                moment().startOf("month").toDate(),
+                moment().endOf("month").toDate()
+            ]
+        };
+    }
+
+    // 🔹 Apply venue filter (if filtering to a single venue)
+    if (filters.venueId) {
+        where.venueId = filters.venueId;
+    }
+
+    // --- Fetch venues that have bookings by these admins ---
     const venues = await Venue.findAll({
+        include: [
+            {
+                model: Booking,
+                as: "bookings",
+                required: true,
+                where,
+                attributes: []
+            }
+        ],
+        attributes: ["id", "name", "area", "address"],
         where: {
-            createdBy: { [Op.in]: adminIds },
+            deletedAt: null   // ⛔ EXCLUDE soft-deleted venues
         },
-        attributes: ["id", "name", "area", "address"], // include fields you need
-        order: [["name", "ASC"]], // optional sorting by name
+        group: ["Venue.id", "Venue.name", "Venue.area", "Venue.address"],
+        order: [["name", "ASC"]]
     });
 
-    // 3️⃣ Map result
+    // --- Format Response ---
     return venues.map(v => ({
         venueId: v.id,
-        name: v.name || v.area || v.address || "Unknown Venue",
+        name: v.name || v.area || v.address || "Unknown Venue"
     }));
 }
 
@@ -322,6 +386,7 @@ async function membershipPlans(superAdminId, filters, adminId) {
         bookedBy: { [Op.in]: adminIds },
         paymentPlanId: { [Op.ne]: null }, // ✅ Exclude null paymentPlanId
     };
+    applyVenueFilter(where, filters);
 
     // Optional: filter by current month
     if (filters?.period === "thisMonth") {
@@ -378,6 +443,7 @@ async function capacityByClass(superAdminId, filters, adminId) {
         bookedBy: { [Op.in]: adminIds },
         classScheduleId: { [Op.ne]: null },
     };
+    applyVenueFilter(where, filters);
 
     if (filters?.period === "thisMonth") {
         const start = moment().startOf("month").toDate();
@@ -443,15 +509,17 @@ async function getCapacityWidgets(superAdminId, filters, adminId) {
     const adminIds = await getAdminFilter(superAdminId, adminId);
 
     // --- Current period ---
-    const totalCapacity = await getTotalCapacity(adminIds);
+    // const totalCapacity = await getTotalCapacity(adminIds);
+    const totalCapacity = await getTotalCapacity(adminIds, filters);
+
     const occupiedCurrent = await getOccupiedSpaces(currentStart, currentEnd, adminIds, filters || {});
     const occupiedPrev = await getOccupiedSpaces(prevStart, prevEnd, adminIds, filters || {});
 
     // const occupiedCurrent = await getOccupiedSpaces(currentStart, currentEnd, adminIds);
-    const revenueCurrent = await getTotalRevenue(currentStart, currentEnd, adminIds,filters);
+    const revenueCurrent = await getTotalRevenue(currentStart, currentEnd, adminIds, filters);
 
     // --- Previous period ---
-    const revenuePrev = await getTotalRevenue(prevStart, prevEnd, adminIds,filters);
+    const revenuePrev = await getTotalRevenue(prevStart, prevEnd, adminIds, filters);
 
     // --- Derived metrics ---
     const occupancyRate = totalCapacity ? (occupiedCurrent / totalCapacity) * 100 : 0;
@@ -495,5 +563,5 @@ async function getCapacityWidgets(superAdminId, filters, adminId) {
 }
 
 module.exports = {
-    getCapacityWidgets, getCapacityMonthWise, getHighDemandVenue, getCapacityByVenue, membershipPlans, capacityByClass,getVenuesByAdmin  
+    getCapacityWidgets, getCapacityMonthWise, getHighDemandVenue, getCapacityByVenue, membershipPlans, capacityByClass, getVenuesByAdmin
 };

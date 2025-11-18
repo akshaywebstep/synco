@@ -35,7 +35,7 @@ exports.getMonthlyReport = async (req, res) => {
         const membershipPlans = await capacityAnalytics.membershipPlans(superAdminId, filters, adminId);
 
         // ✅ Get venues created by this admin/super-admin
-        const venuesByAdmin = await capacityAnalytics.getVenuesByAdmin(superAdminId, adminId);
+        const getVenuesByAdmin = await capacityAnalytics.getVenuesByAdmin(superAdminId, adminId);
 
         const successMessage = "Capacity analytics report generated successfully.";
         if (DEBUG) console.log("✅", successMessage);
@@ -61,7 +61,7 @@ exports.getMonthlyReport = async (req, res) => {
                 capacityByVenue,
                 membershipPlans,
                 capacityByClass,
-                venuesByAdmin, // <-- called correctly
+                getVenuesByAdmin, // <-- called correctly
             },
         });
     } catch (error) {
