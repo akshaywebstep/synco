@@ -1634,6 +1634,7 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
       await t.rollback();
       return { status: false, message: "Booking not found for this lead." };
     }
+
     // ======================================================
     // 🧩 STUDENTS (STRICT VALIDATION)
     // ======================================================
@@ -1667,8 +1668,8 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
         const missing = required.filter(f => !s[f] || String(s[f]).trim() === "");
 
         if (missing.length > 0) {
-          console.log("❌ Student skipped (missing fields):", missing);
-          continue; // ❗ skip creation, DO NOT error
+          await t.rollback();
+          return { status: false, message: `Cannot create student. Missing required fields: ${missing.join(", ")}` };
         }
 
         await OneToOneStudent.create(
@@ -1728,8 +1729,8 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
         const missing = requiredParentFields.filter(f => !p[f] || String(p[f]).trim() === "");
 
         if (missing.length > 0) {
-          console.log("❌ Parent skipped (missing fields):", missing);
-          continue; // ❗ do NOT save empty object
+          await t.rollback();
+          return { status: false, message: `Cannot create parent. Missing required fields: ${missing.join(", ")}` };
         }
 
         await OneToOneParent.create(
@@ -1771,35 +1772,35 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
             { transaction: t }
           );
         }
-        return; // skip creation section
+        // skip creation
+      } else {
+        // ---------- CREATE NEW ----------
+        const requiredEmergency = [
+          "emergencyFirstName",
+          "emergencyLastName",
+          "phoneNumber",
+          "relationChild",
+          "studentId"
+        ];
+
+        const missing = requiredEmergency.filter(f => !e[f] || String(e[f]).trim() === "");
+
+        if (missing.length > 0) {
+          await t.rollback();
+          return { status: false, message: `Cannot create emergency contact. Missing required fields: ${missing.join(", ")}` };
+        }
+
+        await OneToOneEmergency.create(
+          {
+            studentId: e.studentId,
+            emergencyFirstName: e.emergencyFirstName,
+            emergencyLastName: e.emergencyLastName,
+            phoneNumber: e.phoneNumber,
+            relationChild: e.relationChild,
+          },
+          { transaction: t }
+        );
       }
-
-      // ---------- CREATE NEW ----------
-      const requiredEmergency = [
-        "emergencyFirstName",
-        "emergencyLastName",
-        "phoneNumber",
-        "relationChild",
-        "studentId"
-      ];
-
-      const missing = requiredEmergency.filter(f => !e[f] || String(e[f]).trim() === "");
-
-      if (missing.length > 0) {
-        console.log("❌ Emergency skipped (missing fields):", missing);
-        return; // ❗ skip creation, DO NOT error
-      }
-
-      await OneToOneEmergency.create(
-        {
-          studentId: e.studentId,
-          emergencyFirstName: e.emergencyFirstName,
-          emergencyLastName: e.emergencyLastName,
-          phoneNumber: e.phoneNumber,
-          relationChild: e.relationChild,
-        },
-        { transaction: t }
-      );
     }
 
     await t.commit();

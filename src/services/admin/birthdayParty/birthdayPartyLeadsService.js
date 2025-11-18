@@ -1400,7 +1400,6 @@ exports.getBirthdayPartyLeadsById = async (id, adminId, superAdminId) => {
     return { status: false, message: error.message };
   }
 };
-
 exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateData) => {
   const t = await sequelize.transaction();
   try {
@@ -1442,12 +1441,9 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
     }
 
     // ======================================================
-    // 🧒 STUDENTS (WITH VALIDATION)
-    // ======================================================
-    // ======================================================
     // 🧒 STUDENTS (STRICT VALIDATION)
     // ======================================================
-    if (updateData?.student && Array.isArray(updateData.student)) {
+    if (Array.isArray(updateData?.student)) {
       for (const s of updateData.student) {
 
         // ---------- UPDATE ----------
@@ -1456,7 +1452,6 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
             where: { id: s.id, BirthdayPartyBookingId: booking.id },
             transaction: t,
           });
-
           if (existingStudent) {
             await existingStudent.update(
               {
@@ -1475,10 +1470,9 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
 
         // ---------- CREATE (STRICT: DO NOT SAVE EMPTY) ----------
         const required = ["studentFirstName", "studentLastName", "dateOfBirth", "age", "gender"];
-
         const missing = required.filter(f => !s[f] || String(s[f]).trim() === "");
         if (missing.length > 0) {
-          console.log("❌ Student skipped — empty fields");
+          console.log("❌ Student skipped — empty fields", missing);
           continue;
         }
 
@@ -1498,9 +1492,9 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
     }
 
     // ======================================================
-    // 👨‍👩‍👧 PARENTS (WITH VALIDATION)
+    // 👨‍👩‍👧 PARENTS (STRICT VALIDATION)
     // ======================================================
-    if (updateData?.parentDetails && Array.isArray(updateData.parentDetails)) {
+    if (Array.isArray(updateData?.parentDetails)) {
       for (const p of updateData.parentDetails) {
 
         // ---------- UPDATE ----------
@@ -1535,10 +1529,9 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
           "relationChild",
           "studentId"
         ];
-
         const missing = required.filter(f => !p[f] || String(p[f]).trim() === "");
         if (missing.length > 0) {
-          console.log("❌ Parent skipped — empty fields");
+          console.log("❌ Parent skipped — empty fields", missing);
           continue;
         }
 
@@ -1558,7 +1551,7 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
     }
 
     // ======================================================
-    // 🚨 EMERGENCY DETAILS (WITH VALIDATION)
+    // 🚨 EMERGENCY DETAILS (STRICT VALIDATION)
     // ======================================================
     if (updateData?.emergencyDetails) {
       const e = updateData.emergencyDetails;
@@ -1581,7 +1574,7 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
             { transaction: t }
           );
         }
-        return; // skip creation
+        return; // skip creation section
       }
 
       // ---------- CREATE (STRICT: DO NOT SAVE EMPTY) ----------
@@ -1592,10 +1585,9 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
         "relationChild",
         "studentId"
       ];
-
       const missing = required.filter(f => !e[f] || String(e[f]).trim() === "");
       if (missing.length > 0) {
-        console.log("❌ Emergency skipped — empty fields");
+        console.log("❌ Emergency skipped — empty fields", missing);
         return;
       }
 
