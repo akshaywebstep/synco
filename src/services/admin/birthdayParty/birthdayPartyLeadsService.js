@@ -588,7 +588,10 @@ exports.getAllBirthdayPartyLeadsSales = async (
 
     // ✅ Summary (only active)
     const totalLeads = await BirthdayPartyLead.count({
-      where: { createdBy: adminId, status: "active" },
+      where: {
+        createdBy: whereLead.createdBy,   // <-- ONLY CHANGE
+        status: "active",
+      },
     });
 
     const startOfMonth = moment().startOf("month").toDate();
@@ -596,14 +599,17 @@ exports.getAllBirthdayPartyLeadsSales = async (
 
     const newLeads = await BirthdayPartyLead.count({
       where: {
-        createdBy: adminId,
+        createdBy: whereLead.createdBy,   // <-- ONLY CHANGE
         status: "active",
         createdAt: { [Op.between]: [startOfMonth, endOfMonth] },
       },
     });
 
     const leadsWithBookings = await BirthdayPartyLead.count({
-      where: { createdBy: adminId, status: "active" },
+      where: {
+        createdBy: whereLead.createdBy,   // <-- ONLY CHANGE
+        status: "active",
+      },
       include: [
         {
           model: BirthdayPartyBooking,
@@ -615,13 +621,17 @@ exports.getAllBirthdayPartyLeadsSales = async (
     });
 
     const sourceCount = await BirthdayPartyLead.findAll({
-      where: { createdBy: adminId, status: "active" },
+      where: {
+        createdBy: whereLead.createdBy,   // <-- ONLY CHANGE
+        status: "active",
+      },
       attributes: [
         "source",
         [sequelize.fn("COUNT", sequelize.col("source")), "count"],
       ],
       group: ["source"],
     });
+
     const topSalesAgentData = await BirthdayPartyLead.findOne({
       where: { status: "active" },
       include: [
@@ -633,8 +643,8 @@ exports.getAllBirthdayPartyLeadsSales = async (
           attributes: [],
         },
         {
-          model: Admin, // your Admin model
-          as: "creator", // association alias
+          model: Admin,
+          as: "creator",
           attributes: ["firstName", "lastName"],
         },
       ],
@@ -661,9 +671,7 @@ exports.getAllBirthdayPartyLeadsSales = async (
         }
         : null;
 
-    console.log({
-      topSalesAgent,
-    });
+    console.log({ topSalesAgent });
 
     // ✅ Final Response
     if (!filteredLeads.length) {
@@ -1010,7 +1018,7 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
 
     // ✅ Summary (only pending)
     const totalLeads = await BirthdayPartyLead.count({
-      where: { createdBy: adminId },
+      where: { createdBy: whereLead.createdBy },   // <-- ONLY CHANGE
     });
 
     const startOfMonth = moment().startOf("month").toDate();
@@ -1018,14 +1026,14 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
 
     const newLeads = await BirthdayPartyLead.count({
       where: {
-        createdBy: adminId,
+        createdBy: whereLead.createdBy,            // <-- ONLY CHANGE
         status: "active",
         createdAt: { [Op.between]: [startOfMonth, endOfMonth] },
       },
     });
 
     const leadsWithBookings = await BirthdayPartyLead.count({
-      where: { createdBy: adminId },
+      where: { createdBy: whereLead.createdBy },   // <-- ONLY CHANGE
       include: [
         {
           model: BirthdayPartyBooking,
@@ -1037,7 +1045,7 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
     });
 
     const sourceCount = await BirthdayPartyLead.findAll({
-      where: { createdBy: adminId },
+      where: { createdBy: whereLead.createdBy },   // <-- ONLY CHANGE
       attributes: [
         "source",
         [sequelize.fn("COUNT", sequelize.col("source")), "count"],
@@ -1056,8 +1064,8 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
           attributes: [],
         },
         {
-          model: Admin, // your Admin model
-          as: "creator", // association alias
+          model: Admin,
+          as: "creator",
           attributes: ["firstName", "lastName"],
         },
       ],
@@ -1095,6 +1103,7 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
         where: { superAdminId },
         attributes: ["id", "firstName", "lastName", "email"],
       });
+
       agentList = managedAdmins.map((a) => ({
         id: a.id,
         name: `${a.firstName || ""} ${a.lastName || ""}`.trim() || a.email,
@@ -1103,18 +1112,20 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
       const superAdmin = await Admin.findByPk(superAdminId, {
         attributes: ["id", "firstName", "lastName", "email"],
       });
+
       if (superAdmin) {
         agentList.unshift({
           id: superAdmin.id,
           name:
-            `${superAdmin.firstName || ""} ${superAdmin.lastName || ""
-              }`.trim() || superAdmin.email,
+            `${superAdmin.firstName || ""} ${superAdmin.lastName || ""}`.trim() ||
+            superAdmin.email,
         });
       }
     } else {
       const admin = await Admin.findByPk(adminId, {
         attributes: ["id", "firstName", "lastName", "email"],
       });
+
       if (admin) {
         agentList.push({
           id: admin.id,
@@ -1138,6 +1149,7 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
         where: { id: { [Op.in]: coachIds } },
         attributes: ["id", "firstName", "lastName", "email"],
       });
+
       coachList = coaches.map((c) => ({
         id: c.id,
         name: `${c.firstName || ""} ${c.lastName || ""}`.trim() || c.email,

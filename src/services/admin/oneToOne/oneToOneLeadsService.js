@@ -661,24 +661,37 @@ exports.getAllOnetoOneLeadsSales = async (
     });
     const locations = Object.keys(locationSummary);
 
-    // ✅ Summary (only active)
+    // ----------------------------------------------------------------------
+    // ✅ Summary Section – ALL COUNTS FIXED TO USE whereLead.createdBy
+    // ----------------------------------------------------------------------
+
+    // ✅ Total Leads
     const totalLeads = await oneToOneLeads.count({
-      where: { createdBy: adminId, status: "active" },
+      where: {
+        createdBy: whereLead.createdBy, // <- uses adminIds correctly
+        status: "active",
+      },
     });
 
+    // Month range
     const startOfMonth = moment().startOf("month").toDate();
     const endOfMonth = moment().endOf("month").toDate();
 
+    // ✅ New Leads This Month
     const newLeads = await oneToOneLeads.count({
       where: {
-        createdBy: adminId,
+        createdBy: whereLead.createdBy, // FIXED
         status: "active",
         createdAt: { [Op.between]: [startOfMonth, endOfMonth] },
       },
     });
 
+    // ✅ Leads With Bookings
     const leadsWithBookings = await oneToOneLeads.count({
-      where: { createdBy: adminId, status: "active" },
+      where: {
+        createdBy: whereLead.createdBy, // FIXED
+        status: "active",
+      },
       include: [
         {
           model: OneToOneBooking,
@@ -689,16 +702,27 @@ exports.getAllOnetoOneLeadsSales = async (
       ],
     });
 
+    // ✅ Source Count
     const sourceCount = await oneToOneLeads.findAll({
-      where: { createdBy: adminId, status: "active" },
+      where: {
+        createdBy: whereLead.createdBy, // FIXED
+        status: "active",
+      },
       attributes: [
         "source",
         [sequelize.fn("COUNT", sequelize.col("source")), "count"],
       ],
       group: ["source"],
     });
+
+    // ----------------------------------------------------------------------
+    // ✅ Top Sales Agent — FIXED to respect superAdmin/admin filters
+    // ----------------------------------------------------------------------
     const topSalesAgentData = await oneToOneLeads.findOne({
-      where: { status: "active" },
+      where: {
+        status: "active",
+        createdBy: whereLead.createdBy, // FIXED !!!
+      },
       include: [
         {
           model: OneToOneBooking,
@@ -708,8 +732,8 @@ exports.getAllOnetoOneLeadsSales = async (
           attributes: [],
         },
         {
-          model: Admin, // your Admin model
-          as: "creator", // association alias
+          model: Admin,
+          as: "creator",
           attributes: ["firstName", "lastName"],
         },
       ],
@@ -727,7 +751,7 @@ exports.getAllOnetoOneLeadsSales = async (
       raw: false,
     });
 
-    // ✅ Properly format the response object
+    // Final formatted top agent
     const topSalesAgent =
       topSalesAgentData && topSalesAgentData.creator
         ? {
@@ -736,11 +760,11 @@ exports.getAllOnetoOneLeadsSales = async (
         }
         : null;
 
-    console.log({
-      topSalesAgent,
-    });
+    console.log({ topSalesAgent });
 
-    // ✅ Agent List (super admin + managed admins)
+    // ----------------------------------------------------------------------
+    // Agent List (same logic)
+    // ----------------------------------------------------------------------
     let agentList = [];
     if (superAdminId === adminId) {
       const managedAdmins = await Admin.findAll({
@@ -759,8 +783,8 @@ exports.getAllOnetoOneLeadsSales = async (
         agentList.unshift({
           id: superAdmin.id,
           name:
-            `${superAdmin.firstName || ""} ${superAdmin.lastName || ""
-              }`.trim() || superAdmin.email,
+            `${superAdmin.firstName || ""} ${superAdmin.lastName || ""}`.trim() ||
+            superAdmin.email,
         });
       }
     } else {
@@ -777,7 +801,9 @@ exports.getAllOnetoOneLeadsSales = async (
       }
     }
 
-    // ✅ Coach List (from all bookings)
+    // ----------------------------------------------------------------------
+    // Coach List
+    // ----------------------------------------------------------------------
     const coachIds = [
       ...new Set(
         formattedData.map((lead) => lead.booking?.coachId).filter(Boolean)
@@ -1158,24 +1184,33 @@ exports.getAllOnetoOneLeadsSalesAll = async (
     });
     const locations = Object.keys(locationSummary);
 
-    // ✅ Summary (only pending)
+    // ----------------------------------------------------------------------
+    // ✅ Summary — use the computed whereLead (contains createdBy, status, date filters etc.)
+    // ----------------------------------------------------------------------
+
+    // Ensure we don't mutate original whereLead accidentally
+    const baseCountWhere = { ...whereLead };
+
+    // ✅ Total Leads (respecting filters in whereLead)
     const totalLeads = await oneToOneLeads.count({
-      where: { createdBy: adminId },
+      where: baseCountWhere,
     });
 
+    // Month range
     const startOfMonth = moment().startOf("month").toDate();
     const endOfMonth = moment().endOf("month").toDate();
 
+    // ✅ New Leads This Month — still respects admin filters + status
     const newLeads = await oneToOneLeads.count({
       where: {
-        createdBy: adminId,
-        status: "active",
+        ...baseCountWhere,
         createdAt: { [Op.between]: [startOfMonth, endOfMonth] },
       },
     });
 
+    // ✅ Leads With Bookings — respects admin filters and only counts leads with active bookings
     const leadsWithBookings = await oneToOneLeads.count({
-      where: { createdBy: adminId },
+      where: baseCountWhere,
       include: [
         {
           model: OneToOneBooking,
@@ -1186,8 +1221,9 @@ exports.getAllOnetoOneLeadsSalesAll = async (
       ],
     });
 
+    // ✅ Source Count — grouped by source, respects admin filters
     const sourceCount = await oneToOneLeads.findAll({
-      where: { createdBy: adminId },
+      where: baseCountWhere,
       attributes: [
         "source",
         [sequelize.fn("COUNT", sequelize.col("source")), "count"],
@@ -1195,8 +1231,9 @@ exports.getAllOnetoOneLeadsSalesAll = async (
       group: ["source"],
     });
 
+    // ✅ Top Sales Agent — respects admin filters
     const topSalesAgentData = await oneToOneLeads.findOne({
-      where: { status: "active" },
+      where: baseCountWhere,
       include: [
         {
           model: OneToOneBooking,
@@ -1225,7 +1262,7 @@ exports.getAllOnetoOneLeadsSalesAll = async (
       raw: false,
     });
 
-    // ✅ Properly format the response object
+    // Format top agent result
     const topSalesAgent =
       topSalesAgentData && topSalesAgentData.creator
         ? {
@@ -1234,11 +1271,11 @@ exports.getAllOnetoOneLeadsSalesAll = async (
         }
         : null;
 
-    console.log({
-      topSalesAgent,
-    });
+    console.log({ topSalesAgent });
 
-    // ✅ Agent List (super admin + managed admins)
+    // ----------------------------------------------------------------------
+    // Agent List (super admin + managed admins) — unchanged logic
+    // ----------------------------------------------------------------------
     let agentList = [];
     if (superAdminId === adminId) {
       const managedAdmins = await Admin.findAll({
@@ -1257,8 +1294,8 @@ exports.getAllOnetoOneLeadsSalesAll = async (
         agentList.unshift({
           id: superAdmin.id,
           name:
-            `${superAdmin.firstName || ""} ${superAdmin.lastName || ""
-              }`.trim() || superAdmin.email,
+            `${superAdmin.firstName || ""} ${superAdmin.lastName || ""}`.trim() ||
+            superAdmin.email,
         });
       }
     } else {
@@ -1275,7 +1312,9 @@ exports.getAllOnetoOneLeadsSalesAll = async (
       }
     }
 
-    // ✅ Coach List (from all bookings)
+    // ----------------------------------------------------------------------
+    // Coach List (from formattedData) — unchanged logic
+    // ----------------------------------------------------------------------
     const coachIds = [
       ...new Set(
         formattedData.map((lead) => lead.booking?.coachId).filter(Boolean)
