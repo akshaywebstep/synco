@@ -322,7 +322,7 @@ exports.createBirthdayPartyBooking = async (data) => {
                             .replace(/{{gender}}/g, firstStudent.gender || "")
                             .replace(/{{relationChild}}/g, firstParent.relationChild || "")
                             .replace(/{{phoneNumber}}/g, firstParent.phoneNumber || "")
-                            .replace(/{{className}}/g, "One to One Coaching")
+                            .replace(/{{className}}/g, "Birthday Party Coaching")
                             .replace(/{{classTime}}/g, data.time || "")
                             .replace(/{{startDate}}/g, data.date || "")
                             .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")

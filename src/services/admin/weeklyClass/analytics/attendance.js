@@ -26,9 +26,10 @@ async function getBookingAttendanceAnalytics(superAdminId, filters = {}, adminId
     } else if (filterType === "lastYear") {
         startDate = moment().subtract(1, "year").startOf("year").toDate();
         endDate = moment().subtract(1, "year").endOf("year").toDate();
-    } else {
-        // Default: this + last month combined
-        startDate = moment().subtract(1, "month").startOf("month").toDate();
+    }
+    else {
+        // Only current month
+        startDate = moment().startOf("month").toDate();
         endDate = moment().endOf("month").toDate();
     }
 

@@ -376,26 +376,94 @@ exports.updateBirthdayPartyLeadById = async (req, res) => {
       });
     }
 
-    // ✅ Optional validation (you can expand if needed)
+    // ============================================================
+    // 🚫 Check if user sent any valid section
+    // ============================================================
     if (
-      !updateData.student &&
-      !updateData.parentDetails &&
-      !updateData.emergencyDetails
+      updateData.student === undefined &&
+      updateData.parentDetails === undefined &&
+      updateData.emergencyDetails === undefined
     ) {
       return res.status(400).json({
         status: false,
-        message:
-          "At least one of student, parentDetails, or emergencyDetails is required.",
+        message: "At least one of student, parentDetails, or emergencyDetails is required.",
       });
     }
 
-    // ✅ Call service to update lead
-    const updateResult = await birthdayPartyLeadService.updateBirthdayPartyLeadById(
-      id,
-      req.admin?.superAdminId || null,
-      adminId,
-      updateData
-    );
+    // ============================================================
+    // 🚫 FIELD-BY-FIELD VALIDATION (STOP on first empty)
+    // ============================================================
+
+    const validateFields = (prefix, obj) => {
+      if (!obj) return null;
+
+      for (const key in obj) {
+        if (
+          obj[key] === "" ||
+          obj[key] === null ||
+          obj[key] === undefined
+        ) {
+          return `${key} cannot be empty`;
+        }
+      }
+      return null;
+    };
+
+    // Students (array)
+    if (Array.isArray(updateData.student)) {
+      for (let i = 0; i < updateData.student.length; i++) {
+        const student = updateData.student[i];
+        for (const key in student) {
+          if (
+            student[key] === "" ||
+            student[key] === null ||
+            student[key] === undefined
+          ) {
+            return res.status(400).json({
+              status: false,
+              message: `${key} cannot be empty`,
+            });
+          }
+        }
+      }
+    }
+
+    // Parent
+    let parentError = validateFields("parentDetails", updateData.parentDetails);
+    if (parentError) {
+      return res.status(400).json({
+        status: false,
+        message: parentError,
+      });
+    }
+
+    // Emergency
+    let emergencyError = validateFields("emergencyDetails", updateData.emergencyDetails);
+    if (emergencyError) {
+      return res.status(400).json({
+        status: false,
+        message: emergencyError,
+      });
+    }
+
+    // ============================================================
+    // 🧹 CLEAN EMPTY VALUES BEFORE SAVING
+    // ============================================================
+    const cleanData = JSON.parse(JSON.stringify(updateData, (key, value) => {
+      if (value === "" || value === null || value === undefined) return undefined;
+      return value;
+    }));
+
+    // ============================================================
+    // 🛠 Save
+    // ============================================================
+    const updateResult =
+      await birthdayPartyLeadService.updateBirthdayPartyLeadById(
+        id,
+        req.admin?.superAdminId || null,
+        adminId,
+        cleanData
+      );
 
     if (!updateResult.status) {
       return res.status(400).json({
@@ -404,25 +472,22 @@ exports.updateBirthdayPartyLeadById = async (req, res) => {
       });
     }
 
-    // ✅ Log admin activity
-    await logActivity(req, PANEL, MODULE, "update", { id, updateData }, true);
+    await logActivity(req, PANEL, MODULE, "update", { id, updateData: cleanData }, true);
 
-    // ✅ Create notification
-    const adminName = `${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""
-      }`.trim();
+    const adminName = `${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""}`.trim();
     await createNotification(
       req,
       "Birthday Party Lead Updated",
-      `Lead ID ${id} was updated by ${adminName}.`,
+      `Lead was updated by ${adminName}.`,
       "Support"
     );
 
-    // ✅ Success response
     return res.status(200).json({
       status: true,
       message: "Birthday Party Lead updated successfully.",
       data: updateResult.data,
     });
+
   } catch (error) {
     console.error("❌ Error updating Birthday Party Lead:", error);
     return res.status(500).json({
@@ -431,6 +496,75 @@ exports.updateBirthdayPartyLeadById = async (req, res) => {
     });
   }
 };
+
+// exports.updateBirthdayPartyLeadById = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const adminId = req.admin?.id;
+//     const updateData = req.body;
+
+//     if (!id) {
+//       return res.status(400).json({
+//         status: false,
+//         message: "Lead ID is required.",
+//       });
+//     }
+
+//     // ✅ Optional validation (you can expand if needed)
+//     if (
+//       !updateData.student &&
+//       !updateData.parentDetails &&
+//       !updateData.emergencyDetails
+//     ) {
+//       return res.status(400).json({
+//         status: false,
+//         message:
+//           "At least one of student, parentDetails, or emergencyDetails is required.",
+//       });
+//     }
+
+//     // ✅ Call service to update lead
+//     const updateResult = await birthdayPartyLeadService.updateBirthdayPartyLeadById(
+//       id,
+//       req.admin?.superAdminId || null,
+//       adminId,
+//       updateData
+//     );
+
+//     if (!updateResult.status) {
+//       return res.status(400).json({
+//         status: false,
+//         message: updateResult.message || "Failed to update Birthday party Lead.",
+//       });
+//     }
+
+//     // ✅ Log admin activity
+//     await logActivity(req, PANEL, MODULE, "update", { id, updateData }, true);
+
+//     // ✅ Create notification
+//     const adminName = `${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""
+//       }`.trim();
+//     await createNotification(
+//       req,
+//       "Birthday Party Lead Updated",
+//       `Lead ID ${id} was updated by ${adminName}.`,
+//       "Support"
+//     );
+
+//     // ✅ Success response
+//     return res.status(200).json({
+//       status: true,
+//       message: "Birthday Party Lead updated successfully.",
+//       data: updateResult.data,
+//     });
+//   } catch (error) {
+//     console.error("❌ Error updating Birthday Party Lead:", error);
+//     return res.status(500).json({
+//       status: false,
+//       message: "Server error while updating One-to-One Lead.",
+//     });
+//   }
+// };
 
 // ✅ Get One-to-One Analytics
 exports.getAllBirthdayPartyAnalytics = async (req, res) => {
