@@ -303,39 +303,32 @@ exports.createOnetoOneBooking = async (data) => {
     }
     await transaction.commit();
 
-    // ✅ Send confirmation email to first parent (only if payment succeeded)
     try {
       if (paymentStatus === "paid") {
-        const {
-          status: configStatus,
-          emailConfig,
-          htmlTemplate,
-          subject,
-        } = await emailModel.getEmailConfig(PANEL, "one-to-one-booking"); // from your DB
+        const { status: configStatus, emailConfig, htmlTemplate, subject } =
+          await emailModel.getEmailConfig(PANEL, "one-to-one-booking");
 
         if (configStatus && htmlTemplate) {
           const firstParent = data.parents?.[0];
 
           if (firstParent && firstParent.parentEmail) {
             // Build HTML for all students
-            let studentsHtml = students.map(student => {
-              return `
-            <tr>
-              <td style="padding:5px; vertical-align:top;">
-                <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Student Name:</p>
-                <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.studentFirstName || ""} ${student.studentLastName || ""}</p>
-              </td>
-              <td style="padding:5px; vertical-align:top;">
-                <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Age:</p>
-                <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.age || ""}</p>
-              </td>
-              <td style="padding:5px; vertical-align:top;">
-                <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Gender:</p>
-                <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.gender || ""}</p>
-              </td>
-            </tr>
-          `;
-            }).join(""); // join all rows
+            let studentsHtml = students.map(student => `
+          <tr>
+            <td style="padding:5px; vertical-align:top;">
+              <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Student Name:</p>
+              <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.studentFirstName || ""} ${student.studentLastName || ""}</p>
+            </td>
+            <td style="padding:5px; vertical-align:top;">
+              <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Age:</p>
+              <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.age || ""}</p>
+            </td>
+            <td style="padding:5px; vertical-align:top;">
+              <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Gender:</p>
+              <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.gender || ""}</p>
+            </td>
+          </tr>
+        `).join("");
 
             // Replace placeholders in template
             let htmlBody = htmlTemplate
@@ -345,21 +338,27 @@ exports.createOnetoOneBooking = async (data) => {
               .replace(/{{relationChild}}/g, firstParent.relationChild || "")
               .replace(/{{className}}/g, "One to One Coaching")
               .replace(/{{classTime}}/g, data.time || "")
+              .replace(/{{location}}/g, data.location || "")
               .replace(/{{startDate}}/g, data.date || "")
               .replace(/{{year}}/g, new Date().getFullYear().toString())
               .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
               .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png")
               .replace("{{studentsTable}}", studentsHtml);
 
-            // Dynamically add parent email to emailConfig
-            emailConfig.to = [
-              {
-                name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
-                email: firstParent.parentEmail,
-              }
-            ];
+            // ✅ Correct way: pass recipients as 'recipient' (not 'to')
+            await sendEmail(emailConfig, {
+              recipient: [
+                {
+                  name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
+                  email: firstParent.parentEmail
+                }
+              ],
+              cc: emailConfig.cc || [],
+              bcc: emailConfig.bcc || [],
+              subject,
+              htmlBody
+            });
 
-            await sendEmail(emailConfig, { subject, htmlBody });
             console.log(`📧 Confirmation email sent to ${firstParent.parentEmail}`);
           } else {
             console.warn("⚠️ No parent email found for sending booking confirmation");
