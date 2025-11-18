@@ -317,63 +317,42 @@ exports.createOnetoOneBooking = async (data) => {
           const firstStudent = students?.[0];
           const firstParent = data.parents?.[0];
 
-          if (firstStudent && firstParent?.parentEmail) {
-            // Build HTML email body using booking data
-            let htmlBody = htmlTemplate
-              .replace(
-                /{{parentName}}/g,
-                `${firstParent.parentFirstName} ${firstParent.parentLastName}`
-              )
-              .replace(
-                /{{studentFirstName}}/g,
-                firstStudent.studentFirstName || ""
-              )
-              .replace(
-                /{{studentLastName}}/g,
-                firstStudent.studentLastName || ""
-              )
-              .replace(
-                /{{studentName}}/g,
-                `${firstStudent.studentFirstName || ""} ${firstStudent.studentLastName || ""
-                }`
-              )
-              .replace(/{{location}}/g, data.location || "")
-              .replace(/{{age}}/g, firstStudent.age || "")
-              .replace(/{{gender}}/g, firstStudent.gender || "")
+          if (firstParent && firstParent.parentEmail) {
+            // Build HTML for all students
+            let studentsHtml = students.map(student => {
+              return `
+      <tr>
+        <td style="padding:5px; vertical-align:top;">
+          <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Student Name:</p>
+          <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.studentFirstName || ""} ${student.studentLastName || ""}</p>
+        </td>
+        <td style="padding:5px; vertical-align:top;">
+          <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Age:</p>
+          <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.age || ""}</p>
+        </td>
+        <td style="padding:5px; vertical-align:top;">
+          <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Gender:</p>
+          <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.gender || ""}</p>
+        </td>
+      </tr>
+    `;
+            }).join(""); // join to form a single HTML string
 
-              .replace(/{{relationChild}}/g, `${firstParent.relationChild}`)
-              .replace(/{{phoneNumber}}/g, `${firstParent.phoneNumber}`)
+            // Replace the placeholder in your template
+            let htmlBody = htmlTemplate
+              .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`)
+              .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
+              .replace(/{{phoneNumber}}/g, firstParent.phoneNumber || "")
+              .replace(/{{relationChild}}/g, firstParent.relationChild || "")
               .replace(/{{className}}/g, "One to One Coaching")
               .replace(/{{classTime}}/g, data.time || "")
               .replace(/{{startDate}}/g, data.date || "")
-              .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
-              .replace(/{{parentPassword}}/g, "Synco123")
-              .replace(/{{appName}}/g, "Synco")
               .replace(/{{year}}/g, new Date().getFullYear().toString())
-              .replace(
-                /{{logoUrl}}/g,
-                "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
-              )
-              .replace(
-                /{{kidsPlaying}}/g,
-                "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
-              );
-
-            await sendEmail(emailConfig, {
-              recipient: [
-                {
-                  name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
-                  email: firstParent.parentEmail,
-                },
-              ],
-              subject,
-              htmlBody,
-            });
-
-            console.log(
-              `📧 Confirmation email sent to ${firstParent.parentEmail}`
-            );
-          } else {
+              .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
+              .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png")
+              .replace("{{studentsTable}}", studentsHtml); // this is new placeholder
+          }
+          else {
             console.warn(
               "⚠️ No parent email found for sending booking confirmation"
             );
