@@ -314,31 +314,30 @@ exports.createOnetoOneBooking = async (data) => {
         } = await emailModel.getEmailConfig(PANEL, "one-to-one-booking"); // from your DB
 
         if (configStatus && htmlTemplate) {
-          const firstStudent = students?.[0];
           const firstParent = data.parents?.[0];
 
           if (firstParent && firstParent.parentEmail) {
             // Build HTML for all students
             let studentsHtml = students.map(student => {
               return `
-      <tr>
-        <td style="padding:5px; vertical-align:top;">
-          <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Student Name:</p>
-          <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.studentFirstName || ""} ${student.studentLastName || ""}</p>
-        </td>
-        <td style="padding:5px; vertical-align:top;">
-          <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Age:</p>
-          <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.age || ""}</p>
-        </td>
-        <td style="padding:5px; vertical-align:top;">
-          <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Gender:</p>
-          <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.gender || ""}</p>
-        </td>
-      </tr>
-    `;
-            }).join(""); // join to form a single HTML string
+            <tr>
+              <td style="padding:5px; vertical-align:top;">
+                <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Student Name:</p>
+                <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.studentFirstName || ""} ${student.studentLastName || ""}</p>
+              </td>
+              <td style="padding:5px; vertical-align:top;">
+                <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Age:</p>
+                <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.age || ""}</p>
+              </td>
+              <td style="padding:5px; vertical-align:top;">
+                <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Gender:</p>
+                <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.gender || ""}</p>
+              </td>
+            </tr>
+          `;
+            }).join(""); // join all rows
 
-            // Replace the placeholder in your template
+            // Replace placeholders in template
             let htmlBody = htmlTemplate
               .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`)
               .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
@@ -350,17 +349,23 @@ exports.createOnetoOneBooking = async (data) => {
               .replace(/{{year}}/g, new Date().getFullYear().toString())
               .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
               .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png")
-              .replace("{{studentsTable}}", studentsHtml); // this is new placeholder
-          }
-          else {
-            console.warn(
-              "⚠️ No parent email found for sending booking confirmation"
-            );
+              .replace("{{studentsTable}}", studentsHtml);
+
+            // Dynamically add parent email to emailConfig
+            emailConfig.to = [
+              {
+                name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
+                email: firstParent.parentEmail,
+              }
+            ];
+
+            await sendEmail(emailConfig, { subject, htmlBody });
+            console.log(`📧 Confirmation email sent to ${firstParent.parentEmail}`);
+          } else {
+            console.warn("⚠️ No parent email found for sending booking confirmation");
           }
         } else {
-          console.warn(
-            "⚠️ Email template config not found for 'book-paid-trial'"
-          );
+          console.warn("⚠️ Email template config not found for 'one-to-one-booking'");
         }
       } else {
         console.log("ℹ️ Payment not successful — skipping email send.");
@@ -368,6 +373,7 @@ exports.createOnetoOneBooking = async (data) => {
     } catch (emailErr) {
       console.error("❌ Error sending email to parent:", emailErr.message);
     }
+
     // ✅ Return response including Stripe details
     return {
       success: true,
