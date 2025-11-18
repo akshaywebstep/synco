@@ -395,46 +395,45 @@ exports.updateOnetoOneLeadById = async (req, res) => {
     ) {
       return res.status(400).json({
         status: false,
-        message: "At least one of student, parentDetails, or emergencyDetails is required.",
+        message:
+          "At least one of student, parentDetails, or emergencyDetails is required.",
       });
     }
 
     // ============================================================
-    // 🚫 FIELD VALIDATION (single message only)
+    // 🚫 FIELD VALIDATION (single field error)
     // ============================================================
 
-    const checkSection = (sectionObj) => {
-      if (!sectionObj) return null;
-      for (const key in sectionObj) {
-        const value = sectionObj[key];
-        if (value === "" || value === null || value === undefined) {
+    const validateObject = (obj) => {
+      if (!obj) return null;
+      for (const key in obj) {
+        if (
+          obj[key] === "" ||
+          obj[key] === null ||
+          obj[key] === undefined
+        ) {
           return `${key} cannot be empty`;
         }
       }
       return null;
     };
 
-    // Student (array)
+    // Validate student array
     if (Array.isArray(updateData.student)) {
       for (let i = 0; i < updateData.student.length; i++) {
         const student = updateData.student[i];
-        for (const key in student) {
-          if (
-            student[key] === "" ||
-            student[key] === null ||
-            student[key] === undefined
-          ) {
-            return res.status(400).json({
-              status: false,
-              message: `${key} cannot be empty`,
-            });
-          }
+        const err = validateObject(student);
+        if (err) {
+          return res.status(400).json({
+            status: false,
+            message: err,
+          });
         }
       }
     }
 
-    // Parent
-    const parentError = checkSection(updateData.parentDetails);
+    // Validate parent
+    const parentError = validateObject(updateData.parentDetails);
     if (parentError) {
       return res.status(400).json({
         status: false,
@@ -442,8 +441,8 @@ exports.updateOnetoOneLeadById = async (req, res) => {
       });
     }
 
-    // Emergency
-    const emergencyError = checkSection(updateData.emergencyDetails);
+    // Validate emergency
+    const emergencyError = validateObject(updateData.emergencyDetails);
     if (emergencyError) {
       return res.status(400).json({
         status: false,
@@ -452,15 +451,20 @@ exports.updateOnetoOneLeadById = async (req, res) => {
     }
 
     // ============================================================
-    // 🧹 CLEAN EMPTY FIELDS BEFORE SENDING TO SERVICE
+    // 🧹 CLEAN EMPTY FIELDS SAFELY (forbidden values removed)
     // ============================================================
-    const cleanData = JSON.parse(JSON.stringify(updateData, (key, value) => {
-      if (value === "" || value === null || value === undefined) return undefined;
-      return value;
-    }));
+
+    const cleanData = JSON.parse(
+      JSON.stringify(updateData, (key, value) => {
+        if (value === "" || value === null || value === undefined) {
+          return undefined; // remove empty
+        }
+        return value;
+      })
+    );
 
     // ============================================================
-    // 🧩 Fetch main super admin (unchanged)
+    // 🧩 Fetch main super admin
     // ============================================================
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
     const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
@@ -483,11 +487,17 @@ exports.updateOnetoOneLeadById = async (req, res) => {
     }
 
     // ============================================================
-    // 📝 Logging
+    // 📝 Log activity
     // ============================================================
     await logActivity(req, PANEL, MODULE, "update", { id, updateData: cleanData }, true);
 
-    const adminName = `${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""}`.trim();
+    // ============================================================
+    // 🔔 Create notification
+    // ============================================================
+    const adminName = `${req?.admin?.firstName || "Admin"} ${
+      req?.admin?.lastName || ""
+    }`.trim();
+
     await createNotification(
       req,
       "One-to-One Lead Updated",
@@ -495,6 +505,9 @@ exports.updateOnetoOneLeadById = async (req, res) => {
       "Support"
     );
 
+    // ============================================================
+    // ✅ Success response
+    // ============================================================
     return res.status(200).json({
       status: true,
       message: "One-to-One Lead updated successfully.",

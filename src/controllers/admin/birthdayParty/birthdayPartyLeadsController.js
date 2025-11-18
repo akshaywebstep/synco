@@ -377,7 +377,7 @@ exports.updateBirthdayPartyLeadById = async (req, res) => {
     }
 
     // ============================================================
-    // 🚫 Check if user sent any valid section
+    // 🚫 Require at least one valid section
     // ============================================================
     if (
       updateData.student === undefined &&
@@ -391,28 +391,26 @@ exports.updateBirthdayPartyLeadById = async (req, res) => {
     }
 
     // ============================================================
-    // 🚫 FIELD-BY-FIELD VALIDATION (STOP on first empty)
+    // 🚫 FIELD VALIDATION (FIRST ERROR ONLY)
     // ============================================================
 
-    const validateFields = (prefix, obj) => {
+    const validateFields = (obj) => {
       if (!obj) return null;
 
       for (const key in obj) {
-        if (
-          obj[key] === "" ||
-          obj[key] === null ||
-          obj[key] === undefined
-        ) {
+        const value = obj[key];
+        if (value === "" || value === null || value === undefined) {
           return `${key} cannot be empty`;
         }
       }
       return null;
     };
 
-    // Students (array)
+    // Student array validation
     if (Array.isArray(updateData.student)) {
       for (let i = 0; i < updateData.student.length; i++) {
         const student = updateData.student[i];
+
         for (const key in student) {
           if (
             student[key] === "" ||
@@ -428,8 +426,8 @@ exports.updateBirthdayPartyLeadById = async (req, res) => {
       }
     }
 
-    // Parent
-    let parentError = validateFields("parentDetails", updateData.parentDetails);
+    // Parent Details
+    const parentError = validateFields(updateData.parentDetails);
     if (parentError) {
       return res.status(400).json({
         status: false,
@@ -438,7 +436,7 @@ exports.updateBirthdayPartyLeadById = async (req, res) => {
     }
 
     // Emergency
-    let emergencyError = validateFields("emergencyDetails", updateData.emergencyDetails);
+    const emergencyError = validateFields(updateData.emergencyDetails);
     if (emergencyError) {
       return res.status(400).json({
         status: false,
@@ -449,13 +447,15 @@ exports.updateBirthdayPartyLeadById = async (req, res) => {
     // ============================================================
     // 🧹 CLEAN EMPTY VALUES BEFORE SAVING
     // ============================================================
-    const cleanData = JSON.parse(JSON.stringify(updateData, (key, value) => {
-      if (value === "" || value === null || value === undefined) return undefined;
-      return value;
-    }));
+    const cleanData = JSON.parse(
+      JSON.stringify(updateData, (key, value) => {
+        if (value === "" || value === null || value === undefined) return undefined;
+        return value;
+      })
+    );
 
     // ============================================================
-    // 🛠 Save
+    // 🛠 Update Lead (IMPORTANT: service MUST update only provided fields)
     // ============================================================
     const updateResult =
       await birthdayPartyLeadService.updateBirthdayPartyLeadById(
@@ -472,6 +472,9 @@ exports.updateBirthdayPartyLeadById = async (req, res) => {
       });
     }
 
+    // ============================================================
+    // 📝 Logging
+    // ============================================================
     await logActivity(req, PANEL, MODULE, "update", { id, updateData: cleanData }, true);
 
     const adminName = `${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""}`.trim();
@@ -492,7 +495,7 @@ exports.updateBirthdayPartyLeadById = async (req, res) => {
     console.error("❌ Error updating Birthday Party Lead:", error);
     return res.status(500).json({
       status: false,
-      message: "Server error while updating One-to-One Lead.",
+      message: "Server error while updating Birthday Party Lead.",
     });
   }
 };
