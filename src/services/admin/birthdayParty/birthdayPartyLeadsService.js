@@ -1472,8 +1472,8 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
         const required = ["studentFirstName", "studentLastName", "dateOfBirth", "age", "gender"];
         const missing = required.filter(f => !s[f] || String(s[f]).trim() === "");
         if (missing.length > 0) {
-          console.log("❌ Student skipped — empty fields", missing);
-          continue;
+          await t.rollback();
+          return { status: false, message: `Cannot create student. Missing required fields: ${missing.join(", ")}` };
         }
 
         await BirthdayPartyStudent.create(
@@ -1529,10 +1529,10 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
           "relationChild",
           "studentId"
         ];
-        const missing = required.filter(f => !p[f] || String(p[f]).trim() === "");
+        const missing = requiredParentFields.filter(f => !p[f] || String(p[f]).trim() === "");
         if (missing.length > 0) {
-          console.log("❌ Parent skipped — empty fields", missing);
-          continue;
+          await t.rollback();
+          return { status: false, message: `Cannot create parent. Missing required fields: ${missing.join(", ")}` };
         }
 
         await BirthdayPartyParent.create(
@@ -1585,10 +1585,10 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
         "relationChild",
         "studentId"
       ];
-      const missing = required.filter(f => !e[f] || String(e[f]).trim() === "");
+      const missing = requiredEmergency.filter(f => !e[f] || String(e[f]).trim() === "");
       if (missing.length > 0) {
-        console.log("❌ Emergency skipped — empty fields", missing);
-        return;
+        await t.rollback();
+        return { status: false, message: `Cannot create emergency contact. Missing required fields: ${missing.join(", ")}` };
       }
 
       await BirthdayPartyEmergency.create(
