@@ -1585,7 +1585,6 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
             { transaction: t }
           );
         }
-        continue;
       }
 
       // ---------- CREATE (VALIDATION ADDED) ----------
