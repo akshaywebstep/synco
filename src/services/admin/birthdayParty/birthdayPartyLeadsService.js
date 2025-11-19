@@ -1488,34 +1488,35 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
     // ======================================================
     // 🧒 STUDENTS (STRICT VALIDATION)
     // ======================================================
-    if (Array.isArray(updateData?.student)) {
+   if (Array.isArray(updateData?.student)) {
       for (const s of updateData.student) {
 
         // ---------- UPDATE ----------
         if (s.id) {
           const existingStudent = await BirthdayPartyStudent.findOne({
-            where: { id: s.id, BirthdayPartyBookingId: booking.id },
+            where: { id: s.id, birthdayPartyBookingId: booking.id },
             transaction: t,
           });
-          if (existingStudent) {
-            await existingStudent.update(
-              {
-                studentFirstName: s.studentFirstName ?? existingStudent.studentFirstName,
-                studentLastName: s.studentLastName ?? existingStudent.studentLastName,
-                dateOfBirth: s.dateOfBirth ?? existingStudent.dateOfBirth,
-                age: s.age ?? existingStudent.age,
-                gender: s.gender ?? existingStudent.gender,
-                medicalInfo: s.medicalInfo ?? existingStudent.medicalInfo,
-              },
-              { transaction: t }
-            );
-          }
+          if (!existingStudent) continue;
+
+          await existingStudent.update(
+            {
+              studentFirstName: s.studentFirstName ?? existingStudent.studentFirstName,
+              studentLastName: s.studentLastName ?? existingStudent.studentLastName,
+              dateOfBirth: s.dateOfBirth ?? existingStudent.dateOfBirth,
+              age: s.age ?? existingStudent.age,
+              gender: s.gender ?? existingStudent.gender,
+              medicalInfo: s.medicalInfo ?? existingStudent.medicalInfo,
+            },
+            { transaction: t }
+          );
           continue;
         }
 
-        // ---------- CREATE (STRICT: DO NOT SAVE EMPTY) ----------
+        // ---------- CREATE NEW ----------
         const required = ["studentFirstName", "studentLastName", "dateOfBirth", "age", "gender"];
         const missing = required.filter(f => !s[f] || String(s[f]).trim() === "");
+
         if (missing.length > 0) {
           await t.rollback();
           return { status: false, message: `Missing required fields: ${missing.join(", ")}` };
@@ -1523,7 +1524,7 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
 
         await BirthdayPartyStudent.create(
           {
-            BirthdayPartyBookingId: booking.id,
+            birthdayPartyBookingId: booking.id,
             studentFirstName: s.studentFirstName,
             studentLastName: s.studentLastName,
             dateOfBirth: s.dateOfBirth,
@@ -1535,7 +1536,6 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
         );
       }
     }
-
     // ======================================================
     // 👨‍👩‍👧 PARENTS (STRICT VALIDATION)
     // ======================================================
