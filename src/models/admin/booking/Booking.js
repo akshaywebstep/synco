@@ -141,6 +141,25 @@ const Booking = sequelize.define(
       allowNull: true,
       comment: "Any extra notes for the booking",
     },
+
+    // ============================
+    //    🔹 NEW FIELD — attempt
+    // ============================
+    attempt: {
+      type: DataTypes.INTEGER,
+      allowNull: true,      // <----
+      defaultValue: null,
+    },
+
+    // ===============================
+    // 🔹 NEW FIELD — reactivate flag
+    // ===============================
+    reactivate: {
+      type: DataTypes.ENUM("true", "false"),
+      allowNull: true,      // <----
+      defaultValue: null,
+    },
+
     serviceType: {
       type: DataTypes.ENUM(
         "weekly class membership",

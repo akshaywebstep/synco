@@ -114,6 +114,7 @@ exports.createBooking = async (data, options) => {
         trialDate: data.trialDate,
         className: data.className,
         serviceType: "weekly class trial",
+        attempt: 1,
         classTime: data.classTime,
         status: data.status || "pending",
         bookedBy: source === 'open' ? bookedByAdminId : adminId,

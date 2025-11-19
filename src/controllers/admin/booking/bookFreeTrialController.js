@@ -466,16 +466,20 @@ exports.getAllBookFreeTrials = async (req, res) => {
     dateTrialTo: req.query.dateTrialTo ? req.query.dateTrialTo : undefined,
     fromDate: req.query.fromDate ? req.query.fromDate : undefined, // ✅ added
     toDate: req.query.toDate ? req.query.toDate : undefined, // ✅ added
+    bookedBy: req.query.bookedBy,
   };
 
   try {
     // ✅ Apply bookedBy filter
-    if (req.admin?.role?.toLowerCase() === 'super admin') {
-      const admins = mainSuperAdminResult?.admins || [];
-      filters.bookedBy = admins.length > 0 ? admins.map(a => a.id) : [];
-    } else {
-      // Always assign bookedBy even if not in query
-      filters.bookedBy = bookedBy || null;
+    // If user provides bookedBy in query → ALWAYS respect it
+    if (req.query.bookedBy) {
+      filters.bookedBy = req.query.bookedBy.split(',').map(Number);
+    }
+    else if (req.admin?.role?.toLowerCase() === 'super admin') {
+      filters.bookedBy = (mainSuperAdminResult?.admins || []).map(a => a.id);
+    }
+    else {
+      filters.bookedBy = [req.admin.id];
     }
 
     const result = await BookingTrialService.getAllBookings(

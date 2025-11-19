@@ -43,27 +43,17 @@ async function buildAccessConditions(superAdminId, adminId) {
 }
 
 /* ---------------------------------------------------
-   🧮 1️⃣ Total RTCs — total bookings with status = "rtc"
+   🧮 Correct RTC Count — count bookings with status = "request_to_cancel"
 --------------------------------------------------- */
 async function getTotalRTCs(superAdminId, adminId, filters = {}) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId);
 
-    // ✅ Only include bookings that are marked as "rtc"
-    whereBooking.status = "cancelled";
-
-    // ✅ Find all booking IDs accessible to this admin/superAdmin
-    const bookings = await Booking.findAll({
-        where: whereBooking,
-        attributes: ["id"], // only fetch IDs
-        raw: true,
-    });
-
-    const bookingIds = bookings.map((b) => b.id);
-    if (bookingIds.length === 0) return 0;
-
-    // ✅ Count all CancelBooking records linked to these RTC bookings
-    const rtcCount = await CancelBooking.count({
-        where: { bookingId: { [Op.in]: bookingIds } },
+    // Count bookings that are request_to_cancel
+    const rtcCount = await Booking.count({
+        where: {
+            ...whereBooking,
+            status: "request_to_cancel",
+        },
     });
 
     return rtcCount;
@@ -165,7 +155,7 @@ async function getAvgMembershipTenure(superAdminId, adminId, filters = {}) {
 }
 
 /* ---------------------------------------------------
-   🧊 5️⃣ Reactivated Memberships — status = "froze"
+   🧊 5️⃣ Reactivated Memberships — reactivate = true AND status = active
 --------------------------------------------------- */
 async function getReactivatedMembership(superAdminId, adminId, filters = {}) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId);
@@ -173,7 +163,8 @@ async function getReactivatedMembership(superAdminId, adminId, filters = {}) {
     const reactivatedCount = await Booking.count({
         where: {
             ...whereBooking,
-            status: "froze",
+            reactivate: "true",       // new field
+            status: "active",         // active status required
         },
     });
 
