@@ -795,11 +795,13 @@ exports.getAllOnetoOneLeadsSales = async (
     // Agent List (same logic)
     // ----------------------------------------------------------------------
     let agentList = [];
+
     if (superAdminId === adminId) {
       const managedAdmins = await Admin.findAll({
         where: { superAdminId },
         attributes: ["id", "firstName", "lastName", "email"],
       });
+
       agentList = managedAdmins.map((a) => ({
         id: a.id,
         name: `${a.firstName || ""} ${a.lastName || ""}`.trim() || a.email,
@@ -808,6 +810,7 @@ exports.getAllOnetoOneLeadsSales = async (
       const superAdmin = await Admin.findByPk(superAdminId, {
         attributes: ["id", "firstName", "lastName", "email"],
       });
+
       if (superAdmin) {
         agentList.unshift({
           id: superAdmin.id,
@@ -820,6 +823,7 @@ exports.getAllOnetoOneLeadsSales = async (
       const admin = await Admin.findByPk(adminId, {
         attributes: ["id", "firstName", "lastName", "email"],
       });
+
       if (admin) {
         agentList.push({
           id: admin.id,
@@ -835,19 +839,25 @@ exports.getAllOnetoOneLeadsSales = async (
     // ----------------------------------------------------------------------
     const coachIds = [
       ...new Set(
-        formattedData.map((lead) => lead.booking?.coachId).filter(Boolean)
+        formattedData
+          .map((lead) => lead.booking?.coachId)
+          .filter(Boolean)
       ),
     ];
 
     let coachList = [];
-    if (coachIds.length) {
+
+    if (coachIds.length > 0) {
       const coaches = await Admin.findAll({
         where: { id: { [Op.in]: coachIds } },
         attributes: ["id", "firstName", "lastName", "email"],
       });
+
       coachList = coaches.map((c) => ({
         id: c.id,
-        name: `${c.firstName || ""} ${c.lastName || ""}`.trim() || c.email,
+        name:
+          `${c.firstName || ""} ${c.lastName || ""}`.trim() ||
+          c.email,
       }));
     }
 
@@ -1322,19 +1332,26 @@ exports.getAllOnetoOneLeadsSalesAll = async (
     // Agent List (super admin + managed admins) — unchanged logic
     // ----------------------------------------------------------------------
     let agentList = [];
+
     if (superAdminId === adminId) {
+      // Fetch all admins under this super admin
       const managedAdmins = await Admin.findAll({
         where: { superAdminId },
         attributes: ["id", "firstName", "lastName", "email"],
       });
-      agentList = managedAdmins.map((a) => ({
-        id: a.id,
-        name: `${a.firstName || ""} ${a.lastName || ""}`.trim() || a.email,
+
+      agentList = managedAdmins.map((admin) => ({
+        id: admin.id,
+        name:
+          `${admin.firstName || ""} ${admin.lastName || ""}`.trim() ||
+          admin.email,
       }));
 
+      // Include the super admin at the top
       const superAdmin = await Admin.findByPk(superAdminId, {
         attributes: ["id", "firstName", "lastName", "email"],
       });
+
       if (superAdmin) {
         agentList.unshift({
           id: superAdmin.id,
@@ -1344,9 +1361,11 @@ exports.getAllOnetoOneLeadsSalesAll = async (
         });
       }
     } else {
+      // When the user is a normal admin
       const admin = await Admin.findByPk(adminId, {
         attributes: ["id", "firstName", "lastName", "email"],
       });
+
       if (admin) {
         agentList.push({
           id: admin.id,
@@ -1360,21 +1379,28 @@ exports.getAllOnetoOneLeadsSalesAll = async (
     // ----------------------------------------------------------------------
     // Coach List (from formattedData) — unchanged logic
     // ----------------------------------------------------------------------
+    // Extract unique coachIds from formattedData
     const coachIds = [
       ...new Set(
-        formattedData.map((lead) => lead.booking?.coachId).filter(Boolean)
+        formattedData
+          .map((lead) => lead.booking?.coachId)
+          .filter(Boolean)
       ),
     ];
 
     let coachList = [];
-    if (coachIds.length) {
+
+    if (coachIds.length > 0) {
       const coaches = await Admin.findAll({
         where: { id: { [Op.in]: coachIds } },
         attributes: ["id", "firstName", "lastName", "email"],
       });
-      coachList = coaches.map((c) => ({
-        id: c.id,
-        name: `${c.firstName || ""} ${c.lastName || ""}`.trim() || c.email,
+
+      coachList = coaches.map((coach) => ({
+        id: coach.id,
+        name:
+          `${coach.firstName || ""} ${coach.lastName || ""}`.trim() ||
+          coach.email,
       }));
     }
 
