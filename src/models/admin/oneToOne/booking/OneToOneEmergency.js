@@ -31,12 +31,12 @@ const OneToOneEmergency = sequelize.define(
       allowNull: false,
     },
 
-    phoneNumber: {
+    emergencyPhoneNumber: {
       type: DataTypes.STRING,
       allowNull: false,
     },
 
-    relationChild: {
+    emergencyRelation: {
       type: DataTypes.STRING,
       allowNull: false,
       comment: "Relation with the child (e.g., Uncle, Aunt, Friend)",

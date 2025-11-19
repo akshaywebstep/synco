@@ -67,11 +67,6 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
       };
     }
 
-    // ✅ Type filter (if provided)
-    // if (type) {
-    //   whereBooking.type = { [Op.eq]: type.toLowerCase() };
-    // }
-
     // ✅ Support multiple types (e.g. "paid,trial" or array)
     if (type) {
       let types = [];
@@ -174,8 +169,8 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
           ? {
             emergencyFirstName: emergencyObj.emergencyFirstName,
             emergencyLastName: emergencyObj.emergencyLastName,
-            emergencyPhoneNumber: emergencyObj.phoneNumber,
-            emergencyRelation: emergencyObj.relationChild,
+            emergencyPhoneNumber: emergencyObj.emergencyPhoneNumber,
+            emergencyRelation: emergencyObj.emergencyRelation,
           }
           : null;
 
@@ -573,8 +568,8 @@ exports.getAllOnetoOneLeadsSales = async (
           ? {
             emergencyFirstName: emergencyObj.emergencyFirstName,
             emergencyLastName: emergencyObj.emergencyLastName,
-            emergencyPhoneNumber: emergencyObj.phoneNumber,
-            emergencyRelation: emergencyObj.relationChild,
+            emergencyPhoneNumber: emergencyObj.emergencyPhoneNumber,
+            emergencyRelationChild: emergencyObj.emergencyRelationChild,
           }
           : null;
 
@@ -1103,8 +1098,8 @@ exports.getAllOnetoOneLeadsSalesAll = async (
           ? {
             emergencyFirstName: emergencyObj.emergencyFirstName,
             emergencyLastName: emergencyObj.emergencyLastName,
-            emergencyPhoneNumber: emergencyObj.phoneNumber,
-            emergencyRelation: emergencyObj.relationChild,
+            emergencyPhoneNumber: emergencyObj.emergencyPhoneNumber,
+            emergencyRelation: emergencyObj.emergencyRelation,
           }
           : null;
 
@@ -1510,8 +1505,8 @@ exports.getOnetoOneLeadsById = async (id, superAdminId, adminId) => {
             id: em.id,
             emergencyFirstName: em.emergencyFirstName,
             emergencyLastName: em.emergencyLastName,
-            emergencyPhoneNumber: em.phoneNumber,
-            emergencyRelation: em.relationChild,
+            emergencyPhoneNumber: em.emergencyPhoneNumber,
+            emergencyRelation: em.emergencyRelation,
           }))
       )?.[0] || null;
 
@@ -1788,8 +1783,8 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
             {
               emergencyFirstName: e.emergencyFirstName ?? existingEmergency.emergencyFirstName,
               emergencyLastName: e.emergencyLastName ?? existingEmergency.emergencyLastName,
-              phoneNumber: e.phoneNumber ?? existingEmergency.phoneNumber,
-              relationChild: e.relationChild ?? existingEmergency.relationChild,
+              emergencyPhoneNumber: e.emergencyPhoneNumber ?? existingEmergency.emergencyPhoneNumber,
+              emergencyRelation: e.emergencyRelation ?? existingEmergency.emergencyRelation,
             },
             { transaction: t }
           );
@@ -1800,8 +1795,8 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
         const requiredEmergency = [
           "emergencyFirstName",
           "emergencyLastName",
-          "phoneNumber",
-          "relationChild",
+          "emergencyPhoneNumber",
+          "emergencyRelationChild",
           "studentId"
         ];
 
@@ -1817,8 +1812,8 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
             studentId: e.studentId,
             emergencyFirstName: e.emergencyFirstName,
             emergencyLastName: e.emergencyLastName,
-            phoneNumber: e.phoneNumber,
-            relationChild: e.relationChild,
+            emergencyPhoneNumber: e.emergencyPhoneNumber,
+            emergencyRelationChild: e.emergencyRelationChild,
           },
           { transaction: t }
         );

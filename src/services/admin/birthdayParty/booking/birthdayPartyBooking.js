@@ -195,8 +195,8 @@ exports.createBirthdayPartyBooking = async (data) => {
                         studentId: firstStudent.id,
                         emergencyFirstName: data.emergency.emergencyFirstName,
                         emergencyLastName: data.emergency.emergencyLastName,
-                        phoneNumber: data.emergency.emergencyPhoneNumber,
-                        relationChild: data.emergency.emergencyRelation,
+                        emergencyPhoneNumber: data.emergency.emergencyPhoneNumber,
+                        emergencyRelationChild: data.emergency.emergencyRelation,
                     },
                     { transaction }
                 );

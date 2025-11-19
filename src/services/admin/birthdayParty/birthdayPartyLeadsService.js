@@ -175,8 +175,8 @@ exports.getAllBirthdayPartyLeads = async (
           ? {
             emergencyFirstName: emergencyObj.emergencyFirstName,
             emergencyLastName: emergencyObj.emergencyLastName,
-            emergencyPhoneNumber: emergencyObj.phoneNumber,
-            emergencyRelation: emergencyObj.relationChild,
+            emergencyPhoneNumber: emergencyObj.emergencyPhoneNumber,
+            emergencyRelation: emergencyObj.emergencyRelation,
           }
           : null;
 
@@ -493,8 +493,8 @@ exports.getAllBirthdayPartyLeadsSales = async (
           ? {
             emergencyFirstName: emergencyObj.emergencyFirstName,
             emergencyLastName: emergencyObj.emergencyLastName,
-            emergencyPhoneNumber: emergencyObj.phoneNumber,
-            emergencyRelation: emergencyObj.relationChild,
+            emergencyPhoneNumber: emergencyObj.emergencyPhoneNumber,
+            emergencyRelation: emergencyObj.emergencyRelation,
           }
           : null;
 
@@ -922,8 +922,8 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
           ? {
             emergencyFirstName: emergencyObj.emergencyFirstName,
             emergencyLastName: emergencyObj.emergencyLastName,
-            emergencyPhoneNumber: emergencyObj.phoneNumber,
-            emergencyRelation: emergencyObj.relationChild,
+            emergencyPhoneNumber: emergencyObj.emergencyPhoneNumber,
+            emergencyRelation: emergencyObj.emergencyRelation,
           }
           : null;
 
@@ -1295,8 +1295,8 @@ exports.getBirthdayPartyLeadsById = async (id, adminId, superAdminId) => {
         id: emergencyObj.id,
         emergencyFirstName: emergencyObj.emergencyFirstName,
         emergencyLastName: emergencyObj.emergencyLastName,
-        emergencyPhoneNumber: emergencyObj.phoneNumber,
-        emergencyRelation: emergencyObj.relationChild,
+        emergencyPhoneNumber: emergencyObj.emergencyPhoneNumber,
+        emergencyRelation: emergencyObj.emergencyRelation,
       }
       : null;
 
@@ -1568,8 +1568,8 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
             {
               emergencyFirstName: e.emergencyFirstName ?? existingEmergency.emergencyFirstName,
               emergencyLastName: e.emergencyLastName ?? existingEmergency.emergencyLastName,
-              phoneNumber: e.phoneNumber ?? existingEmergency.phoneNumber,
-              relationChild: e.relationChild ?? existingEmergency.relationChild,
+              emergencyPhoneNumber: e.emergencyPhoneNumber ?? existingEmergency.emergencyPhoneNumber,
+              emergencyRelation: e.emergencyRelation ?? existingEmergency.emergencyRelation,
             },
             { transaction: t }
           );
@@ -1581,8 +1581,8 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
       const requiredEmergency = [
         "emergencyFirstName",
         "emergencyLastName",
-        "phoneNumber",
-        "relationChild",
+        "emergencyPhoneNumber",
+        "emergencyRelation",
         "studentId"
       ];
       const missing = requiredEmergency.filter(f => !e[f] || String(e[f]).trim() === "");
@@ -1596,8 +1596,8 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
           studentId: e.studentId,
           emergencyFirstName: e.emergencyFirstName,
           emergencyLastName: e.emergencyLastName,
-          phoneNumber: e.phoneNumber,
-          relationChild: e.relationChild,
+          emergencyPhoneNumber: e.emergencyPhoneNumber,
+          emergencyRelation: e.emergencyRelation,
         },
         { transaction: t }
       );
