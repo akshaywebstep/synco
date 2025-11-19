@@ -202,7 +202,7 @@ exports.createOnetoOneBooking = async (data) => {
             emergencyFirstName: data.emergency.emergencyFirstName,
             emergencyLastName: data.emergency.emergencyLastName,
             emergencyPhoneNumber: data.emergency.emergencyPhoneNumber,
-            emergencyRelationChild: data.emergency.emergencyRelation,
+            emergencyRelation: data.emergency.emergencyRelation,
           },
           { transaction }
         );
