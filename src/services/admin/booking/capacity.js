@@ -577,7 +577,11 @@ exports.getAllBookings = async (adminId, filters = {}) => {
       let freeTrialCount = 0;
 
       venue.classes = venue.classes.map((cls) => {
-        const clsTotalBooked = cls.bookings.reduce(
+        const activeBookings = cls.bookings.filter(
+          (booking) => booking.status !== "cancelled"
+        );
+
+        const clsTotalBooked = activeBookings.reduce(
           (sum, booking) => sum + (booking.students?.length || 0),
           0
         );
@@ -585,27 +589,21 @@ exports.getAllBookings = async (adminId, filters = {}) => {
         let clsMembers = 0;
         let clsFreeTrials = 0;
 
-        cls.bookings.forEach((booking) => {
+        activeBookings.forEach((booking) => {
           if (booking.bookingType === "paid") clsMembers += booking.students.length;
           if (booking.bookingType === "free") clsFreeTrials += booking.students.length;
         });
 
-        // ✅ Correct stats: use totalCapacity for overall capacity
         const clsStats = {
           totalCapacity: cls.totalCapacity || cls.capacity || 0,
           totalBooked: clsTotalBooked,
-          availableSpaces: cls.capacity || 0,
+          availableSpaces: (cls.capacity || 0) - clsTotalBooked,
           members: clsMembers,
           freeTrials: clsFreeTrials,
           occupancyRate: cls.capacity
             ? Math.round((clsTotalBooked / cls.capacity) * 100)
             : 0,
         };
-
-        totalCapacity += clsStats.totalCapacity;
-        totalBooked += clsStats.totalBooked;
-        memberCount += clsStats.members;
-        freeTrialCount += clsStats.freeTrials;
 
         return { ...cls, stats: clsStats };
       });
