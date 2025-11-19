@@ -2438,50 +2438,48 @@ exports.getAllBirthdayPartyAnalytics = async (
     ];
 
     // Example mapping rule
-    const categoryMap = {
-      Gold: "revenue",
-      Platinum: "revenue",
-      Silver: "growth",
-      Bronze: "growth",
-    };
+    // ==========================================
+    // PACKAGE BACKGROUND (Growth + Revenue)
+    // ==========================================
 
-    // ✅ Package Background Breakdown (filtered by createdBy)
-    const packageBackgroundRaw = await BirthdayPartyLead.findAll({
-      attributes: ["packageInterest", [fn("COUNT", col("id")), "count"]],
-      where: {
-        ...whereLead, // ✅ restrict by lead.createdBy (admin or superAdmin)
-      },
-      group: ["packageInterest"],
-      order: [[literal("count"), "DESC"]],
-      raw: true,
-    });
-
-    // Calculate total
-    const grouped = {};
-    packageBackgroundRaw.forEach((s) => {
-      const pkg = s.packageInterest || "Unknown";
-      const count = parseInt(s.count, 10);
-      const category = categoryMap[pkg] || "other";
-
+    // 1️⃣ Growth = lead count (packageBreakdown)
+    const growth = ["Gold", "Silver","Platinum"].map(pkgName => {
+      const found = packageBreakdown.find(p => p.packageName === pkgName);
+      const count = found ? parseInt(found.count) : 0;
       const percentage =
-        totalPackages > 0
-          ? parseFloat(((count / totalPackages) * 100).toFixed(2))
-          : 0;
+        totalPackages > 0 ? parseFloat(((count / totalPackages) * 100).toFixed(2)) : 0;
 
-      if (!grouped[category]) grouped[category] = [];
-
-      grouped[category].push({
-        name: pkg,
+      return {
+        name: pkgName,
         count,
-        percentage,
-      });
-    });
+        percentage
+      };
+    }).filter(item => item.count > 0); // remove empty ones
 
-    const packageBackground = Object.entries(grouped).map(
-      ([category, items]) => ({
-        [category]: items,
-      })
+    // 2️⃣ Revenue = revenueByPackage (from payment totals)
+    const totalRevenue = revenueByPackage.reduce(
+      (sum, p) => sum + p.currentRevenue,
+      0
     );
+
+    const revenue = ["Gold", "Silver","Platinum"].map(pkgName => {
+      const found = revenueByPackage.find(r => r.name === pkgName);
+      const count = found ? found.currentRevenue : 0;
+      const percentage =
+        totalRevenue > 0 ? parseFloat(((count / totalRevenue) * 100).toFixed(2)) : 0;
+
+      return {
+        name: pkgName,
+        count,
+        percentage
+      };
+    }).filter(item => item.count > 0);
+
+    // 3️⃣ Final output
+    const packageBackground = [
+      { growth },
+      { revenue }
+    ];
 
     // ✅ Final Structured Response (matches Figma)
     return {
