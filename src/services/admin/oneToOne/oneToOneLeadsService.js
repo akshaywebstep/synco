@@ -796,13 +796,14 @@ exports.getAllOnetoOneLeadsSales = async (
     // ----------------------------------------------------------------------
     let agentList = [];
 
-    if (superAdminId === adminId) {
+    // CASE 1: super admin → include self + managed admins
+    if (superAdminId && superAdminId === adminId) {
       const managedAdmins = await Admin.findAll({
         where: { superAdminId },
         attributes: ["id", "firstName", "lastName", "email"],
       });
 
-      agentList = managedAdmins.map((a) => ({
+      agentList = managedAdmins.map(a => ({
         id: a.id,
         name: `${a.firstName || ""} ${a.lastName || ""}`.trim() || a.email,
       }));
@@ -819,6 +820,8 @@ exports.getAllOnetoOneLeadsSales = async (
             superAdmin.email,
         });
       }
+
+      // CASE 2: normal admin
     } else {
       const admin = await Admin.findByPk(adminId, {
         attributes: ["id", "firstName", "lastName", "email"],
@@ -832,6 +835,19 @@ exports.getAllOnetoOneLeadsSales = async (
             admin.email,
         });
       }
+    }
+
+    // 🔥 HARD GUARANTEE: NEVER return empty agentList
+    if (!agentList || agentList.length === 0) {
+      const fallbackAdmins = await Admin.findAll({
+        where: { id: adminId },
+        attributes: ["id", "firstName", "lastName", "email"],
+      });
+
+      agentList = fallbackAdmins.map(a => ({
+        id: a.id,
+        name: `${a.firstName || ""} ${a.lastName || ""}`.trim() || a.email,
+      }));
     }
 
     // ----------------------------------------------------------------------
@@ -873,6 +889,8 @@ exports.getAllOnetoOneLeadsSales = async (
           sourceOfBookings: sourceCount,
           topSalesAgent,
         },
+        coachList,
+        agentList,
       };
     }
 
@@ -1329,7 +1347,7 @@ exports.getAllOnetoOneLeadsSalesAll = async (
     console.log({ topSalesAgent });
 
     // ----------------------------------------------------------------------
-    // Agent List (super admin + managed admins) — unchanged logic
+    // Agent List (super admin + managed admins)
     // ----------------------------------------------------------------------
     let agentList = [];
 
@@ -1361,7 +1379,7 @@ exports.getAllOnetoOneLeadsSalesAll = async (
         });
       }
     } else {
-      // When the user is a normal admin
+      // Normal admin
       const admin = await Admin.findByPk(adminId, {
         attributes: ["id", "firstName", "lastName", "email"],
       });
@@ -1376,10 +1394,27 @@ exports.getAllOnetoOneLeadsSalesAll = async (
       }
     }
 
+    // 🔥 FINAL FALLBACK: Ensure agentList is NEVER empty
+    if (agentList.length === 0) {
+      const admin = await Admin.findByPk(adminId, {
+        attributes: ["id", "firstName", "lastName", "email"],
+      });
+
+      if (admin) {
+        agentList = [
+          {
+            id: admin.id,
+            name:
+              `${admin.firstName || ""} ${admin.lastName || ""}`.trim() ||
+              admin.email,
+          },
+        ];
+      }
+    }
+
     // ----------------------------------------------------------------------
-    // Coach List (from formattedData) — unchanged logic
+    // Coach List (from formattedData)
     // ----------------------------------------------------------------------
-    // Extract unique coachIds from formattedData
     const coachIds = [
       ...new Set(
         formattedData
@@ -1404,6 +1439,11 @@ exports.getAllOnetoOneLeadsSalesAll = async (
       }));
     }
 
+    // 🔥 FINAL FALLBACK: Ensure coachList is NEVER empty
+    if (coachList.length === 0) {
+      coachList = [{ id: null, name: "No Coach Assigned" }];
+    }
+
     // ✅ Final Response
     if (!filteredLeads.length) {
       return {
@@ -1416,6 +1456,8 @@ exports.getAllOnetoOneLeadsSalesAll = async (
           sourceOfBookings: sourceCount,
           topSalesAgent,
         },
+        agentList,
+        coachList,
       };
     }
 
