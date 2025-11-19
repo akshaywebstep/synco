@@ -90,60 +90,60 @@ const { Op } = require("sequelize");
 //     return { status: false, message: error.message };
 //   }
 // };
-
 exports.createCancelBooking = async ({
   bookingId,
   cancelReason,
   additionalNote,
-  cancelDate = null, // null = immediate
+  cancelDate = null, 
   cancellationType: rawCancellationType
 }) => {
   try {
     const bookingType = "membership";
 
-    // 🔹 Validate booking exists
+    // Validate booking exists
     const booking = await Booking.findByPk(bookingId);
     if (!booking) return { status: false, message: "Booking not found." };
 
-    // 🔹 Check existing cancel record
+    // Check existing cancel record
     const existingCancel = await CancelBooking.findOne({
       where: { bookingId, bookingType },
     });
 
-    // Determine cancellation type
-    const cancellationType = rawCancellationType ?? (cancelDate ? "scheduled" : "immediate");
+    const cancellationType =
+      rawCancellationType ?? (cancelDate ? "scheduled" : "immediate");
 
-    if (existingCancel) {
-      // 🔹 Update only provided fields
-      await existingCancel.update(
-        {
-          cancelReason: cancelReason ?? existingCancel.cancelReason,
-          additionalNote: additionalNote ?? existingCancel.additionalNote,
-          cancelDate: cancelDate ?? existingCancel.cancelDate,
-          cancellationType,
-        },
-        { returning: true }
+    // Function — Restore class capacity based on used student count
+    const restoreClassCapacity = async () => {
+      const studentMetaList = await BookingStudentMeta.findAll({
+        where: { bookingTrialId: bookingId },
+      });
+
+      if (studentMetaList.length === 0 || !booking.classScheduleId) return;
+
+      const classSchedule = await ClassSchedule.findByPk(
+        booking.classScheduleId
       );
 
-      // 🔹 Update booking status based on cancellation type
+      if (!classSchedule) return;
+
+      await classSchedule.update({
+        capacity: classSchedule.capacity + studentMetaList.length,
+      });
+    };
+
+    // If record exists → update
+    if (existingCancel) {
+      await existingCancel.update({
+        cancelReason: cancelReason ?? existingCancel.cancelReason,
+        additionalNote: additionalNote ?? existingCancel.additionalNote,
+        cancelDate: cancelDate ?? existingCancel.cancelDate,
+        cancellationType,
+      });
+
       if (cancellationType === "immediate") {
         await booking.update({ status: "cancelled" });
-
-        // ✅ Update class capacity for immediate cancellations only
-        const studentMetaList = await BookingStudentMeta.findAll({
-          where: { bookingTrialId: bookingId },
-        });
-
-        if (studentMetaList.length > 0 && booking.classScheduleId) {
-          const classSchedule = await ClassSchedule.findByPk(booking.classScheduleId);
-          if (classSchedule) {
-            const incrementCapacity = studentMetaList.length;
-            await classSchedule.update({
-              capacity: classSchedule.capacity + incrementCapacity,
-            });
-          }
-        }
-      } else if (cancellationType === "scheduled") {
+        await restoreClassCapacity();
+      } else {
         await booking.update({ status: "request_to_cancel" });
       }
 
@@ -154,7 +154,7 @@ exports.createCancelBooking = async ({
       };
     }
 
-    // 🔹 Otherwise, create new cancel record
+    // Otherwise → create a new cancellation entry
     const cancelRequest = await CancelBooking.create({
       bookingId,
       bookingType,
@@ -164,28 +164,11 @@ exports.createCancelBooking = async ({
       cancellationType,
     });
 
-    // 🔹 Update booking status based on cancellation type
-    // 🔹 Update booking status based on cancellation type
     if (cancellationType === "immediate") {
       await booking.update({ status: "cancelled" });
-      await booking.reload();
-
-      // ✅ Update class capacity for immediate cancellations only
-      const studentMetaList = await BookingStudentMeta.findAll({
-        where: { bookingTrialId: bookingId },
-      });
-
-      if (studentMetaList.length > 0 && booking.classScheduleId) {
-        const classSchedule = await ClassSchedule.findByPk(booking.classScheduleId);
-        if (classSchedule) {
-          const incrementCapacity = studentMetaList.length;
-          await classSchedule.update({
-            capacity: classSchedule.capacity + incrementCapacity,
-          });
-        }
-      }
-    } else if (cancellationType === "scheduled") {
-      await booking.update({ status: "request_to_cancel" }); // ✅ Add this
+      await restoreClassCapacity();
+    } else {
+      await booking.update({ status: "request_to_cancel" });
     }
 
     return {
@@ -201,6 +184,7 @@ exports.createCancelBooking = async ({
     return { status: false, message: error.message };
   }
 };
+
 
 exports.sendCancelBookingEmailToParents = async ({ bookingId }) => {
   try {
