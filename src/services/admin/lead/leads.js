@@ -2291,10 +2291,11 @@ exports.getLeadandBookingDatabyLeadId = async (leadId, superAdminId, adminId) =>
           include: [
             { model: Venue, as: "venue" },
             { model: ClassSchedule, as: "classSchedule" },
-
-            // ✅ Correct place for booking payments
             { model: BookingPayment, as: "payments" },
-
+            {
+              model: PaymentPlan,
+              as: "paymentPlan", // Include PaymentPlan for each booking
+            },
             {
               model: BookingStudentMeta,
               as: "students",
@@ -2327,6 +2328,7 @@ exports.getLeadandBookingDatabyLeadId = async (leadId, superAdminId, adminId) =>
       if (coords) {
         nearestVenues = await Promise.all(
           allVenuesList
+            .filter(v => v.latitude && v.longitude) // only valid venues
             .map((v) => ({
               ...v.dataValues,
               distance: Number(
@@ -2364,16 +2366,18 @@ exports.getLeadandBookingDatabyLeadId = async (leadId, superAdminId, adminId) =>
                   }
                 });
 
-              const paymentPlans = await PaymentPlan.findAll({
-                where: { id: Array.from(usedPaymentPlanIds) },
-              });
+              const paymentPlans = usedPaymentPlanIds.size > 0
+                ? await PaymentPlan.findAll({
+                  where: { id: Array.from(usedPaymentPlanIds) },
+                })
+                : [];
 
               return {
                 ...venue,
-                classSchedules: classSchedules.map((c) => c.dataValues),
-                terms: allTerms.map((t) => t.dataValues),
+                classSchedules: classSchedules.map(c => c.dataValues),
+                terms: allTerms.map(t => t.dataValues),
                 paymentGroup: paymentGroup ? paymentGroup.dataValues : null,
-                paymentPlans: paymentPlans.map((p) => p.dataValues),
+                paymentPlans: paymentPlans.map(p => p.dataValues),
               };
             })
         );
