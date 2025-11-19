@@ -180,32 +180,65 @@ exports.createBooking = async (req, res) => {
       } = await emailModel.getEmailConfig(PANEL, "book-paid-trial"); // matches your DB entry
 
       if (configStatus && htmlTemplate) {
-        // ✅ Loop through all students
+
+        // Loop through each student ID
         for (const sId of studentIds) {
+
           const parentMetas = await BookingParentMeta.findAll({
             where: { studentId: sId },
           });
+
           if (!parentMetas.length) continue;
 
-          // Loop over parents and send emails
+          // ------- Build MULTIPLE STUDENTS BLOCK -------
+          const students = result.data.students || [];
+
+          const studentsHtml = students
+            .map((stu) => {
+              return `
+          <div style="border-top:4px solid #0DD180; border-radius:10px; padding:10px; margin:0 0 20px; background-color:#f5f5f5;">
+              <table style="width:100%; border-collapse:collapse;">
+                  <tbody>
+                      <tr>
+                          <td style="width:30%; padding:5px; vertical-align:top;">
+                              <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Name of Student(s):</p>
+                              <p style="margin:0; font-size:13px; color:#5F5F6D;">${stu.studentFirstName} ${stu.studentLastName}</p>
+                          </td>
+
+                          <td style="width:20%; padding:5px; vertical-align:top;">
+                              <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Age Group:</p>
+                              <p style="margin:0; font-size:13px; color:#5F5F6D;">${classData.className || "N/A"}</p>
+                          </td>
+
+                          <td style="width:25%; padding:5px; vertical-align:top;">
+                              <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Class Time:</p>
+                              <p style="margin:0; font-size:13px; color:#5F5F6D;">${classData.startTime} - ${classData.endTime}</p>
+                          </td>
+                      </tr>
+                  </tbody>
+              </table>
+          </div>`;
+            })
+            .join("");
+          // --------------------------------------------
+
+          // Send email to EACH parent for this student
           for (const p of parentMetas) {
             try {
+
               const student =
                 result.data.students?.find((st) => st.id === sId) || {};
+
               let htmlBody = htmlTemplate
                 .replace(
                   /{{parentName}}/g,
                   `${p.parentFirstName} ${p.parentLastName}`
                 )
-                .replace(
-                  /{{studentFirstName}}/g,
-                  student.studentFirstName || ""
-                )
+                .replace(/{{studentFirstName}}/g, student.studentFirstName || "")
                 .replace(/{{studentLastName}}/g, student.studentLastName || "")
                 .replace(
                   /{{studentName}}/g,
-                  `${student.studentFirstName || ""} ${student.studentLastName || ""
-                  }`
+                  `${student.studentFirstName || ""} ${student.studentLastName || ""}`
                 )
                 .replace(/{{venueName}}/g, venueName)
                 .replace(/{{className}}/g, classData.className || "N/A")
@@ -215,9 +248,14 @@ exports.createBooking = async (req, res) => {
                 )
                 .replace(/{{startDate}}/g, booking?.startDate || "")
                 .replace(/{{parentEmail}}/g, p.parentEmail || "")
-                .replace(/{{parentPassword}}/g, "Synco123") // ✅ this is correct
+                .replace(/{{parentPassword}}/g, "Synco123")
                 .replace(/{{appName}}/g, "Synco")
                 .replace(/{{year}}/g, new Date().getFullYear().toString())
+
+                // ⭐ INSERT MULTIPLE STUDENTS HTML
+                .replace(/{{studentsHtml}}/g, studentsHtml)
+
+                // Images
                 .replace(
                   /{{logoUrl}}/g,
                   "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
@@ -237,6 +275,7 @@ exports.createBooking = async (req, res) => {
                 subject,
                 htmlBody,
               });
+
             } catch (err) {
               console.error(
                 `❌ Failed to send email to ${p.parentEmail}:`,
@@ -246,6 +285,7 @@ exports.createBooking = async (req, res) => {
           }
         }
       }
+
     }
 
     // 🔹 Step 4: Notifications & Logging

@@ -319,43 +319,95 @@ exports.createBooking = async (req, res) => {
       } = await emailModel.getEmailConfig(PANEL, "free-trial-confirmation");
 
       if (configStatus && htmlTemplate) {
-        const recipients = parentMetas.map((p) => ({
-          name: `${p.parentFirstName} ${p.parentLastName}`,
-          email: p.parentEmail,
-        }));
+        for (const recipient of parentMetas) {
+          try {
+            // -----------------------------------------
+            // Get all students for this parent
+            // -----------------------------------------
+            const students = result.data.students || [];
 
-        for (const recipient of recipients) {
-          const variables = {
-            "{{parentName}}": recipient.name,
-            "{{parentEmail}}": recipient.email,
-            "{{parentPassword}}": "Synco123",
-            "{{studentFirstName}}": studentFirstName || "",
-            "{{studentLastName}}": studentLastName || "",
-            "{{venueName}}": venue?.name || "N/A",
-            "{{className}}": classData?.className || "N/A",
-            "{{trialDate}}": booking?.trialDate || "",
-            "{{classTime}}": classData?.startTime || ""
-              .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
-              .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"),
+            // -----------------------------------------
+            // Build MULTIPLE student blocks dynamically
+            // -----------------------------------------
+            const studentsHtml = students
+              .map((stu) => {
+                return `
+              <div style="border-top:4px solid #0DD180; border-radius:10px; padding:10px; margin:0 0 20px; background-color:#f5f5f5;">
+                <table style="width:100%; border-collapse:collapse;">
+                  <tbody>
+                    <tr>
+                      <td style="width:30%; padding:5px; vertical-align:top;">
+                        <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Name of Student(s):</p>
+                        <p style="margin:0; font-size:13px; color:#5F5F6D;">${stu.studentFirstName} ${stu.studentLastName}</p>
+                      </td>
 
-            "{{appName}}": "Synco",
-            "{{year}}": new Date().getFullYear().toString(),
-          };
+                      <td style="width:20%; padding:5px; vertical-align:top;">
+                        <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Age Group:</p>
+                        <p style="margin:0; font-size:13px; color:#5F5F6D;">${classData?.className || "N/A"}</p>
+                      </td>
 
-          let finalHtml = htmlTemplate;
-          for (const [key, val] of Object.entries(variables)) {
-            const safeKey = key.replace(/[{}]/g, "").trim(); // remove braces and spaces
-            const regex = new RegExp(`{{\\s*${safeKey}\\s*}}`, "g"); // match {{ parentName }} or {{parentName}}
-            finalHtml = finalHtml.replace(regex, val);
+                      <td style="width:25%; padding:5px; vertical-align:top;">
+                        <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Class Time:</p>
+                        <p style="margin:0; font-size:13px; color:#5F5F6D;">${classData?.startTime || ""}</p>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            `;
+              })
+              .join("");
+
+            // -----------------------------------------
+            // Replace all variables in email template
+            // -----------------------------------------
+            let finalHtml = htmlTemplate
+              .replace(
+                /{{parentName}}/g,
+                `${recipient.parentFirstName} ${recipient.parentLastName}`
+              )
+              .replace(/{{parentEmail}}/g, recipient.parentEmail || "")
+              .replace(/{{parentPassword}}/g, "Synco123")
+              .replace(/{{studentFirstName}}/g, studentFirstName || "")
+              .replace(/{{studentLastName}}/g, studentLastName || "")
+              .replace(/{{venueName}}/g, venue?.name || "N/A")
+              .replace(/{{className}}/g, classData?.className || "N/A")
+              .replace(/{{trialDate}}/g, booking?.trialDate || "")
+              .replace(/{{classTime}}/g, classData?.startTime || "")
+              .replace(/{{studentsHtml}}/g, studentsHtml) // ⭐ MULTIPLE STUDENTS INSERTED
+              .replace(/{{appName}}/g, "Synco")
+              .replace(/{{year}}/g, new Date().getFullYear().toString())
+              // Images
+              .replace(
+                /{{logoUrl}}/g,
+                "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
+              )
+              .replace(
+                /{{kidsPlaying}}/g,
+                "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
+              );
+
+            // -----------------------------------------
+            // Send email
+            // -----------------------------------------
+            await sendEmail(emailConfig, {
+              recipient: [
+                {
+                  name: `${recipient.parentFirstName} ${recipient.parentLastName}`,
+                  email: recipient.parentEmail,
+                },
+              ],
+              cc: emailConfig.cc || [],
+              bcc: emailConfig.bcc || [],
+              subject,
+              htmlBody: finalHtml,
+            });
+          } catch (err) {
+            console.error(
+              `❌ Failed to send email to ${recipient.parentEmail}:`,
+              err.message
+            );
           }
-
-          await sendEmail(emailConfig, {
-            recipient: [recipient],
-            cc: emailConfig.cc || [],
-            bcc: emailConfig.bcc || [],
-            subject,
-            htmlBody: finalHtml,
-          });
         }
       }
     }
