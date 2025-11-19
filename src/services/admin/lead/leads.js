@@ -13,6 +13,7 @@ const {
   Term,
   PaymentPlan,
   PaymentGroupHasPlan,
+  BookingPayment,
 } = require("../../../models");
 const axios = require("axios");
 const { Op } = require("sequelize");
@@ -2290,6 +2291,10 @@ exports.getLeadandBookingDatabyLeadId = async (leadId, superAdminId, adminId) =>
           include: [
             { model: Venue, as: "venue" },
             { model: ClassSchedule, as: "classSchedule" },
+
+            // ✅ Correct place for booking payments
+            { model: BookingPayment, as: "payments" },
+
             {
               model: BookingStudentMeta,
               as: "students",
