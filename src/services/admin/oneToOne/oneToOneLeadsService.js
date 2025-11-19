@@ -118,16 +118,23 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
     // ✅ Optional student name filter
     let filteredLeads = leads;
     if (studentName) {
+      const nameFilter = studentName.toLowerCase().trim();
+
       filteredLeads = leads.filter((lead) => {
         const booking = lead.booking;
         if (!booking || !booking.students) return false;
-        return booking.students.some(
-          (s) =>
-            s.studentFirstName
-              ?.toLowerCase()
-              .includes(studentName.toLowerCase()) ||
-            s.studentLastName?.toLowerCase().includes(studentName.toLowerCase())
-        );
+
+        return booking.students.some((s) => {
+          const first = s.studentFirstName?.toLowerCase() || "";
+          const last = s.studentLastName?.toLowerCase() || "";
+          const full = `${first} ${last}`.trim();
+
+          return (
+            first.includes(nameFilter) ||
+            last.includes(nameFilter) ||
+            full.includes(nameFilter)
+          );
+        });
       });
     }
 
@@ -495,18 +502,26 @@ exports.getAllOnetoOneLeadsSales = async (
     // 🧠 Optional Student Name Filter
     let filteredLeads = leads;
     if (studentName) {
+      const nameFilter = studentName.toLowerCase().trim();
+
       filteredLeads = leads.filter((lead) => {
         const booking = lead.booking;
         if (!booking || !booking.students) return false;
-        return booking.students.some(
-          (s) =>
-            s.studentFirstName
-              ?.toLowerCase()
-              .includes(studentName.toLowerCase()) ||
-            s.studentLastName?.toLowerCase().includes(studentName.toLowerCase())
-        );
+
+        return booking.students.some((s) => {
+          const first = s.studentFirstName?.toLowerCase() || "";
+          const last = s.studentLastName?.toLowerCase() || "";
+          const full = `${first} ${last}`.trim();
+
+          return (
+            first.includes(nameFilter) ||
+            last.includes(nameFilter) ||
+            full.includes(nameFilter)
+          );
+        });
       });
     }
+
     if (location) {
       filteredLeads = filteredLeads.filter((lead) => {
         const booking = lead.booking;
@@ -1017,16 +1032,23 @@ exports.getAllOnetoOneLeadsSalesAll = async (
     // 🧠 Optional Student Name Filter
     let filteredLeads = leads;
     if (studentName) {
+      const nameFilter = studentName.toLowerCase().trim();
+
       filteredLeads = leads.filter((lead) => {
         const booking = lead.booking;
         if (!booking || !booking.students) return false;
-        return booking.students.some(
-          (s) =>
-            s.studentFirstName
-              ?.toLowerCase()
-              .includes(studentName.toLowerCase()) ||
-            s.studentLastName?.toLowerCase().includes(studentName.toLowerCase())
-        );
+
+        return booking.students.some((s) => {
+          const first = s.studentFirstName?.toLowerCase() || "";
+          const last = s.studentLastName?.toLowerCase() || "";
+          const full = `${first} ${last}`.trim();
+
+          return (
+            first.includes(nameFilter) ||
+            last.includes(nameFilter) ||
+            full.includes(nameFilter)
+          );
+        });
       });
     }
 

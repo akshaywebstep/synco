@@ -71,6 +71,9 @@ exports.createOnetoOneBooking = async (req, res) => {
         "studentFirstName",
         "studentLastName",
         "dateOfBirth",
+        "medicalInfo",
+        "age",
+        "gender"
       ];
 
       for (const field of requiredStudentFields) {

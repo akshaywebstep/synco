@@ -247,6 +247,8 @@ exports.getAllOnetoOneLeadsSales = async (req, res) => {
 exports.getAllOnetoOneLeadsSalesAll = async (req, res) => {
   const adminId = req.admin?.id;
   if (DEBUG) console.log("📥 Fetching all One-to-One leads...");
+  if (DEBUG) console.log("📥 Filter...");
+
   try {
     if (!adminId) {
       return res.status(401).json({
