@@ -170,28 +170,50 @@ exports.createBooking = async (req, res) => {
       }
     }
 
+    console.log("➡️ Entered email sending block");
+    console.log("paymentPlanType =", paymentPlanType);
+
     if (paymentPlanType) {
+      console.log("✔️ paymentPlanType is truthy. Proceeding...");
+
       // 🔹 Step 3: Fetch email template (book-paid-trial)
+      console.log("➡️ Fetching email config for 'book-paid-trial'...");
       const {
         status: configStatus,
         emailConfig,
         htmlTemplate,
         subject,
-      } = await emailModel.getEmailConfig(PANEL, "book-paid-trial"); // matches your DB entry
+      } = await emailModel.getEmailConfig(PANEL, "book-paid-trial");
+
+      console.log("configStatus:", configStatus);
+      console.log("emailConfig:", emailConfig);
+      console.log("htmlTemplate exists?", !!htmlTemplate);
+      console.log("subject:", subject);
 
       if (configStatus && htmlTemplate) {
+        console.log("✔️ Email template loaded successfully.");
+
+        console.log("studentIds:", studentIds);
 
         // Loop through each student ID
         for (const sId of studentIds) {
+          console.log("\n---------------------------------------------");
+          console.log("➡️ Processing studentId:", sId);
 
           const parentMetas = await BookingParentMeta.findAll({
             where: { studentId: sId },
           });
 
-          if (!parentMetas.length) continue;
+          console.log("parentMetas count:", parentMetas.length);
+
+          if (!parentMetas.length) {
+            console.log("⚠️ No parentMetas found. Skipping student:", sId);
+            continue;
+          }
 
           // ------- Build MULTIPLE STUDENTS BLOCK -------
           const students = result.data.students || [];
+          console.log("Total students in result:", students.length);
 
           const studentsHtml = students
             .map((stu) => {
@@ -220,14 +242,19 @@ exports.createBooking = async (req, res) => {
           </div>`;
             })
             .join("");
+
+          console.log("Generated studentsHtml length:", studentsHtml.length);
           // --------------------------------------------
 
           // Send email to EACH parent for this student
           for (const p of parentMetas) {
-            try {
+            console.log("➡️ Sending email to parent:", p.parentEmail);
 
+            try {
               const student =
                 result.data.students?.find((st) => st.id === sId) || {};
+
+              console.log("Student info found:", student);
 
               let htmlBody = htmlTemplate
                 .replace(
@@ -251,11 +278,7 @@ exports.createBooking = async (req, res) => {
                 .replace(/{{parentPassword}}/g, "Synco123")
                 .replace(/{{appName}}/g, "Synco")
                 .replace(/{{year}}/g, new Date().getFullYear().toString())
-
-                // ⭐ INSERT MULTIPLE STUDENTS HTML
                 .replace(/{{studentsHtml}}/g, studentsHtml)
-
-                // Images
                 .replace(
                   /{{logoUrl}}/g,
                   "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
@@ -265,7 +288,9 @@ exports.createBooking = async (req, res) => {
                   "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
                 );
 
-              await sendEmail(emailConfig, {
+              console.log("Generated htmlBody length:", htmlBody.length);
+
+              const emailResp = await sendEmail(emailConfig, {
                 recipient: [
                   {
                     name: `${p.parentFirstName} ${p.parentLastName}`,
@@ -276,6 +301,8 @@ exports.createBooking = async (req, res) => {
                 htmlBody,
               });
 
+              console.log("📧 Email send response:", emailResp);
+
             } catch (err) {
               console.error(
                 `❌ Failed to send email to ${p.parentEmail}:`,
@@ -284,10 +311,12 @@ exports.createBooking = async (req, res) => {
             }
           }
         }
+      } else {
+        console.log("❌ Email config NOT loaded. Skipping email send.");
       }
-
+    } else {
+      console.log("❌ paymentPlanType is falsy. Skipping email sending block.");
     }
-
     // 🔹 Step 4: Notifications & Logging
     await createNotification(
       req,

@@ -72,6 +72,7 @@ exports.createCancelBooking = async ({ bookingId, cancelReason, additionalNote }
     const existingCancel = await CancelBooking.findOne({
       where: { bookingId, bookingType },
     });
+
     if (existingCancel) {
       return {
         status: false,
@@ -79,14 +80,33 @@ exports.createCancelBooking = async ({ bookingId, cancelReason, additionalNote }
       };
     }
 
-    // 3️⃣ Cleanup any previous rebooking info before cancelling
+    // 🔥 3️⃣ FUNCTION — Restore class capacity
+    const restoreClassCapacity = async () => {
+      const studentMetaList = await BookingStudentMeta.findAll({
+        where: { bookingTrialId: bookingId },
+      });
+
+      if (studentMetaList.length === 0 || !booking.classScheduleId) return;
+
+      const classSchedule = await ClassSchedule.findByPk(
+        booking.classScheduleId
+      );
+
+      if (!classSchedule) return;
+
+      await classSchedule.update({
+        capacity: classSchedule.capacity + studentMetaList.length,
+      });
+    };
+
+    // 4️⃣ Clean previous rebooking notes
     await booking.update({
       reasonForNonAttendance: null,
       additionalNote: null,
-      trialDate: booking.trialDate, // keep same date, or you can nullify if logic allows
+      trialDate: booking.trialDate,
     });
 
-    // 4️⃣ Record new cancellation
+    // 5️⃣ Create cancellation record
     const cancelRequest = await CancelBooking.create({
       bookingId,
       bookingType,
@@ -94,28 +114,15 @@ exports.createCancelBooking = async ({ bookingId, cancelReason, additionalNote }
       additionalNote: additionalNote || null,
     });
 
-    // 5️⃣ Update booking status to cancelled
+    // 6️⃣ Update booking status to cancelled
     await booking.update({ status: "cancelled" });
 
-    // 6️⃣ Update class schedule capacity based on linked students
-    const studentMetaList = await BookingStudentMeta.findAll({
-      where: { bookingTrialId: bookingId },
-    });
-
-    if (studentMetaList.length > 0) {
-      const classSchedule = await ClassSchedule.findByPk(booking.classScheduleId);
-
-      if (classSchedule) {
-        const incrementCapacity = studentMetaList.length;
-        await classSchedule.update({
-          capacity: classSchedule.capacity + incrementCapacity,
-        });
-      }
-    }
+    // 🟢 7️⃣ Restore Class Capacity (FINAL STEP)
+    await restoreClassCapacity();
 
     return {
       status: true,
-      message: "Free trial booking cancelled successfully (with rebooking cleanup).",
+      message: "Free trial booking cancelled successfully.",
       data: { cancelRequest, bookingDetails: booking },
     };
   } catch (error) {
