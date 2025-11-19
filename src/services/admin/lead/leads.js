@@ -2353,15 +2353,19 @@ exports.getLeadandBookingDatabyLeadId = async (leadId, superAdminId, adminId) =>
                 where: { id: venue.paymentGroupId },
               });
 
-              const groupPlanLinks = await PaymentGroupHasPlan.findAll({
-                where: { payment_group_id: venue.paymentGroupId },
-                attributes: ["payment_plan_id"],
-              });
+              // 🔹 Only include payment plans actually used in bookings for this lead at this venue
+              const usedPaymentPlanIds = new Set();
 
-              const planIds = groupPlanLinks.map((l) => l.payment_plan_id);
+              lead.bookings
+                .filter(b => b.venueId === venue.id)
+                .forEach((booking) => {
+                  if (booking.paymentPlanId) {
+                    usedPaymentPlanIds.add(booking.paymentPlanId);
+                  }
+                });
 
               const paymentPlans = await PaymentPlan.findAll({
-                where: { id: planIds },
+                where: { id: Array.from(usedPaymentPlanIds) },
               });
 
               return {

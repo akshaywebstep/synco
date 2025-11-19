@@ -135,16 +135,23 @@ exports.getAllBirthdayPartyLeads = async (
     // ✅ Optional student name filter
     let filteredLeads = leads;
     if (studentName) {
+      const nameFilter = studentName.toLowerCase().trim();
+
       filteredLeads = leads.filter((lead) => {
         const booking = lead.booking;
         if (!booking || !booking.students) return false;
-        return booking.students.some(
-          (s) =>
-            s.studentFirstName
-              ?.toLowerCase()
-              .includes(studentName.toLowerCase()) ||
-            s.studentLastName?.toLowerCase().includes(studentName.toLowerCase())
-        );
+
+        return booking.students.some((s) => {
+          const first = s.studentFirstName?.toLowerCase() || "";
+          const last = s.studentLastName?.toLowerCase() || "";
+          const full = `${first} ${last}`.trim();
+
+          return (
+            first.includes(nameFilter) ||
+            last.includes(nameFilter) ||
+            full.includes(nameFilter)
+          );
+        });
       });
     }
 
@@ -459,17 +466,24 @@ exports.getAllBirthdayPartyLeadsSales = async (
 
     // 🧠 Optional Student Name Filter
     let filteredLeads = leads;
-    if (studentName) {
+     if (studentName) {
+      const nameFilter = studentName.toLowerCase().trim();
+
       filteredLeads = leads.filter((lead) => {
         const booking = lead.booking;
         if (!booking || !booking.students) return false;
-        return booking.students.some(
-          (s) =>
-            s.studentFirstName
-              ?.toLowerCase()
-              .includes(studentName.toLowerCase()) ||
-            s.studentLastName?.toLowerCase().includes(studentName.toLowerCase())
-        );
+
+        return booking.students.some((s) => {
+          const first = s.studentFirstName?.toLowerCase() || "";
+          const last = s.studentLastName?.toLowerCase() || "";
+          const full = `${first} ${last}`.trim();
+
+          return (
+            first.includes(nameFilter) ||
+            last.includes(nameFilter) ||
+            full.includes(nameFilter)
+          );
+        });
       });
     }
     // 🧾 Format Data
@@ -896,17 +910,24 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
 
     // 🧠 Optional Student Name Filter
     let filteredLeads = leads;
-    if (studentName) {
+     if (studentName) {
+      const nameFilter = studentName.toLowerCase().trim();
+
       filteredLeads = leads.filter((lead) => {
         const booking = lead.booking;
         if (!booking || !booking.students) return false;
-        return booking.students.some(
-          (s) =>
-            s.studentFirstName
-              ?.toLowerCase()
-              .includes(studentName.toLowerCase()) ||
-            s.studentLastName?.toLowerCase().includes(studentName.toLowerCase())
-        );
+
+        return booking.students.some((s) => {
+          const first = s.studentFirstName?.toLowerCase() || "";
+          const last = s.studentLastName?.toLowerCase() || "";
+          const full = `${first} ${last}`.trim();
+
+          return (
+            first.includes(nameFilter) ||
+            last.includes(nameFilter) ||
+            full.includes(nameFilter)
+          );
+        });
       });
     }
 
