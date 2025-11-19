@@ -478,7 +478,7 @@ exports.syncFacebookLeads = async (req, res) => {
 exports.getAllReferallLeads = async (req, res) => {
   const adminId = req.admin?.id;
   try {
-    if (DEBUG) console.log("📥 Fetching all leads");
+    // if (DEBUG) console.log("📥 Fetching all leads");
 
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;

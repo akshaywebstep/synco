@@ -35,34 +35,50 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+// Delay helper (Nominatim requires max 1 req/sec)
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function getCoordinatesFromPostcode(postcode) {
-  if (!postcode || typeof postcode !== "string" || postcode.trim().length < 5) {
-    console.warn("⚠️ Skipping postcode lookup: invalid postcode", postcode);
+  if (!postcode || typeof postcode !== "string" || postcode.trim().length < 3) {
+    console.warn("⚠️ Invalid postcode:", postcode);
     return null;
   }
 
+  const cleanedPostcode = postcode.trim().replace(/\s+/g, ""); // remove spaces
+  const username = "akshaywebstep"; // your GeoNames username
+
   try {
     const res = await axios.get(
-      `https://api.postcodes.io/postcodes/${encodeURIComponent(
-        postcode.trim()
-      )}`
+      "http://api.geonames.org/postalCodeSearchJSON",
+      {
+        params: {
+          postalcode: cleanedPostcode,
+          maxRows: 1,
+          username,
+        },
+        timeout: 10000,
+      }
     );
 
-    if (res.data.status === 200 && res.data.result) {
+    if (res.data?.postalCodes?.length > 0) {
+      const place = res.data.postalCodes[0];
+
       return {
-        latitude: res.data.result.latitude,
-        longitude: res.data.result.longitude,
+        latitude: parseFloat(place.lat),
+        longitude: parseFloat(place.lng),
+        city: place.placeName || null,
+        state: place.adminName1 || null,
+        country: place.countryCode || null,
+        raw: place,
       };
-    } else {
-      console.warn("⚠️ Postcode not found:", postcode);
     }
   } catch (err) {
-    console.error(
-      "❌ Postcode lookup error:",
-      err.response?.data?.error || err.message
-    );
+    console.error("❌ GeoNames API error:", err.message);
   }
 
+  console.warn("⚠️ No coordinates found for:", postcode);
   return null;
 }
 
@@ -1077,14 +1093,14 @@ exports.getAllReferallLeads = async (adminId, superAdminId, filters = {}) => {
                 .map(async (venue) => {
 
                   // Debug: show the id you're looking for
-                  console.log("Searching termGroupId:", venue.termGroupId[0]);
+                  // console.log("Searching termGroupId:", venue.termGroupId[0]);
 
                   // Get all terms that use this termGroupId
                   const allTerms = await Term.findAll({
                     where: { createdBy: { [Op.in]: allowedAdminIds } }
                   });
 
-                  console.log("Terms found:", allTerms.map(t => t.dataValues));
+                  // console.log("Terms found:", allTerms.map(t => t.dataValues));
 
                   const classSchedules = await ClassSchedule.findAll({
                     where: { venueId: venue.id }
@@ -1425,14 +1441,14 @@ exports.getAllOthersLeads = async (adminId, superAdminId, filters = {}) => {
                 .map(async (venue) => {
 
                   // Debug: show the id you're looking for
-                  console.log("Searching termGroupId:", venue.termGroupId[0]);
+                  // console.log("Searching termGroupId:", venue.termGroupId[0]);
 
                   // Get all terms that use this termGroupId
                   const allTerms = await Term.findAll({
                     where: { createdBy: { [Op.in]: allowedAdminIds } }
                   });
 
-                  console.log("Terms found:", allTerms.map(t => t.dataValues));
+                  // console.log("Terms found:", allTerms.map(t => t.dataValues));
 
                   const classSchedules = await ClassSchedule.findAll({
                     where: { venueId: venue.id }
