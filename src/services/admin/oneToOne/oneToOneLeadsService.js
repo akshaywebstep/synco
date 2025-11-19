@@ -1691,7 +1691,7 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
 
         if (missing.length > 0) {
           await t.rollback();
-          return { status: false, message: `Cannot create student. Missing required fields: ${missing.join(", ")}` };
+          return { status: false, message: `Missing required fields: ${missing.join(", ")}` };
         }
 
         await OneToOneStudent.create(
@@ -1752,7 +1752,7 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
 
         if (missing.length > 0) {
           await t.rollback();
-          return { status: false, message: `Cannot create parent. Missing required fields: ${missing.join(", ")}` };
+          return { status: false, message: `Missing required fields: ${missing.join(", ")}` };
         }
 
         await OneToOneParent.create(
@@ -1809,7 +1809,7 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
 
         if (missing.length > 0) {
           await t.rollback();
-          return { status: false, message: `Cannot create emergency contact. Missing required fields: ${missing.join(", ")}` };
+          return { status: false, message: `Missing required fields: ${missing.join(", ")}` };
         }
 
         await OneToOneEmergency.create(

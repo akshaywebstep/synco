@@ -29,7 +29,10 @@ exports.createOnetoOneLeads = async (req, res) => {
     });
 
     if (!validation.isValid) {
-      return res.status(400).json(validation);
+      return res.status(400).json({
+        success: false,
+        message: `${validation.missingField} is required`
+      });
     }
 
     // ✅ Create the lead
@@ -496,9 +499,8 @@ exports.updateOnetoOneLeadById = async (req, res) => {
     // ============================================================
     // 🔔 Create notification
     // ============================================================
-    const adminName = `${req?.admin?.firstName || "Admin"} ${
-      req?.admin?.lastName || ""
-    }`.trim();
+    const adminName = `${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""
+      }`.trim();
 
     await createNotification(
       req,

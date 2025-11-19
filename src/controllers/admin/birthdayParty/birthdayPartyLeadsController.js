@@ -28,7 +28,10 @@ exports.createBirthdayPartyLeads = async (req, res) => {
     });
 
     if (!validation.isValid) {
-      return res.status(400).json(validation);
+      return res.status(400).json({
+        success: false,
+        message: `${validation.missingField} is required`
+      });
     }
 
     // ✅ Create the lead

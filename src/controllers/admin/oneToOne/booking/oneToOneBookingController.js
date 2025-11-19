@@ -73,20 +73,61 @@ exports.createOnetoOneBooking = async (req, res) => {
         "dateOfBirth",
         "medicalInfo",
         "age",
-        "gender"
+        "gender",
       ];
 
       for (const field of requiredStudentFields) {
         if (!student[field] || student[field] === "") {
           return res.status(400).json({
             success: false,
-            message: `Student ${index + 1} → ${field} is required`,
+            message: `Student ${index + 1} ${field} is required`,
           });
         }
       }
     }
 
-    // ✅ Step 4: Validate payment fields (if provided)
+    // ✅ Step 4: Validate parent fields
+    for (const [index, parent] of formData.parents.entries()) {
+      const requiredParentFields = [
+        "parentFirstName",
+        "parentLastName",
+        "parentEmail",
+        "phoneNumber",
+        "relationChild",
+        "howDidHear",
+      ];
+
+      for (const field of requiredParentFields) {
+        if (!parent[field] || parent[field] === "") {
+          return res.status(400).json({
+            success: false,
+            message: `Parent ${index + 1} ${field} is required`,
+          });
+        }
+      }
+    }
+
+    // ✅ Step 5: Validate emergency contact fields
+    const requiredEmergencyFields = [
+      "emergencyFirstName",
+      "emergencyLastName",
+      "emergencyPhoneNumber",
+      "emergencyRelation",
+    ];
+
+    for (const field of requiredEmergencyFields) {
+      if (
+        !formData.emergency[field] ||
+        formData.emergency[field] === ""
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: `Emergency ${field} is required`,
+        });
+      }
+    }
+
+    // ✅ Step 6: Validate payment fields (if provided)
     if (formData.payment) {
       const requiredPaymentFields = [
         "firstName",
@@ -130,8 +171,7 @@ exports.createOnetoOneBooking = async (req, res) => {
     await createNotification(
       req,
       "Booking Created Successfully",
-      `The booking was created by ${req?.admin?.firstName || "Admin"} ${
-        req?.admin?.lastName || ""
+      `The booking was created by ${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""
       }.`,
       "System"
     );
