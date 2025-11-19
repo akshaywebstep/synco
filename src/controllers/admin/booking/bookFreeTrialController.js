@@ -334,11 +334,10 @@ exports.createBooking = async (req, res) => {
             "{{venueName}}": venue?.name || "N/A",
             "{{className}}": classData?.className || "N/A",
             "{{trialDate}}": booking?.trialDate || "",
-            "{{classTime}}": classData?.startTime || "",
-            "{{logoUrl}}":
-              "https://webstepdev.com/demo/syncoUploads/syncoLogo.png",
-            "{{kidsPlaying}}":
-              "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png",
+            "{{classTime}}": classData?.startTime || ""
+              .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
+              .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"),
+
             "{{appName}}": "Synco",
             "{{year}}": new Date().getFullYear().toString(),
           };
