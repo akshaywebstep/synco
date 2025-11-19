@@ -100,7 +100,17 @@ exports.getAllOnetoOneLeads = async (superAdminId, adminId, filters = {}) => {
               as: "students",
               include: [
                 { model: OneToOneParent, as: "parentDetails" },
-                { model: OneToOneEmergency, as: "emergencyDetails" },
+                {
+                  model: OneToOneEmergency, as: "emergencyDetails", attributes: [
+                    "id",
+                    "studentId",
+                    "emergencyFirstName",
+                    "emergencyLastName",
+                    "emergencyPhoneNumber",
+                    "emergencyRelation"
+                  ],
+                },
+
               ],
             },
             { model: OneToOnePayment, as: "payment" },
@@ -483,7 +493,16 @@ exports.getAllOnetoOneLeadsSales = async (
               as: "students",
               include: [
                 { model: OneToOneParent, as: "parentDetails" },
-                { model: OneToOneEmergency, as: "emergencyDetails" },
+                {
+                  model: OneToOneEmergency, as: "emergencyDetails", attributes: [
+                    "id",
+                    "studentId",
+                    "emergencyFirstName",
+                    "emergencyLastName",
+                    "emergencyPhoneNumber",
+                    "emergencyRelation"
+                  ],
+                },
               ],
             },
             { model: OneToOnePayment, as: "payment" },
@@ -1013,7 +1032,16 @@ exports.getAllOnetoOneLeadsSalesAll = async (
               as: "students",
               include: [
                 { model: OneToOneParent, as: "parentDetails" },
-                { model: OneToOneEmergency, as: "emergencyDetails" },
+                {
+                  model: OneToOneEmergency, as: "emergencyDetails", attributes: [
+                    "id",
+                    "studentId",
+                    "emergencyFirstName",
+                    "emergencyLastName",
+                    "emergencyPhoneNumber",
+                    "emergencyRelation"
+                  ],
+                },
               ],
             },
             { model: OneToOnePayment, as: "payment" },
@@ -1434,7 +1462,16 @@ exports.getOnetoOneLeadsById = async (id, superAdminId, adminId) => {
               as: "students",
               include: [
                 { model: OneToOneParent, as: "parentDetails" },
-                { model: OneToOneEmergency, as: "emergencyDetails" },
+                {
+                  model: OneToOneEmergency, as: "emergencyDetails", attributes: [
+                    "id",
+                    "studentId",
+                    "emergencyFirstName",
+                    "emergencyLastName",
+                    "emergencyPhoneNumber",
+                    "emergencyRelation"
+                  ],
+                },
               ],
             },
             { model: OneToOnePayment, as: "payment" },
@@ -1632,7 +1669,16 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
               as: "students",
               include: [
                 { model: OneToOneParent, as: "parentDetails" },
-                { model: OneToOneEmergency, as: "emergencyDetails" },
+                {
+                  model: OneToOneEmergency, as: "emergencyDetails", attributes: [
+                    "id",
+                    "studentId",
+                    "emergencyFirstName",
+                    "emergencyLastName",
+                    "emergencyPhoneNumber",
+                    "emergencyRelation"
+                  ],
+                },
               ],
             },
           ],

@@ -114,7 +114,16 @@ exports.getAllBirthdayPartyLeads = async (
               as: "students",
               include: [
                 { model: BirthdayPartyParent, as: "parentDetails" },
-                { model: BirthdayPartyEmergency, as: "emergencyDetails" },
+                {
+                  model: BirthdayPartyEmergency, as: "emergencyDetails", attributes: [
+                    "id",
+                    "studentId",
+                    "emergencyFirstName",
+                    "emergencyLastName",
+                    "emergencyPhoneNumber",
+                    "emergencyRelation"
+                  ],
+                },
               ],
             },
             { model: BirthdayPartyPayment, as: "payment" },
@@ -428,7 +437,16 @@ exports.getAllBirthdayPartyLeadsSales = async (
               as: "students",
               include: [
                 { model: BirthdayPartyParent, as: "parentDetails" },
-                { model: BirthdayPartyEmergency, as: "emergencyDetails" },
+                {
+                  model: BirthdayPartyEmergency, as: "emergencyDetails", attributes: [
+                    "id",
+                    "studentId",
+                    "emergencyFirstName",
+                    "emergencyLastName",
+                    "emergencyPhoneNumber",
+                    "emergencyRelation"
+                  ],
+                },
               ],
             },
             { model: BirthdayPartyPayment, as: "payment" },
@@ -855,7 +873,16 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
               as: "students",
               include: [
                 { model: BirthdayPartyParent, as: "parentDetails" },
-                { model: BirthdayPartyEmergency, as: "emergencyDetails" },
+                {
+                  model: BirthdayPartyEmergency, as: "emergencyDetails", attributes: [
+                    "id",
+                    "studentId",
+                    "emergencyFirstName",
+                    "emergencyLastName",
+                    "emergencyPhoneNumber",
+                    "emergencyRelation"
+                  ],
+                },
               ],
             },
             { model: BirthdayPartyPayment, as: "payment" },
@@ -1234,7 +1261,16 @@ exports.getBirthdayPartyLeadsById = async (id, adminId, superAdminId) => {
               as: "students",
               include: [
                 { model: BirthdayPartyParent, as: "parentDetails" },
-                { model: BirthdayPartyEmergency, as: "emergencyDetails" },
+                {
+                  model: BirthdayPartyEmergency, as: "emergencyDetails", attributes: [
+                    "id",
+                    "studentId",
+                    "emergencyFirstName",
+                    "emergencyLastName",
+                    "emergencyPhoneNumber",
+                    "emergencyRelation"
+                  ],
+                },
               ],
             },
             { model: BirthdayPartyPayment, as: "payment" },
@@ -1420,7 +1456,16 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
               as: "students",
               include: [
                 { model: BirthdayPartyParent, as: "parentDetails" },
-                { model: BirthdayPartyEmergency, as: "emergencyDetails" },
+                {
+                  model: BirthdayPartyEmergency, as: "emergencyDetails", attributes: [
+                    "id",
+                    "studentId",
+                    "emergencyFirstName",
+                    "emergencyLastName",
+                    "emergencyPhoneNumber",
+                    "emergencyRelation"
+                  ],
+                },
               ],
             },
           ],
