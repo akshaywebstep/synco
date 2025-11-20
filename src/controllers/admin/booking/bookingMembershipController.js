@@ -212,37 +212,14 @@ exports.createBooking = async (req, res) => {
           }
 
           // ------- Build MULTIPLE STUDENTS BLOCK -------
-          const students = result.data.students || [];
-          console.log("Total students in result:", students.length);
-
-          const studentsHtml = students
-            .map((stu) => {
-              return `
-          <div style="border-top:4px solid #0DD180; border-radius:10px; padding:10px; margin:0 0 20px; background-color:#f5f5f5;">
-              <table style="width:100%; border-collapse:collapse;">
-                  <tbody>
-                      <tr>
-                          <td style="width:30%; padding:5px; vertical-align:top;">
-                              <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Name of Student(s):</p>
-                              <p style="margin:0; font-size:13px; color:#5F5F6D;">${stu.studentFirstName} ${stu.studentLastName}</p>
-                          </td>
-
-                          <td style="width:20%; padding:5px; vertical-align:top;">
-                              <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Age Group:</p>
-                              <p style="margin:0; font-size:13px; color:#5F5F6D;">${classData.className || "N/A"}</p>
-                          </td>
-
-                          <td style="width:25%; padding:5px; vertical-align:top;">
-                              <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Class Time:</p>
-                              <p style="margin:0; font-size:13px; color:#5F5F6D;">${classData.startTime} - ${classData.endTime}</p>
-                          </td>
-                      </tr>
-                  </tbody>
-              </table>
-          </div>`;
-            })
-            .join("");
-
+          const student = await BookingStudentMeta.findOne({
+                      where: { id: firstParent.studentId }
+                    });
+          
+                    const studentsHtml = student
+                      ? `<p style="margin:0; font-size:13px; color:#5F5F6D;">${student.studentFirstName} ${student.studentLastName}</p>`
+                      : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
+          
           console.log("Generated studentsHtml length:", studentsHtml.length);
           // --------------------------------------------
 

@@ -4,7 +4,7 @@ const { logActivity } = require("../../../utils/admin/activityLogger");
 const { Venue, ClassSchedule, Admin } = require("../../../models");
 const emailModel = require("../../../services/email");
 const sendEmail = require("../../../utils/email/sendEmail");
-const { BookingParentMeta, Booking } = require("../../../models");
+const { BookingParentMeta,BookingStudentMeta, Booking } = require("../../../models");
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 const {
   createNotification,
@@ -306,108 +306,56 @@ exports.createBooking = async (req, res) => {
     //   }
     // }
     // Send email
+    // Send email to only the first parent
+    // Send email
     const parentMetas = await BookingParentMeta.findAll({
       where: { studentId },
     });
 
     if (parentMetas && parentMetas.length > 0) {
-      const {
-        status: configStatus,
-        emailConfig,
-        htmlTemplate,
-        subject,
-      } = await emailModel.getEmailConfig(PANEL, "free-trial-confirmation");
+      const firstParent = parentMetas[0]; // only first parent
+      const { status: configStatus, emailConfig, htmlTemplate, subject } =
+        await emailModel.getEmailConfig(PANEL, "free-trial-confirmation");
 
       if (configStatus && htmlTemplate) {
-        for (const recipient of parentMetas) {
-          try {
-            // -----------------------------------------
-            // Get all students for this parent
-            // -----------------------------------------
-            const students = result.data.students || [];
+        try {
+          // ----------------------------
+          // Safely get students for this parent
+          // ----------------------------
+          const student = await BookingStudentMeta.findOne({
+            where: { id: firstParent.studentId }
+          });
 
-            // -----------------------------------------
-            // Build MULTIPLE student blocks dynamically
-            // -----------------------------------------
-            const studentsHtml = students
-              .map((stu) => {
-                return `
-              <div style="border-top:4px solid #0DD180; border-radius:10px; padding:10px; margin:0 0 20px; background-color:#f5f5f5;">
-                <table style="width:100%; border-collapse:collapse;">
-                  <tbody>
-                    <tr>
-                      <td style="width:30%; padding:5px; vertical-align:top;">
-                        <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Name of Student(s):</p>
-                        <p style="margin:0; font-size:13px; color:#5F5F6D;">${stu.studentFirstName} ${stu.studentLastName}</p>
-                      </td>
+          const studentsHtml = student
+            ? `<p style="margin:0; font-size:13px; color:#5F5F6D;">${student.studentFirstName} ${student.studentLastName}</p>`
+            : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
 
-                      <td style="width:20%; padding:5px; vertical-align:top;">
-                        <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Age Group:</p>
-                        <p style="margin:0; font-size:13px; color:#5F5F6D;">${classData?.className || "N/A"}</p>
-                      </td>
+          let finalHtml = htmlTemplate
+            .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`)
+            .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
+            .replace(/{{parentPassword}}/g, "Synco123")
+            .replace(/{{venueName}}/g, venue?.name || "N/A")
+            .replace(/{{trialDate}}/g, booking?.trialDate || "")
+            .replace(/{{className}}/g, classData?.className || "N/A")
+            .replace(/{{classTime}}/g, `${classData?.startTime || ""}-${classData?.endTime || ""}`)
+            .replace(/{{studentsHtml}}/g, studentsHtml)
+            .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
+            .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png");
 
-                      <td style="width:25%; padding:5px; vertical-align:top;">
-                        <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Class Time:</p>
-                        <p style="margin:0; font-size:13px; color:#5F5F6D;">${classData?.startTime || ""}</p>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            `;
-              })
-              .join("");
-
-            // -----------------------------------------
-            // Replace all variables in email template
-            // -----------------------------------------
-            let finalHtml = htmlTemplate
-              .replace(
-                /{{parentName}}/g,
-                `${recipient.parentFirstName} ${recipient.parentLastName}`
-              )
-              .replace(/{{parentEmail}}/g, recipient.parentEmail || "")
-              .replace(/{{parentPassword}}/g, "Synco123")
-              .replace(/{{studentFirstName}}/g, studentFirstName || "")
-              .replace(/{{studentLastName}}/g, studentLastName || "")
-              .replace(/{{venueName}}/g, venue?.name || "N/A")
-              .replace(/{{className}}/g, classData?.className || "N/A")
-              .replace(/{{trialDate}}/g, booking?.trialDate || "")
-              .replace(/{{classTime}}/g, `${classData?.startTime || ""}-${classData?.endTime || ""}`)
-              .replace(/{{studentsHtml}}/g, studentsHtml) // ⭐ MULTIPLE STUDENTS INSERTED
-              .replace(/{{appName}}/g, "Synco")
-              .replace(/{{year}}/g, new Date().getFullYear().toString())
-              // Images
-              .replace(
-                /{{logoUrl}}/g,
-                "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
-              )
-              .replace(
-                /{{kidsPlaying}}/g,
-                "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
-              );
-
-            // -----------------------------------------
-            // Send email
-            // -----------------------------------------
-            await sendEmail(emailConfig, {
-              recipient: [
-                {
-                  name: `${recipient.parentFirstName} ${recipient.parentLastName}`,
-                  email: recipient.parentEmail,
-                },
-              ],
-              cc: emailConfig.cc || [],
-              bcc: emailConfig.bcc || [],
-              subject,
-              htmlBody: finalHtml,
-            });
-          } catch (err) {
-            console.error(
-              `❌ Failed to send email to ${recipient.parentEmail}:`,
-              err.message
-            );
-          }
+          await sendEmail(emailConfig, {
+            recipient: [
+              {
+                name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
+                email: firstParent.parentEmail,
+              },
+            ],
+            cc: emailConfig.cc || [],
+            bcc: emailConfig.bcc || [],
+            subject,
+            htmlBody: finalHtml,
+          });
+        } catch (err) {
+          console.error(`❌ Failed to send email to ${firstParent.parentEmail}:`, err.message);
         }
       }
     }
