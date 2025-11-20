@@ -142,33 +142,46 @@ exports.createBooking = async (req, res) => {
     const venue = await Venue.findByPk(classData.venueId);
     const venueName = venue?.venueName || venue?.name || "N/A";
 
-    let paymentPlanType;
+    // let paymentPlanType;
 
-    if (paymentPlan.interval.toLowerCase() === "month") {
-      if (parseInt(paymentPlan.duration, 10) === 1) {
-        paymentPlanType = "1-month";
-      } else if (parseInt(paymentPlan.duration, 10) === 6) {
-        paymentPlanType = "6-month";
-      } else if (parseInt(paymentPlan.duration, 10) === 12) {
-        paymentPlanType = "12-month";
-      }
-    } else if (paymentPlan.interval.toLowerCase() === "quarter") {
-      if (parseInt(paymentPlan.duration, 10) === 1) {
-        paymentPlanType = "1-quarter";
-      } else if (parseInt(paymentPlan.duration, 10) === 6) {
-        paymentPlanType = "6-quarter";
-      } else if (parseInt(paymentPlan.duration, 10) === 12) {
-        paymentPlanType = "12-quarter";
-      }
-    } else if (paymentPlan.interval.toLowerCase() === "year") {
-      if (parseInt(paymentPlan.duration, 10) === 1) {
-        paymentPlanType = "1-year";
-      } else if (parseInt(paymentPlan.duration, 10) === 6) {
-        paymentPlanType = "6-year";
-      } else if (parseInt(paymentPlan.duration, 10) === 12) {
-        paymentPlanType = "12-year";
+    // if (paymentPlan.interval.toLowerCase() === "month") {
+    //   if (parseInt(paymentPlan.duration, 10) === 1) {
+    //     paymentPlanType = "1-month";
+    //   } else if (parseInt(paymentPlan.duration, 10) === 6) {
+    //     paymentPlanType = "6-month";
+    //   } else if (parseInt(paymentPlan.duration, 10) === 12) {
+    //     paymentPlanType = "12-month";
+    //   }
+    // } else if (paymentPlan.interval.toLowerCase() === "quarter") {
+    //   if (parseInt(paymentPlan.duration, 10) === 1) {
+    //     paymentPlanType = "1-quarter";
+    //   } else if (parseInt(paymentPlan.duration, 10) === 6) {
+    //     paymentPlanType = "6-quarter";
+    //   } else if (parseInt(paymentPlan.duration, 10) === 12) {
+    //     paymentPlanType = "12-quarter";
+    //   }
+    // } else if (paymentPlan.interval.toLowerCase() === "year") {
+    //   if (parseInt(paymentPlan.duration, 10) === 1) {
+    //     paymentPlanType = "1-year";
+    //   } else if (parseInt(paymentPlan.duration, 10) === 6) {
+    //     paymentPlanType = "6-year";
+    //   } else if (parseInt(paymentPlan.duration, 10) === 12) {
+    //     paymentPlanType = "12-year";
+    //   }
+    // }
+
+    let paymentPlanType = null;
+
+    if (paymentPlan?.interval && paymentPlan?.duration) {
+      const interval = paymentPlan.interval.toLowerCase();
+      const duration = parseInt(paymentPlan.duration, 10);
+
+      if (["month", "quarter", "year"].includes(interval)) {
+        paymentPlanType = `${duration}-${interval}`;
       }
     }
+
+    console.log("➡️ paymentPlanType =", paymentPlanType);
 
     console.log("➡️ Entered email sending block");
     console.log("paymentPlanType =", paymentPlanType);
@@ -192,10 +205,8 @@ exports.createBooking = async (req, res) => {
 
       if (configStatus && htmlTemplate) {
         console.log("✔️ Email template loaded successfully.");
-
         console.log("studentIds:", studentIds);
 
-        // Loop through each student ID
         for (const sId of studentIds) {
           console.log("\n---------------------------------------------");
           console.log("➡️ Processing studentId:", sId);
@@ -211,109 +222,63 @@ exports.createBooking = async (req, res) => {
             continue;
           }
 
-          // ------- Build MULTIPLE STUDENTS BLOCK -------
-          const students = result.data.students || [];
-          console.log("Total students in result:", students.length);
+          // Get the first parent only
+          const firstParent = parentMetas[0];
+          if (!firstParent || !firstParent.parentEmail) {
+            console.log("⚠️ First parent missing email. Skipping student:", sId);
+            continue;
+          }
 
-          const studentsHtml = students
-            .map((stu) => {
-              return `
-          <div style="border-top:4px solid #0DD180; border-radius:10px; padding:10px; margin:0 0 20px; background-color:#f5f5f5;">
-              <table style="width:100%; border-collapse:collapse;">
-                  <tbody>
-                      <tr>
-                          <td style="width:30%; padding:5px; vertical-align:top;">
-                              <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Name of Student(s):</p>
-                              <p style="margin:0; font-size:13px; color:#5F5F6D;">${stu.studentFirstName} ${stu.studentLastName}</p>
-                          </td>
+          // Get student info
+          const student = await BookingStudentMeta.findOne({
+            where: { id: sId },
+          });
 
-                          <td style="width:20%; padding:5px; vertical-align:top;">
-                              <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Age Group:</p>
-                              <p style="margin:0; font-size:13px; color:#5F5F6D;">${classData.className || "N/A"}</p>
-                          </td>
-
-                          <td style="width:25%; padding:5px; vertical-align:top;">
-                              <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Class Time:</p>
-                              <p style="margin:0; font-size:13px; color:#5F5F6D;">${classData.startTime} - ${classData.endTime}</p>
-                          </td>
-                      </tr>
-                  </tbody>
-              </table>
-          </div>`;
-            })
-            .join("");
+          const studentsHtml = student
+            ? `<p style="margin:0; font-size:13px; color:#5F5F6D;">${student.studentFirstName} ${student.studentLastName}</p>`
+            : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
 
           console.log("Generated studentsHtml length:", studentsHtml.length);
-          // --------------------------------------------
 
-          // Send email to EACH parent for this student
-          for (const p of parentMetas) {
-            console.log("➡️ Sending email to parent:", p.parentEmail);
+          try {
+            let htmlBody = htmlTemplate
+              .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`)
+              .replace(/{{studentFirstName}}/g, student?.studentFirstName || "")
+              .replace(/{{studentLastName}}/g, student?.studentLastName || "")
+              .replace(/{{studentName}}/g, `${student?.studentFirstName || ""} ${student?.studentLastName || ""}`)
+              .replace(/{{venueName}}/g, venueName)
+              .replace(/{{className}}/g, classData?.className || "N/A")
+              .replace(/{{classTime}}/g, `${classData?.startTime} - ${classData?.endTime}`)
+              .replace(/{{startDate}}/g, booking?.startDate || "")
+              .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
+              .replace(/{{parentPassword}}/g, "Synco123")
+              .replace(/{{appName}}/g, "Synco")
+              .replace(/{{year}}/g, new Date().getFullYear().toString())
+              .replace(/{{studentsHtml}}/g, studentsHtml)
+              .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
+              .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png");
 
-            try {
-              const student =
-                result.data.students?.find((st) => st.id === sId) || {};
+            console.log("Generated htmlBody length:", htmlBody.length);
 
-              console.log("Student info found:", student);
+            const emailResp = await sendEmail(emailConfig, {
+              recipient: [
+                {
+                  name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
+                  email: firstParent.parentEmail,
+                },
+              ],
+              subject,
+              htmlBody,
+            });
 
-              let htmlBody = htmlTemplate
-                .replace(
-                  /{{parentName}}/g,
-                  `${p.parentFirstName} ${p.parentLastName}`
-                )
-                .replace(/{{studentFirstName}}/g, student.studentFirstName || "")
-                .replace(/{{studentLastName}}/g, student.studentLastName || "")
-                .replace(
-                  /{{studentName}}/g,
-                  `${student.studentFirstName || ""} ${student.studentLastName || ""}`
-                )
-                .replace(/{{venueName}}/g, venueName)
-                .replace(/{{className}}/g, classData.className || "N/A")
-                .replace(
-                  /{{classTime}}/g,
-                  `${classData.startTime} - ${classData.endTime}`
-                )
-                .replace(/{{startDate}}/g, booking?.startDate || "")
-                .replace(/{{parentEmail}}/g, p.parentEmail || "")
-                .replace(/{{parentPassword}}/g, "Synco123")
-                .replace(/{{appName}}/g, "Synco")
-                .replace(/{{year}}/g, new Date().getFullYear().toString())
-                .replace(/{{studentsHtml}}/g, studentsHtml)
-                .replace(
-                  /{{logoUrl}}/g,
-                  "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
-                )
-                .replace(
-                  /{{kidsPlaying}}/g,
-                  "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
-                );
+            console.log("📧 Email sent successfully to first parent:", firstParent.parentEmail, emailResp);
 
-              console.log("Generated htmlBody length:", htmlBody.length);
-
-              const emailResp = await sendEmail(emailConfig, {
-                recipient: [
-                  {
-                    name: `${p.parentFirstName} ${p.parentLastName}`,
-                    email: p.parentEmail,
-                  },
-                ],
-                subject,
-                htmlBody,
-              });
-
-              console.log("📧 Email send response:", emailResp);
-
-            } catch (err) {
-              console.error(
-                `❌ Failed to send email to ${p.parentEmail}:`,
-                err.message
-              );
-            }
+          } catch (err) {
+            console.error(`❌ Failed to send email to ${firstParent.parentEmail}:`, err.message);
           }
         }
-      } else {
-        console.log("❌ Email config NOT loaded. Skipping email send.");
       }
+
     } else {
       console.log("❌ paymentPlanType is falsy. Skipping email sending block.");
     }
@@ -494,7 +459,7 @@ exports.getAllPaidActiveBookings = async (req, res) => {
     };
     console.log("🔹 Filters prepared:", filters);
 
-   // ✅ Apply bookedBy filter
+    // ✅ Apply bookedBy filter
     // If user provides bookedBy in query → ALWAYS respect it
     if (req.query.bookedBy) {
       filters.bookedBy = req.query.bookedBy.split(',').map(Number);
