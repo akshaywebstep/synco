@@ -373,7 +373,7 @@ exports.createBooking = async (req, res) => {
               .replace(/{{venueName}}/g, venue?.name || "N/A")
               .replace(/{{className}}/g, classData?.className || "N/A")
               .replace(/{{trialDate}}/g, booking?.trialDate || "")
-              .replace(/{{classTime}}/g, classData?.startTime || "")
+              .replace(/{{classTime}}/g, `${classData?.startTime || ""}-${classData?.endTime || ""}`)
               .replace(/{{studentsHtml}}/g, studentsHtml) // ⭐ MULTIPLE STUDENTS INSERTED
               .replace(/{{appName}}/g, "Synco")
               .replace(/{{year}}/g, new Date().getFullYear().toString())

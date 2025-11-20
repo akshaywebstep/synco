@@ -323,12 +323,15 @@ exports.getAllWaitingListBookings = async (req, res) => {
     };
 
     // ✅ Apply bookedBy filter
-    if (req.admin?.role?.toLowerCase() === "super admin") {
-      const admins = mainSuperAdminResult?.admins || [];
-      filters.bookedBy = admins.length > 0 ? admins.map((a) => a.id) : [];
-    } else {
-      // Always assign bookedBy even if not in query
-      filters.bookedBy = bookedBy || null;
+    // If user provides bookedBy in query → ALWAYS respect it
+    if (req.query.bookedBy) {
+      filters.bookedBy = req.query.bookedBy.split(',').map(Number);
+    }
+    else if (req.admin?.role?.toLowerCase() === 'super admin') {
+      filters.bookedBy = (mainSuperAdminResult?.admins || []).map(a => a.id);
+    }
+    else {
+      filters.bookedBy = [req.admin.id];
     }
 
     const result = await BookingTrialService.getWaitingList(filters);
@@ -792,8 +795,7 @@ exports.convertToMembership = async (req, res) => {
               .replace(/{{studentLastName}}/g, student.studentLastName || "")
               .replace(
                 /{{studentName}}/g,
-                `${student.studentFirstName || ""} ${
-                  student.studentLastName || ""
+                `${student.studentFirstName || ""} ${student.studentLastName || ""
                 }`
               )
               .replace(/{{venueName}}/g, venueName)

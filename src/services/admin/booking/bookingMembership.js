@@ -880,12 +880,23 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
       whereBooking.bookedBy = { [Op.in]: bookedByArray };
     }
     if (filters.duration) {
-      const keyword = `%${filters.duration}%`;
+      const raw = filters.duration.toLowerCase().trim();
 
-      whereBooking[Op.or] = [
-        { "$paymentPlan.duration$": { [Op.like]: keyword } },
-        { "$paymentPlan.interval$": { [Op.like]: keyword } },
-      ];
+      const match = raw.match(/^(\d+)\s*(months?|weeks?|days?)$/);
+
+      if (match) {
+        const durationValue = match[1];
+        const intervalValue = match[2];
+
+        whereBooking["$paymentPlan.duration$"] = durationValue;
+        whereBooking["$paymentPlan.interval$"] = {
+          [Op.like]: `%${intervalValue}%`
+        };
+      } else {
+        whereBooking["$paymentPlan.duration$"] = {
+          [Op.like]: `%${raw}%`
+        };
+      }
     }
 
     // ✅ Date filters
@@ -1249,15 +1260,25 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
     if (filters.venueName) {
       whereVenue.name = { [Op.like]: `%${filters.venueName}%` };
     }
+    if (filters.duration) {
+      const raw = filters.duration.toLowerCase().trim();
 
-    /*
-    if (filters.bookedBy) {
-      whereBooking[Op.or] = [
-        { "$admin.firstName$": { [Op.like]: `%${filters.bookedBy}%` } },
-        { "$admin.lastName$": { [Op.like]: `%${filters.bookedBy}%` } },
-      ];
+      const match = raw.match(/^(\d+)\s*(months?|weeks?|days?)$/);
+
+      if (match) {
+        const durationValue = match[1];
+        const intervalValue = match[2];
+
+        whereBooking["$paymentPlan.duration$"] = durationValue;
+        whereBooking["$paymentPlan.interval$"] = {
+          [Op.like]: `%${intervalValue}%`
+        };
+      } else {
+        whereBooking["$paymentPlan.duration$"] = {
+          [Op.like]: `%${raw}%`
+        };
+      }
     }
-    */
 
     if (filters.bookedBy) {
       // Ensure bookedBy is always an array
@@ -1277,7 +1298,7 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
         [Op.like]: `%${filters.planType}%`,
       };
     }
-   
+
     if (filters.studentName) {
       const keyword = filters.studentName.toLowerCase().trim();
 
@@ -1370,7 +1391,12 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
           ],
         },
         { model: BookingPayment, as: "payments", required: false },
-        { model: PaymentPlan, as: "paymentPlan", required: false },
+        {
+          model: PaymentPlan,
+          as: "paymentPlan",
+          required: false,
+          attributes: ["id", "title", "price", "joiningFee", "duration", "interval"]
+        },
         { model: Admin, as: "admin", required: false },
       ],
     });
@@ -1505,6 +1531,7 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
             price: plan.price,
             joiningFee: plan.joiningFee,
             duration: plan.duration,
+            interval: plan.interval,
           }
           : null,
 

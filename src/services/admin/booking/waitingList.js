@@ -231,7 +231,7 @@ exports.getWaitingList = async (filters = {}) => {
 
     const adminWhere = {};
 
-    if (filters.bookedBy) {
+     if (filters.bookedBy) {
       // Ensure bookedBy is always an array
       const bookedByArray = Array.isArray(filters.bookedBy)
         ? filters.bookedBy

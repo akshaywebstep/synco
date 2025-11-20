@@ -364,18 +364,21 @@ exports.getAllPaidBookings = async (req, res) => {
       studentName: req.query.studentName,
       dateFrom: req.query.dateFrom || undefined,
       dateTo: req.query.dateTo || undefined,
-      duration: req.query.duration
-        ? parseInt(req.query.duration, 10)
-        : undefined,
+      duration: req.query.duration,
       interval: req.query.interval ? req.query.interval.trim() : undefined,
+      bookedBy: req.query.bookedBy,
     };
 
     // ✅ Apply bookedBy filter
-    if (req.admin?.role?.toLowerCase() === "super admin") {
-      const admins = mainSuperAdminResult?.admins || [];
-      filters.bookedBy = admins.length > 0 ? admins.map((a) => a.id) : [];
-    } else {
-      filters.bookedBy = bookedBy || null;
+    // If user provides bookedBy in query → ALWAYS respect it
+    if (req.query.bookedBy) {
+      filters.bookedBy = req.query.bookedBy.split(',').map(Number);
+    }
+    else if (req.admin?.role?.toLowerCase() === 'super admin') {
+      filters.bookedBy = (mainSuperAdminResult?.admins || []).map(a => a.id);
+    }
+    else {
+      filters.bookedBy = [req.admin.id];
     }
 
     const result = await BookingMembershipService.getAllBookingsWithStats(
@@ -479,7 +482,9 @@ exports.getAllPaidActiveBookings = async (req, res) => {
       venueName: req.query.venueName,
       dateBooked: req.query.dateBooked,
       studentName: req.query.studentName,
+      duration: req.query.duration,
       planType: req.query.planType,
+      bookedBy: req.query.bookedBy,
       // lifeCycle: req.query.lifeCycle,
       // flexiPlan: req.query.flexiPlan,
       dateFrom: req.query.dateFrom ? req.query.dateFrom : undefined,
@@ -489,13 +494,16 @@ exports.getAllPaidActiveBookings = async (req, res) => {
     };
     console.log("🔹 Filters prepared:", filters);
 
-    // ✅ Apply bookedBy filter
-    if (req.admin?.role?.toLowerCase() === "super admin") {
-      const admins = mainSuperAdminResult?.admins || [];
-      filters.bookedBy = admins.length > 0 ? admins.map((a) => a.id) : [];
-    } else {
-      // Always assign bookedBy even if not in query
-      filters.bookedBy = bookedBy || null;
+   // ✅ Apply bookedBy filter
+    // If user provides bookedBy in query → ALWAYS respect it
+    if (req.query.bookedBy) {
+      filters.bookedBy = req.query.bookedBy.split(',').map(Number);
+    }
+    else if (req.admin?.role?.toLowerCase() === 'super admin') {
+      filters.bookedBy = (mainSuperAdminResult?.admins || []).map(a => a.id);
+    }
+    else {
+      filters.bookedBy = [req.admin.id];
     }
 
     // Step 2: Call service
