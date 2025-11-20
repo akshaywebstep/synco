@@ -2029,8 +2029,6 @@ exports.getAllBirthdayPartyAnalytics = async (
     const revenueThisMonth = paymentsThisMonth[0]?.total || 0;
     const revenueLastMonth = paymentsLastMonth[0]?.total || 0;
 
-    const packages = ["Gold", "Silver", "Platinum"];
-
     // ✅ Fetch revenue by package (THIS MONTH)
     // const revenueThisMonthRaw = await BirthdayPartyPayment.findAll({
     //   attributes: [
@@ -2179,12 +2177,12 @@ exports.getAllBirthdayPartyAnalytics = async (
     // ✅ Package Breakdown (filtered by lead.createdBy)
     const packageBreakdown = await BirthdayPartyLead.findAll({
       attributes: [
-        ["packageInterest", "packageName"], // e.g., Gold / Silver / Platinum
+        ["packageInterest", "packageName"], // e.g., Gold / Silver / 
         [fn("COUNT", col("packageInterest")), "count"],
       ],
       where: {
         ...whereLead, // ✅ add lead.createdBy filter here
-        packageInterest: { [Op.in]: ["Gold", "Silver", "Platinum"] },
+        packageInterest: { [Op.in]: ["Gold", "Silver"] },
       },
       group: ["packageInterest"],
       raw: true,
@@ -2220,7 +2218,7 @@ exports.getAllBirthdayPartyAnalytics = async (
           as: "lead", // 👈 must match association alias in BirthdayPartyBooking model
           attributes: [],
           where: {
-            packageInterest: { [Op.in]: ["Gold", "Silver", "Platinum"] },
+            packageInterest: { [Op.in]: ["Gold", "Silver"] },
           },
           required: true,
         },
@@ -2236,7 +2234,7 @@ exports.getAllBirthdayPartyAnalytics = async (
     );
 
     // 🧠 Format for frontend (progress bar chart)
-    const renewalBreakdown = ["Gold", "Silver", "Platinum"].map((pkgName) => {
+    const renewalBreakdown = ["Gold", "Silver"].map((pkgName) => {
       const found = renewalBreakdownRaw.find((r) => r.packageName === pkgName);
       const count = found ? parseInt(found.count, 10) : 0;
       const percentage =
@@ -2266,7 +2264,7 @@ exports.getAllBirthdayPartyAnalytics = async (
               as: "lead", // must match your BirthdayPartyBooking association alias
               attributes: [],
               where: {
-                packageInterest: { [Op.in]: ["Gold", "Silver", "Platinum"] },
+                packageInterest: { [Op.in]: ["Gold", "Silver"] },
               },
               required: true,
             },
@@ -2298,7 +2296,7 @@ exports.getAllBirthdayPartyAnalytics = async (
               as: "lead",
               attributes: [],
               where: {
-                packageInterest: { [Op.in]: ["Gold", "Silver", "Platinum"] },
+                packageInterest: { [Op.in]: ["Gold", "Silver"] },
               },
               required: true,
             },
@@ -2314,7 +2312,7 @@ exports.getAllBirthdayPartyAnalytics = async (
     });
 
     // 🧮 Combine and calculate growth %
-    const revenueByPackage = ["Gold", "Silver", "Platinum"].map((pkgName) => {
+    const revenueByPackage = ["Gold", "Silver"].map((pkgName) => {
       const current = revenueByPackageRaw.find(
         (r) => r.packageName === pkgName
       );
@@ -2464,7 +2462,7 @@ exports.getAllBirthdayPartyAnalytics = async (
     // ==========================================
 
     // 1️⃣ Growth = lead count (packageBreakdown)
-    const growth = ["Gold", "Silver","Platinum"].map(pkgName => {
+    const growth = ["Gold", "Silver"].map(pkgName => {
       const found = packageBreakdown.find(p => p.packageName === pkgName);
       const count = found ? parseInt(found.count) : 0;
       const percentage =
@@ -2483,7 +2481,7 @@ exports.getAllBirthdayPartyAnalytics = async (
       0
     );
 
-    const revenue = ["Gold", "Silver","Platinum"].map(pkgName => {
+    const revenue = ["Gold", "Silver"].map(pkgName => {
       const found = revenueByPackage.find(r => r.name === pkgName);
       const count = found ? found.currentRevenue : 0;
       const percentage =

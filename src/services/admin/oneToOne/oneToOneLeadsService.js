@@ -2303,7 +2303,7 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
     const revenueThisMonth = paymentsThisMonth[0]?.total || 0;
     const revenueLastMonth = paymentsLastMonth[0]?.total || 0;
 
-    const packages = ["Gold", "Silver", "Platinum"];
+    const packages = ["Gold", "Silver"];
 
     // ✅ Fetch revenue by package (THIS MONTH)
     // const revenueThisMonthRaw = await OneToOnePayment.findAll({
@@ -2450,12 +2450,12 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
     // ✅ Package Breakdown (filtered by lead.createdBy)
     const packageBreakdown = await oneToOneLeads.findAll({
       attributes: [
-        ["packageInterest", "packageName"], // e.g., Gold / Silver / Platinum
+        ["packageInterest", "packageName"], // e.g., Gold / Silver / 
         [fn("COUNT", col("packageInterest")), "count"],
       ],
       where: {
         ...whereLead, // ✅ add lead.createdBy filter here
-        packageInterest: { [Op.in]: ["Gold", "Silver", "Platinum"] },
+        packageInterest: { [Op.in]: ["Gold", "Silver"] },
       },
       group: ["packageInterest"],
       raw: true,
@@ -2473,13 +2473,13 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
       const percentage =
         totalPackages > 0 ? ((count / totalPackages) * 100).toFixed(2) : 0;
       return {
-        name: pkg.packageName, // Gold / Silver / Platinum
+        name: pkg.packageName, // Gold / Silver / 
         value: parseFloat((count / 1000).toFixed(3)), // e.g. 1.235 (mock scaling)
         percentage: parseFloat(percentage), // e.g. 25.00
       };
     });
 
-    // ✅ Renewal Breakdown (Gold, Silver, Platinum)
+    // ✅ Renewal Breakdown (Gold, Silver)
     const renewalBreakdownRaw = await OneToOneBooking.findAll({
       attributes: [
         [col("lead.packageInterest"), "packageName"], // join with lead’s package
@@ -2491,7 +2491,7 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
           as: "lead", // 👈 must match association alias in OneToOneBooking model
           attributes: [],
           where: {
-            packageInterest: { [Op.in]: ["Gold", "Silver", "Platinum"] },
+            packageInterest: { [Op.in]: ["Gold", "Silver"] },
           },
           required: true,
         },
@@ -2507,7 +2507,7 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
     );
 
     // 🧠 Format for frontend (progress bar chart)
-    const renewalBreakdown = ["Gold", "Silver", "Platinum"].map((pkgName) => {
+    const renewalBreakdown = ["Gold", "Silver"].map((pkgName) => {
       const found = renewalBreakdownRaw.find((r) => r.packageName === pkgName);
       const count = found ? parseInt(found.count, 10) : 0;
       const percentage =
@@ -2537,7 +2537,7 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
               as: "lead", // must match your OneToOneBooking association alias
               attributes: [],
               where: {
-                packageInterest: { [Op.in]: ["Gold", "Silver", "Platinum"] },
+                packageInterest: { [Op.in]: ["Gold", "Silver"] },
               },
               required: true,
             },
@@ -2569,7 +2569,7 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
               as: "lead",
               attributes: [],
               where: {
-                packageInterest: { [Op.in]: ["Gold", "Silver", "Platinum"] },
+                packageInterest: { [Op.in]: ["Gold", "Silver"] },
               },
               required: true,
             },
@@ -2585,7 +2585,7 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
     });
 
     // 🧮 Combine and calculate growth %
-    const revenueByPackage = ["Gold", "Silver", "Platinum"].map((pkgName) => {
+    const revenueByPackage = ["Gold", "Silver"].map((pkgName) => {
       const current = revenueByPackageRaw.find(
         (r) => r.packageName === pkgName
       );
