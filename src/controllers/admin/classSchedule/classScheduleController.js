@@ -6,6 +6,8 @@ const {
   getVideoDurationInSeconds,
   formatDuration,
 } = require("../../../utils/videoHelper");
+const { Op } = require("sequelize");
+const { Booking, BookingStudentMeta } = require("../../../models");
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 const {
   Venue,
@@ -464,30 +466,57 @@ exports.updateClassSchedule = async (req, res) => {
       });
     }
 
-    // ✅ Capacity logic (Add-on behavior)
+    // ✅ Capacity logic (Add-on / decrease check)
     let updatedCapacity = existingClass.capacity;
     let updatedTotalCapacity = existingClass.totalCapacity;
 
     if (req.body.capacity !== undefined) {
-      const addCapacity = Number(req.body.capacity);
+      const requestedCapacity = Number(req.body.capacity);
 
-      if (isNaN(addCapacity)) {
+      if (isNaN(requestedCapacity)) {
         return res.status(400).json({
           status: false,
           message: "Capacity must be a valid number.",
         });
       }
 
-      if (addCapacity < 0) {
+      if (requestedCapacity < 0) {
         return res.status(400).json({
           status: false,
           message: "Capacity cannot be negative.",
         });
       }
 
-      // ✅ Add-on logic
-      updatedCapacity += addCapacity;
-      updatedTotalCapacity += addCapacity;
+      // ✅ Check how many students are already booked in BookingStudentMeta for this class
+      const bookedStudentsCount = await BookingStudentMeta.count({
+        include: [
+          {
+            model: Booking,
+            as: "booking",
+            where: {
+              classScheduleId: id,
+              status: { [Op.notIn]: ["cancelled", "removed"] }, // only active bookings
+            },
+          },
+        ],
+      });
+
+      // Determine if this is a decrease
+      if (requestedCapacity < updatedCapacity) {
+        if (requestedCapacity < bookedStudentsCount) {
+          return res.status(400).json({
+            status: false,
+            message: `Cannot decrease capacity below ${bookedStudentsCount} because that many students are already booked.`,
+          });
+        }
+        // Safe to decrease
+        updatedCapacity = requestedCapacity;
+        updatedTotalCapacity = requestedCapacity;
+      } else {
+        // Add-on logic
+        updatedCapacity += requestedCapacity;
+        updatedTotalCapacity += requestedCapacity;
+      }
     }
 
     // ✅ Perform the main update using your service
@@ -546,6 +575,112 @@ exports.updateClassSchedule = async (req, res) => {
     });
   }
 };
+
+// exports.updateClassSchedule = async (req, res) => {
+//   const { id } = req.params;
+//   const adminId = req.admin?.id;
+
+//   try {
+//     // ✅ Validate venue
+//     const venue = await Venue.findByPk(req.body.venueId);
+//     if (!venue) {
+//       return res.status(404).json({
+//         status: false,
+//         message: "Venue not found. Please select a valid venue.",
+//       });
+//     }
+
+//     // ✅ Validate existing class
+//     const existingClass = await ClassSchedule.findByPk(id);
+//     if (!existingClass) {
+//       return res.status(404).json({
+//         status: false,
+//         message: "Class schedule not found.",
+//       });
+//     }
+
+//     // ✅ Capacity logic (Add-on behavior)
+//     let updatedCapacity = existingClass.capacity;
+//     let updatedTotalCapacity = existingClass.totalCapacity;
+
+//     if (req.body.capacity !== undefined) {
+//       const addCapacity = Number(req.body.capacity);
+
+//       if (isNaN(addCapacity)) {
+//         return res.status(400).json({
+//           status: false,
+//           message: "Capacity must be a valid number.",
+//         });
+//       }
+
+//       if (addCapacity < 0) {
+//         return res.status(400).json({
+//           status: false,
+//           message: "Capacity cannot be negative.",
+//         });
+//       }
+
+//       // ✅ Add-on logic
+//       updatedCapacity += addCapacity;
+//       updatedTotalCapacity += addCapacity;
+//     }
+
+//     // ✅ Perform the main update using your service
+//     const result = await ClassScheduleService.updateClass(id, {
+//       ...req.body,
+//       capacity: updatedCapacity,
+//       totalCapacity: updatedTotalCapacity,
+//       createdBy: adminId,
+//     });
+
+//     if (!result.status) {
+//       return res
+//         .status(400)
+//         .json({ status: false, message: result.message || "Update failed." });
+//     }
+
+//     // ✅ Log the update activity
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "update",
+//       { oneLineMessage: `Updated class schedule with ID: ${id}` },
+//       true
+//     );
+
+//     // ✅ Create a notification
+//     await createNotification(
+//       req,
+//       "Class Schedule Updated",
+//       `Class "${req.body.className}" was updated for ${req.body.day}, ${req.body.startTime} - ${req.body.endTime}.`,
+//       "System"
+//     );
+
+//     // ✅ Final response
+//     return res.status(200).json({
+//       status: true,
+//       message: "Class schedule updated successfully.",
+//       data: result.data,
+//     });
+//   } catch (error) {
+//     console.error("❌ Error updating class schedule:", error);
+
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "update",
+//       { oneLineMessage: error.message || "Unknown error" },
+//       false
+//     );
+
+//     return res.status(500).json({
+//       status: false,
+//       message: "Server error: " + (error.message || "Something went wrong"),
+//     });
+//   }
+// };
 
 // exports.getClassScheduleDetails = async (req, res) => {
 //   const { id } = req.params;
@@ -983,8 +1118,7 @@ exports.deleteClassSchedule = async (req, res) => {
     await createNotification(
       req,
       "Class Schedule Deleted",
-      `Class schedule with ID ${id} has been deleted by ${
-        req.admin?.firstName || "Admin"
+      `Class schedule with ID ${id} has been deleted by ${req.admin?.firstName || "Admin"
       }.`,
       "Admins"
     );
