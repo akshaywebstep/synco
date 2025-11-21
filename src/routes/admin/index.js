@@ -132,7 +132,7 @@ router.get(
 );
 
 // Holiday camps // Session Plan Group Base Route
-// router.use("holiday/session-plan-group", require("./holidayCampsRoutes/holidaySessionPlanGroupRoutes"));
+router.use("/holiday/session-plan-group", require("./holidayCampsRoutes/holidaySessionPlanGroupRoutes"));
 // Session Plan Exercise Base Route
 router.use("/holiday/session-plan-exercise", require("./holidayCampsRoutes/holidaySessionExerciseRoutes"));
 

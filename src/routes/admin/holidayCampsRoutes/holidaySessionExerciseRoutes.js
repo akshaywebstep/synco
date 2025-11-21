@@ -40,7 +40,7 @@ router.get(
 );
 
 router.put(
-  "/:id",
+  "/update/:id",
   authMiddleware,
   upload.array("images", 10),
   permissionMiddleware("holiday-session-exercise", "update"),

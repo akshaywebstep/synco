@@ -64,7 +64,7 @@ const HolidaySessionPlanGroup = sequelize.define(
     },
 
     type: {
-      type: DataTypes.ENUM("weekly_classes", "one_to_one", "birthday_party", "library"),
+      type: DataTypes.ENUM("holiday_camp", "one_to_one", "birthday_party", "library"),
       allowNull: false,
       defaultValue: "weekly_classes",
     },
