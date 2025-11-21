@@ -24,6 +24,21 @@ exports.create = async (logData = {}) => {
       };
     }
 
+    console.log(`Data - `, {
+      adminId: logData.adminId,
+      panel: logData.panel,
+      module: logData.module,
+      action: logData.action,
+      data: logData.data,
+      status: logData.status,
+      method: logData.method,
+      route: logData.route,
+      ip: logData.ip,
+      userAgent: logData.userAgent,
+      location: logData.location || null,
+      ispInfo: logData.ispInfo || null,
+      deviceInfo: logData.deviceInfo || null,
+    });
     const activityLog = await ActivityLog.create({
       adminId: logData.adminId,
       panel: logData.panel,
