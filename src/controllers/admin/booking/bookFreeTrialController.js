@@ -519,7 +519,7 @@ exports.getBookFreeTrialDetails = async (req, res) => {
   }
 };
 
-//send reebooking email
+//send  email
 exports.sendSelectedTrialistEmail = async (req, res) => {
   const { bookingIds } = req.body;
 

@@ -14,6 +14,7 @@ const {
   addCommentForLead,
   listCommentsForLead,
   getLeadandBookingDatabyLeadId,
+  sendSelectedLeadListEmail,
   // getAllWaitingListBookings,
   findAClass
 } = require("../../controllers/admin/lead/leadsController");
@@ -89,6 +90,14 @@ router.get(
   authMiddleware,
   permissionMiddleware("lead", "view-listing"),
   findAClass
+);
+
+// 📧 Send trial confirmation emails
+router.post(
+  "/send-email",
+  authMiddleware,
+  permissionMiddleware("lead", "view-listing"),
+  sendSelectedLeadListEmail
 );
 
 module.exports = router;

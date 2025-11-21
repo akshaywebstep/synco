@@ -17,6 +17,9 @@ const {
 } = require("../../../models");
 const axios = require("axios");
 const { Op } = require("sequelize");
+
+const { getEmailConfig } = require("../../email");
+const sendEmail = require("../../../utils/email/sendEmail");
 const { sequelize } = require("../../../models");
 const DEBUG = process.env.DEBUG === "true";
 
@@ -2394,6 +2397,140 @@ exports.getLeadandBookingDatabyLeadId = async (leadId, superAdminId, adminId) =>
     };
   } catch (error) {
     console.error("❌ getLeadandBookingDatabyLeadId Error:", error.message);
+    return { status: false, message: error.message };
+  }
+};
+
+exports.sendAllEmailToParents = async ({ bookingIds }) => {
+  try {
+    if (!Array.isArray(bookingIds) || bookingIds.length === 0) {
+      return { status: false, message: "bookingIds must be a non-empty array" };
+    }
+
+    let sentToAll = [];
+
+    for (const bookingId of bookingIds) {
+      // 1️⃣ Fetch booking
+      const booking = await Booking.findByPk(bookingId);
+      if (!booking) {
+        continue; // Skip invalid booking
+      }
+
+      // 2️⃣ Select email template based on bookingType
+      let emailConfigResult;
+
+      if (booking.bookingType === "free") {
+        // free = trial
+        emailConfigResult = await getEmailConfig("admin", "send email trialist");
+
+      } else if (booking.bookingType === "paid") {
+        // paid = membership
+        emailConfigResult = await getEmailConfig("admin", "send-email-membership");
+
+      } else if (booking.bookingType === "waiting list" || booking.status === "waiting list") {
+        // waiting list
+        emailConfigResult = await getEmailConfig("admin", "waiting-listing-sendEmail");
+
+      } else {
+        continue; // Unknown bookingType skip
+      }
+
+      if (!emailConfigResult.status) {
+        continue; // Skip this booking if no template
+      }
+
+      const { emailConfig, htmlTemplate, subject } = emailConfigResult;
+
+      // 3️⃣ Get all students for this booking
+      const studentMetas = await BookingStudentMeta.findAll({
+        where: { bookingTrialId: bookingId },
+      });
+
+      if (!studentMetas.length) continue;
+
+      // 4️⃣ Venue & Class
+      const venue = await Venue.findByPk(booking.venueId);
+      const classSchedule = await ClassSchedule.findByPk(booking.classScheduleId);
+
+      const venueName = venue?.venueName || "Unknown Venue";
+      const className = classSchedule?.className || "Unknown Class";
+      const classTime =
+        classSchedule?.classTime || classSchedule?.startTime || "TBA";
+      const trialDate = booking.trialDate;
+      const additionalNote = booking.additionalNote || "";
+
+      // Student list HTML
+      let studentsHtml = "<ul>";
+      for (const s of studentMetas) {
+        studentsHtml += `<li>${s.studentFirstName} ${s.studentLastName} (Age: ${s.age}, Gender: ${s.gender})</li>`;
+      }
+      studentsHtml += "</ul>";
+
+      // 5️⃣ Get Parents
+      const allParents = await BookingParentMeta.findAll({
+        where: { studentId: studentMetas.map((s) => s.id) },
+      });
+
+      const parentsMap = {};
+      for (const parent of allParents) {
+        if (parent?.parentEmail) parentsMap[parent.parentEmail] = parent;
+      }
+
+      // 6️⃣ Send email per parent
+      for (const parentEmail in parentsMap) {
+        const parent = parentsMap[parentEmail];
+
+        let noteHtml = "";
+        if (additionalNote.trim() !== "") {
+          noteHtml = `<p><strong>Additional Note:</strong> ${additionalNote}</p>`;
+        }
+
+        let finalHtml = htmlTemplate
+          .replace(/{{parentName}}/g, parent.parentFirstName)
+          .replace(/{{studentsList}}/g, studentsHtml)
+          .replace(/{{status}}/g, booking.status)
+          .replace(/{{venueName}}/g, venueName)
+          .replace(/{{className}}/g, className)
+          .replace(/{{classTime}}/g, classTime)
+          .replace(/{{trialDate}}/g, trialDate)
+          .replace(/{{additionalNoteSection}}/g, noteHtml)
+          .replace(/{{appName}}/g, "Synco")
+          .replace(
+            /{{logoUrl}}/g,
+            "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
+          )
+          .replace(
+            /{{kidsPlaying}}/g,
+            "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
+          )
+          .replace(/{{year}}/g, new Date().getFullYear());
+
+        const recipient = [
+          {
+            name: `${parent.parentFirstName} ${parent.parentLastName}`,
+            email: parent.parentEmail,
+          },
+        ];
+
+        const sendResult = await sendEmail(emailConfig, {
+          recipient,
+          subject,
+          htmlBody: finalHtml,
+        });
+
+        if (sendResult.status) {
+          sentToAll.push(parent.parentEmail);
+        }
+      }
+    }
+
+    return {
+      status: true,
+      message: `Emails sent to parents`,
+      sentTo: sentToAll,
+    };
+  } catch (error) {
+    console.error("❌ sendAllEmailToParents Error:", error);
     return { status: false, message: error.message };
   }
 };

@@ -773,6 +773,66 @@ exports.getLeadandBookingDatabyLeadId = async (req, res) => {
   }
 };
 
+//send reebooking email
+exports.sendSelectedLeadListEmail = async (req, res) => {
+  const { bookingIds } = req.body;
+
+  if (!bookingIds || !Array.isArray(bookingIds) || bookingIds.length === 0) {
+    return res.status(400).json({
+      status: false,
+      message: "bookingIds (array) is required",
+    });
+  }
+
+  if (DEBUG) {
+    console.log("📨 Sending Emails for bookingIds:", bookingIds);
+  }
+
+  try {
+    // 🔥 Call service ONCE with all bookingIds
+    const result = await LeadService.sendAllEmailToParents({
+      bookingIds,
+    });
+
+    if (!result.status) {
+      await logActivity(req, PANEL, MODULE, "send", result, false);
+      return res.status(500).json({
+        status: false,
+        message: result.message,
+      });
+    }
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "send",
+      { message: "Emails sent successfully" },
+      true
+    );
+
+    return res.status(200).json({
+      status: true,
+      message: result.message,
+      sentTo: result.sentTo,
+    });
+
+  } catch (error) {
+    console.error("❌ Controller Send Email Error:", error);
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "send",
+      { error: error.message },
+      false
+    );
+
+    return res.status(500).json({ status: false, message: "Server error" });
+  }
+};
+
 exports.findAClass = async (req, res) => {
   try {
     if (DEBUG) console.log("📥 Fetching all leads");
