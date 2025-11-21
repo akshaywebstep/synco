@@ -466,7 +466,6 @@ exports.updateClassSchedule = async (req, res) => {
       });
     }
 
-    // ✅ Prepare capacity update if changed
     let updatedCapacity = existingClass.capacity;
     let updatedTotalCapacity = existingClass.totalCapacity;
 
@@ -487,37 +486,39 @@ exports.updateClassSchedule = async (req, res) => {
         });
       }
 
-      // ✅ Only proceed if capacity is different
-      if (requestedCapacity !== existingClass.capacity) {
-        // ✅ Check how many students are already booked
-        const bookedStudentsCount = await BookingStudentMeta.count({
-          include: [
-            {
-              model: Booking,
-              as: "booking",
-              where: {
-                classScheduleId: id,
-                status: { [Op.notIn]: ["cancelled", "removed"] },
-              },
+      // ✅ Check how many students are already booked
+      const bookedStudentsCount = await BookingStudentMeta.count({
+        include: [
+          {
+            model: Booking,
+            as: "booking",
+            where: {
+              classScheduleId: id,
+              status: { [Op.notIn]: ["cancelled", "removed"] },
             },
-          ],
-        });
+          },
+        ],
+      });
 
-        if (requestedCapacity < existingClass.capacity) {
-          // Decrease requested
-          if (requestedCapacity < bookedStudentsCount) {
-            return res.status(400).json({
-              status: false,
-              message: `Cannot decrease capacity below ${bookedStudentsCount} because that many students are already booked.`,
-            });
-          }
+      if (requestedCapacity < existingClass.capacity) {
+        // Decrease requested
+        if (requestedCapacity < bookedStudentsCount) {
+          return res.status(400).json({
+            status: false,
+            message: `Cannot decrease capacity below ${bookedStudentsCount} because that many students are already booked.`,
+          });
         }
-
-        // ✅ Safe to update
+        // Decrease capacity and totalCapacity by the same amount
+        const decreaseAmount = existingClass.capacity - requestedCapacity;
         updatedCapacity = requestedCapacity;
-        updatedTotalCapacity = requestedCapacity;
+        updatedTotalCapacity = existingClass.totalCapacity - decreaseAmount;
+      } else if (requestedCapacity > existingClass.capacity) {
+        // Increase capacity (add-on)
+        const increaseAmount = requestedCapacity - existingClass.capacity;
+        updatedCapacity = existingClass.capacity + increaseAmount; // remaining capacity increases
+        updatedTotalCapacity = existingClass.totalCapacity + increaseAmount; // max capacity increases
       }
-      // If capacity is same as existing → do not change
+      // If requestedCapacity === existingClass.capacity → do nothing
     }
 
     // ✅ Perform the main update
