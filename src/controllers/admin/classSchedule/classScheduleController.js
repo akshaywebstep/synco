@@ -466,7 +466,7 @@ exports.updateClassSchedule = async (req, res) => {
       });
     }
 
-    // ✅ Capacity logic (Add-on / decrease check)
+    // ✅ Prepare capacity update if changed
     let updatedCapacity = existingClass.capacity;
     let updatedTotalCapacity = existingClass.totalCapacity;
 
@@ -487,39 +487,40 @@ exports.updateClassSchedule = async (req, res) => {
         });
       }
 
-      // ✅ Check how many students are already booked in BookingStudentMeta for this class
-      const bookedStudentsCount = await BookingStudentMeta.count({
-        include: [
-          {
-            model: Booking,
-            as: "booking",
-            where: {
-              classScheduleId: id,
-              status: { [Op.notIn]: ["cancelled", "removed"] }, // only active bookings
+      // ✅ Only proceed if capacity is different
+      if (requestedCapacity !== existingClass.capacity) {
+        // ✅ Check how many students are already booked
+        const bookedStudentsCount = await BookingStudentMeta.count({
+          include: [
+            {
+              model: Booking,
+              as: "booking",
+              where: {
+                classScheduleId: id,
+                status: { [Op.notIn]: ["cancelled", "removed"] },
+              },
             },
-          },
-        ],
-      });
+          ],
+        });
 
-      // Determine if this is a decrease
-      if (requestedCapacity < updatedCapacity) {
-        if (requestedCapacity < bookedStudentsCount) {
-          return res.status(400).json({
-            status: false,
-            message: `Cannot decrease capacity below ${bookedStudentsCount} because that many students are already booked.`,
-          });
+        if (requestedCapacity < existingClass.capacity) {
+          // Decrease requested
+          if (requestedCapacity < bookedStudentsCount) {
+            return res.status(400).json({
+              status: false,
+              message: `Cannot decrease capacity below ${bookedStudentsCount} because that many students are already booked.`,
+            });
+          }
         }
-        // Safe to decrease
+
+        // ✅ Safe to update
         updatedCapacity = requestedCapacity;
         updatedTotalCapacity = requestedCapacity;
-      } else {
-        // Add-on logic
-        updatedCapacity += requestedCapacity;
-        updatedTotalCapacity += requestedCapacity;
       }
+      // If capacity is same as existing → do not change
     }
 
-    // ✅ Perform the main update using your service
+    // ✅ Perform the main update
     const result = await ClassScheduleService.updateClass(id, {
       ...req.body,
       capacity: updatedCapacity,
@@ -528,9 +529,10 @@ exports.updateClassSchedule = async (req, res) => {
     });
 
     if (!result.status) {
-      return res
-        .status(400)
-        .json({ status: false, message: result.message || "Update failed." });
+      return res.status(400).json({
+        status: false,
+        message: result.message || "Update failed.",
+      });
     }
 
     // ✅ Log the update activity
