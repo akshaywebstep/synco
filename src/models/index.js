@@ -90,6 +90,16 @@ const models = {
   BirthdayPartyParent: require("./admin/birthdayParty/booking/BirthdayPartyParent"),
   BirthdayPartyEmergency: require("./admin/birthdayParty/booking/BirthdayPartyEmergency"),
   BirthdayPartyPayment: require("./admin/birthdayParty/booking/BirthdayPartyPayment"),
+
+  //  Holiday camp Module
+  // //Session Plan
+  HolidaySessionExercise: require("./admin/holidayCamps/sessionPlan/HolidaySessionExercise"),
+  HolidaySessionPlanGroup: require("./admin/holidayCamps/sessionPlan/HolidaySessionPlanGroup"),
+
+  //Terms and Dates
+  HolidayTermGroup: require("./admin/holidayCamps/termAndDates/HolidayTermGroup"),
+  HolidayTerm: require("./admin/holidayCamps/termAndDates/HolidayTerm"),
+
 };
 
 // =================== Apply Model-Level Associations =================== //
@@ -160,6 +170,12 @@ const {
   BirthdayPartyParent,
   BirthdayPartyEmergency,
   BirthdayPartyPayment,
+
+  HolidaySessionExercise,
+  HolidaySessionPlanGroup,
+
+  HolidayTermGroup,
+  HolidayTerm,
 } = models;
 
 // Many-to-Many
@@ -335,6 +351,65 @@ OneToOneBooking.belongsTo(models.oneToOneLeads, {
   as: "lead",
 });
 
+// Holiday camps associations 
+HolidayTerm.belongsToMany(HolidaySessionPlanGroup, {
+  through: "holiday_term_session_plan_groups",
+  foreignKey: "holidayTermId",
+  otherKey: "holidaySessionPlanGroupId",
+  as: "holidaySessionPlanGroups",
+});
+
+HolidaySessionPlanGroup.belongsToMany(HolidayTerm, {
+  through: "holiday_term_session_plan_groups",
+  foreignKey: "holidaySessionPlanGroupId",
+  otherKey: "holidayTermId",
+  as: "holidayTerms",
+});
+
+HolidayTermGroup.hasMany(HolidayTerm, {
+  foreignKey: "holidayTermGroupId",
+  as: "holidayTerms",
+  onDelete: "CASCADE",
+});
+
+HolidayTerm.belongsTo(HolidayTermGroup, {
+  foreignKey: "holidayTermGroupId",
+  as: "holidayTermGroup",
+  onDelete: "CASCADE",
+});
+
+HolidayTerm.associate = (models) => {
+  HolidayTerm.belongsTo(models.HolidayTermGroup, {
+    foreignKey: "holidayTermGroupId",
+    as: "holidayTermGroup",
+    onDelete: "CASCADE",
+  });
+
+  HolidayTerm.belongsToMany(models.HolidaySessionPlanGroup, {
+    through: "holiday_term_session_plan_groups",
+    foreignKey: "holidayTermId",
+    otherKey: "holidaySessionPlanGroupId",
+    as: "holidaySessionPlanGroups",
+  });
+};
+
+HolidayTermGroup.associate = (models) => {
+  HolidayTermGroup.hasMany(models.HolidayTerm, {
+    foreignKey: "holidayTermGroupId",
+    as: "holidayTerms",
+    onDelete: "CASCADE",
+  });
+};
+
+HolidaySessionPlanGroup.associate = (models) => {
+  HolidaySessionPlanGroup.belongsToMany(models.HolidayTerm, {
+    through: "holiday_term_session_plan_groups",
+    foreignKey: "holidaySessionPlanGroupId",
+    otherKey: "holidayTermId",
+    as: "holidayTerms",
+  });
+};
+
 // ====================== 📦 Module Exports ====================== //
 module.exports = {
   AppConfig,
@@ -404,4 +479,7 @@ module.exports = {
   BirthdayPartyParent,
   BirthdayPartyEmergency,
   BirthdayPartyPayment,
+
+  HolidaySessionExercise,
+  HolidaySessionPlanGroup,
 };
