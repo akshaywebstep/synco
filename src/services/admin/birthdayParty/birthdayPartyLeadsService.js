@@ -811,24 +811,24 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
 
     // ✅ Agent filter
     if (agent) {
-      let agentIds = [];
-
-      if (Array.isArray(agent)) {
-        // Handles ?agent=1&agent=6
-        agentIds = agent.map((id) => Number(id)).filter(Boolean);
-      } else if (typeof agent === "string") {
-        // Handles ?agent=1,6
-        agentIds = agent
-          .split(",")
-          .map((id) => Number(id.trim()))
-          .filter(Boolean);
-      }
-
-      if (agentIds.length > 0) {
-        whereLead.createdBy = { [Op.in]: agentIds };
-        console.log("🧩 Agent filter applied:", agentIds);
-      }
-    }
+          let agentIds = [];
+    
+          if (Array.isArray(agent)) {
+            // Handles ?agent=1&agent=6
+            agentIds = agent.map((id) => Number(id)).filter(Boolean);
+          } else if (typeof agent === "string") {
+            // Handles ?agent=1,6
+            agentIds = agent
+              .split(",")
+              .map((id) => Number(id.trim()))
+              .filter(Boolean);
+          }
+    
+          if (agentIds.length > 0) {
+            whereLead.createdBy = { [Op.in]: agentIds };
+            console.log("🧩 Agent filter applied:", agentIds);
+          }
+        }
 
     // ✅ Coach filter
     if (coach) {
