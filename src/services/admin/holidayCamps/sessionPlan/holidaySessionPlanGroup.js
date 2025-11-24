@@ -24,6 +24,7 @@ exports.duplicateHolidaySessionPlanGroup = async (id, createdBy) => {
       // groupName: group.groupName,
        groupName: `${group.groupName} copy`,
       banner: group.banner,
+      type: group.type,
       player: group.player,
       levels: parsedLevels, // store as object if DB supports JSON
 
@@ -79,7 +80,7 @@ exports.getAllHolidaySessionPlanGroups = async ({
 
     const groups = await HolidaySessionPlanGroup.findAll({
       where: { createdBy: Number(createdBy),
-         type: "holiday_camp",
+        //  type: "holiday_camp",
        },
       // order: [[orderBy, order]],
       order: [["sortOrder", "ASC"]],
