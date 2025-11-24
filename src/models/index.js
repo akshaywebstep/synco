@@ -482,4 +482,7 @@ module.exports = {
 
   HolidaySessionExercise,
   HolidaySessionPlanGroup,
+
+  HolidayTermGroup,
+  HolidayTerm,
 };
