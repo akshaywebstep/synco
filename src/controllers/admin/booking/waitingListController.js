@@ -8,6 +8,7 @@ const {
   ClassSchedule,
   Admin,
   BookingParentMeta,
+  BookingStudentMeta,
 } = require("../../../models");
 const emailModel = require("../../../services/email");
 const sendEmail = require("../../../utils/email/sendEmail");
