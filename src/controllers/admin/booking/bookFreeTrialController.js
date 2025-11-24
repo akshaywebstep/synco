@@ -4,7 +4,7 @@ const { logActivity } = require("../../../utils/admin/activityLogger");
 const { Venue, ClassSchedule, Admin } = require("../../../models");
 const emailModel = require("../../../services/email");
 const sendEmail = require("../../../utils/email/sendEmail");
-const { BookingParentMeta,BookingStudentMeta, Booking } = require("../../../models");
+const { BookingParentMeta, BookingStudentMeta, Booking } = require("../../../models");
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 const {
   createNotification,
@@ -209,11 +209,15 @@ exports.createBooking = async (req, res) => {
   }
 
   if (duplicateEmails.length > 0) {
-    const message = `The following email(s) already exist in the system: ${duplicateEmails.join(
-      ", "
-    )}. Please use different email(s).`;
-    if (DEBUG) console.warn("❌ Duplicate emails found.");
+    const unique = [...new Set(duplicateEmails)]; // remove duplicates
+    const message =
+      unique.length === 1
+        ? `${unique[0]} email already in use.`
+        : `${unique.join(", ")} emails already in use.`;
+
+    if (DEBUG) console.warn("❌ Duplicate email(s) found.");
     await logActivity(req, PANEL, MODULE, "create", { message }, false);
+
     return res.status(409).json({ status: false, message });
   }
 
