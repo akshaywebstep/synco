@@ -4,7 +4,11 @@ const { logActivity } = require("../../../utils/admin/activityLogger");
 const { Venue, ClassSchedule, Admin } = require("../../../models");
 const emailModel = require("../../../services/email");
 const sendEmail = require("../../../utils/email/sendEmail");
-const { BookingParentMeta, BookingStudentMeta, Booking } = require("../../../models");
+const {
+  BookingParentMeta,
+  BookingStudentMeta,
+  Booking,
+} = require("../../../models");
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 const {
   createNotification,
@@ -318,33 +322,57 @@ exports.createBooking = async (req, res) => {
 
     if (parentMetas && parentMetas.length > 0) {
       const firstParent = parentMetas[0]; // only first parent
-      const { status: configStatus, emailConfig, htmlTemplate, subject } =
-        await emailModel.getEmailConfig(PANEL, "free-trial-confirmation");
+      const {
+        status: configStatus,
+        emailConfig,
+        htmlTemplate,
+        subject,
+      } = await emailModel.getEmailConfig(PANEL, "free-trial-confirmation");
 
       if (configStatus && htmlTemplate) {
         try {
           // ----------------------------
           // Safely get students for this parent
           // ----------------------------
-          const student = await BookingStudentMeta.findOne({
-            where: { id: firstParent.studentId }
+          // Fetch ALL students for this booking
+          const students = await BookingStudentMeta.findAll({
+            where: { bookingId: booking.id },
           });
 
-          const studentsHtml = student
-            ? `<p style="margin:0; font-size:13px; color:#5F5F6D;">${student.studentFirstName} ${student.studentLastName}</p>`
+          const studentsHtml = students.length
+            ? students
+                .map(
+                  (s) =>
+                    `<p style="margin:0; font-size:13px; color:#5F5F6D;">
+             ${s.studentFirstName} ${s.studentLastName}
+           </p>`
+                )
+                .join("")
             : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
 
           let finalHtml = htmlTemplate
-            .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`)
+            .replace(
+              /{{parentName}}/g,
+              `${firstParent.parentFirstName} ${firstParent.parentLastName}`
+            )
             .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
             .replace(/{{parentPassword}}/g, "Synco123")
             .replace(/{{venueName}}/g, venue?.name || "N/A")
             .replace(/{{trialDate}}/g, booking?.trialDate || "")
             .replace(/{{className}}/g, classData?.className || "N/A")
-            .replace(/{{classTime}}/g, `${classData?.startTime || ""}-${classData?.endTime || ""}`)
+            .replace(
+              /{{classTime}}/g,
+              `${classData?.startTime || ""}-${classData?.endTime || ""}`
+            )
             .replace(/{{studentsHtml}}/g, studentsHtml)
-            .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
-            .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png");
+            .replace(
+              /{{logoUrl}}/g,
+              "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
+            )
+            .replace(
+              /{{kidsPlaying}}/g,
+              "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
+            );
 
           await sendEmail(emailConfig, {
             recipient: [
@@ -359,7 +387,10 @@ exports.createBooking = async (req, res) => {
             htmlBody: finalHtml,
           });
         } catch (err) {
-          console.error(`❌ Failed to send email to ${firstParent.parentEmail}:`, err.message);
+          console.error(
+            `❌ Failed to send email to ${firstParent.parentEmail}:`,
+            err.message
+          );
         }
       }
     }
@@ -402,7 +433,10 @@ exports.getAllBookFreeTrials = async (req, res) => {
   if (DEBUG) console.log("📥 Fetching all free trial bookings...");
 
   const bookedBy = req.admin?.id;
-  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id, true);
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(
+    req.admin.id,
+    true
+  );
   const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
 
   const filters = {
@@ -425,18 +459,14 @@ exports.getAllBookFreeTrials = async (req, res) => {
     // ✅ Apply bookedBy filter
     // If user provides bookedBy in query → ALWAYS respect it
     if (req.query.bookedBy) {
-      filters.bookedBy = req.query.bookedBy.split(',').map(Number);
-    }
-    else if (req.admin?.role?.toLowerCase() === 'super admin') {
-      filters.bookedBy = (mainSuperAdminResult?.admins || []).map(a => a.id);
-    }
-    else {
+      filters.bookedBy = req.query.bookedBy.split(",").map(Number);
+    } else if (req.admin?.role?.toLowerCase() === "super admin") {
+      filters.bookedBy = (mainSuperAdminResult?.admins || []).map((a) => a.id);
+    } else {
       filters.bookedBy = [req.admin.id];
     }
 
-    const result = await BookingTrialService.getAllBookings(
-      filters
-    );
+    const result = await BookingTrialService.getAllBookings(filters);
 
     if (!result.status) {
       await logActivity(req, PANEL, MODULE, "list", result, false);

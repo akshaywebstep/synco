@@ -107,7 +107,7 @@ exports.createBooking = async (req, res) => {
       ) {
         try {
           incomingGatewayResponse = JSON.parse(incomingGatewayResponse);
-        } catch (_) { }
+        } catch (_) {}
       }
 
       formData.paymentResponse = incomingGatewayResponse || null;
@@ -225,38 +225,64 @@ exports.createBooking = async (req, res) => {
           // Get the first parent only
           const firstParent = parentMetas[0];
           if (!firstParent || !firstParent.parentEmail) {
-            console.log("⚠️ First parent missing email. Skipping student:", sId);
+            console.log(
+              "⚠️ First parent missing email. Skipping student:",
+              sId
+            );
             continue;
           }
 
-          // Get student info
-          const student = await BookingStudentMeta.findOne({
-            where: { id: sId },
+          // Get ALL students for this parent
+          const allStudents = await BookingStudentMeta.findAll({
+            where: { bookingId: booking.id },
           });
 
-          const studentsHtml = student
-            ? `<p style="margin:0; font-size:13px; color:#5F5F6D;">${student.studentFirstName} ${student.studentLastName}</p>`
+          // Build HTML list of ALL students
+          const studentsHtml = allStudents.length
+            ? allStudents
+                .map(
+                  (s) =>
+                    `<p style="margin:0; font-size:13px; color:#5F5F6D;">${s.studentFirstName} ${s.studentLastName}</p>`
+                )
+                .join("")
             : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
 
           console.log("Generated studentsHtml length:", studentsHtml.length);
 
           try {
             let htmlBody = htmlTemplate
-              .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`)
+              .replace(
+                /{{parentName}}/g,
+                `${firstParent.parentFirstName} ${firstParent.parentLastName}`
+              )
               .replace(/{{studentFirstName}}/g, student?.studentFirstName || "")
               .replace(/{{studentLastName}}/g, student?.studentLastName || "")
-              .replace(/{{studentName}}/g, `${student?.studentFirstName || ""} ${student?.studentLastName || ""}`)
+              .replace(
+                /{{studentName}}/g,
+                `${student?.studentFirstName || ""} ${
+                  student?.studentLastName || ""
+                }`
+              )
               .replace(/{{venueName}}/g, venueName)
               .replace(/{{className}}/g, classData?.className || "N/A")
-              .replace(/{{classTime}}/g, `${classData?.startTime} - ${classData?.endTime}`)
+              .replace(
+                /{{classTime}}/g,
+                `${classData?.startTime} - ${classData?.endTime}`
+              )
               .replace(/{{startDate}}/g, booking?.startDate || "")
               .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
               .replace(/{{parentPassword}}/g, "Synco123")
               .replace(/{{appName}}/g, "Synco")
               .replace(/{{year}}/g, new Date().getFullYear().toString())
               .replace(/{{studentsHtml}}/g, studentsHtml)
-              .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
-              .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png");
+              .replace(
+                /{{logoUrl}}/g,
+                "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
+              )
+              .replace(
+                /{{kidsPlaying}}/g,
+                "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
+              );
 
             console.log("Generated htmlBody length:", htmlBody.length);
 
@@ -271,14 +297,19 @@ exports.createBooking = async (req, res) => {
               htmlBody,
             });
 
-            console.log("📧 Email sent successfully to first parent:", firstParent.parentEmail, emailResp);
-
+            console.log(
+              "📧 Email sent successfully to first parent:",
+              firstParent.parentEmail,
+              emailResp
+            );
           } catch (err) {
-            console.error(`❌ Failed to send email to ${firstParent.parentEmail}:`, err.message);
+            console.error(
+              `❌ Failed to send email to ${firstParent.parentEmail}:`,
+              err.message
+            );
           }
         }
       }
-
     } else {
       console.log("❌ paymentPlanType is falsy. Skipping email sending block.");
     }
@@ -337,12 +368,10 @@ exports.getAllPaidBookings = async (req, res) => {
     // ✅ Apply bookedBy filter
     // If user provides bookedBy in query → ALWAYS respect it
     if (req.query.bookedBy) {
-      filters.bookedBy = req.query.bookedBy.split(',').map(Number);
-    }
-    else if (req.admin?.role?.toLowerCase() === 'super admin') {
-      filters.bookedBy = (mainSuperAdminResult?.admins || []).map(a => a.id);
-    }
-    else {
+      filters.bookedBy = req.query.bookedBy.split(",").map(Number);
+    } else if (req.admin?.role?.toLowerCase() === "super admin") {
+      filters.bookedBy = (mainSuperAdminResult?.admins || []).map((a) => a.id);
+    } else {
       filters.bookedBy = [req.admin.id];
     }
 
@@ -462,12 +491,10 @@ exports.getAllPaidActiveBookings = async (req, res) => {
     // ✅ Apply bookedBy filter
     // If user provides bookedBy in query → ALWAYS respect it
     if (req.query.bookedBy) {
-      filters.bookedBy = req.query.bookedBy.split(',').map(Number);
-    }
-    else if (req.admin?.role?.toLowerCase() === 'super admin') {
-      filters.bookedBy = (mainSuperAdminResult?.admins || []).map(a => a.id);
-    }
-    else {
+      filters.bookedBy = req.query.bookedBy.split(",").map(Number);
+    } else if (req.admin?.role?.toLowerCase() === "super admin") {
+      filters.bookedBy = (mainSuperAdminResult?.admins || []).map((a) => a.id);
+    } else {
       filters.bookedBy = [req.admin.id];
     }
 
