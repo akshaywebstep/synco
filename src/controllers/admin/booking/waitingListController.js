@@ -245,13 +245,29 @@ exports.createBooking = async (req, res) => {
           email: p.parentEmail,
         }));
 
+        // Fetch ALL students for the booking trial
+        const students = await BookingStudentMeta.findAll({
+          where: { bookingTrialId: booking.id },
+        });
+        const studentsHtml = students.length
+          ? students
+              .map(
+                (s) =>
+                  `<p style="margin:0; font-size:13px; color:#5F5F6D;">
+             ${s.studentFirstName} ${s.studentLastName}
+           </p>`
+              )
+              .join("")
+          : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
+
         for (const recipient of recipients) {
           const variables = {
+            "{{studentsHtml}}": studentsHtml,
             "{{parentName}}": recipient.name,
             "{{parentEmail}}": recipient.email,
             "{{parentPassword}}": "Synco123",
-            "{{studentFirstName}}": studentFirstName || "",
-            "{{studentLastName}}": studentLastName || "",
+            // "{{studentFirstName}}": studentFirstName || "",
+            // "{{studentLastName}}": studentLastName || "",
             "{{venueName}}": venue?.name || "N/A",
             "{{className}}": classData?.className || "N/A",
             "{{startDate}}": booking?.startDate || "",
@@ -329,12 +345,10 @@ exports.getAllWaitingListBookings = async (req, res) => {
     // ✅ Apply bookedBy filter
     // If user provides bookedBy in query → ALWAYS respect it
     if (req.query.bookedBy) {
-      filters.bookedBy = req.query.bookedBy.split(',').map(Number);
-    }
-    else if (req.admin?.role?.toLowerCase() === 'super admin') {
-      filters.bookedBy = (mainSuperAdminResult?.admins || []).map(a => a.id);
-    }
-    else {
+      filters.bookedBy = req.query.bookedBy.split(",").map(Number);
+    } else if (req.admin?.role?.toLowerCase() === "super admin") {
+      filters.bookedBy = (mainSuperAdminResult?.admins || []).map((a) => a.id);
+    } else {
       filters.bookedBy = [req.admin.id];
     }
 
@@ -799,7 +813,8 @@ exports.convertToMembership = async (req, res) => {
               .replace(/{{studentLastName}}/g, student.studentLastName || "")
               .replace(
                 /{{studentName}}/g,
-                `${student.studentFirstName || ""} ${student.studentLastName || ""
+                `${student.studentFirstName || ""} ${
+                  student.studentLastName || ""
                 }`
               )
               .replace(/{{venueName}}/g, venueName)
