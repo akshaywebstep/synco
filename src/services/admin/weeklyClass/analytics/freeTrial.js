@@ -28,6 +28,12 @@ function countFreeTrials(bookings) {
     }, 0);
 }
 
+const calculateMonthlyRevenue = (bookings) => {
+    return bookings
+        .filter(b => b.isConvertedToMembership === true && b.paymentPlan)
+        .reduce((total, b) => total + (b.paymentPlan.price || 0), 0);
+};
+
 function countAttendedTrials(bookings) {
     return bookings.reduce((sum, b) => {
         if (b.students && Array.isArray(b.students)) {
@@ -345,7 +351,25 @@ function groupBookingsByYearMonth(bookings, filter) {
             const admin = b.bookedByAdmin;
             if (!admin) return;
 
-            if (!agents[admin.id]) agents[admin.id] = { id: admin.id, name: `${admin.firstName} ${admin.lastName}`, freeTrialTrend: { freeTrialsCount: 0, attendedCount: 0, attendanceRate: 0, trialToMemberCount: 0, conversionRate: 0, rebookCount: 0 } };
+            // if (!agents[admin.id]) agents[admin.id] = { id: admin.id, name: `${admin.firstName} ${admin.lastName}`, freeTrialTrend: { freeTrialsCount: 0, attendedCount: 0, attendanceRate: 0, trialToMemberCount: 0, conversionRate: 0, rebookCount: 0 } };
+            if (!agents[admin.id]) {
+                agents[admin.id] = {
+                    id: admin.id,
+                    name: `${admin.firstName} ${admin.lastName}`,
+                    email: admin.email || null,
+                    roleId: admin.roleId || null,
+                    status: admin.status || null,
+                    profile: admin.profile || null,   // ✅ Add profile here
+                    freeTrialTrend: {
+                        freeTrialsCount: 0,
+                        attendedCount: 0,
+                        attendanceRate: 0,
+                        trialToMemberCount: 0,
+                        conversionRate: 0,
+                        rebookCount: 0
+                    }
+                };
+            }
 
             if (b.trialDate !== null || b.type === 'free') {
                 agents[admin.id].freeTrialTrend.freeTrialsCount += 1;
@@ -380,9 +404,10 @@ function groupBookingsByYearMonth(bookings, filter) {
 
         if (!grouped[yearKey]) grouped[yearKey] = { monthlyGrouped: {} };
         const fbPerformance = facebookPerformance(monthBookings);
+        const monthlyRevenue = calculateMonthlyRevenue(filteredBookings);
 
         // grouped[yearKey].monthlyGrouped[monthKey] = { bookings: filteredBookings, freeTrialTrend, agentSummary, enrolledStudents, paymentPlansTrend, marketingChannelPerformance };
-        grouped[yearKey].monthlyGrouped[monthKey] = { bookings: filteredBookings, freeTrialTrend, agentSummary, enrolledStudents, paymentPlansTrend, marketingChannelPerformance, facebookPerformance: fbPerformance };
+        grouped[yearKey].monthlyGrouped[monthKey] = { bookings: filteredBookings, freeTrialTrend, agentSummary, enrolledStudents, paymentPlansTrend, marketingChannelPerformance, facebookPerformance: fbPerformance,   revenue: monthlyRevenue };
 
         current.add(1, "month");
     }
@@ -397,8 +422,13 @@ function groupBookingsByYearMonth(bookings, filter) {
                 monthData.facebookPerformance = calcFacebookDiff(monthData.facebookPerformance, null);
                 monthData.agentSummary = monthData.agentSummary.map(agent => {
                     const { freeTrialTrend, ...rest } = agent;
-                    return { ...rest, freeTrialTrend: calcPercentageDiff(freeTrialTrend, null) };
+
+                    let rawTrend = freeTrialTrend;
+                    if (rawTrend.currentMonthStats) rawTrend = rawTrend.currentMonthStats;
+
+                    return { ...rest, freeTrialTrend: calcPercentageDiff(rawTrend, null) };
                 });
+
             } else {
                 const lastMonthKey = months[i - 1];
                 const lastMonthData = grouped[yearKey].monthlyGrouped[lastMonthKey];
@@ -412,8 +442,16 @@ function groupBookingsByYearMonth(bookings, filter) {
                 monthData.agentSummary = monthData.agentSummary.map(agent => {
                     const prev = lastMonthData.agentSummary.find(a => a.id === agent.id);
                     const { freeTrialTrend, ...rest } = agent;
-                    return { ...rest, freeTrialTrend: calcPercentageDiff(agent.freeTrialTrend, prev ? prev.freeTrialTrend : null) };
+
+                    let currentRaw = freeTrialTrend;
+                    if (currentRaw.currentMonthStats) currentRaw = currentRaw.currentMonthStats;
+
+                    let prevRaw = prev?.freeTrialTrend;
+                    if (prevRaw?.currentMonthStats) prevRaw = prevRaw.currentMonthStats;
+
+                    return { ...rest, freeTrialTrend: calcPercentageDiff(currentRaw, prevRaw) };
                 });
+
             }
         });
 
@@ -438,7 +476,9 @@ function groupBookingsByYearMonth(bookings, filter) {
             yearTotal.trialToMemberCount += monthStats.trialToMemberCount;
             yearTotal.conversionRate += monthStats.conversionRate;
             yearTotal.rebookCount += monthStats.rebookCount;
-
+            // Add revenue
+            yearTotal.revenue = (yearTotal.revenue || 0) + (m.revenue || 0);
+            
             const fb = m.facebookPerformance.currentMonthStats;
 
             yearlyFacebook.leadsGenerated += fb.leadsGenerated;
@@ -493,6 +533,13 @@ const getMonthlyReport = async (filters) => {
                 { model: BookingPayment, as: "payments", required: false },
                 { model: PaymentPlan, as: "paymentPlan", required: false },
                 { model: Admin, as: "bookedByAdmin", attributes: ["id", "firstName", "lastName", "email", "roleId", "status", "profile"], required: false },
+                {
+                    model: PaymentPlan,
+                    as: "paymentPlan",
+                    attributes: ["id", "price"],
+                    required: false
+                }
+
             ],
         });
 
