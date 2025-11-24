@@ -234,7 +234,7 @@ exports.createBooking = async (req, res) => {
 
           // Get ALL students for this parent
           const allStudents = await BookingStudentMeta.findAll({
-            where: { bookingId: booking.id },
+            where: { bookingTrialId: booking.id },
           });
 
           // Build HTML list of ALL students
