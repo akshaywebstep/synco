@@ -380,9 +380,14 @@ function groupBookingsByYearMonth(bookings, filter) {
                 agents[admin.id].freeTrialTrend.attendedCount += b.students.filter(student => student.attendance === 'attended').length;
             }
 
-            agents[admin.id].freeTrialTrend.attendanceRate = agents[admin.id].freeTrialTrend.freeTrialsCount > 0
-                ? (agents[admin.id].freeTrialTrend.attendedCount / agents[admin.id].freeTrialTrend.freeTrialsCount) * 100
-                : 0;
+            // agents[admin.id].freeTrialTrend.attendanceRate = agents[admin.id].freeTrialTrend.freeTrialsCount > 0
+            //     ? (agents[admin.id].freeTrialTrend.attendedCount / agents[admin.id].freeTrialTrend.freeTrialsCount) * 100
+            //     : 0;
+            agents[admin.id].freeTrialTrend.attendanceRate =
+                agents[admin.id].freeTrialTrend.freeTrialsCount > 0
+                    ? Number(((agents[admin.id].freeTrialTrend.attendedCount /
+                        agents[admin.id].freeTrialTrend.freeTrialsCount) * 100).toFixed(2))
+                    : 0;
 
             if (
                 ((b.type === 'free' || b.trialDate !== null) && (b.paymentPlanId !== null || b.startDate !== null)) ||
@@ -407,7 +412,7 @@ function groupBookingsByYearMonth(bookings, filter) {
         const monthlyRevenue = calculateMonthlyRevenue(filteredBookings);
 
         // grouped[yearKey].monthlyGrouped[monthKey] = { bookings: filteredBookings, freeTrialTrend, agentSummary, enrolledStudents, paymentPlansTrend, marketingChannelPerformance };
-        grouped[yearKey].monthlyGrouped[monthKey] = { bookings: filteredBookings, freeTrialTrend, agentSummary, enrolledStudents, paymentPlansTrend, marketingChannelPerformance, facebookPerformance: fbPerformance,   revenue: monthlyRevenue };
+        grouped[yearKey].monthlyGrouped[monthKey] = { bookings: filteredBookings, freeTrialTrend, agentSummary, enrolledStudents, paymentPlansTrend, marketingChannelPerformance, facebookPerformance: fbPerformance, revenue: monthlyRevenue };
 
         current.add(1, "month");
     }
@@ -478,7 +483,7 @@ function groupBookingsByYearMonth(bookings, filter) {
             yearTotal.rebookCount += monthStats.rebookCount;
             // Add revenue
             yearTotal.revenue = (yearTotal.revenue || 0) + (m.revenue || 0);
-            
+
             const fb = m.facebookPerformance.currentMonthStats;
 
             yearlyFacebook.leadsGenerated += fb.leadsGenerated;

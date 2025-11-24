@@ -208,6 +208,7 @@ function groupBookingsByYearMonth(bookings, filter) {
         agents[admin.id] = {
           id: admin.id,
           name: `${admin.firstName} ${admin.lastName}`,
+          profile: admin.profile || null, 
           saleTrend: {
             newStudents: 0,
             totalRevenue: 0,
