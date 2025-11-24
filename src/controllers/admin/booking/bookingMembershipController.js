@@ -255,14 +255,6 @@ exports.createBooking = async (req, res) => {
                 /{{parentName}}/g,
                 `${firstParent.parentFirstName} ${firstParent.parentLastName}`
               )
-              .replace(/{{studentFirstName}}/g, student?.studentFirstName || "")
-              .replace(/{{studentLastName}}/g, student?.studentLastName || "")
-              .replace(
-                /{{studentName}}/g,
-                `${student?.studentFirstName || ""} ${
-                  student?.studentLastName || ""
-                }`
-              )
               .replace(/{{venueName}}/g, venueName)
               .replace(/{{className}}/g, classData?.className || "N/A")
               .replace(
