@@ -122,7 +122,7 @@ exports.sendRebookingEmailToParents = async ({ bookingId }) => {
 
     const emailConfigResult = await getEmailConfig(
       "admin",
-      "free-trial-rebooking"
+      "free-trial update confirmation"
     );
     if (!emailConfigResult.status)
       return { status: false, message: "Email config missing" };
