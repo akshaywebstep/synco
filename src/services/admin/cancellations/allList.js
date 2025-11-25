@@ -497,8 +497,12 @@ exports.sendCancelBookingEmailToParents = async ({ bookingIds }) => {
             if (!parent?.parentEmail) continue;
 
             let noteHtml = "";
+            // If additional note exists, add both Additional Note + Cancel Reason inside the same HTML block
             if (additionalNote.trim() !== "") {
-              noteHtml = `<p><strong>Additional Note:</strong> ${additionalNote}</p>`;
+              noteHtml = `
+        <p><strong>Additional Note:</strong> ${additionalNote}</p>
+        <p><strong>Reason for Cancellation:</strong> ${cancelReason}</p>
+      `;
             }
 
             const finalHtml = htmlTemplate
@@ -510,7 +514,7 @@ exports.sendCancelBookingEmailToParents = async ({ bookingIds }) => {
               .replace(/{{endTime}}/g, endTime)
               .replace(/{{startDate}}/g, startDate)
               .replace(/{{cancelReason}}/g, cancelReason)
-               .replace(/{{bookingType}}/g, bookingType)
+              .replace(/{{bookingType}}/g, bookingType)
               .replace(/{{additionalNote}}/g, noteHtml)
               .replace(/{{appName}}/g, "Synco")
               .replace(/{{year}}/g, new Date().getFullYear());

@@ -414,6 +414,9 @@ exports.sendCancelBookingEmailToParents = async ({ bookingIds }) => {
 
     for (const bookingId of bookingIds) {
       try {
+        console.log("=========================================");
+        console.log(`📌 Processing bookingId: ${bookingId}`);
+
         // 1️⃣ Find cancellation record + booking
         const cancelBooking = await CancelBooking.findOne({
           where: { bookingId },
@@ -423,11 +426,7 @@ exports.sendCancelBookingEmailToParents = async ({ bookingIds }) => {
               as: "booking",
               include: [
                 { model: Venue, as: "venue", required: false },
-                {
-                  model: ClassSchedule,
-                  as: "classSchedule",
-                  required: false,
-                },
+                { model: ClassSchedule, as: "classSchedule", required: false },
                 {
                   model: BookingStudentMeta,
                   as: "students",
@@ -444,11 +443,10 @@ exports.sendCancelBookingEmailToParents = async ({ bookingIds }) => {
           ],
         });
 
+        console.log("🟦 cancelBooking record:", JSON.stringify(cancelBooking, null, 2));
+
         if (!cancelBooking || !cancelBooking.booking) {
-          errors.push({
-            bookingId,
-            error: "Booking or cancellation not found",
-          });
+          errors.push({ bookingId, error: "Booking or cancellation not found" });
           continue;
         }
 
@@ -458,15 +456,19 @@ exports.sendCancelBookingEmailToParents = async ({ bookingIds }) => {
         const startTime = booking.classSchedule?.startTime || "TBA";
         const endTime = booking.classSchedule?.endTime || "TBA";
         const startDate = booking.startDate || "TBA";
+
         const bookingType = booking.bookingType || "General Booking";
+
+        console.log("🟥 RAW DB cancelReason:", cancelBooking.cancelReason);
+
         const cancelReason = cancelBooking.cancelReason || "Not specified";
+
+        console.log("🟩 USING cancelReason:", cancelReason);
+
         const additionalNote = cancelBooking.additionalNote || "";
 
         // 2️⃣ Email config
-        const emailConfigResult = await getEmailConfig(
-          "admin",
-          "cancel-booking"
-        );
+        const emailConfigResult = await getEmailConfig("admin", "cancel-booking");
         if (!emailConfigResult.status) {
           errors.push({ bookingId, error: "Email config missing" });
           continue;
@@ -479,10 +481,11 @@ exports.sendCancelBookingEmailToParents = async ({ bookingIds }) => {
           for (const parent of student.parents || []) {
             if (!parent?.parentEmail) continue;
 
-            let noteHtml = "";
-            if (additionalNote.trim() !== "") {
-              noteHtml = `<p><strong>Additional Note:</strong> ${additionalNote}</p>`;
-            }
+            let noteHtml = `
+              <p><strong>Reason for Cancellation:</strong> ${cancelReason}</p>
+            `;
+
+            console.log("🟧 noteHtml:", noteHtml);
 
             const finalHtml = htmlTemplate
               .replace(/{{parentName}}/g, parent.parentFirstName || "")
@@ -493,10 +496,14 @@ exports.sendCancelBookingEmailToParents = async ({ bookingIds }) => {
               .replace(/{{endTime}}/g, endTime)
               .replace(/{{startDate}}/g, startDate)
               .replace(/{{cancelReason}}/g, cancelReason)
+              .replace(/{{bookingType}}/g, bookingType)
               .replace(/{{additionalNote}}/g, noteHtml)
-               .replace(/{{bookingType}}/g, bookingType)
               .replace(/{{appName}}/g, "Synco")
               .replace(/{{year}}/g, new Date().getFullYear());
+
+            console.log("📨 FINAL HTML SENT >>>");
+            console.log(finalHtml);
+            console.log("<<< END HTML");
 
             const recipient = [
               {
@@ -505,6 +512,8 @@ exports.sendCancelBookingEmailToParents = async ({ bookingIds }) => {
               },
             ];
 
+            console.log(`📤 Sending email to: ${parent.parentEmail}`);
+
             const sendResult = await sendEmail(emailConfig, {
               recipient,
               subject,
@@ -512,8 +521,11 @@ exports.sendCancelBookingEmailToParents = async ({ bookingIds }) => {
             });
 
             if (sendResult.status) {
+              console.log("✅ Email sent successfully!");
               totalSent++;
               allSentTo.push(parent.parentEmail);
+            } else {
+              console.log("❌ Email failed:", sendResult);
             }
           }
         }
