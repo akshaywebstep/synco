@@ -578,7 +578,7 @@ exports.getAllBookings = async (adminId, filters = {}) => {
 
       venue.classes = venue.classes.map((cls) => {
         const activeBookings = cls.bookings.filter(
-          (booking) => ["active", "pending", "attended", "froze", "request_to_cancel"].includes(booking.status)
+          (booking) => ["active", "pending", "attended", "froze", "request_to_cancel","waiting list"].includes(booking.status)
         );
 
         const clsTotalBooked = activeBookings.reduce(

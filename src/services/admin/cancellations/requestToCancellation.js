@@ -115,12 +115,19 @@ exports.getRequestToCancel = async ({
 
     if (fromDate && toDate) {
       whereClause.createdAt = {
-        [Op.between]: [new Date(fromDate), new Date(toDate)],
+        [Op.between]: [
+          new Date(fromDate + "T00:00:00"),
+          new Date(toDate + "T23:59:59")
+        ]
       };
     } else if (fromDate) {
-      whereClause.createdAt = { [Op.gte]: new Date(fromDate) };
+      whereClause.createdAt = {
+        [Op.gte]: new Date(fromDate + "T00:00:00")
+      };
     } else if (toDate) {
-      whereClause.createdAt = { [Op.lte]: new Date(toDate) };
+      whereClause.createdAt = {
+        [Op.lte]: new Date(toDate + "T23:59:59")
+      };
     }
 
     let cancellationIds = [];
@@ -665,7 +672,7 @@ exports.getFullCancelBookingById = async (id, adminId) => {
       id: booking.id,
       bookingId: booking.bookingId,
       classScheduleId: booking.classScheduleId,
-      serviceType:booking.serviceType,
+      serviceType: booking.serviceType,
       startDate: booking.startDate,
       bookedBy: booking.bookedByAdmin || null,
       className: booking.className,
