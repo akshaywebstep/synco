@@ -218,4 +218,32 @@ async function downloadFromFTP(fileUrl, localPath) {
     }
 }
 
-module.exports = { uploadToFTP, downloadFromFTP };
+/* DELETE FILE */
+async function deleteFromFTP(fileUrl) {
+  const client = new ftp.Client();
+  client.ftp.verbose = DEBUG;
+
+  try {
+    const ftpConfig = await getFTPConfig();
+
+    let remotePath = fileUrl.replace(ftpConfig.publicUrlBase, "").replace(/^\/+/, "");
+    remotePath = `/${remotePath}`;
+
+    await client.access({
+      host: ftpConfig.host,
+      user: ftpConfig.user,
+      password: ftpConfig.password,
+      secure: false,
+    });
+
+    await client.remove(remotePath);
+    await client.close();
+    return true;
+  } catch (err) {
+    console.error("❌ FTP delete failed:", err.message);
+    try { await client.close(); } catch {}
+    throw err;
+  }
+}
+
+module.exports = { uploadToFTP, downloadFromFTP,deleteFromFTP };

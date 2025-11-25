@@ -541,6 +541,27 @@ exports.updateSessionExercise = async (req, res) => {
       console.log("🔄 Keeping existing images:", updates.imageUrl);
     }
 
+    // STEP 4b: Remove selected images
+    let removedImages = updates.removedImages || [];
+    removedImages = removedImages.filter(img => img && img.trim() !== "");
+
+    if (removedImages.length > 0) {
+      console.log("🗑️ Images to remove:", removedImages);
+
+      // Remove from list
+      updates.imageUrl = updates.imageUrl.filter(img => !removedImages.includes(img));
+
+      // Delete from FTP
+      for (const imgUrl of removedImages) {
+        try {
+          await deleteFromFTP(imgUrl); // now correct
+          console.log("🗑️ Deleted from FTP:", imgUrl);
+        } catch (err) {
+          console.error("❌ FTP delete failed:", err.message);
+        }
+      }
+    }
+
     // ✅ STEP 5: Update DB
     console.log("📌 STEP 5: Updating exercise in DB");
     const result = await SessionExerciseService.updateSessionExercise(id, updates, adminId);
