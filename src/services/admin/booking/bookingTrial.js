@@ -41,14 +41,15 @@ exports.createBooking = async (data, options) => {
       console.log("🔍 [DEBUG] Extracted leadId:", leadId);
     }
 
-    if (source !== 'open' && !adminId) {
+    if (source !== "open" && !adminId) {
       throw new Error("Admin ID is required for bookedBy");
     }
 
     let bookedByAdminId = adminId || null;
 
     if (data.parents?.length > 0) {
-      if (DEBUG) console.log("🔍 [DEBUG] Source is 'open'. Processing first parent...");
+      if (DEBUG)
+        console.log("🔍 [DEBUG] Source is 'open'. Processing first parent...");
 
       const firstParent = data.parents[0];
       const email = firstParent.parentEmail?.trim()?.toLowerCase();
@@ -60,7 +61,8 @@ exports.createBooking = async (data, options) => {
       const plainPassword = "Synco123";
       const hashedPassword = await bcrypt.hash(plainPassword, 10);
 
-      if (DEBUG) console.log("🔍 [DEBUG] Generated hashed password for parent account");
+      if (DEBUG)
+        console.log("🔍 [DEBUG] Generated hashed password for parent account");
 
       const [admin, created] = await Admin.findOrCreate({
         where: { email },
@@ -81,11 +83,17 @@ exports.createBooking = async (data, options) => {
       if (DEBUG) {
         console.log("🔍 [DEBUG] Admin account lookup completed.");
         console.log("🔍 [DEBUG] Was new admin created?:", created);
-        console.log("🔍 [DEBUG] Admin record:", admin.toJSON ? admin.toJSON() : admin);
+        console.log(
+          "🔍 [DEBUG] Admin record:",
+          admin.toJSON ? admin.toJSON() : admin
+        );
       }
 
       if (!created) {
-        if (DEBUG) console.log("🔍 [DEBUG] Updating existing admin record with parent details");
+        if (DEBUG)
+          console.log(
+            "🔍 [DEBUG] Updating existing admin record with parent details"
+          );
 
         await admin.update(
           {
@@ -97,9 +105,10 @@ exports.createBooking = async (data, options) => {
         );
       }
 
-      if (source === 'open') {
+      if (source === "open") {
         bookedByAdminId = admin.id;
-        if (DEBUG) console.log("🔍 [DEBUG] bookedByAdminId set to:", bookedByAdminId);
+        if (DEBUG)
+          console.log("🔍 [DEBUG] bookedByAdminId set to:", bookedByAdminId);
       }
     }
 
@@ -117,7 +126,7 @@ exports.createBooking = async (data, options) => {
         attempt: 1,
         classTime: data.classTime,
         status: data.status || "pending",
-        bookedBy: source === 'open' ? bookedByAdminId : adminId,
+        bookedBy: source === "open" ? bookedByAdminId : adminId,
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -371,7 +380,7 @@ exports.getAllBookings = async (filters = {}) => {
           if (typeof venue.paymentPlanId === "string") {
             try {
               paymentPlanIds = JSON.parse(venue.paymentPlanId);
-            } catch { }
+            } catch {}
           } else if (Array.isArray(venue.paymentPlanId)) {
             paymentPlanIds = venue.paymentPlanId;
           }
@@ -398,12 +407,12 @@ exports.getAllBookings = async (filters = {}) => {
           venue: booking.classSchedule?.venue || null, // ✅ include venue per trial
           ...(booking.bookedByAdmin
             ? {
-              [booking.bookedByAdmin.role?.name === "Admin"
-                ? "bookedByAdmin"
-                : booking.bookedByAdmin.role?.name === "Agent"
+                [booking.bookedByAdmin.role?.name === "Admin"
+                  ? "bookedByAdmin"
+                  : booking.bookedByAdmin.role?.name === "Agent"
                   ? "bookedByAgent"
                   : "bookedByOther"]: booking.bookedByAdmin,
-            }
+              }
             : { bookedBy: null }),
         };
       })
@@ -416,341 +425,346 @@ exports.getAllBookings = async (filters = {}) => {
 
       finalBookings = parsedBookings.filter((booking) =>
         booking.students.some((s) => {
-          const fullName = `${s.studentFirstName || ''} ${s.studentLastName || ''}`.toLowerCase();
+          const fullName = `${s.studentFirstName || ""} ${
+            s.studentLastName || ""
+          }`.toLowerCase();
           return fullName.includes(keyword);
         })
       );
     }
-      // Collect all venues used in trials
-      const venueMap = {};
-      finalBookings.forEach((b) => {
-        if (b.venue) venueMap[b.venue.id] = b.venue;
-      });
-      const allVenues = Object.values(venueMap);
-      const bookedByMap = {};
+    // Collect all venues used in trials
+    const venueMap = {};
+    finalBookings.forEach((b) => {
+      if (b.venue) venueMap[b.venue.id] = b.venue;
+    });
+    const allVenues = Object.values(venueMap);
+    const bookedByMap = {};
 
-      finalBookings.forEach((b) => {
-        if (b.venue) venueMap[b.venue.id] = b.venue;
+    finalBookings.forEach((b) => {
+      if (b.venue) venueMap[b.venue.id] = b.venue;
 
-        if (b.bookedByAdmin || b.bookedByAgent || b.bookedByOther) {
-          const bookedBy = b.bookedByAdmin || b.bookedByAgent || b.bookedByOther;
-          if (bookedBy?.id) bookedByMap[bookedBy.id] = bookedBy;
+      if (b.bookedByAdmin || b.bookedByAgent || b.bookedByOther) {
+        const bookedBy = b.bookedByAdmin || b.bookedByAgent || b.bookedByOther;
+        if (bookedBy?.id) bookedByMap[bookedBy.id] = bookedBy;
+      }
+    });
+    const allBookedBy = Object.values(bookedByMap);
+
+    // --- Helper to calculate percentage change ---
+    const getPercentageChange = (current, previous) => {
+      if (previous === 0) return current > 0 ? 100 : 0;
+      return Math.round(((current - previous) / previous) * 100);
+    };
+
+    // --- STATS CALCULATION SECTION ---
+
+    // ✅ Current period stats
+    const totalFreeTrials = finalBookings.length;
+    const attendedCount = finalBookings.filter(
+      (b) => b.status === "attended"
+    ).length;
+    const freeTrialAttendanceRate =
+      totalFreeTrials > 0
+        ? Math.round((attendedCount / totalFreeTrials) * 100)
+        : 0;
+    const trialsToMembers = finalBookings.filter(
+      (b) => b.paymentPlans?.length > 0
+    ).length;
+
+    // ✅ Top Performer (Admin/Agent with most bookings)
+    let topPerformer = null;
+    if (allBookedBy.length > 0) {
+      const countMap = {};
+      finalBookings.forEach((b) => {
+        const bookedBy = b.bookedByAdmin || b.bookedByAgent || b.bookedByOther;
+        if (bookedBy?.id) {
+          countMap[bookedBy.id] = (countMap[bookedBy.id] || 0) + 1;
         }
       });
-      const allBookedBy = Object.values(bookedByMap);
+      const topId = Object.keys(countMap).reduce((a, b) =>
+        countMap[a] > countMap[b] ? a : b
+      );
+      topPerformer = allBookedBy.find((b) => b.id == topId);
+    }
 
-      // --- Helper to calculate percentage change ---
-      const getPercentageChange = (current, previous) => {
-        if (previous === 0) return current > 0 ? 100 : 0;
-        return Math.round(((current - previous) / previous) * 100);
-      };
+    // ✅ Previous period calculation (example: one month before same filters)
+    let previousStats = { totalFreeTrials: 0, attended: 0, trialsToMembers: 0 };
+    if (filters.trialDate) {
+      const currentDate = new Date(filters.trialDate);
+      const prevDate = new Date(currentDate);
+      prevDate.setMonth(prevDate.getMonth() - 1);
 
-      // --- STATS CALCULATION SECTION ---
+      const prevBookings = await Booking.findAll({
+        where: { ...trialWhere, trialDate: prevDate },
+      });
 
-      // ✅ Current period stats
-      const totalFreeTrials = finalBookings.length;
-      const attendedCount = finalBookings.filter(
+      previousStats.totalFreeTrials = prevBookings.length;
+      previousStats.attended = prevBookings.filter(
         (b) => b.status === "attended"
       ).length;
-      const freeTrialAttendanceRate =
-        totalFreeTrials > 0
-          ? Math.round((attendedCount / totalFreeTrials) * 100)
-          : 0;
-      const trialsToMembers = finalBookings.filter(
+      previousStats.trialsToMembers = prevBookings.filter(
         (b) => b.paymentPlans?.length > 0
       ).length;
-
-      // ✅ Top Performer (Admin/Agent with most bookings)
-      let topPerformer = null;
-      if (allBookedBy.length > 0) {
-        const countMap = {};
-        finalBookings.forEach((b) => {
-          const bookedBy = b.bookedByAdmin || b.bookedByAgent || b.bookedByOther;
-          if (bookedBy?.id) {
-            countMap[bookedBy.id] = (countMap[bookedBy.id] || 0) + 1;
-          }
-        });
-        const topId = Object.keys(countMap).reduce((a, b) =>
-          countMap[a] > countMap[b] ? a : b
-        );
-        topPerformer = allBookedBy.find((b) => b.id == topId);
-      }
-
-      // ✅ Previous period calculation (example: one month before same filters)
-      let previousStats = { totalFreeTrials: 0, attended: 0, trialsToMembers: 0 };
-      if (filters.trialDate) {
-        const currentDate = new Date(filters.trialDate);
-        const prevDate = new Date(currentDate);
-        prevDate.setMonth(prevDate.getMonth() - 1);
-
-        const prevBookings = await Booking.findAll({
-          where: { ...trialWhere, trialDate: prevDate },
-        });
-
-        previousStats.totalFreeTrials = prevBookings.length;
-        previousStats.attended = prevBookings.filter(
-          (b) => b.status === "attended"
-        ).length;
-        previousStats.trialsToMembers = prevBookings.filter(
-          (b) => b.paymentPlans?.length > 0
-        ).length;
-      }
-
-      // ✅ Calculate percentage changes
-      const stats = {
-        totalFreeTrials: {
-          value: totalFreeTrials,
-          change: getPercentageChange(
-            totalFreeTrials,
-            previousStats.totalFreeTrials
-          ),
-        },
-        freeTrialAttendanceRate: {
-          value: freeTrialAttendanceRate,
-          change: getPercentageChange(attendedCount, previousStats.attended),
-        },
-        trialsToMembers: {
-          value: trialsToMembers,
-          change: getPercentageChange(
-            trialsToMembers,
-            previousStats.trialsToMembers
-          ),
-        },
-        topPerformer,
-      };
-
-      return {
-        status: true,
-        message: "Fetched free trial bookings successfully.",
-        totalFreeTrials: finalBookings.length,
-        data: {
-          trials: finalBookings,
-          venue: allVenues, // ✅ top-level array of all venues
-          bookedByAdmin: allBookedBy,
-          stats,
-        },
-      };
-    } catch (error) {
-      console.error("❌ getAllBookings Error:", error.message);
-      return { status: false, message: error.message };
     }
-  };
 
-  exports.getBookingById = async (id, bookedBy, adminId) => {
-    if (!bookedBy || isNaN(Number(bookedBy))) {
+    // ✅ Calculate percentage changes
+    const stats = {
+      totalFreeTrials: {
+        value: totalFreeTrials,
+        change: getPercentageChange(
+          totalFreeTrials,
+          previousStats.totalFreeTrials
+        ),
+      },
+      freeTrialAttendanceRate: {
+        value: freeTrialAttendanceRate,
+        change: getPercentageChange(attendedCount, previousStats.attended),
+      },
+      trialsToMembers: {
+        value: trialsToMembers,
+        change: getPercentageChange(
+          trialsToMembers,
+          previousStats.trialsToMembers
+        ),
+      },
+      topPerformer,
+    };
+
+    return {
+      status: true,
+      message: "Fetched free trial bookings successfully.",
+      totalFreeTrials: finalBookings.length,
+      data: {
+        trials: finalBookings,
+        venue: allVenues, // ✅ top-level array of all venues
+        bookedByAdmin: allBookedBy,
+        stats,
+      },
+    };
+  } catch (error) {
+    console.error("❌ getAllBookings Error:", error.message);
+    return { status: false, message: error.message };
+  }
+};
+
+exports.getBookingById = async (id, bookedBy, adminId) => {
+  if (!bookedBy || isNaN(Number(bookedBy))) {
+    return {
+      status: false,
+      message: "No valid super admin found for this request.",
+      data: [],
+    };
+  }
+  try {
+    const booking = await Booking.findOne({
+      where: {
+        bookedBy: Number(bookedBy),
+        id, // spread the filters correctly
+        serviceType: "weekly class trial",
+      },
+      include: [
+        {
+          model: BookingStudentMeta,
+          as: "students",
+          required: false,
+          include: [
+            {
+              model: BookingParentMeta,
+              as: "parents",
+              required: false,
+            },
+            {
+              model: BookingEmergencyMeta,
+              as: "emergencyContacts",
+              required: false,
+            },
+          ],
+        },
+        {
+          model: ClassSchedule,
+          as: "classSchedule",
+          required: false,
+          include: [
+            {
+              model: Venue,
+              as: "venue",
+              required: false,
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!booking) {
       return {
         status: false,
-        message: "No valid super admin found for this request.",
-        data: [],
+        message: "Booking not found or not authorized.",
       };
     }
-    try {
-      const booking = await Booking.findOne({
-        where: {
-          bookedBy: Number(bookedBy),
-          id, // spread the filters correctly
-          serviceType: "weekly class trial",
-        },
-        include: [
-          {
-            model: BookingStudentMeta,
-            as: "students",
-            required: false,
-            include: [
-              {
-                model: BookingParentMeta,
-                as: "parents",
-                required: false,
-              },
-              {
-                model: BookingEmergencyMeta,
-                as: "emergencyContacts",
-                required: false,
-              },
-            ],
-          },
-          {
-            model: ClassSchedule,
-            as: "classSchedule",
-            required: false,
-            include: [
-              {
-                model: Venue,
-                as: "venue",
-                required: false,
-              },
-            ],
-          },
-        ],
-      });
 
-      if (!booking) {
-        return {
-          status: false,
-          message: "Booking not found or not authorized.",
-        };
-      }
+    // Fetch payment plans
+    let paymentPlans = [];
+    const venue = booking?.classSchedule?.venue;
+    if (venue) {
+      let paymentPlanIds = [];
 
-      // Fetch payment plans
-      let paymentPlans = [];
-      const venue = booking?.classSchedule?.venue;
-      if (venue) {
-        let paymentPlanIds = [];
-
-        if (typeof venue.paymentPlanId === "string") {
-          try {
-            paymentPlanIds = JSON.parse(venue.paymentPlanId);
-          } catch {
-            console.warn("⚠️ Failed to parse venue.paymentPlanId");
-          }
-        } else if (Array.isArray(venue.paymentPlanId)) {
-          paymentPlanIds = venue.paymentPlanId;
+      if (typeof venue.paymentPlanId === "string") {
+        try {
+          paymentPlanIds = JSON.parse(venue.paymentPlanId);
+        } catch {
+          console.warn("⚠️ Failed to parse venue.paymentPlanId");
         }
-
-        paymentPlanIds = paymentPlanIds
-          .map((id) => parseInt(id, 10))
-          .filter(Boolean);
-
-        if (paymentPlanIds.length) {
-          paymentPlans = await PaymentPlan.findAll({
-            where: { id: paymentPlanIds },
-          });
-        }
+      } else if (Array.isArray(venue.paymentPlanId)) {
+        paymentPlanIds = venue.paymentPlanId;
       }
 
-      // Final Response — no .toJSON() and no field picking
-      return {
-        status: true,
-        message: "Fetched booking details successfully.",
-        data: {
-          ...booking.dataValues, // includes all booking fields
-          students: booking.students || [],
-          classSchedule: booking.classSchedule || null, // full object
-          paymentPlans,
-        },
-      };
-    } catch (error) {
-      console.error("❌ getBookingById Error:", error.message);
-      return {
-        status: false,
-        message: error.message,
-      };
-    }
-  };
+      paymentPlanIds = paymentPlanIds
+        .map((id) => parseInt(id, 10))
+        .filter(Boolean);
 
-  exports.sendAllEmailToParents = async ({ bookingId }) => {
-    try {
-      // 1️⃣ Fetch booking
-      const booking = await Booking.findByPk(bookingId);
-      if (!booking) {
-        return { status: false, message: "Booking not found" };
-      }
-
-      // 2️⃣ Get all students for this booking
-      const studentMetas = await BookingStudentMeta.findAll({
-        where: { bookingTrialId: bookingId },
-      });
-
-      if (!studentMetas.length) {
-        return { status: false, message: "No students found for this booking" };
-      }
-
-      // 3️⃣ Venue & Class info
-      const venue = await Venue.findByPk(booking.venueId);
-      const classSchedule = await ClassSchedule.findByPk(booking.classScheduleId);
-
-      const venueName = venue?.venueName || venue?.name || "Unknown Venue";
-      const className = classSchedule?.className || "Unknown Class";
-      const classTime =
-        classSchedule?.classTime || classSchedule?.startTime || "TBA";
-      const trialDate = booking.trialDate;
-      const additionalNote = booking.additionalNote || "";
-
-      // 4️⃣ Email template
-      const emailConfigResult = await getEmailConfig("admin", "send email trialist");
-      if (!emailConfigResult.status) {
-        return { status: false, message: "Email config missing" };
-      }
-
-      const { emailConfig, htmlTemplate, subject } = emailConfigResult;
-      let sentTo = [];
-
-      // 5️⃣ Build students block (table or list)
-      let studentsHtml = "<ul>";
-      for (const s of studentMetas) {
-        studentsHtml += `<li>${s.studentFirstName} ${s.studentLastName} (Age: ${s.age}, Gender: ${s.gender})</li>`;
-      }
-      studentsHtml += "</ul>";
-
-      // 6️⃣ Get unique parents across all students
-      const allParents = await BookingParentMeta.findAll({
-        where: { studentId: studentMetas.map((s) => s.id) },
-      });
-
-      const parentsMap = {};
-      for (const parent of allParents) {
-        if (parent?.parentEmail) {
-          parentsMap[parent.parentEmail] = parent;
-        }
-      }
-
-      // 7️⃣ Send one email per parent with all students listed
-      for (const parentEmail in parentsMap) {
-        const parent = parentsMap[parentEmail];
-
-        let noteHtml = "";
-        if (additionalNote && additionalNote.trim() !== "") {
-          noteHtml = `<p><strong>Additional Note:</strong> ${additionalNote}</p>`;
-        }
-
-        let finalHtml = htmlTemplate
-          .replace(/{{parentName}}/g, parent.parentFirstName)
-          .replace(/{{studentsList}}/g, studentsHtml) // 🔑 add this placeholder in template
-          .replace(/{{status}}/g, booking.status)
-          .replace(/{{venueName}}/g, venueName)
-          .replace(/{{className}}/g, className)
-          .replace(/{{classTime}}/g, classTime)
-          .replace(/{{trialDate}}/g, trialDate)
-          .replace(/{{additionalNoteSection}}/g, noteHtml)
-          .replace(/{{appName}}/g, "Synco")
-          .replace(
-            /{{logoUrl}}/g,
-            "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
-          )
-          .replace(
-            /{{kidsPlaying}}/g,
-            "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
-          )
-          .replace(/{{year}}/g, new Date().getFullYear());
-
-        const recipient = [
-          {
-            name: `${parent.parentFirstName} ${parent.parentLastName}`,
-            email: parent.parentEmail,
-          },
-        ];
-
-        const sendResult = await sendEmail(emailConfig, {
-          recipient,
-          subject,
-          htmlBody: finalHtml,
+      if (paymentPlanIds.length) {
+        paymentPlans = await PaymentPlan.findAll({
+          where: { id: paymentPlanIds },
         });
+      }
+    }
 
-        if (sendResult.status) {
-          sentTo.push(parent.parentEmail);
-        }
+    // Final Response — no .toJSON() and no field picking
+    return {
+      status: true,
+      message: "Fetched booking details successfully.",
+      data: {
+        ...booking.dataValues, // includes all booking fields
+        students: booking.students || [],
+        classSchedule: booking.classSchedule || null, // full object
+        paymentPlans,
+      },
+    };
+  } catch (error) {
+    console.error("❌ getBookingById Error:", error.message);
+    return {
+      status: false,
+      message: error.message,
+    };
+  }
+};
+
+exports.sendAllEmailToParents = async ({ bookingId }) => {
+  try {
+    // 1️⃣ Fetch booking
+    const booking = await Booking.findByPk(bookingId);
+    if (!booking) {
+      return { status: false, message: "Booking not found" };
+    }
+
+    // 2️⃣ Get all students for this booking
+    const studentMetas = await BookingStudentMeta.findAll({
+      where: { bookingTrialId: bookingId },
+    });
+
+    if (!studentMetas.length) {
+      return { status: false, message: "No students found for this booking" };
+    }
+
+    // 3️⃣ Venue & Class info
+    const venue = await Venue.findByPk(booking.venueId);
+    const classSchedule = await ClassSchedule.findByPk(booking.classScheduleId);
+
+    const venueName = venue?.venueName || venue?.name || "Unknown Venue";
+    const className = classSchedule?.className || "Unknown Class";
+    const classTime =
+      classSchedule?.classTime || classSchedule?.startTime || "TBA";
+    const trialDate = booking.trialDate;
+    const additionalNote = booking.additionalNote || "";
+
+    // 4️⃣ Email template
+    const emailConfigResult = await getEmailConfig(
+      "admin",
+      "send email trialist"
+    );
+    if (!emailConfigResult.status) {
+      return { status: false, message: "Email config missing" };
+    }
+
+    const { emailConfig, htmlTemplate, subject } = emailConfigResult;
+    let sentTo = [];
+
+    // 5️⃣ Build students block (table or list)
+    let studentsHtml = "<ul>";
+    for (const s of studentMetas) {
+      studentsHtml += `<li>${s.studentFirstName} ${s.studentLastName} (Age: ${s.age}, Gender: ${s.gender})</li>`;
+    }
+    studentsHtml += "</ul>";
+
+    // 6️⃣ Get unique parents across all students
+    const allParents = await BookingParentMeta.findAll({
+      where: { studentId: studentMetas.map((s) => s.id) },
+    });
+
+    const parentsMap = {};
+    for (const parent of allParents) {
+      if (parent?.parentEmail) {
+        parentsMap[parent.parentEmail] = parent;
+      }
+    }
+
+    // 7️⃣ Send one email per parent with all students listed
+    for (const parentEmail in parentsMap) {
+      const parent = parentsMap[parentEmail];
+
+      let noteHtml = "";
+      if (additionalNote && additionalNote.trim() !== "") {
+        noteHtml = `<p><strong>Additional Note:</strong> ${additionalNote}</p>`;
       }
 
-      return {
-        status: true,
-        message: `Emails sent to ${sentTo.length} parents`,
-        sentTo,
-      };
-    } catch (error) {
-      console.error("❌ sendEmailToParents Error:", error);
-      return { status: false, message: error.message };
+      let finalHtml = htmlTemplate
+        .replace(/{{parentName}}/g, parent.parentFirstName)
+        .replace(/{{studentsList}}/g, studentsHtml) // 🔑 add this placeholder in template
+        .replace(/{{status}}/g, booking.status)
+        .replace(/{{venueName}}/g, venueName)
+        .replace(/{{className}}/g, className)
+        .replace(/{{classTime}}/g, classTime)
+        .replace(/{{trialDate}}/g, trialDate)
+        .replace(/{{additionalNoteSection}}/g, noteHtml)
+        .replace(/{{appName}}/g, "Synco")
+        .replace(
+          /{{logoUrl}}/g,
+          "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
+        )
+        .replace(
+          /{{kidsPlaying}}/g,
+          "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
+        )
+        .replace(/{{year}}/g, new Date().getFullYear());
+
+      const recipient = [
+        {
+          name: `${parent.parentFirstName} ${parent.parentLastName}`,
+          email: parent.parentEmail,
+        },
+      ];
+
+      const sendResult = await sendEmail(emailConfig, {
+        recipient,
+        subject,
+        htmlBody: finalHtml,
+      });
+
+      if (sendResult.status) {
+        sentTo.push(parent.parentEmail);
+      }
     }
-  };
+
+    return {
+      status: true,
+      message: `Emails sent to ${sentTo.length} parents`,
+      sentTo,
+    };
+  } catch (error) {
+    console.error("❌ sendEmailToParents Error:", error);
+    return { status: false, message: error.message };
+  }
+};
 
 // exports.getAllBookings = async (adminId, filters = {}) => {
 //   try {
