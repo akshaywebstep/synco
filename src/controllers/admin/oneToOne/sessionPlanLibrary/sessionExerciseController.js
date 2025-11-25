@@ -1,7 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { uploadToFTP } = require("../../../../utils/uploadToFTP");
+const { uploadToFTP,deleteFromFTP } = require("../../../../utils/uploadToFTP");
 
 const { validateFormData } = require("../../../../utils/validateFormData");
 const { saveFile } = require("../../../../utils/fileHandler");
@@ -392,24 +392,61 @@ exports.updateSessionExercise = async (req, res) => {
         }
       }
     }
+    // ------------------------------------------------------
+    // ✅ STEP 4b: Remove selected images
+    // ------------------------------------------------------
+    let removedImages = updates.removedImages || [];
 
-    // ------------------------------------------------------
-    // ✅ STEP 4: Decide which images to keep
-    // ------------------------------------------------------
-    if (uploadedUrls.length > 0) {
-      // 🔥 Append new images — DO NOT REMOVE existing
-      updates.imageUrl = [...existingImages, ...uploadedUrls];
-      console.log("🖼️ Adding new uploaded images to existing:", updates.imageUrl);
-    } else if (updates.imageUrl === null) {
-      // 🔥 Only clear all images if user explicitly sends: imageUrl = null
-      updates.imageUrl = [];
-      console.log("🗑️ Clearing all images");
-    } else {
-      // 🔥 No new upload → keep old images
-      updates.imageUrl = existingImages;
-      console.log("🔄 Keeping existing images:", updates.imageUrl);
+    // Parse JSON string if necessary
+    if (typeof removedImages === "string") {
+      try {
+        removedImages = JSON.parse(removedImages);
+      } catch (err) {
+        console.error("❌ Invalid JSON in removedImages:", updates.removedImages);
+        removedImages = [];
+      }
     }
 
+    // Must be an array
+    if (!Array.isArray(removedImages)) removedImages = [];
+
+    // Clean empty values
+    removedImages = removedImages.filter(img => img && img.trim() !== "");
+
+    let finalImages = [...existingImages]; // start with existing
+
+    if (removedImages.length > 0) {
+      console.log("🗑️ Images to remove:", removedImages);
+
+      // Remove matched images
+      finalImages = finalImages.filter(img => !removedImages.includes(img));
+
+      // Delete from FTP
+      for (const imgUrl of removedImages) {
+        try {
+          await deleteFromFTP(imgUrl);
+          console.log("🗑️ Deleted from FTP:", imgUrl);
+        } catch (err) {
+          console.error("❌ FTP delete failed:", err.message);
+        }
+      }
+    }
+
+    // ------------------------------------------------------
+    // ✅ STEP 4c: Add newly uploaded images
+    // ------------------------------------------------------
+    if (uploadedUrls.length > 0) {
+      console.log("🖼️ Adding new uploaded images:", uploadedUrls);
+      finalImages = [...finalImages, ...uploadedUrls];
+    }
+
+    // Final update set
+    updates.imageUrl = finalImages;
+
+    // Remove removedImages from payload (NOT needed in DB)
+    delete updates.removedImages;
+
+    console.log("📷 Final image list:", updates.imageUrl);
     updates.updatedBy = adminId;
 
     // ------------------------------------------------------

@@ -542,7 +542,25 @@ exports.updateSessionExercise = async (req, res) => {
     }
 
     // STEP 4b: Remove selected images
+    // STEP 4b - Delete only the images listed in removedImages
     let removedImages = updates.removedImages || [];
+
+    // If removedImages is a JSON string → parse it
+    if (typeof removedImages === "string") {
+      try {
+        removedImages = JSON.parse(removedImages);
+      } catch (err) {
+        console.error("❌ Invalid JSON in removedImages:", updates.removedImages);
+        removedImages = [];
+      }
+    }
+
+    // Ensure it's an array
+    if (!Array.isArray(removedImages)) {
+      removedImages = [];
+    }
+
+    // Remove empty values
     removedImages = removedImages.filter(img => img && img.trim() !== "");
 
     if (removedImages.length > 0) {

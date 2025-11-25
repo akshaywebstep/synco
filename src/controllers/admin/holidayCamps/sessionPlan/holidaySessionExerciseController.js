@@ -1,7 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { uploadToFTP } = require("../../../../utils/uploadToFTP");
+const { uploadToFTP, deleteFromFTP } = require("../../../../utils/uploadToFTP");
 
 const { validateFormData } = require("../../../../utils/validateFormData");
 const { saveFile } = require("../../../../utils/fileHandler");
@@ -528,17 +528,23 @@ exports.updateHolidaySessionExercise = async (req, res) => {
       ? existing.data.imageUrl
       : JSON.parse(existing.data.imageUrl || "[]");
 
-    if (uploadedUrls.length) {
-      // Append new uploads to existing images instead of replacing
-      updates.imageUrl = [...existingImages, ...uploadedUrls];
-      console.log("🖼️ Adding new uploaded images to existing:", updates.imageUrl);
-    } else if (updates.imageUrl === null) {
-      updates.imageUrl = [];
-      console.log("🗑️ Clearing all images");
+    // ➕ Remove only the images that user wants deleted
+    if (Array.isArray(updates.removedImages) && updates.removedImages.length > 0) {
+      console.log("🗑️ Removing images:", updates.removedImages);
+
+      updates.imageUrl = existingImages.filter(
+        (img) => !updates.removedImages.includes(img)
+      );
+
+      console.log("📌 Images after removal:", updates.imageUrl);
     } else {
-      // Keep existing images if no new upload
       updates.imageUrl = existingImages;
-      console.log("🔄 Keeping existing images:", updates.imageUrl);
+    }
+
+    // ➕ Add newly uploaded images
+    if (uploadedUrls.length > 0) {
+      updates.imageUrl = [...updates.imageUrl, ...uploadedUrls];
+      console.log("🖼️ Added new uploaded images:", updates.imageUrl);
     }
 
     // ✅ STEP 5: Update DB

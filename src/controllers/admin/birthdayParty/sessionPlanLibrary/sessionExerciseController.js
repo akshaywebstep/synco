@@ -1,7 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { uploadToFTP } = require("../../../../utils/uploadToFTP");
+const { uploadToFTP,deleteFromFTP } = require("../../../../utils/uploadToFTP");
 
 const { validateFormData } = require("../../../../utils/validateFormData");
 const { saveFile } = require("../../../../utils/fileHandler");
@@ -386,19 +386,53 @@ exports.updateSessionExercise = async (req, res) => {
       }
     }
 
-    // ✅ STEP 4: Decide which images to keep
-    if (uploadedUrls.length) {
-      updates.imageUrl = uploadedUrls;
-      console.log("🖼️ Replacing images with new uploads:", uploadedUrls);
-    } else if (updates.imageUrl === null) {
-      updates.imageUrl = [];
-      console.log("🗑️ Clearing all images");
-    } else {
-      updates.imageUrl = Array.isArray(existing.data.imageUrl)
-        ? existing.data.imageUrl
-        : JSON.parse(existing.data.imageUrl || "[]");
-      console.log("🔄 Keeping existing images:", updates.imageUrl);
+     // ------------------------------------------------------
+    // STEP 4: removedImages logic (your request)
+    // ------------------------------------------------------
+
+    let removedImages = updates.removedImages || [];
+
+    if (typeof removedImages === "string") {
+      try {
+        removedImages = JSON.parse(removedImages);
+      } catch (err) {
+        console.error("❌ Invalid JSON in removedImages:", updates.removedImages);
+        removedImages = [];
+      }
     }
+
+    if (!Array.isArray(removedImages)) removedImages = [];
+    removedImages = removedImages.filter(img => img && img.trim() !== "");
+
+    let finalImages = [...existingImages];
+
+    if (removedImages.length > 0) {
+      console.log("🗑️ Images to remove:", removedImages);
+
+      // remove from array
+      finalImages = finalImages.filter(img => !removedImages.includes(img));
+
+      // delete from FTP
+      for (const imgUrl of removedImages) {
+        try {
+          await deleteFromFTP(imgUrl);
+          console.log("🗑️ Deleted from FTP:", imgUrl);
+        } catch (err) {
+          console.error("❌ FTP delete failed:", err.message);
+        }
+      }
+    }
+
+    // Add newly uploaded files
+    if (uploadedUrls.length > 0) {
+      console.log("🖼️ Adding new uploaded images:", uploadedUrls);
+      finalImages = [...finalImages, ...uploadedUrls];
+    }
+
+    updates.imageUrl = finalImages;
+    delete updates.removedImages;
+
+    console.log("📷 Final image list:", finalImages);
 
     updates.updatedBy = adminId;
 
