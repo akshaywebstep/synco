@@ -110,10 +110,23 @@ exports.sendRebookingEmailToParents = async ({ bookingId }) => {
     if (!studentMetas.length)
       return { status: false, message: "No students found for this booking" };
 
-    const venue = await Venue.findByPk(booking.venueId);
+    // load classSchedule (keep original fetch)
     const classSchedule = await ClassSchedule.findByPk(booking.classScheduleId);
 
-    const venueName = venue?.venueName || "Unknown Venue";
+    // --- REPLACED VENUE LOOKUP: TRY booking.venueId THEN classSchedule.venueId ---
+    let venue = null;
+
+    if (booking.venueId) {
+      venue = await Venue.findByPk(booking.venueId);
+    }
+
+    if (!venue && classSchedule?.venueId) {
+      venue = await Venue.findByPk(classSchedule.venueId);
+    }
+
+    const venueName = venue?.venueName || venue?.name || "Unknown Venue";
+    // -------------------------------------------------------------------------
+
     const className = classSchedule?.className || "Unknown Class";
     const classTime =
       classSchedule?.classTime || classSchedule?.startTime || "TBA";
@@ -122,7 +135,7 @@ exports.sendRebookingEmailToParents = async ({ bookingId }) => {
 
     const emailConfigResult = await getEmailConfig(
       "admin",
-      "free-trial update confirmation"
+      "free-trial-rebooking"
     );
     if (!emailConfigResult.status)
       return { status: false, message: "Email config missing" };
