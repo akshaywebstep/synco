@@ -474,6 +474,7 @@ exports.sendCancelBookingEmailToParents = async ({ bookingIds }) => {
         const startTime = booking.classSchedule?.startTime || "TBA";
         const endTime = booking.classSchedule?.endTime || "TBA";
         const startDate = booking.startDate || "TBA";
+        const bookingType = booking.bookingType || "General Booking";
 
         const cancelReason = cancelBooking.cancelReason || "Not specified";
         const additionalNote = cancelBooking.additionalNote || "";
@@ -509,6 +510,7 @@ exports.sendCancelBookingEmailToParents = async ({ bookingIds }) => {
               .replace(/{{endTime}}/g, endTime)
               .replace(/{{startDate}}/g, startDate)
               .replace(/{{cancelReason}}/g, cancelReason)
+               .replace(/{{bookingType}}/g, bookingType)
               .replace(/{{additionalNote}}/g, noteHtml)
               .replace(/{{appName}}/g, "Synco")
               .replace(/{{year}}/g, new Date().getFullYear());
