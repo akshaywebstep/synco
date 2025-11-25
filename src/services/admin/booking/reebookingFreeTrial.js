@@ -164,7 +164,8 @@ exports.sendRebookingEmailToParents = async ({ bookingId }) => {
           .replace(/{{className}}/g, className)
           .replace(/{{classTime}}/g, classTime)
           .replace(/{{trialDate}}/g, trialDate)
-          .replace(/{{status}}/g, status)
+          // .replace(/{{status}}/g, status)
+          .replace(/{{status}}/g, booking.status || "N/A")
           .replace(/{{additionalNoteSection}}/g, noteHtml)
           .replace(/{{appName}}/g, "Synco")
           .replace(/{{year}}/g, new Date().getFullYear());
