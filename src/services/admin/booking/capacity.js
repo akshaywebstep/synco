@@ -578,7 +578,7 @@ exports.getAllBookings = async (adminId, filters = {}) => {
 
       venue.classes = venue.classes.map((cls) => {
         const activeBookings = cls.bookings.filter(
-          (booking) => ["active", "attended", "froze", "request_to_cancel"].includes(booking.status)
+          (booking) => ["active", "pending", "attended", "froze", "request_to_cancel"].includes(booking.status)
         );
 
         const clsTotalBooked = activeBookings.reduce(
@@ -597,13 +597,11 @@ exports.getAllBookings = async (adminId, filters = {}) => {
         const clsStats = {
           totalCapacity: cls.totalCapacity || cls.capacity || 0,
           totalBooked: clsTotalBooked,
-          // availableSpaces: (cls.capacity || 0) - clsTotalBooked,
-          availableSpaces: Math.max(0, (cls.capacity || 0) - clsTotalBooked),
-
+          availableSpaces: Math.max(0, (cls.totalCapacity || cls.capacity || 0) - clsTotalBooked),
           members: clsMembers,
           freeTrials: clsFreeTrials,
-          occupancyRate: cls.capacity
-            ? Math.round((clsTotalBooked / cls.capacity) * 100)
+          occupancyRate: (cls.totalCapacity || cls.capacity)
+            ? Math.round((clsTotalBooked / (cls.totalCapacity || cls.capacity)) * 100)
             : 0,
         };
 
@@ -674,16 +672,16 @@ exports.getAllBookings = async (adminId, filters = {}) => {
       (sum, venue) =>
         sum +
         venue.classes.reduce(
-          (clsSum, cls) => clsSum + (cls.capacity || 0),
+          (clsSum, cls) => clsSum + (cls.stats?.availableSpaces || 0),
           0
         ),
       0
     );
-
+    
     globalStats.occupancyRate = globalStats.totalCapacity
       ? Math.round((globalStats.totalBooked / globalStats.totalCapacity) * 100)
       : 0;
-
+      
     return {
       status: true,
       message: "Fetched venues with stats",
