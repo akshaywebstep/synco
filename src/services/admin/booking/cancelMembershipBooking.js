@@ -185,7 +185,6 @@ exports.createCancelBooking = async ({
   }
 };
 
-
 exports.sendCancelBookingEmailToParents = async ({ bookingId }) => {
   try {
     // 1️⃣ Get booking

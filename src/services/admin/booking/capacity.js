@@ -578,7 +578,7 @@ exports.getAllBookings = async (adminId, filters = {}) => {
 
       venue.classes = venue.classes.map((cls) => {
         const activeBookings = cls.bookings.filter(
-          (booking) => booking.status !== "cancelled"
+          (booking) => ["active", "attended", "froze", "request_to_cancel"].includes(booking.status)
         );
 
         const clsTotalBooked = activeBookings.reduce(
@@ -597,7 +597,9 @@ exports.getAllBookings = async (adminId, filters = {}) => {
         const clsStats = {
           totalCapacity: cls.totalCapacity || cls.capacity || 0,
           totalBooked: clsTotalBooked,
-          availableSpaces: (cls.capacity || 0) - clsTotalBooked,
+          // availableSpaces: (cls.capacity || 0) - clsTotalBooked,
+          availableSpaces: Math.max(0, (cls.capacity || 0) - clsTotalBooked),
+
           members: clsMembers,
           freeTrials: clsFreeTrials,
           occupancyRate: cls.capacity
