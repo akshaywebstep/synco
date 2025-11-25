@@ -115,12 +115,19 @@ exports.getFullCancelBooking = async ({
 
     if (fromDate && toDate) {
       whereClause.createdAt = {
-        [Op.between]: [new Date(fromDate), new Date(toDate)],
+        [Op.between]: [
+          new Date(fromDate + "T00:00:00"),
+          new Date(toDate + "T23:59:59")
+        ]
       };
     } else if (fromDate) {
-      whereClause.createdAt = { [Op.gte]: new Date(fromDate) };
+      whereClause.createdAt = {
+        [Op.gte]: new Date(fromDate + "T00:00:00")
+      };
     } else if (toDate) {
-      whereClause.createdAt = { [Op.lte]: new Date(toDate) };
+      whereClause.createdAt = {
+        [Op.lte]: new Date(toDate + "T23:59:59")
+      };
     }
 
     let cancellationIds = [];
@@ -186,10 +193,10 @@ exports.getFullCancelBooking = async ({
         {
           model: Booking,
           as: "booking",
-           where: status ? { status } : { status: "cancelled" },
-            // status: "cancelled",
-            bookingType: "paid",
-          
+          where: status ? { status } : { status: "cancelled" },
+          // status: "cancelled",
+          bookingType: "paid",
+
           attributes: [
             "id",
             "venueId",
