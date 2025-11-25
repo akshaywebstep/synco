@@ -1,7 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { uploadToFTP,deleteFromFTP } = require("../../../../utils/uploadToFTP");
+const { uploadToFTP, deleteFromFTP } = require("../../../../utils/uploadToFTP");
 
 const { validateFormData } = require("../../../../utils/validateFormData");
 const { saveFile } = require("../../../../utils/fileHandler");
@@ -386,7 +386,16 @@ exports.updateSessionExercise = async (req, res) => {
       }
     }
 
-     // ------------------------------------------------------
+    // ------------------------------------------------------
+    // STEP 4: removedImages logic (your request)
+    // ------------------------------------------------------
+
+    // Get existing images first
+    const existingImages = Array.isArray(existing.data.imageUrl)
+      ? existing.data.imageUrl
+      : JSON.parse(existing.data.imageUrl || "[]");
+
+    // ------------------------------------------------------
     // STEP 4: removedImages logic (your request)
     // ------------------------------------------------------
 
