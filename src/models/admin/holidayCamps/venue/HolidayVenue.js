@@ -62,7 +62,7 @@ const HolidayVenue = sequelize.define(
         },
 
         // ✅ plain text only (no FK)
-        termGroupId: {
+        holidayCampId: {
             type: DataTypes.TEXT("long"),
             allowNull: true,
             comment: "Selected term group for paid bookings (stored as text instead of FK)",

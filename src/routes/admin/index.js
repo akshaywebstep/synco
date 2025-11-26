@@ -147,7 +147,7 @@ router.use("/holiday/payment-plan", require("./holidayCampsRoutes/holidayPayment
 // Term Base Route
 router.use("/holiday/payment-group", require("./holidayCampsRoutes/holidayPaymentGroupRoutes"));
 
-// router.use("/holiday/venue", require("./holidayCampsRoutes/holidayVenueRoutes"));
+router.use("/holiday/venue", require("./holidayCampsRoutes/holidayVenueRoutes"));
 
 // router.use("/holiday/class-schedule", require("./holidayCampsRoutes/holidayClassScheduleRoutes"));
 

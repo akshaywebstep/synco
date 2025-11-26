@@ -83,7 +83,7 @@ function removeNullFields(obj) {
     );
 }
 
-// ✅ GET ALL TERMS (by admin)
+// ✅ GET ALL Camp (by admin)
 exports.getAllHolidayCampDates = async (adminId) => {
     try {
         if (!adminId || isNaN(Number(adminId))) {
@@ -199,16 +199,22 @@ exports.getAllHolidayCampDates = async (adminId) => {
         });
 
         // 🔥 Build final enriched camp data
-        const enrichedTerms = parsedCamps.map(
-            ({ _parsedSessions, ...rest }) => ({
-                ...rest,
-                sessionsMap: _parsedSessions.map((s) => ({
-                    sessionDate: s.sessionDate,
-                    sessionPlanId: s.sessionPlanId,
-                    sessionPlan: sessionPlanMap[s.sessionPlanId] || null,
-                })),
-            })
-        );
+        const enrichedTerms = parsedCamps.map((item) => ({
+            id: item.id,
+            holidayCampId: item.holidayCampId,
+            startDate: item.startDate,
+            endDate: item.endDate,
+            totalDays: item.totalDays,
+            createdAt: item.createdAt,
+            updatedAt: item.updatedAt,
+            holidayCamp: item.holidayCamp,
+
+            sessionsMap: item._parsedSessions.map((s) => ({
+                sessionDate: s.sessionDate,
+                sessionPlanId: s.sessionPlanId,
+                sessionPlan: sessionPlanMap[s.sessionPlanId] || null,
+            })),
+        }));
 
         return { status: true, data: enrichedTerms };
     } catch (error) {
