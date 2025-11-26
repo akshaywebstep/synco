@@ -131,16 +131,21 @@ router.get(
   listComments
 );
 
-// Holiday camps // Session Plan Group Base Route
+// Holiday camps 
+// Session Plan Group Base Route
 router.use("/holiday/session-plan-group", require("./holidayCampsRoutes/holidaySessionPlanGroupRoutes"));
 // Session Plan Exercise Base Route
 router.use("/holiday/session-plan-exercise", require("./holidayCampsRoutes/holidaySessionExerciseRoutes"));
 
-// Holiday camps // 
 // Term Group Base Route
 router.use("/holiday/term-group", require("./holidayCampsRoutes/holidayTermGroupRoutes"));
 // Term Base Route
 router.use("/holiday/term", require("./holidayCampsRoutes/holidayTermRoutes"));
+
+// Term Group Base Route
+router.use("/holiday/payment-plan", require("./holidayCampsRoutes/holidayPaymentPlanRoutes"));
+// Term Base Route
+router.use("/holiday/payment-group", require("./holidayCampsRoutes/holidayPaymentGroupRoutes"));
 
 // Base: /api/admin/admin
 router.post(

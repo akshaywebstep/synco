@@ -21,10 +21,10 @@ const HolidayPaymentPlan = sequelize.define(
       allowNull: false,
     },
 
-    priceLesson: {
-      type: DataTypes.FLOAT,
-      allowNull: false,
-    },
+    // priceLesson: {
+    //   type: DataTypes.FLOAT,
+    //   allowNull: false,
+    // },
 
     interval: {
       type: DataTypes.STRING,
