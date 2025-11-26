@@ -253,13 +253,13 @@ exports.getAllBookings = async (filters = {}) => {
     if (filters.trialDate) trialWhere.trialDate = filters.trialDate;
     if (filters.status) trialWhere.status = filters.status;
     if (filters.bookedBy) {
-      // Ensure bookedBy is always an array
       const bookedByArray = Array.isArray(filters.bookedBy)
         ? filters.bookedBy
         : [filters.bookedBy];
 
       trialWhere.bookedBy = { [Op.in]: bookedByArray };
     }
+
     if (filters.dateBooked) {
       const start = new Date(filters.dateBooked + " 00:00:00");
       const end = new Date(filters.dateBooked + " 23:59:59");
@@ -380,7 +380,7 @@ exports.getAllBookings = async (filters = {}) => {
           if (typeof venue.paymentPlanId === "string") {
             try {
               paymentPlanIds = JSON.parse(venue.paymentPlanId);
-            } catch {}
+            } catch { }
           } else if (Array.isArray(venue.paymentPlanId)) {
             paymentPlanIds = venue.paymentPlanId;
           }
@@ -407,12 +407,12 @@ exports.getAllBookings = async (filters = {}) => {
           venue: booking.classSchedule?.venue || null, // ✅ include venue per trial
           ...(booking.bookedByAdmin
             ? {
-                [booking.bookedByAdmin.role?.name === "Admin"
-                  ? "bookedByAdmin"
-                  : booking.bookedByAdmin.role?.name === "Agent"
+              [booking.bookedByAdmin.role?.name === "Admin"
+                ? "bookedByAdmin"
+                : booking.bookedByAdmin.role?.name === "Agent"
                   ? "bookedByAgent"
                   : "bookedByOther"]: booking.bookedByAdmin,
-              }
+            }
             : { bookedBy: null }),
         };
       })
@@ -425,9 +425,8 @@ exports.getAllBookings = async (filters = {}) => {
 
       finalBookings = parsedBookings.filter((booking) =>
         booking.students.some((s) => {
-          const fullName = `${s.studentFirstName || ""} ${
-            s.studentLastName || ""
-          }`.toLowerCase();
+          const fullName = `${s.studentFirstName || ""} ${s.studentLastName || ""
+            }`.toLowerCase();
           return fullName.includes(keyword);
         })
       );

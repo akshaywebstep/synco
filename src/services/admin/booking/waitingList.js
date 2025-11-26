@@ -13,6 +13,7 @@ const {
   Admin,
   CancelBooking,
   BookingPayment,
+  AppConfig,
 } = require("../../../models");
 const { sequelize } = require("../../../models");
 

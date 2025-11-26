@@ -341,13 +341,13 @@ exports.createBooking = async (req, res) => {
 
           const studentsHtml = students.length
             ? students
-                .map(
-                  (s) =>
-                    `<p style="margin:0; font-size:13px; color:#5F5F6D;">
+              .map(
+                (s) =>
+                  `<p style="margin:0; font-size:13px; color:#5F5F6D;">
              ${s.studentFirstName} ${s.studentLastName}
            </p>`
-                )
-                .join("")
+              )
+              .join("")
             : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
 
           let finalHtml = htmlTemplate
@@ -457,13 +457,27 @@ exports.getAllBookFreeTrials = async (req, res) => {
 
   try {
     // ✅ Apply bookedBy filter
-    // If user provides bookedBy in query → ALWAYS respect it
     if (req.query.bookedBy) {
-      filters.bookedBy = req.query.bookedBy.split(",").map(Number);
+      let bookedByParam = req.query.bookedBy;
+
+      // If multiple query params → array
+      if (Array.isArray(bookedByParam)) {
+        filters.bookedBy = bookedByParam.map(Number);
+
+        // If single param → string
+      } else {
+        filters.bookedBy = bookedByParam.split(",").map(Number);
+      }
+
     } else if (req.admin?.role?.toLowerCase() === "super admin") {
-      filters.bookedBy = (mainSuperAdminResult?.admins || []).map((a) => a.id);
+
+      filters.bookedBy = (mainSuperAdminResult?.admins || [])
+        .map((a) => a.id);
+
     } else {
+
       filters.bookedBy = [req.admin.id];
+
     }
 
     const result = await BookingTrialService.getAllBookings(filters);

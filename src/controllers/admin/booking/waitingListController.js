@@ -344,13 +344,27 @@ exports.getAllWaitingListBookings = async (req, res) => {
     };
 
     // ✅ Apply bookedBy filter
-    // If user provides bookedBy in query → ALWAYS respect it
-    if (req.query.bookedBy) {
-      filters.bookedBy = req.query.bookedBy.split(",").map(Number);
+   if (req.query.bookedBy) {
+      let bookedByParam = req.query.bookedBy;
+
+      // If multiple query params → array
+      if (Array.isArray(bookedByParam)) {
+        filters.bookedBy = bookedByParam.map(Number);
+
+        // If single param → string
+      } else {
+        filters.bookedBy = bookedByParam.split(",").map(Number);
+      }
+
     } else if (req.admin?.role?.toLowerCase() === "super admin") {
-      filters.bookedBy = (mainSuperAdminResult?.admins || []).map((a) => a.id);
+
+      filters.bookedBy = (mainSuperAdminResult?.admins || [])
+        .map((a) => a.id);
+
     } else {
+
       filters.bookedBy = [req.admin.id];
+
     }
 
     const result = await BookingTrialService.getWaitingList(filters);

@@ -107,7 +107,7 @@ exports.createBooking = async (req, res) => {
       ) {
         try {
           incomingGatewayResponse = JSON.parse(incomingGatewayResponse);
-        } catch (_) {}
+        } catch (_) { }
       }
 
       formData.paymentResponse = incomingGatewayResponse || null;
@@ -240,11 +240,11 @@ exports.createBooking = async (req, res) => {
           // Build HTML list of ALL students
           const studentsHtml = allStudents.length
             ? allStudents
-                .map(
-                  (s) =>
-                    `<p style="margin:0; font-size:13px; color:#5F5F6D;">${s.studentFirstName} ${s.studentLastName}</p>`
-                )
-                .join("")
+              .map(
+                (s) =>
+                  `<p style="margin:0; font-size:13px; color:#5F5F6D;">${s.studentFirstName} ${s.studentLastName}</p>`
+              )
+              .join("")
             : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
 
           console.log("Generated studentsHtml length:", studentsHtml.length);
@@ -359,12 +359,28 @@ exports.getAllPaidBookings = async (req, res) => {
 
     // ✅ Apply bookedBy filter
     // If user provides bookedBy in query → ALWAYS respect it
+    // ✅ Apply bookedBy filter
     if (req.query.bookedBy) {
-      filters.bookedBy = req.query.bookedBy.split(",").map(Number);
+      let bookedByParam = req.query.bookedBy;
+
+      // If multiple query params → array
+      if (Array.isArray(bookedByParam)) {
+        filters.bookedBy = bookedByParam.map(Number);
+
+        // If single param → string
+      } else {
+        filters.bookedBy = bookedByParam.split(",").map(Number);
+      }
+
     } else if (req.admin?.role?.toLowerCase() === "super admin") {
-      filters.bookedBy = (mainSuperAdminResult?.admins || []).map((a) => a.id);
+
+      filters.bookedBy = (mainSuperAdminResult?.admins || [])
+        .map((a) => a.id);
+
     } else {
+
       filters.bookedBy = [req.admin.id];
+
     }
 
     const result = await BookingMembershipService.getAllBookingsWithStats(
@@ -480,14 +496,27 @@ exports.getAllPaidActiveBookings = async (req, res) => {
     };
     console.log("🔹 Filters prepared:", filters);
 
-    // ✅ Apply bookedBy filter
-    // If user provides bookedBy in query → ALWAYS respect it
     if (req.query.bookedBy) {
-      filters.bookedBy = req.query.bookedBy.split(",").map(Number);
+      let bookedByParam = req.query.bookedBy;
+
+      // If multiple query params → array
+      if (Array.isArray(bookedByParam)) {
+        filters.bookedBy = bookedByParam.map(Number);
+
+        // If single param → string
+      } else {
+        filters.bookedBy = bookedByParam.split(",").map(Number);
+      }
+
     } else if (req.admin?.role?.toLowerCase() === "super admin") {
-      filters.bookedBy = (mainSuperAdminResult?.admins || []).map((a) => a.id);
+
+      filters.bookedBy = (mainSuperAdminResult?.admins || [])
+        .map((a) => a.id);
+
     } else {
+
       filters.bookedBy = [req.admin.id];
+
     }
 
     // Step 2: Call service
