@@ -406,8 +406,8 @@ exports.getTermsByTermGroupId = async (termGroupIds) => {
             where: { termGroupId: { [Op.in]: termGroupIds } },
             include: [
                 {
-                    model: TermGroup,
-                    as: "HolidayTermGroup",
+                    model: HolidayTermGroup,
+                    as: "holidayTermGroup",
                     attributes: ["id", "name", "createdAt", "createdBy"],
                 },
             ],
@@ -545,20 +545,6 @@ exports.getTermsByTermGroupId = async (termGroupIds) => {
     }
 };
 
-// ✅ UPDATE
-// exports.updateTerm = async (id, data, adminId) => {
-//   try {
-//     const term = await Term.findOne({ where: { id, createdBy: adminId } });
-//     if (!term)
-//       return { status: false, message: "Term not found or unauthorized." };
-
-//     const cleanedData = removeNullFields(data);
-//     await term.update(cleanedData);
-//     return { status: true, data: term.get({ plain: true }) };
-//   } catch (error) {
-//     return { status: false, message: error.message };
-//   }
-// };
 exports.updateHolidayTerm = async (id, data, adminId) => {
     try {
         const term = await HolidayTerm.findOne({ where: { id, createdBy: adminId } });
@@ -649,12 +635,6 @@ exports.deleteHolidayTerm = async (id, deletedBy) => {
         if (!term) {
             return { status: false, message: "Term not found or unauthorized." };
         }
-
-        // // ✅ Unlink this term from its TermGroup (if any)
-        // await Term.update(
-        //   { termGroupId: null },
-        //   { where: { id } }
-        // );
 
         // ✅ Record who deleted it
         await term.update({ deletedBy });
