@@ -1,8 +1,8 @@
 const { DataTypes } = require("sequelize");
 const { sequelize } = require("../../../../config/db");
 
-const HolidayTermGroup = sequelize.define(
-  "HolidayTermGroup",
+const HolidayCamp = sequelize.define(
+  "HolidayCamp",
   {
     id: {
       type: DataTypes.BIGINT.UNSIGNED,
@@ -46,10 +46,10 @@ const HolidayTermGroup = sequelize.define(
     },
   },
   {
-    tableName: "holiday_term_groups", // 🔥 NEW TABLE NAME
+    tableName: "holiday_camp", // 🔥 NEW TABLE NAME
     timestamps: true,
     paranoid: true, // soft delete enabled
   }
 );
 
-module.exports = HolidayTermGroup;
+module.exports = HolidayCamp;

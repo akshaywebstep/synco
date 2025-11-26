@@ -103,14 +103,14 @@ const models = {
   HolidaySessionPlanGroup: require("./admin/holidayCamps/sessionPlan/HolidaySessionPlanGroup"),
 
   //Terms and Dates
-  HolidayTermGroup: require("./admin/holidayCamps/termAndDates/HolidayTermGroup"),
-  HolidayTerm: require("./admin/holidayCamps/termAndDates/HolidayTerm"),
+  HolidayCamp: require("./admin/holidayCamps/campsAndDates/HolidayCamp"),
+  HolidayCampDates: require("./admin/holidayCamps/campsAndDates/HolidayCampDates"),
 
-  HolidayVenue: require("./admin/holidayCamps/venue/HolidayVenue"),
-  HolidayClassSchedule: require("./admin/holidayCamps/classSchedule/HolidayClassSchedule"),
+  // HolidayVenue: require("./admin/holidayCamps/venue/HolidayVenue"),
+  // HolidayClassSchedule: require("./admin/holidayCamps/classSchedule/HolidayClassSchedule"),
 
-  HolidayClassScheduleTermMap: require("./admin/holidayCamps/classSchedule/HolidayClassScheduleTermMap"),
-  HolidayCancelSession: require("./admin/holidayCamps/classSchedule/HolidayCancelSession"),
+  // HolidayClassScheduleTermMap: require("./admin/holidayCamps/classSchedule/HolidayClassScheduleTermMap"),
+  // HolidayCancelSession: require("./admin/holidayCamps/classSchedule/HolidayCancelSession"),
 
 };
 
@@ -186,8 +186,8 @@ const {
   HolidaySessionExercise,
   HolidaySessionPlanGroup,
 
-  HolidayTermGroup,
-  HolidayTerm,
+  HolidayCamp,
+  HolidayCampDates,
 
   HolidayPaymentGroup,
   HolidayPaymentPlan,
@@ -374,77 +374,47 @@ OneToOneBooking.belongsTo(models.oneToOneLeads, {
 });
 
 // Holiday camps associations 
-HolidayTerm.belongsToMany(HolidaySessionPlanGroup, {
-  through: "holiday_term_session_plan_groups",
-  foreignKey: "holidayTermId",
+// HolidayCamp → HolidayCampDates (1:M)
+HolidayCamp.hasMany(HolidayCampDates, {
+  foreignKey: "holidayCampId",
+  as: "holidayCampDates",
+  onDelete: "CASCADE",
+});
+
+HolidayCampDates.belongsTo(HolidayCamp, {
+  foreignKey: "holidayCampId",
+  as: "holidayCamp",
+  onDelete: "CASCADE",
+});
+
+// HolidayCampDates ↔ HolidaySessionPlanGroup (M:M)
+HolidayCampDates.belongsToMany(HolidaySessionPlanGroup, {
+  through: "holiday_camp_dates_session_plan_groups",
+  foreignKey: "holidayCampDatesId",
   otherKey: "holidaySessionPlanGroupId",
   as: "holidaySessionPlanGroups",
 });
 
-HolidaySessionPlanGroup.belongsToMany(HolidayTerm, {
-  through: "holiday_term_session_plan_groups",
+HolidaySessionPlanGroup.belongsToMany(HolidayCampDates, {
+  through: "holiday_camp_dates_session_plan_groups",
   foreignKey: "holidaySessionPlanGroupId",
-  otherKey: "holidayTermId",
-  as: "holidayTerms",
+  otherKey: "holidayCampDatesId",
+  as: "holidayCampDates",
 });
 
-HolidayTermGroup.hasMany(HolidayTerm, {
-  foreignKey: "TermGroupId",
-  as: "holidayTerms",
-  onDelete: "CASCADE",
-});
+// HolidayVenue.belongsTo(models.HolidayPaymentPlan, {
+//   foreignKey: "paymentGroupId",
+//   as: "holidayPaymentGroup",
+// });
 
-HolidayTerm.belongsTo(HolidayTermGroup, {
-  foreignKey: "TermGroupId",
-  as: "holidayTermGroup",
-  onDelete: "CASCADE",
-});
-
-HolidayTerm.associate = (models) => {
-  HolidayTerm.belongsTo(models.HolidayTermGroup, {
-    foreignKey: "TermGroupId",
-    as: "holidayTermGroup",
-    onDelete: "CASCADE",
-  });
-
-  HolidayTerm.belongsToMany(models.HolidaySessionPlanGroup, {
-    through: "holiday_term_session_plan_groups",
-    foreignKey: "holidayTermId",
-    otherKey: "holidaySessionPlanGroupId",
-    as: "holidaySessionPlanGroups",
-  });
-};
-
-HolidayTermGroup.associate = (models) => {
-  HolidayTermGroup.hasMany(models.HolidayTerm, {
-    foreignKey: "termGroupId",
-    as: "holidayTerms",
-    onDelete: "CASCADE",
-  });
-};
-
-HolidaySessionPlanGroup.associate = (models) => {
-  HolidaySessionPlanGroup.belongsToMany(models.HolidayTerm, {
-    through: "holiday_term_session_plan_groups",
-    foreignKey: "holidaySessionPlanGroupId",
-    otherKey: "holidayTermId",
-    as: "holidayTerms",
-  });
-};
-
-HolidayVenue.belongsTo(models.HolidayPaymentPlan, {
-  foreignKey: "paymentGroupId",
-  as: "holidayPaymentGroup",
-});
-
-HolidayCancelSession.associate = (models) => {
-  HolidayCancelSession.belongsTo(models.HolidayClassSchedule, {
-    foreignKey: "classScheduleId",
-    as: "holidayClassSchedule",
-    onDelete: "CASCADE",
-    onUpdate: "CASCADE",
-  });
-};
+// HolidayCancelSession.associate = (models) => {
+//   HolidayCancelSession.belongsTo(models.HolidayClassSchedule, {
+//     foreignKey: "classScheduleId",
+//     as: "holidayClassSchedule",
+//     onDelete: "CASCADE",
+//     onUpdate: "CASCADE",
+//   });
+// };
 
 // ====================== 📦 Module Exports ====================== //
 module.exports = {
@@ -519,8 +489,8 @@ module.exports = {
   HolidaySessionExercise,
   HolidaySessionPlanGroup,
 
-  HolidayTermGroup,
-  HolidayTerm,
+  HolidayCamp,
+  HolidayCampDates,
 
   HolidayPaymentGroup,
   HolidayPaymentPlan,

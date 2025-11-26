@@ -1,23 +1,13 @@
 const { DataTypes } = require("sequelize");
 const { sequelize } = require("../../../../config/db");
 
-const HolidayTerm = sequelize.define(
-  "HolidayTerm",
+const HolidayCampDates = sequelize.define(
+  "HolidayCampDates",
   {
     id: {
       type: DataTypes.BIGINT.UNSIGNED,
       autoIncrement: true,
       primaryKey: true,
-    },
-
-    termName: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-
-    day: {
-      type: DataTypes.STRING,
-      allowNull: false,
     },
 
     startDate: {
@@ -30,14 +20,8 @@ const HolidayTerm = sequelize.define(
       allowNull: false,
     },
 
-    // Store exclusion dates as JSON array
-    exclusionDates: {
-      type: DataTypes.JSON,
-      allowNull: true,
-    },
-
-    totalSessions: {
-      type: DataTypes.BIGINT.UNSIGNED,
+    totalDays: {
+      type: DataTypes.INTEGER.UNSIGNED,
       allowNull: true,
     },
 
@@ -48,11 +32,11 @@ const HolidayTerm = sequelize.define(
     },
 
     // Foreign key to holiday_term_groups
-    termGroupId: {
+    holidayCampId: {
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
-        model: "holiday_term_groups", // 🔥 UPDATED FK
+        model: "holiday_Camp", // 🔥 UPDATED FK
         key: "id",
       },
       onUpdate: "CASCADE",
@@ -90,10 +74,10 @@ const HolidayTerm = sequelize.define(
     },
   },
   {
-    tableName: "holiday_terms", // 🔥 NEW TABLE NAME
+    tableName: "holiday_camp_dates", // 🔥 NEW TABLE NAME
     timestamps: true,
     paranoid: true, // Enable soft deletes
   }
 );
 
-module.exports = HolidayTerm;
+module.exports = HolidayCampDates;

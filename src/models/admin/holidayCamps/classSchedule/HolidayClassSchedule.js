@@ -39,16 +39,6 @@ const HolidayClassSchedule = sequelize.define(
       allowNull: false,
     },
 
-    // allowFreeTrial: {
-    //   type: DataTypes.BOOLEAN,
-    //   defaultValue: false,
-    // },
-
-    // facility: {
-    //   type: DataTypes.STRING,
-    //   allowNull: true,
-    // },
-
     venueId: {
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,

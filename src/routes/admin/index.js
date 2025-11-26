@@ -138,18 +138,18 @@ router.use("/holiday/session-plan-group", require("./holidayCampsRoutes/holidayS
 router.use("/holiday/session-plan-exercise", require("./holidayCampsRoutes/holidaySessionExerciseRoutes"));
 
 // Term Group Base Route
-router.use("/holiday/term-group", require("./holidayCampsRoutes/holidayTermGroupRoutes"));
+router.use("/holiday/camp", require("./holidayCampsRoutes/holidayCampRoutes"));
 // Term Base Route
-router.use("/holiday/term", require("./holidayCampsRoutes/holidayTermRoutes"));
+router.use("/holiday/campDate", require("./holidayCampsRoutes/holidayCampDateRoutes"));
 
 // Term Group Base Route
 router.use("/holiday/payment-plan", require("./holidayCampsRoutes/holidayPaymentPlanRoutes"));
 // Term Base Route
 router.use("/holiday/payment-group", require("./holidayCampsRoutes/holidayPaymentGroupRoutes"));
 
-router.use("/holiday/venue", require("./holidayCampsRoutes/holidayVenueRoutes"));
+// router.use("/holiday/venue", require("./holidayCampsRoutes/holidayVenueRoutes"));
 
-router.use("/holiday/class-schedule", require("./holidayCampsRoutes/holidayClassScheduleRoutes"));
+// router.use("/holiday/class-schedule", require("./holidayCampsRoutes/holidayClassScheduleRoutes"));
 
 // Base: /api/admin/admin
 router.post(

@@ -1,7 +1,7 @@
 const { validateFormData } = require("../../../../utils/validateFormData");
 const { logActivity } = require("../../../../utils/admin/activityLogger");
 
-const TermGroupService = require("../../../../services/admin/holidayCamps/termAndDates/holidayTermGroup");
+const HolidayCampService = require("../../../../services/admin/holidayCamps/campAndDates/holidayCamp");
 const {
   createNotification,
 } = require("../../../../utils/admin/notificationHelper");
@@ -9,14 +9,14 @@ const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
-const MODULE = "holiday-term-group";
+const MODULE = "holiday-camp";
 
 // ----------------------------------------
 // ✅ TERM GROUP CONTROLLERS
 // ----------------------------------------
 
 // ✅ CREATE
-exports.createHoliayTermGroup = async (req, res) => {
+exports.createHolidayCamp = async (req, res) => {
   const { name } = req.body;
   const adminId = req.admin?.id;
 
@@ -30,7 +30,7 @@ exports.createHoliayTermGroup = async (req, res) => {
   }
 
   try {
-    const result = await TermGroupService.createHolidayGroup({
+    const result = await HolidayCampService.createHolidayCamp({
       name,
       createdBy: adminId,
     });
@@ -45,7 +45,7 @@ exports.createHoliayTermGroup = async (req, res) => {
     // );
     return res.status(result.status ? 201 : 500).json(result);
   } catch (error) {
-    console.error("❌ Error in createTermGroup:", error);
+    console.error("❌ Error in create camp:", error);
     await logActivity(
       req,
       PANEL,
@@ -59,7 +59,7 @@ exports.createHoliayTermGroup = async (req, res) => {
 };
 
 // ✅ LIST ALL - with adminId
-exports.getAllHolidayGroups = async (req, res) => {
+exports.getAllHolidayCamp = async (req, res) => {
   const adminId = req.admin?.id;
 
   if (!adminId) {
@@ -72,11 +72,11 @@ exports.getAllHolidayGroups = async (req, res) => {
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
-    const result = await TermGroupService.getAllHolidayGroups(superAdminId); // ✅ pass adminId
+    const result = await HolidayCampService.getAllHolidayCamp(superAdminId); // ✅ pass adminId
     await logActivity(req, PANEL, MODULE, "list", result, result.status);
     return res.status(result.status ? 200 : 500).json(result);
   } catch (error) {
-    console.error("❌ Error in getAllGroups:", error);
+    console.error("❌ Error in getAllCamp:", error);
     await logActivity(
       req,
       PANEL,
@@ -90,7 +90,7 @@ exports.getAllHolidayGroups = async (req, res) => {
 };
 
 // ✅ GET BY ID - with adminId
-exports.getHolidayGroupById = async (req, res) => {
+exports.getHolidayCampById = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id;
 
@@ -108,7 +108,7 @@ exports.getHolidayGroupById = async (req, res) => {
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
-    const result = await TermGroupService.getHolidayGroupById(id, superAdminId); // ✅ pass adminId
+    const result = await HolidayCampService.getHolidayCampById(id, superAdminId); // ✅ pass adminId
     await logActivity(req, PANEL, MODULE, "getById", result, result.status);
     return res.status(result.status ? 200 : 404).json(result);
   } catch (error) {
@@ -126,7 +126,7 @@ exports.getHolidayGroupById = async (req, res) => {
 };
 
 // ✅ UPDATE Term Group
-exports.updateHolidayGroup = async (req, res) => {
+exports.updateHolidayCamp = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id;
   const { name } = req.body;
@@ -141,20 +141,20 @@ exports.updateHolidayGroup = async (req, res) => {
   }
 
   try {
-    const result = await TermGroupService.updateHolidayGroup(id, { name }, adminId);
+    const result = await HolidayCampService.updateHolidayCamp(id, { name }, adminId);
     await logActivity(req, PANEL, MODULE, "update", result, result.status);
 
     await createNotification(
       req,
-      "Term Group Updated",
-      `Term Group '${name}' was updated by ${req?.admin?.firstName || "Admin"
+      "Camp Updated",
+      `Camp Group '${name}' was updated by ${req?.admin?.firstName || "Admin"
       }.`,
       "System"
     );
 
     return res.status(result.status ? 200 : 404).json(result);
   } catch (error) {
-    console.error("❌ Error in updateGroup:", error);
+    console.error("❌ Error in updatCamp:", error);
     await logActivity(
       req,
       PANEL,
@@ -169,7 +169,7 @@ exports.updateHolidayGroup = async (req, res) => {
 
 // ✅ DELETE Term Group
 
-exports.deleteHolidayGroup = async (req, res) => {
+exports.deleteHolidayCamp = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id; // ✅ track who deletes
 
@@ -179,7 +179,7 @@ exports.deleteHolidayGroup = async (req, res) => {
 
   try {
     // ✅ Soft delete group
-    const result = await TermGroupService.deleteHolidayGroup(id, adminId);
+    const result = await HolidayCampService.deleteHolidayCamp(id, adminId);
 
     // ✅ Log activity
     await logActivity(req, PANEL, MODULE, "delete", result, result.status);
@@ -188,8 +188,8 @@ exports.deleteHolidayGroup = async (req, res) => {
     if (result.status) {
       await createNotification(
         req,
-        "Term Group Deleted",
-        `Term Group ID '${id}' and its associated terms were deleted by ${req?.admin?.firstName || "Admin"
+        "Camp Deleted",
+        `Camp Group ID '${id}' and its associated terms were deleted by ${req?.admin?.firstName || "Admin"
         }.`,
         "System"
       );
@@ -197,7 +197,7 @@ exports.deleteHolidayGroup = async (req, res) => {
 
     return res.status(result.status ? 200 : 404).json(result);
   } catch (error) {
-    console.error("❌ Error in deleteGroup Controller:", error);
+    console.error("❌ Error in deleteCamp Controller:", error);
     await logActivity(
       req,
       PANEL,

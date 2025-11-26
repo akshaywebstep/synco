@@ -1,8 +1,8 @@
 const { validateFormData } = require("../../../../utils/validateFormData");
 const { logActivity } = require("../../../../utils/admin/activityLogger");
 
-const TermService = require("../../../../services/admin/holidayCamps/termAndDates/holidayTerm");
-const { HolidayTerm } = require("../../../../models"); // ✅ Required models
+const HolidayCampDateService = require("../../../../services/admin/holidayCamps/campAndDates/holidayCampDates");
+const { HolidayCamp, HolidayCampDates } = require("../../../../models"); // ✅ Required models
 const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
 const {
   createNotification,
@@ -10,35 +10,25 @@ const {
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
-const MODULE = "term";
+const MODULE = "camp-date";
 
 // ✅ CREATE TERM
-exports.createHolidayTerm = async (req, res) => {
+exports.createHolidayCampDates = async (req, res) => {
   const adminId = req.admin?.id;
   const {
-    termName,
-    termGroupId,
-    day,
+    holidayCampId,
     startDate,
     endDate,
-    totalNumberOfSessions,
-    exclusionDates = [],
+    totalDays,
     sessionsMap = [],
-    createdBy,
   } = req.body;
-
-  if (DEBUG) {
-    console.log("📥 Creating Term with Sessions:", req.body);
-  }
 
   const validation = validateFormData(req.body, {
     requiredFields: [
-      "termName",
-      "termGroupId",
-      // "day",
+      "holidayCampId",
       "startDate",
       "endDate",
-      "totalNumberOfSessions",
+      "totalDays",
       "sessionsMap",
     ],
   });
@@ -56,41 +46,36 @@ exports.createHolidayTerm = async (req, res) => {
   }
 
   try {
-    const term = await HolidayTerm.create({
-      termName,
-      termGroupId,
-      day,
+    const result = await HolidayCampDateService.createHolidayCampDates({
+      holidayCampId,
       startDate,
       endDate,
-      totalSessions: totalNumberOfSessions,
-      exclusionDates, // JSON array
-      sessionsMap, // JSON array of sessions
+      totalDays,
+      sessionsMap,
       createdBy: adminId,
     });
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "create",
-      { message: "Term created" },
-      true
-    );
-    // ✅ Send Notification
+    if (!result.status) {
+      return res.status(400).json(result);
+    }
+
+    await logActivity(req, PANEL, MODULE, "create", { message: "Camp created" }, true);
+
     await createNotification(
       req,
-      "Term  Created",
-      `Term  '${termName}' was created by ${req?.admin?.firstName || "Admin"}.`,
+      "Camp Created",
+      `Camp Date was created by ${req.admin?.firstName || "Admin"}.`,
       "System"
     );
 
     return res.status(201).json({
       status: true,
-      message: "Term created successfully with sessions and exclusions.",
-      data: term,
+      message: "Camp created successfully.",
+      data: result.data,
     });
   } catch (error) {
-    console.error("❌ Error in createTerm:", error);
+    console.error("❌ Error in createHolidayCampDates controller:", error);
+
     await logActivity(
       req,
       PANEL,
@@ -99,28 +84,29 @@ exports.createHolidayTerm = async (req, res) => {
       { oneLineMessage: error.message },
       false
     );
+
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };
 
-// ✅ GET ALL TERMS (admin-specific)
-exports.getAllHolidayTerms = async (req, res) => {
+// ✅ GET ALL Camp (admin-specific)
+exports.getAllHolidayCampDates = async (req, res) => {
   const adminId = req.admin?.id;
   if (!adminId) {
-      return res
-        .status(401)
-        .json({ status: false, message: "Unauthorized. Admin ID missing." });
-    }
-  
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
-  
+    return res
+      .status(401)
+      .json({ status: false, message: "Unauthorized. Admin ID missing." });
+  }
+
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+
   try {
-    const result = await TermService.getAllHolidayTerms(superAdminId);
+    const result = await HolidayCampDateService.getAllHolidayCampDates(superAdminId);
     await logActivity(req, PANEL, MODULE, "list", result, result.status);
     return res.status(result.status ? 200 : 500).json(result);
   } catch (error) {
-    console.error("❌ getAllTerms error:", error);
+    console.error("❌ getAllCampDates error:", error);
     await logActivity(
       req,
       PANEL,
@@ -133,8 +119,8 @@ exports.getAllHolidayTerms = async (req, res) => {
   }
 };
 
-// ✅ GET TERM BY ID (admin-specific)
-exports.getHolidayTermById = async (req, res) => {
+// ✅ GET Camp BY ID (admin-specific)
+exports.getHolidayCampDatesById = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id;
 
@@ -151,7 +137,7 @@ exports.getHolidayTermById = async (req, res) => {
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
-    const result = await TermService.getHolidayTermById(id, superAdminId);
+    const result = await HolidayCampDateService.getHolidayCampDatesById(id, superAdminId);
     await logActivity(req, PANEL, MODULE, "getById", result, result.status);
     return res.status(result.status ? 200 : 404).json(result);
   } catch (error) {
@@ -169,23 +155,20 @@ exports.getHolidayTermById = async (req, res) => {
 };
 
 // ✅ UPDATE TERM
-exports.updateHolidayTerm = async (req, res) => {
+exports.updateHolidayCampDates = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id;
 
   const {
-    termGroupId,
-    termName,
-    day,
+    holidayCampId,
     startDate,
     endDate,
-    totalSessions,
-    exclusionDates = [],
+    totalDays,
     sessionsMap = [],
   } = req.body;
 
   if (DEBUG) {
-    console.log("🛠 Updating Term ID:", id);
+    console.log("🛠 Updating Camp ID:", id);
     console.log("📥 Received Update FormData:", req.body);
   }
 
@@ -196,7 +179,7 @@ exports.updateHolidayTerm = async (req, res) => {
 
   // ✅ Validate required fields
   const validation = validateFormData(req.body, {
-    requiredFields: ["termGroupId", "termName", "startDate", "endDate"],
+    requiredFields: ["holidayCampId", "startDate", "endDate"],
   });
 
   if (!validation.isValid) {
@@ -214,30 +197,27 @@ exports.updateHolidayTerm = async (req, res) => {
 
   try {
     const updatePayload = {
-      termGroupId,
-      termName,
-      day,
+      holidayCampId,
       startDate,
       endDate,
-      totalSessions,
-      exclusionDates,
+      totalDays,
       sessionsMap,
     };
 
-    const result = await TermService.updateHolidayTerm(id, updatePayload, adminId); // ✅ Pass adminId
+    const result = await HolidayCampDateService.updateHolidayCampDates(id, updatePayload, adminId); // ✅ Pass adminId
 
     await logActivity(req, PANEL, MODULE, "update", result, result.status);
     // ✅ Send Notification
     await createNotification(
       req,
-      "Term  Updated",
-      `Term  '${termName}' was updated by ${req?.admin?.firstName || "Admin"}.`,
+      "Camp  Updated",
+      `Camp  was updated by ${req?.admin?.firstName || "Admin"}.`,
       "System"
     );
 
     return res.status(result.status ? 200 : 404).json(result);
   } catch (error) {
-    console.error("❌ Error in updateTerm:", error);
+    console.error("❌ Error in updateCamp:", error);
     await logActivity(
       req,
       PANEL,
@@ -250,7 +230,7 @@ exports.updateHolidayTerm = async (req, res) => {
   }
 };
 
-exports.deleteHolidayTerm = async (req, res) => {
+exports.deleteHolidayCampDates = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id;
 
@@ -260,7 +240,7 @@ exports.deleteHolidayTerm = async (req, res) => {
 
   try {
     // ✅ Call the service to perform soft delete
-    const result = await TermService.deleteHolidayTerm(id, adminId);
+    const result = await HolidayCampDateService.deleteHolidayCampDates(id, adminId);
 
     // ✅ Log the action
     await logActivity(req, PANEL, MODULE, "delete", result, result.status);
@@ -269,15 +249,15 @@ exports.deleteHolidayTerm = async (req, res) => {
     if (result.status) {
       await createNotification(
         req,
-        "Term Deleted",
-        `Term ID '${id}' was deleted by ${req?.admin?.firstName || "Admin"}.`,
+        "Camp Deleted",
+        `Camp  was deleted by ${req?.admin?.firstName || "Admin"}.`,
         "System"
       );
     }
 
     return res.status(result.status ? 200 : 404).json(result);
   } catch (error) {
-    console.error("❌ Error in deleteTerm Controller:", error);
+    console.error("❌ Error in deleteCamp Controller:", error);
     await logActivity(
       req,
       PANEL,
