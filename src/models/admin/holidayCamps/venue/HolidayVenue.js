@@ -43,7 +43,7 @@ const HolidayVenue = sequelize.define(
             type: DataTypes.BIGINT.UNSIGNED,
             allowNull: true,
             references: {
-                model: "payment_groups", // 👈 your table name
+                model: "holiday_payment_groups", // 👈 your table name
                 key: "id",
             },
             onDelete: "SET NULL",

@@ -64,7 +64,7 @@ HolidayPaymentGroup.associate = (models) => {
     through: models.HolidayPaymentGroupHasPlan,
     foreignKey: "payment_group_id",
     otherKey: "payment_plan_id",
-    as: "paymentPlans",
+    as: "holidayPaymentPlans",
   });
 };
 

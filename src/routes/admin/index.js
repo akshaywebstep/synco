@@ -147,6 +147,8 @@ router.use("/holiday/payment-plan", require("./holidayCampsRoutes/holidayPayment
 // Term Base Route
 router.use("/holiday/payment-group", require("./holidayCampsRoutes/holidayPaymentGroupRoutes"));
 
+router.use("/holiday/venue", require("./holidayCampsRoutes/holidayVenueRoutes"));
+
 // Base: /api/admin/admin
 router.post(
   "/",
