@@ -55,6 +55,6 @@ router.delete(
   deleteHolidayPaymentGroup
 );
 
-router.post("/:id/assign-plans", authMiddleware, assignPlansToPaymentGroup);
+router.post("/holiday/:id/assign-plans", authMiddleware, assignPlansToPaymentGroup);
 
 module.exports = router;
