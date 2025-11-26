@@ -168,6 +168,47 @@ exports.reactivateBooking = async (
         message: "No active freeze or cancelled booking found for this booking.",
       };
     }
+    // 🔹 3B. If booking is cancelled, check class capacity before reactivating
+    if (booking.status === "cancelled") {
+      const classSchedule = await ClassSchedule.findByPk(booking.classScheduleId, {
+        transaction: t,
+      });
+
+      if (!classSchedule) {
+        await t.rollback();
+        return { status: false, message: "Class schedule not found." };
+      }
+
+      // If class capacity is zero → no space at all
+      if (classSchedule.capacity === 0) {
+        await t.rollback();
+        return {
+          status: false,
+          message: "This class has no available capacity.",
+        };
+      }
+
+      // List of statuses that count toward class capacity
+      const capacityStatuses = ["pending", "active", "attended", "frozen"];
+
+      // Count BOOKINGS that occupy a spot (exclude cancelled)
+      const usedCapacityCount = await Booking.count({
+        where: {
+          classScheduleId: booking.classScheduleId,
+          status: capacityStatuses,
+        },
+        transaction: t,
+      });
+
+      // If class is full → stop reactivation
+      if (usedCapacityCount >= classSchedule.capacity) {
+        await t.rollback();
+        return {
+          status: false,
+          message: "Class is already full. No capacity available.",
+        };
+      }
+    }
 
     // 🔹 4. Prepare update data
     const updatedData = {
