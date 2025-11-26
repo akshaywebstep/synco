@@ -87,7 +87,7 @@ const HolidayPaymentPlan = sequelize.define(
     },
   },
   {
-    tableName: "payment_plans",
+    tableName: "holiday_payment_plans",
     timestamps: true,
     paranoid: true, // ✅ Enables soft deletes
   }
@@ -99,7 +99,7 @@ HolidayPaymentPlan.associate = (models) => {
     through: models.HolidayPaymentGroupHasPlan, // corrected join table name
     foreignKey: "payment_plan_id",
     otherKey: "payment_group_id",
-    as: "paymentGroups",
+    as: "holidayPaymentGroups",
   });
 };
 

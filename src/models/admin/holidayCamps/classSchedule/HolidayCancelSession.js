@@ -102,7 +102,7 @@ const HolidayCancelSession = sequelize.define(
     },
   },
   {
-    tableName: "cancel_session",
+    tableName: "holiday_cancel_session",
     timestamps: true,
     underscored: false,
     paranoid: true, // ✅ Enable soft deletes

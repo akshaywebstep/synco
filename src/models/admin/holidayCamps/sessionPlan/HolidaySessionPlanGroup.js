@@ -66,7 +66,7 @@ const HolidaySessionPlanGroup = sequelize.define(
     type: {
       type: DataTypes.ENUM("holiday_camp", "one_to_one", "birthday_party", "library"),
       allowNull: false,
-      defaultValue: "weekly_classes",
+      defaultValue: "holiday_camp",
     },
 
     // Foreign key for creation
