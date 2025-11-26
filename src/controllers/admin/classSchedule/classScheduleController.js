@@ -38,11 +38,8 @@ exports.createClassSchedule = async (req, res) => {
   const {
     className,
     capacity,
-    day,
     startTime,
     endTime,
-    allowFreeTrial,
-    facility,
     venueId,
   } = req.body;
 
@@ -54,7 +51,7 @@ exports.createClassSchedule = async (req, res) => {
 
   // ✅ Validation
   const validation = validateFormData(req.body, {
-    requiredFields: ["className", "day", "startTime", "endTime", "venueId"],
+    requiredFields: ["className", "startTime", "endTime", "venueId"],
   });
 
   if (!validation.isValid) {
@@ -109,11 +106,8 @@ exports.createClassSchedule = async (req, res) => {
       className,
       capacity,
       totalCapacity: capacity,
-      day,
       startTime,
       endTime,
-      allowFreeTrial,
-      facility,
       venueId,
       termIds: termIdsString,
       createdBy,
