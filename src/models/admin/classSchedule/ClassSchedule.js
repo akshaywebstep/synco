@@ -24,10 +24,10 @@ const ClassSchedule = sequelize.define(
       allowNull: true,
     },
 
-    // day: {
-    //   type: DataTypes.STRING,
-    //   allowNull: false,
-    // },
+    day: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
 
     startTime: {
       type: DataTypes.STRING,
@@ -39,15 +39,15 @@ const ClassSchedule = sequelize.define(
       allowNull: false,
     },
 
-    // allowFreeTrial: {
-    //   type: DataTypes.BOOLEAN,
-    //   defaultValue: false,
-    // },
+    allowFreeTrial: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
 
-    // facility: {
-    //   type: DataTypes.STRING,
-    //   allowNull: true,
-    // },
+    facility: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
 
     venueId: {
       type: DataTypes.BIGINT.UNSIGNED,

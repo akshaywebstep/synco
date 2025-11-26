@@ -36,11 +36,8 @@ exports.createHolidayClassSchedule = async (req, res) => {
     const {
         className,
         capacity,
-        day,
         startTime,
         endTime,
-        allowFreeTrial,
-        facility,
         venueId,
     } = req.body;
 
@@ -109,11 +106,8 @@ exports.createHolidayClassSchedule = async (req, res) => {
             className,
             capacity,
             totalCapacity: capacity,
-            day,
             startTime,
             endTime,
-            allowFreeTrial,
-            facility,
             venueId,
             termIds: termIdsString,
             createdBy,
