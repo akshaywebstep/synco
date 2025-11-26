@@ -39,7 +39,7 @@ exports.getAllHolidayPaymentGroups = async (adminId) => {
       include: [
         {
           model: HolidayPaymentPlan,
-          as: "paymentPlans",
+          as: "holidayPaymentPlans",
         },
       ],
       order: [["createdAt", "DESC"]],
@@ -75,7 +75,7 @@ exports.getHolidayPaymentGroupById = async (id, adminId) => {
       include: [
         {
           model: HolidayPaymentPlan,
-          as: "paymentPlans",
+          as: "holidayPaymentPlans",
         },
       ],
     });
