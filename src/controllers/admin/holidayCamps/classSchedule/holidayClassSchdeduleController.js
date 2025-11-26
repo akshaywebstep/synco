@@ -49,7 +49,7 @@ exports.createHolidayClassSchedule = async (req, res) => {
 
     // ✅ Validation
     const validation = validateFormData(req.body, {
-        requiredFields: ["className", "day", "startTime", "endTime", "venueId"],
+        requiredFields: ["className","startTime", "endTime", "venueId"],
     });
 
     if (!validation.isValid) {
