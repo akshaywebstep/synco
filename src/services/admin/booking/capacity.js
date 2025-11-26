@@ -519,6 +519,7 @@ exports.getAllBookings = async (adminId, filters = {}) => {
       if (!venueMap[venue.id].classes.some((c) => c.id === cls.id)) {
         venueMap[venue.id].classes.push({
           id: cls.id,
+          className: cls.className,
           day: cls.day,
           startTime: cls.startTime,
           endTime: cls.endTime,
@@ -545,6 +546,7 @@ exports.getAllBookings = async (adminId, filters = {}) => {
         classEntry = {
           id: classSchedule.id,
           day: classSchedule.day,
+          className: classSchedule.className,
           startTime: classSchedule.startTime,
           endTime: classSchedule.endTime,
           capacity: classSchedule.capacity,
