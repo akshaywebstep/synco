@@ -77,7 +77,7 @@ router.get(
 router.put(
   "/convert-membership/:id", // ✅ add :id here
   authMiddleware,
-  permissionMiddleware("waiting-list", "remove"),
+  permissionMiddleware("waiting-list", "update"),
   convertToMembership
 );
 router.post(

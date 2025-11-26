@@ -136,10 +136,11 @@ router.use("/holiday/session-plan-group", require("./holidayCampsRoutes/holidayS
 // Session Plan Exercise Base Route
 router.use("/holiday/session-plan-exercise", require("./holidayCampsRoutes/holidaySessionExerciseRoutes"));
 
-// Holiday camps // Session Plan Group Base Route
+// Holiday camps // 
+// Term Group Base Route
 router.use("/holiday/term-group", require("./holidayCampsRoutes/holidayTermGroupRoutes"));
-// Session Plan Exercise Base Route
-// router.use("/holiday/session-plan-exercise", require("./holidayCampsRoutes/holidaySessionExerciseRoutes"));
+// Term Base Route
+router.use("/holiday/term", require("./holidayCampsRoutes/holidayTermRoutes"));
 
 // Base: /api/admin/admin
 router.post(

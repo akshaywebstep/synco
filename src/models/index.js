@@ -92,6 +92,12 @@ const models = {
   BirthdayPartyPayment: require("./admin/birthdayParty/booking/BirthdayPartyPayment"),
 
   //  Holiday camp Module
+
+  // subscription plan manager
+  HolidayPaymentGroup: require("./admin/holidayCamps/payment/HolidayPaymentGroup"),
+  HolidayPaymentPlan: require("./admin/holidayCamps/payment/HolidayPaymentPlan"),
+  HolidayPaymentGroupHasPlan: require("./admin/holidayCamps/payment/HolidayPaymentGroupHasPlan"),
+
   // //Session Plan
   HolidaySessionExercise: require("./admin/holidayCamps/sessionPlan/HolidaySessionExercise"),
   HolidaySessionPlanGroup: require("./admin/holidayCamps/sessionPlan/HolidaySessionPlanGroup"),
@@ -99,6 +105,12 @@ const models = {
   //Terms and Dates
   HolidayTermGroup: require("./admin/holidayCamps/termAndDates/HolidayTermGroup"),
   HolidayTerm: require("./admin/holidayCamps/termAndDates/HolidayTerm"),
+
+  HolidayVenue: require("./admin/holidayCamps/venue/HolidayVenue"),
+  HolidayClassSchedule: require("./admin/holidayCamps/classSchedule/HolidayClassSchedule"),
+
+  HolidayClassScheduleTermMap: require("./admin/holidayCamps/classSchedule/HolidayClassScheduleTermMap"),
+  HolidayCancelSession: require("./admin/holidayCamps/classSchedule/HolidayCancelSession"),
 
 };
 
@@ -176,6 +188,16 @@ const {
 
   HolidayTermGroup,
   HolidayTerm,
+
+  HolidayPaymentGroup,
+  HolidayPaymentPlan,
+  HolidayPaymentGroupHasPlan,
+
+  HolidayVenue,
+  HolidayClassSchedule,
+
+  HolidayClassScheduleTermMap,
+  HolidayCancelSession,
 } = models;
 
 // Many-to-Many
@@ -410,6 +432,20 @@ HolidaySessionPlanGroup.associate = (models) => {
   });
 };
 
+HolidayVenue.belongsTo(models.HolidayPaymentPlan, {
+  foreignKey: "paymentGroupId",
+  as: "holidayPaymentGroup",
+});
+
+HolidayCancelSession.associate = (models) => {
+  HolidayCancelSession.belongsTo(models.HolidayClassSchedule, {
+    foreignKey: "classScheduleId",
+    as: "holidayClassSchedule",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
+};
+
 // ====================== 📦 Module Exports ====================== //
 module.exports = {
   AppConfig,
@@ -485,4 +521,14 @@ module.exports = {
 
   HolidayTermGroup,
   HolidayTerm,
+
+  HolidayPaymentGroup,
+  HolidayPaymentPlan,
+  HolidayPaymentGroupHasPlan,
+
+  HolidayVenue,
+  HolidayClassSchedule,
+
+  HolidayClassScheduleTermMap,
+  HolidayCancelSession,
 };
