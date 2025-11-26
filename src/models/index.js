@@ -389,20 +389,20 @@ HolidaySessionPlanGroup.belongsToMany(HolidayTerm, {
 });
 
 HolidayTermGroup.hasMany(HolidayTerm, {
-  foreignKey: "holidayTermGroupId",
+  foreignKey: "TermGroupId",
   as: "holidayTerms",
   onDelete: "CASCADE",
 });
 
 HolidayTerm.belongsTo(HolidayTermGroup, {
-  foreignKey: "holidayTermGroupId",
+  foreignKey: "TermGroupId",
   as: "holidayTermGroup",
   onDelete: "CASCADE",
 });
 
 HolidayTerm.associate = (models) => {
   HolidayTerm.belongsTo(models.HolidayTermGroup, {
-    foreignKey: "holidayTermGroupId",
+    foreignKey: "TermGroupId",
     as: "holidayTermGroup",
     onDelete: "CASCADE",
   });
@@ -417,7 +417,7 @@ HolidayTerm.associate = (models) => {
 
 HolidayTermGroup.associate = (models) => {
   HolidayTermGroup.hasMany(models.HolidayTerm, {
-    foreignKey: "holidayTermGroupId",
+    foreignKey: "termGroupId",
     as: "holidayTerms",
     onDelete: "CASCADE",
   });

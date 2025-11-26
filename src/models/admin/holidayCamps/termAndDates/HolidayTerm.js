@@ -48,7 +48,7 @@ const HolidayTerm = sequelize.define(
     },
 
     // Foreign key to holiday_term_groups
-    holidayTermGroupId: {
+    termGroupId: {
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
