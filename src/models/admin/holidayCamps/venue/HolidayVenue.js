@@ -32,13 +32,6 @@ const HolidayVenue = sequelize.define(
             type: DataTypes.TEXT,
         },
 
-        // ✅ plain text only (no FK)
-        // paymentGroupId: {
-        //   type: DataTypes.TEXT("long"),
-        //   allowNull: true,
-        //   comment: "Selected payment group for paid bookings (stored as text instead of FK)",
-        // },
-        // ✅ Use FK to PaymentGroups
         paymentGroupId: {
             type: DataTypes.BIGINT.UNSIGNED,
             allowNull: true,
@@ -118,13 +111,12 @@ const HolidayVenue = sequelize.define(
     }
 );
 
-// Associations
-// Associations
-HolidayVenue.associate = function (models) {
-    HolidayVenue.hasMany(models.HolidayClassSchedule, {
-        foreignKey: "venueId",
-        as: "holidayClassSchedules",
-    });
-};
-
 module.exports = HolidayVenue;
+// Associations
+// Associations
+// HolidayVenue.associate = function (models) {
+//     HolidayVenue.hasMany(models.HolidayClassSchedule, {
+//         foreignKey: "venueId",
+//         as: "holidayClassSchedules",
+//     });
+// };

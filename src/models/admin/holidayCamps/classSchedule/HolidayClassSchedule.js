@@ -24,11 +24,6 @@ const HolidayClassSchedule = sequelize.define(
       allowNull: true,
     },
 
-    // day: {
-    //   type: DataTypes.STRING,
-    //   allowNull: false,
-    // },
-
     startTime: {
       type: DataTypes.STRING,
       allowNull: false,
@@ -50,7 +45,7 @@ const HolidayClassSchedule = sequelize.define(
       onDelete: "CASCADE",
     },
 
-    termIds: {
+    holidayCampDateIds: {
       type: DataTypes.TEXT("long"),
       allowNull: true,
       comment: "Selected term (stored as text instead of FK)",
@@ -105,12 +100,13 @@ HolidayClassSchedule.associate = function (models) {
     as: "venue",
   });
 
-  HolidayClassSchedule.hasMany(models.HolidayCancelSession, {
-    foreignKey: "classScheduleId",
-    as: "holidayCancelSessions", // this is the name you will use in include
-    onDelete: "CASCADE",
-    onUpdate: "CASCADE",
-  });
 };
 
 module.exports = HolidayClassSchedule;
+
+// HolidayClassSchedule.hasMany(models.HolidayCancelSession, {
+//     foreignKey: "classScheduleId",
+//     as: "holidayCancelSessions", // this is the name you will use in include
+//     onDelete: "CASCADE",
+//     onUpdate: "CASCADE",
+//   });

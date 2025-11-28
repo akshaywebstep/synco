@@ -39,17 +39,17 @@ exports.createHolidayVenue = async (req, res) => {
 
     await logActivity(req, PANEL, MODULE, "create", result, result.status);
 
-    // ✅ Create Notification
+    if (!result.status) {
+      return res.status(500).json({ status: false, message: result.message });
+    }
+
+    // Only run notifications on success
     await createNotification(
       req,
       "New Venue Created",
       `Venue "${formData.name}" has been created in area "${formData.area}".`,
       "System"
     );
-
-    if (!result.status) {
-      return res.status(500).json({ status: false, message: result.message });
-    }
 
     return res.status(201).json({
       status: true,
@@ -67,7 +67,7 @@ exports.createHolidayVenue = async (req, res) => {
 
 // ✅ Get All Venues
 exports.getAllHolidayVenues = async (req, res) => {
-//   const createdBy = req.admin?.id;
+  //   const createdBy = req.admin?.id;
 
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
@@ -102,7 +102,7 @@ exports.getAllHolidayVenues = async (req, res) => {
 // ✅ Get Venue by ID
 exports.getHolidayVenueById = async (req, res) => {
   const { id } = req.params;
-//   const createdBy = req.admin?.id; // ✅ Ensure only venues created by this admin are accessed
+  //   const createdBy = req.admin?.id; // ✅ Ensure only venues created by this admin are accessed
 
   console.log("📥 Incoming request for venue ID:", id);
 

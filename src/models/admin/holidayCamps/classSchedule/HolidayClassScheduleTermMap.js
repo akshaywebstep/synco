@@ -22,22 +22,22 @@ const HolidayClassScheduleTermMap = sequelize.define(
       comment: "Class schedule associated with Term Map",
     },
 
-    termGroupId: {
+    holidayCampId: {
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
-        model: "holiday_term_groups",
+        model: "holiday_camp",
         key: "id",
       },
       onUpdate: "CASCADE",
       onDelete: "CASCADE",
     },
 
-    termId: {
+    holidayCampDateId: {
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
-        model: "holiday_terms",
+        model: "holiday_camp_dates",
         key: "id",
       },
       onUpdate: "CASCADE",
@@ -105,13 +105,13 @@ HolidayClassScheduleTermMap.associate = function (models) {
   });
 
   HolidayClassScheduleTermMap.belongsTo(models.HolidayTermGroup, {
-    foreignKey: "termGroupId",
-    as: "holidayTermGroup",
+    foreignKey: "holidayCampId",
+    as: "holidayCamp",
   });
 
   HolidayClassScheduleTermMap.belongsTo(models.HolidayTerm, {
-    foreignKey: "termId",
-    as: "holidayTerm",
+    foreignKey: "holidayCampDateId",
+    as: "holidayCampDate",
   });
 
   HolidayClassScheduleTermMap.belongsTo(models.HolidaySessionPlanGroup, {

@@ -106,7 +106,7 @@ const models = {
   HolidayCamp: require("./admin/holidayCamps/campsAndDates/HolidayCamp"),
   HolidayCampDates: require("./admin/holidayCamps/campsAndDates/HolidayCampDates"),
 
-  // HolidayVenue: require("./admin/holidayCamps/venue/HolidayVenue"),
+  HolidayVenue: require("./admin/holidayCamps/venue/HolidayVenue"),
   // HolidayClassSchedule: require("./admin/holidayCamps/classSchedule/HolidayClassSchedule"),
 
   // HolidayClassScheduleTermMap: require("./admin/holidayCamps/classSchedule/HolidayClassScheduleTermMap"),
@@ -402,10 +402,10 @@ HolidaySessionPlanGroup.belongsToMany(HolidayCampDates, {
   as: "holidayCampDates",
 });
 
-// HolidayVenue.belongsTo(models.HolidayPaymentPlan, {
-//   foreignKey: "paymentGroupId",
-//   as: "holidayPaymentGroup",
-// });
+HolidayVenue.belongsTo(models.HolidayPaymentGroup, {
+  foreignKey: "paymentGroupId",
+  as: "holidayPaymentGroup",
+});
 
 // HolidayCancelSession.associate = (models) => {
 //   HolidayCancelSession.belongsTo(models.HolidayClassSchedule, {

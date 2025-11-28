@@ -1,12 +1,11 @@
 const {
   HolidayVenue,
-  HolidayCampDate,
+  HolidayCampDates,
   HolidayCamp,
   HolidaySessionPlanGroup,
   HolidaySessionExercise,
   HolidayPaymentPlan,
   HolidayPaymentGroup,
-  // PaymentGroupHasPlan,
 } = require("../../../../models");
 const axios = require("axios");
 const https = require("https");
@@ -128,7 +127,7 @@ async function geocodeAddress(address, fallbackArea) {
 
 exports.createHolidayVenue = async (data) => {
   try {
-    // ✅ holidayCampId → allow multiple IDs (array)
+    // holidayCampId → allow multiple IDs
     if (typeof data.holidayCampId === "string") {
       data.holidayCampId = data.holidayCampId
         .split(",")
@@ -138,9 +137,9 @@ exports.createHolidayVenue = async (data) => {
     if (!Array.isArray(data.holidayCampId) || data.holidayCampId.length === 0) {
       throw new Error("Invalid holidayCampId");
     }
-    data.holidayCampId = JSON.stringify(data.holidayCampId); // store as JSON string
+    data.holidayCampId = JSON.stringify(data.holidayCampId);
 
-    // ✅ paymentGroupId → single integer
+    // paymentGroupId
     if (typeof data.paymentGroupId === "string") {
       data.paymentGroupId = parseInt(data.paymentGroupId.trim());
     }
@@ -148,32 +147,21 @@ exports.createHolidayVenue = async (data) => {
       throw new Error("Payment group is required");
     }
 
-    // ✅ Geocode address
+    // Geocode
     const coords = await geocodeAddress(data.address, data.area);
-    if (!coords) {
-      throw new Error("Your address is incorrect. Please provide a valid address.");
-    }
+    if (!coords) throw new Error("Your address is incorrect.");
 
-    if (coords) {
-      data.latitude = coords.latitude;
-      data.longitude = coords.longitude;
-      data.postal_code = coords.postal_code;
-    }
+    data.latitude = coords.latitude;
+    data.longitude = coords.longitude;
+    data.postal_code = coords.postal_code;
 
-    // ✅ createdBy must exist
-    if (!data.createdBy) {
-      throw new Error("createdBy is required");
-    }
+    if (!data.createdBy) throw new Error("createdBy is required");
 
-    // ✅ Create venue
+    // Create venue
     const venue = await HolidayVenue.create(data);
-
-    // Refetch to enrich
     const createdVenue = await HolidayVenue.findByPk(venue.id);
 
-    // =====================
-    // Payment Group (single) + nested PaymentPlans
-    // =====================
+    // Payment group
     let paymentGroup = null;
     if (createdVenue.paymentGroupId) {
       paymentGroup = await HolidayPaymentGroup.findByPk(createdVenue.paymentGroupId, {
@@ -182,9 +170,7 @@ exports.createHolidayVenue = async (data) => {
     }
     createdVenue.dataValues.paymentGroup = paymentGroup;
 
-    // =====================
-    // Term Groups → fetch TermGroup + Terms + sessions
-    // =====================
+    // Holiday Camp
     let holidayCampIds = [];
     if (typeof createdVenue.holidayCampId === "string") {
       try {
@@ -193,84 +179,25 @@ exports.createHolidayVenue = async (data) => {
         holidayCampIds = [];
       }
     }
-    // 
+
     if (holidayCampIds.length > 0) {
       const holidayCamp = await HolidayCamp.findAll({
         where: { id: holidayCampIds },
         include: [
           {
-            model: HolidayCampDate,
+            model: HolidayCampDates,
             as: "holidayCampDates",
             attributes: [
               "id",
               "holidayCampId",
-              "termName",
-              "day",
               "startDate",
               "endDate",
-              "exclusionDates",
-              "totalSessions",
+              "totalDays",
               "sessionsMap",
             ],
           },
         ],
       });
-
-    //   for (const termGroup of holidayCamp) {
-    //     for (const term of termGroup.holidayCampDates || []) {
-    //       // Parse exclusionDates
-    //       if (typeof term.exclusionDates === "string") {
-    //         try {
-    //           term.dataValues.exclusionDates = JSON.parse(term.exclusionDates);
-    //         } catch {
-    //           term.dataValues.exclusionDates = [];
-    //         }
-    //       }
-
-    //       // Parse & enrich sessionsMap
-    //       let parsedSessionsMap = [];
-    //       if (typeof term.sessionsMap === "string") {
-    //         try {
-    //           parsedSessionsMap = JSON.parse(term.sessionsMap);
-    //         } catch {
-    //           parsedSessionsMap = [];
-    //         }
-    //       } else {
-    //         parsedSessionsMap = term.sessionsMap || [];
-    //       }
-
-    //       for (const entry of parsedSessionsMap) {
-    //         if (!entry.sessionPlanId) continue;
-
-    //         const spg = await HolidaySessionPlanGroup.findByPk(entry.sessionPlanId, {
-    //           attributes: [
-    //             "id",
-    //             "groupName",
-    //             "levels",
-    //             "beginner_video",
-    //             "intermediate_video",
-    //             "advanced_video",
-    //             "pro_video",
-    //             "banner",
-    //             "player",
-    //             "beginner_upload",
-    //             "intermediate_upload",
-    //             "pro_upload",
-    //             "advanced_upload",
-    //           ],
-    //         });
-
-    //         if (spg) {
-    //           await parseSessionPlanGroupLevels(spg);
-    //           entry.sessionPlan = spg;
-    //         } else {
-    //           entry.sessionPlan = null;
-    //         }
-    //       }
-
-    //       term.dataValues.sessionsMap = parsedSessionsMap;
-    //     }
-    //   }
 
       createdVenue.dataValues.holidayCamp = holidayCamp;
     } else {
@@ -283,11 +210,12 @@ exports.createHolidayVenue = async (data) => {
     return { status: false, message: error.message };
   }
 };
+
 // =====================
 exports.updateHolidayVenue = async (id, data) => {
   try {
-    const venue = await HolidayVenue.findByPk(id);
-    if (!venue) {
+    const holidayVenue = await HolidayVenue.findByPk(id);
+    if (!holidayVenue) {
       return { status: false, message: "Venue not found." };
     }
 
@@ -323,50 +251,49 @@ exports.updateHolidayVenue = async (id, data) => {
 
     // ✅ Re-geocode if address/area changed
     if (
-      (data.address && data.address !== venue.address) ||
-      (data.area && data.area !== venue.area)
+      (data.address && data.address !== holidayVenue.address) ||
+      (data.area && data.area !== holidayVenue.area)
     ) {
       const coords = await geocodeAddress(
-        data.address || venue.address,
-        data.area || venue.area
+        data.address || holidayVenue.address,
+        data.area || holidayVenue.area
       );
 
       if (!coords) {
         throw new Error("Your address is incorrect. Please provide a valid address.");
       }
 
-      if (coords) {
-        data.latitude = coords.latitude;
-        data.longitude = coords.longitude;
-        data.postal_code = coords.postal_code;
-      }
+      data.latitude = coords.latitude;
+      data.longitude = coords.longitude;
+      data.postal_code = coords.postal_code;
     }
 
-    // ✅ Clean undefined values
+    // ✅ Remove undefined values
     Object.keys(data).forEach((key) => {
-      if (data[key] === undefined) {
-        delete data[key];
-      }
+      if (data[key] === undefined) delete data[key];
     });
 
     // ✅ Update
-    await venue.update(data);
-    const updatedVenue = await HolidayVenue.findByPk(id);
+    await holidayVenue.update(data);
+    const updatedHolidayVenue = await HolidayVenue.findByPk(id);
 
     // ✅ Payment Group
     let paymentGroup = null;
-    if (updatedVenue.paymentGroupId) {
-      paymentGroup = await HolidayPaymentGroup.findByPk(updatedVenue.paymentGroupId, {
-        include: [{ model: HolidayPaymentPlan, as: "holidayPaymentPlans" }],
-      });
+    if (updatedHolidayVenue.paymentGroupId) {
+      paymentGroup = await HolidayPaymentGroup.findByPk(
+        updatedHolidayVenue.paymentGroupId,
+        {
+          include: [{ model: HolidayPaymentPlan, as: "holidayPaymentPlans" }],
+        }
+      );
     }
-    updatedVenue.dataValues.paymentGroup = paymentGroup;
+    updatedHolidayVenue.dataValues.paymentGroup = paymentGroup;
 
-    // ✅ Term Groups (same as create)
+    // ✅ Term Groups (Holiday Camp IDs)
     let holidayCampIds = [];
-    if (typeof updatedVenue.holidayCampId === "string") {
+    if (typeof updatedHolidayVenue.holidayCampId === "string") {
       try {
-        holidayCampIds = JSON.parse(updatedVenue.holidayCampId);
+        holidayCampIds = JSON.parse(updatedHolidayVenue.holidayCampId);
       } catch {
         holidayCampIds = [];
       }
@@ -377,17 +304,14 @@ exports.updateHolidayVenue = async (id, data) => {
         where: { id: holidayCampIds },
         include: [
           {
-            model: HolidayCampDate,
+            model: HolidayCampDates,
             as: "holidayCampDates",
             attributes: [
               "id",
               "holidayCampId",
-              "termName",
-              "day",
               "startDate",
               "endDate",
-              "exclusionDates",
-              "totalSessions",
+              "totalDays",
               "sessionsMap",
             ],
           },
@@ -396,15 +320,8 @@ exports.updateHolidayVenue = async (id, data) => {
 
       for (const termGroup of holidayCamp) {
         for (const term of termGroup.holidayCampDates || []) {
-          if (typeof term.exclusionDates === "string") {
-            try {
-              term.dataValues.exclusionDates = JSON.parse(term.exclusionDates);
-            } catch {
-              term.dataValues.exclusionDates = [];
-            }
-          }
-
           let parsedSessionsMap = [];
+
           if (typeof term.sessionsMap === "string") {
             try {
               parsedSessionsMap = JSON.parse(term.sessionsMap);
@@ -418,24 +335,26 @@ exports.updateHolidayVenue = async (id, data) => {
           for (const entry of parsedSessionsMap) {
             if (!entry.sessionPlanId) continue;
 
-            const spg = await HolidaySessionPlanGroup.findByPk(entry.sessionPlanId, {
-              attributes: [
-                "id",
-                "groupName",
-                // "pinned",
-                "levels",
-                "beginner_video",
-                "intermediate_video",
-                "pro_video",
-                "advanced_video",
-                "banner",
-                "player",
-                "beginner_upload",
-                "intermediate_upload",
-                "pro_upload",
-                "advanced_upload",
-              ],
-            });
+            const spg = await HolidaySessionPlanGroup.findByPk(
+              entry.sessionPlanId,
+              {
+                attributes: [
+                  "id",
+                  "groupName",
+                  "levels",
+                  "beginner_video",
+                  "intermediate_video",
+                  "pro_video",
+                  "advanced_video",
+                  "banner",
+                  "player",
+                  "beginner_upload",
+                  "intermediate_upload",
+                  "pro_upload",
+                  "advanced_upload",
+                ],
+              }
+            );
 
             if (spg) {
               await parseSessionPlanGroupLevels(spg);
@@ -449,18 +368,18 @@ exports.updateHolidayVenue = async (id, data) => {
         }
       }
 
-      updatedVenue.dataValues.holidayCamp = holidayCamp;
+      updatedHolidayVenue.dataValues.holidayCamp = holidayCamp;
     } else {
-      updatedVenue.dataValues.holidayCamp = [];
+      updatedHolidayVenue.dataValues.holidayCamp = [];
     }
 
     return {
       status: true,
       message: "Venue updated successfully.",
-      data: updatedVenue,
+      data: updatedHolidayVenue,
     };
   } catch (error) {
-    console.error("❌ updateVenue Error:", error.message);
+    console.error("❌ updateHolidayVenue Error:", error.message);
     return { status: false, message: "Update failed. " + error.message };
   }
 };
@@ -536,7 +455,7 @@ exports.getAllHolidayVenues = async (createdBy) => {
 
       venue.dataValues.paymentGroups = paymentGroups;
 
-      // ===================== TERM GROUPS =====================
+      // ===================== Holiday camp =====================
       let holidayCampIds = [];
 
       if (typeof venue.holidayCampId === "string") {
@@ -554,42 +473,33 @@ exports.getAllHolidayVenues = async (createdBy) => {
           where: { id: holidayCampIds },
           include: [
             {
-              model: HolidayCampDate,
+              model: HolidayCampDates,
               as: "holidayCampDates",
               attributes: [
                 "id",
                 "holidayCampId",
-                "termName",
-                "day",
                 "startDate",
                 "endDate",
-                "exclusionDates",
-                "totalSessions",
+                "totalDays",
                 "sessionsMap",
               ],
             },
           ],
         });
 
-        // ===================== PROCESS EACH TERM =====================
-        for (const termGroup of holidayCamp) {
-          if (termGroup?.holidayCamps?.length) {
-            for (const term of termGroup.holidayCampDates) {
+        // ===================== PROCESS EACH Holiday Camp =====================
+        for (const holidayCampItem of holidayCamp) {
 
-              // --- Parse exclusionDates ---
-              if (typeof term.exclusionDates === "string") {
-                try {
-                  term.dataValues.exclusionDates = JSON.parse(term.exclusionDates);
-                } catch {
-                  term.dataValues.exclusionDates = [];
-                }
-              }
+          // Must check holidayCampDates
+          if (holidayCampItem?.holidayCampDates?.length) {
+
+            for (const holidayCampDate of holidayCampItem.holidayCampDates) {
 
               // --- Parse sessionsMap ---
               let parsedSessionsMap = [];
-              if (typeof term.sessionsMap === "string") {
+              if (typeof holidayCampDate.sessionsMap === "string") {
                 try {
-                  parsedSessionsMap = JSON.parse(term.sessionsMap);
+                  parsedSessionsMap = JSON.parse(holidayCampDate.sessionsMap);
                 } catch {
                   parsedSessionsMap = [];
                 }
@@ -601,28 +511,25 @@ exports.getAllHolidayVenues = async (createdBy) => {
 
                 if (!entry.sessionPlanId) continue;
 
-                const spg = await HolidaySessionPlanGroup.findByPk(
-                  entry.sessionPlanId,
-                  {
-                    attributes: [
-                      "id",
-                      "groupName",
-                      "levels",
-                      "beginner_video",
-                      "intermediate_video",
-                      "pro_video",
-                      "advanced_video",
-                      "banner",
-                      "player",
-                      "beginner_upload",
-                      "intermediate_upload",
-                      "pro_upload",
-                      "advanced_upload",
-                      "type",
-                      "pinned",
-                    ],
-                  }
-                );
+                const spg = await HolidaySessionPlanGroup.findByPk(entry.sessionPlanId, {
+                  attributes: [
+                    "id",
+                    "groupName",
+                    "levels",
+                    "beginner_video",
+                    "intermediate_video",
+                    "pro_video",
+                    "advanced_video",
+                    "banner",
+                    "player",
+                    "beginner_upload",
+                    "intermediate_upload",
+                    "pro_upload",
+                    "advanced_upload",
+                    "type",
+                    "pinned",
+                  ],
+                });
 
                 if (spg) {
                   await parseSessionPlanGroupLevels(spg);
@@ -632,12 +539,13 @@ exports.getAllHolidayVenues = async (createdBy) => {
                 }
               }
 
-              term.dataValues.sessionsMap = parsedSessionsMap;
+              holidayCampDate.dataValues.sessionsMap = parsedSessionsMap;
             }
           }
         }
 
         venue.dataValues.holidayCamp = holidayCamp;
+
       } else {
         venue.dataValues.holidayCamp = [];
       }
@@ -750,17 +658,14 @@ exports.getHolidayVenueById = async (id, createdBy) => {
         where: { id: holidayCampIds },
         include: [
           {
-            model: HolidayCampDate,
+            model: HolidayCampDates,
             as: "holidayCampDates",
             attributes: [
               "id",
               "holidayCampId",
-              "termName",
-              "day",
               "startDate",
               "endDate",
-              "exclusionDates",
-              "totalSessions",
+              "totalDays",
               "sessionsMap",
             ],
           },
