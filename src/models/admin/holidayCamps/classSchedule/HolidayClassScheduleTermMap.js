@@ -14,7 +14,7 @@ const HolidayClassScheduleTermMap = sequelize.define(
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
-        model: "holiday_class_schedules", // make sure table is snake_case in DB
+        model: "holiday_class_schedules", 
         key: "id",
       },
       onUpdate: "CASCADE",

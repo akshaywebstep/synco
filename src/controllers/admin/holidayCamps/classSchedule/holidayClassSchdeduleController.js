@@ -33,74 +33,58 @@ function timeToMinutes(time) {
 }
 
 exports.createHolidayClassSchedule = async (req, res) => {
-    const {
-        className,
-        capacity,
-        startTime,
-        endTime,
-        venueId,
-    } = req.body;
+    const { className, capacity, startTime, endTime, venueId } = req.body;
+    const createdBy = req.admin?.id;
 
-    const createdBy = req.admin?.id; // ✅ Securely taken from logged-in admin
-
-    if (DEBUG) {
-        console.log("📥 Creating new class schedule:", req.body);
-    }
-
-    // ✅ Validation
+    // 1️⃣ Validation
     const validation = validateFormData(req.body, {
         requiredFields: ["className", "startTime", "endTime", "venueId"],
     });
-
     if (!validation.isValid) {
-        if (DEBUG) console.log("❌ Validation failed:", validation.error);
-        await logActivity(req, PANEL, MODULE, "create", validation.error, false);
         return res.status(400).json({ status: false, ...validation });
     }
 
-    // ✅ Ensure startTime < endTime
-    if (timeToMinutes(startTime) > timeToMinutes(endTime)) {
-        if (DEBUG) console.log("❌ Start time must be before end time");
-        await logActivity(
-            req,
-            PANEL,
-            MODULE,
-            "create",
-            { message: "Start time must be before end time" },
-            false
-        );
+    // 2️⃣ Validate time
+    if (timeToMinutes(startTime) >= timeToMinutes(endTime)) {
         return res.status(400).json({
             status: false,
             message: "Start time must be before end time.",
         });
     }
 
-    // ✅ Check if venue exists
+    // 3️⃣ Validate venue
     const venue = await HolidayVenue.findByPk(venueId);
     if (!venue) {
-        if (DEBUG) console.log("❌ Venue not found:", venueId);
-        await logActivity(
-            req,
-            PANEL,
-            MODULE,
-            "create",
-            { message: "Venue not found" },
-            false
-        );
         return res.status(404).json({
             status: false,
             message: "Invalid venue selected. Venue does not exist.",
         });
     }
-    console.log("venue.holidayCampId:", venue.holidayCampId);
-    const holidayCampIds = JSON.parse(venue.holidayCampId || "[]").map(Number);
-    console.log("Parsed holidayCampIds:", holidayCampIds);
 
-    const holidayCampDateRes = await HolidayCamDateService.getHolidayCampDatesByHolidayCampId(termGroupIds);
-    console.log("holidayCampDateRes:", holidayCampDateRes);
-    const holidayCampDateIds = (holidayCampDateRes.data || []).map((t) => t.id);
-    const holidayCampDateIdsString = JSON.stringify(holidayCampDateIds);
+    // 4️⃣ Extract holidayCampIds from venue
+    let holidayCampIds = [];
+    try {
+        holidayCampIds = JSON.parse(venue.holidayCampId || "[]");
+    } catch {
+        holidayCampIds = [];
+    }
 
+    if (!Array.isArray(holidayCampIds) || holidayCampIds.length === 0) {
+        return res.status(400).json({
+            status: false,
+            message: "Venue does not contain any holiday camp reference.",
+        });
+    }
+
+    // 5️⃣ Get all HolidayCampDates
+    const holidayCampDates = await HolidayCampDates.findAll({
+        where: { holidayCampId: holidayCampIds },
+    });
+
+    const holidayCampDateIds = holidayCampDates.map((d) => d.id);
+
+    // 6️⃣ Create class schedule
+    let newClass;
     try {
         const result = await ClassScheduleService.createHolidayClass({
             className,
@@ -109,139 +93,72 @@ exports.createHolidayClassSchedule = async (req, res) => {
             startTime,
             endTime,
             venueId,
-            holidayCampDateIds: holidayCampDateIdsString,
+            holidayCampDateIds: JSON.stringify(holidayCampDateIds),
             createdBy,
         });
 
         if (!result.status) {
-            if (DEBUG) console.log("⚠️ Creation failed:", result.message);
-            await logActivity(req, PANEL, MODULE, "create", result, false);
             return res.status(500).json({ status: false, message: result.message });
         }
 
-        const newClass = result.data;
+        newClass = result.data;
+    } catch (err) {
+        console.error("❌ Error creating class schedule:", err);
+        return res.status(500).json({ status: false, message: err.message });
+    }
 
-        // ✅ Create mappings in ClassScheduleTermMap with status "pending"
-        try {
-            let holidayCampIds = [];
+    // 7️⃣ Insert into HolidayClassScheduleTermMap
+    try {
+        const holidayCamps = await HolidayCamp.findAll({
+            where: { id: holidayCampIds },
+        });
 
-            if (venue.holidayCampId) {
-                if (typeof venue.holidayCampId === "string") {
-                    try {
-                        holidayCampIds = JSON.parse(venue.holidayCampId); // JSON array
-                    } catch {
-                        holidayCampIds = venue.holidayCampId
-                            .split(",")
-                            .map((id) => Number(id.trim()))
-                            .filter(Boolean); // comma-separated fallback
-                    }
-                } else if (Array.isArray(venue.holidayCampId)) {
-                    holidayCampIds = venue.holidayCampId;
-                } else {
-                    holidayCampIds = [venue.holidayCampId]; // single number fallback
+        for (const camp of holidayCamps) {
+            const campDates = await HolidayCampDates.findAll({
+                where: { holidayCampId: camp.id },
+            });
+
+            for (const date of campDates) {
+                let sessionsMap = [];
+
+                try {
+                    sessionsMap =
+                        typeof date.sessionsMap === "string"
+                            ? JSON.parse(date.sessionsMap)
+                            : date.sessionsMap || [];
+                } catch (err) {
+                    console.error("❌ Error parsing sessionsMap:", err);
+                    continue;
                 }
-            }
 
-            if (DEBUG) console.log("👉 holidayCampIds resolved:", holidayCampIds);
-
-            if (holidayCampIds.length > 0) {
-                const holidayCamps = await HolidayTermGroup.findAll({
-                    where: { id: holidayCampIds },
-                });
-
-                if (DEBUG)
-                    console.log(
-                        "👉 Loaded holidayCamps:",
-                        holidayCamps.map((tg) => tg.id)
-                    );
-
-                for (const holidayCamp of holidayCamps) {
-                    const holidayCampDate = await HolidayCampDates.findAll({
-                        where: { holidayCampIds: holidayCamp.id },
-                    });
-
-                    if (DEBUG)
-                        console.log(
-                            `👉 Processing holidayCamp ${holidayCamp.id}, holidayCampDate:`,
-                            terms.map((t) => t.id)
-                        );
-
-                    for (const holidayCamp of holidayCampDates) {
-                        let sessionsMap = [];
-                        try {
-                            sessionsMap =
-                                typeof holidayCamp.sessionsMap === "string"
-                                    ? JSON.parse(holidayCamp.sessionsMap)
-                                    : holidayCamp.sessionsMap || [];
-                        } catch (err) {
-                            console.error(
-                                "❌ Failed to parse sessionsMap for term:",
-                                term.id,
-                                err
-                            );
-                            continue;
-                        }
+                for (const session of sessionsMap) {
+                    if (session.sessionPlanId) {
+                        await HolidayClassScheduleTermMap.create({
+                            classScheduleId: newClass.id,
+                            holidayCampId: camp.id,
+                            holidayCampDateId: date.id,
+                            sessionPlanId: session.sessionPlanId,
+                            createdBy,
+                            status: "pending",
+                        });
 
                         if (DEBUG)
                             console.log(
-                                `👉 Term ${term.id} sessionsMap:`,
-                                JSON.stringify(sessionsMap)
+                                `✅ TermMap created: class=${newClass.id}, campDate=${date.id}, sessionPlan=${session.sessionPlanId}`
                             );
-
-                        for (const session of sessionsMap) {
-                            if (session.sessionPlanId) {
-                                await HolidayClassScheduleTermMap.create({
-                                    classScheduleId: newClass.id,
-                                    holidayCampId: termGroup.id,
-                                    holidayCampDateId: term.id,
-                                    sessionPlanId: session.sessionPlanId,
-                                    status: "pending", // ✅ default
-                                    createdBy: createdBy,
-                                });
-
-                                if (DEBUG)
-                                    console.log(
-                                        `✅ Mapping created: classSchedule ${newClass.id} → term ${term.id} → sessionPlan ${session.sessionPlanId}`
-                                    );
-                            }
-                        }
                     }
                 }
             }
-        } catch (mapError) {
-            console.error(
-                "⚠️ Failed to create ClassScheduleTermMap entries:",
-                mapError
-            );
         }
-
-        if (DEBUG) console.log("✅ Class schedule created:", newClass);
-        await logActivity(req, PANEL, MODULE, "create", result, true);
-
-        await createNotification(
-            req,
-            "New Class Schedule Created",
-            `Class "${className}" has been scheduled on ${day} from ${startTime} to ${endTime}.`,
-            "System"
-        );
-
-        return res.status(201).json({
-            status: true,
-            message: "Class schedule created successfully.",
-            data: newClass,
-        });
-    } catch (error) {
-        console.error("❌ Server error during creation:", error);
-        await logActivity(
-            req,
-            PANEL,
-            MODULE,
-            "create",
-            { oneLineMessage: error.message },
-            false
-        );
-        return res.status(500).json({ status: false, message: "Server error." });
+    } catch (mapError) {
+        console.error("⚠️ Failed to create TermMap entries:", mapError);
     }
+
+    return res.status(201).json({
+        status: true,
+        message: "Class schedule created successfully.",
+        data: newClass,
+    });
 };
 
 // ✅ GET All Class Schedules

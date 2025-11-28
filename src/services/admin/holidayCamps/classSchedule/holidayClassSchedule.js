@@ -164,289 +164,187 @@ exports.getAllHolidayClasses = async (adminId) => {
         for (const cls of classes) {
             const venue = cls.venue;
 
-            if (venue) {
-                // =====================
-                // paymentGroupId → single integer now
-                // =====================
-                let paymentGroups = [];
-                if (venue.paymentGroupId) {
-                    const pg = await HolidayPaymentGroup.findAll({
-                        where: { id: venue.paymentGroupId },
-                        include: [
-                            {
-                                model: HolidayPaymentPlan,
-                                as: "holidayPaymentPlans",
-                                attributes: [
-                                    "id",
-                                    "title",
-                                    "price",
-                                    "interval",
-                                    "duration",
-                                    "students",
-                                    "joiningFee",
-                                    "HolidayCampPackage",
-                                    "termsAndCondition",
-                                    "createdBy",
-                                    "createdAt",
-                                    "updatedAt",
-                                ],
-                            },
-                        ],
-                        order: [["createdAt", "DESC"]],
-                    });
-                    paymentGroups = pg;
-                }
-                venue.dataValues.paymentGroups = paymentGroups;
-
-                // =====================
-                // termGroupId → array of IDs
-                // =====================
-                let termGroupIds = [];
-                if (typeof venue.termGroupId === "string") {
-                    try {
-                        termGroupIds = JSON.parse(venue.termGroupId);
-                    } catch {
-                        termGroupIds = [];
-                    }
-                } else if (Array.isArray(venue.termGroupId)) {
-                    termGroupIds = venue.termGroupId;
-                }
-
-                // =====================
-                // Fetch term groups with terms
-                // =====================
-                if (holidayCampIds.length > 0) {
-                    const holidayCamps = await HolidayCamp.findAll({
-                        where: { id: holidayCampIds },
-                        include: [
-                            {
-                                model: HolidayCampDates,
-                                as: "holidayCampDates",
-                                attributes: [
-                                    "id",
-                                    "termGroupId",
-                                    "termName",
-                                    "day",
-                                    "startDate",
-                                    "endDate",
-                                    "exclusionDates",
-                                    "totalSessions",
-                                    "sessionsMap",
-                                ],
-                            },
-                        ],
-                    });
-
-                    const holidayCampDateIds = JSON.parse(cls.holidayCampDateIds || "[]").map(Number);
-
-                    for (const holidayCamp of holidayCamps) {
-                        for (const term of termGroup.holidayTerms || []) {
-                            if (!termIds.includes(term.id)) {
-                                continue;
-                            }
-
-                            let parsedSessionsMap = [];
-                            if (typeof term.sessionsMap === "string") {
-                                try {
-                                    parsedSessionsMap = JSON.parse(term.sessionsMap);
-                                } catch {
-                                    parsedSessionsMap = [];
-                                }
-                            } else {
-                                parsedSessionsMap = term.sessionsMap || [];
-                            }
-
-                            // ✅ New array to hold only sessions that exist in ClassScheduleTermMap
-                            const filteredSessions = [];
-
-                            // ✅ Get all sessionPlanIds that already exist in mapping for this class + term
-                            const existingSessionPlanIds = mappings
-                                .filter(
-                                    (m) =>
-                                        m.classScheduleId === cls.id &&
-                                        m.termGroupId === termGroup.id &&
-                                        m.termId === term.id
-                                )
-                                .map((m) => m.sessionPlanId);
-
-                            for (let i = 0; i < parsedSessionsMap.length; i++) {
-                                const entry = parsedSessionsMap[i];
-                                if (!entry.sessionPlanId) continue;
-
-                                // 🧩 Skip sessions that were newly added in term.sessionMap (not in mapping yet)
-                                if (!existingSessionPlanIds.includes(entry.sessionPlanId)) {
-                                    continue;
-                                }
-
-                                const spg = await HolidaySessionPlanGroup.findByPk(
-                                    entry.sessionPlanId,
-                                    {
-                                        attributes: [
-                                            "id",
-                                            "groupName",
-                                            "levels",
-                                            "type",
-                                            "pinned",
-                                            "beginner_video",
-                                            "intermediate_video",
-                                            "advanced_video",
-                                            "pro_video",
-                                            "banner",
-                                            "player",
-                                            "beginner_upload",
-                                            "intermediate_upload",
-                                            "advanced_upload",
-                                            "pro_upload",
-                                            "createdBy",
-                                            "createdAt",
-                                        ],
-                                    }
-                                );
-
-                                if (!spg) continue;
-
-                                const relatedMappings = mappings.filter(
-                                    (m) =>
-                                        m.classScheduleId === cls.id &&
-                                        m.termGroupId === termGroup.id &&
-                                        m.termId === term.id &&
-                                        m.sessionPlanId === entry.sessionPlanId
-                                );
-
-                                if (relatedMappings.length === 0) continue;
-
-                                // 🧩 Parse levels safely
-                                let levels = {};
-                                try {
-                                    levels =
-                                        typeof spg.levels === "string"
-                                            ? JSON.parse(spg.levels)
-                                            : spg.levels || {};
-                                } catch {
-                                    levels = {};
-                                }
-
-                                const allExercises = await HolidaySessionExercise.findAll({
-                                    where: { createdBy: spg.createdBy },
-                                });
-                                const exerciseMap = allExercises.reduce((acc, ex) => {
-                                    acc[ex.id] = ex;
-                                    return acc;
-                                }, {});
-
-                                for (const levelKey of Object.keys(levels)) {
-                                    for (const item of levels[levelKey]) {
-                                        if (Array.isArray(item.sessionExerciseId)) {
-                                            item.sessionExercises = item.sessionExerciseId
-                                                .map((exId) => exerciseMap[exId])
-                                                .filter(Boolean)
-                                                .map((ex) => ({
-                                                    id: ex.id,
-                                                    title: ex.title,
-                                                    description: ex.description,
-                                                    duration: ex.duration,
-                                                    imageUrl: ex.imageUrl,
-                                                }));
-                                        } else {
-                                            item.sessionExercises = [];
-                                        }
-                                    }
-                                }
-
-                                const getElapsedTime = (createdAt) => {
-                                    const now = new Date();
-                                    const created = new Date(createdAt);
-                                    const diffMs = now - created;
-                                    const diffSeconds = Math.floor(diffMs / 1000);
-                                    const diffMinutes = Math.floor(diffSeconds / 60);
-                                    const diffHours = Math.floor(diffMinutes / 60);
-                                    const diffDays = Math.floor(diffHours / 24);
-                                    if (diffDays > 0) return `${diffDays} day(s) ago`;
-                                    if (diffHours > 0) return `${diffHours} hour(s) ago`;
-                                    if (diffMinutes > 0) return `${diffMinutes} minute(s) ago`;
-                                    return `${diffSeconds} second(s) ago`;
-                                };
-
-                                const videoUploadedAgo = {};
-                                for (const level of [
-                                    "beginner",
-                                    "intermediate",
-                                    "advanced",
-                                    "pro",
-                                ]) {
-                                    if (spg[`${level}_video`]) {
-                                        videoUploadedAgo[`${level}_video`] = getElapsedTime(
-                                            spg.createdAt
-                                        );
-                                    } else {
-                                        videoUploadedAgo[`${level}_video`] = null;
-                                    }
-                                }
-
-                                const mapping =
-                                    relatedMappings[i] || relatedMappings[0] || null;
-
-                                entry.sessionPlan = {
-                                    id: spg.id,
-                                    groupName: spg.groupName,
-                                    levels,
-                                    beginner_video: spg.beginner_video,
-                                    intermediate_video: spg.intermediate_video,
-                                    advanced_video: spg.advanced_video,
-                                    pro_video: spg.pro_video,
-                                    banner: spg.banner,
-                                    player: spg.player,
-                                    videoUploadedAgo,
-                                    ...(mapping
-                                        ? {
-                                            mapId: mapping.id,
-                                            classScheduleId: mapping.classScheduleId,
-                                            termGroupId: mapping.termGroupId,
-                                            termId: mapping.termId,
-                                            sessionPlanId: mapping.sessionPlanId,
-                                            cancelSession: await (async () => {
-                                                const cancelled =
-                                                    await getCancelledSessionBySessionPlanId(
-                                                        mapping.id,
-                                                        mapping.sessionPlanId
-                                                    );
-                                                return cancelled?.status
-                                                    ? cancelled.cancelSession
-                                                    : {};
-                                            })(),
-                                            status: mapping.status,
-                                            createdAt: mapping.createdAt,
-                                            updatedAt: mapping.updatedAt,
-                                        }
-                                        : {}),
-                                };
-
-                                // ✅ Only push if mapping exists
-                                filteredSessions.push(entry);
-                            }
-
-                            // ✅ Replace with filtered sessions only
-                            term.dataValues.sessionsMap = filteredSessions;
-                        }
-
-                        // ✅ Remove empty terms
-                        termGroup.holidayTerms = (termGroup.holidayTerms || []).filter(
-                            (t) => (t.dataValues.sessionsMap || []).length > 0
-                        );
-                    }
-
-                    // ✅ Remove empty term groups
-                    const filteredTermGroups = termGroups.filter(
-                        (tg) => (tg.holidayTerms || []).length > 0
-                    );
-
-                    venue.dataValues.termGroups = filteredTermGroups;
-                }
-            } else {
-                // venue is null — avoid crash
+            if (!venue) {
                 cls.dataValues.venue = null;
                 console.warn(`⚠️ ClassSchedule ${cls.id} has no venue`);
+                continue;
             }
+
+            // =====================
+            // Attach paymentGroups if exists
+            // =====================
+            let paymentGroups = [];
+            if (venue.paymentGroupId) {
+                const pg = await HolidayPaymentGroup.findAll({
+                    where: { id: venue.paymentGroupId },
+                    include: [
+                        {
+                            model: HolidayPaymentPlan,
+                            as: "holidayPaymentPlans",
+                            attributes: [
+                                "id",
+                                "title",
+                                "price",
+                                "interval",
+                                "duration",
+                                "students",
+                                "joiningFee",
+                                "HolidayCampPackage",
+                                "termsAndCondition",
+                                "createdBy",
+                                "createdAt",
+                                "updatedAt",
+                            ],
+                        },
+                    ],
+                    order: [["createdAt", "DESC"]],
+                });
+                paymentGroups = pg;
+            }
+            venue.dataValues.paymentGroups = paymentGroups;
+
+            // =====================
+            // Extract holidayCampIds from venue
+            // =====================
+            let holidayCampIds = [];
+            if (venue.holidayCampId) {
+                if (typeof venue.holidayCampId === "string") {
+                    try {
+                        holidayCampIds = JSON.parse(venue.holidayCampId);
+                    } catch {
+                        holidayCampIds = venue.holidayCampId
+                            .split(",")
+                            .map((id) => Number(id.trim()))
+                            .filter(Boolean);
+                    }
+                } else if (Array.isArray(venue.holidayCampId)) {
+                    holidayCampIds = venue.holidayCampId;
+                } else {
+                    holidayCampIds = [venue.holidayCampId];
+                }
+            }
+
+            if (holidayCampIds.length === 0) {
+                venue.dataValues.holidayCamps = [];
+                continue;
+            }
+
+            // =====================
+            // Fetch HolidayCamps with their HolidayCampDates
+            // =====================
+            const holidayCamps = await HolidayCamp.findAll({
+                where: { id: holidayCampIds },
+                include: [
+                    {
+                        model: HolidayCampDates,
+                        as: "holidayCampDates",
+                        attributes: [
+                            "id",
+                            "holidayCampId",
+                            "startDate",
+                            "endDate",
+                            "sessionsMap",
+                        ],
+                    },
+                ],
+            });
+
+            const holidayCampDateIds = JSON.parse(cls.holidayCampDateIds || "[]").map(Number);
+
+            for (const camp of holidayCamps) {
+                for (const date of camp.holidayCampDates || []) {
+                    // Only process dates that belong to this class
+                    if (!holidayCampDateIds.includes(date.id)) continue;
+
+                    let sessionsMap = [];
+                    if (date.sessionsMap) {
+                        try {
+                            sessionsMap =
+                                typeof date.sessionsMap === "string"
+                                    ? JSON.parse(date.sessionsMap)
+                                    : date.sessionsMap;
+                        } catch {
+                            sessionsMap = [];
+                        }
+                    }
+
+                    const filteredSessions = [];
+
+                    for (const session of sessionsMap) {
+                        if (!session.sessionPlanId) continue;
+
+                        // Check if mapping exists
+                        const mapping = mappings.find(
+                            (m) =>
+                                m.classScheduleId === cls.id &&
+                                m.holidayCampId === camp.id &&
+                                m.holidayCampDateId === date.id &&
+                                m.sessionPlanId === session.sessionPlanId
+                        );
+
+                        if (!mapping) continue;
+
+                        // Fetch session plan group
+                        const spg = await HolidaySessionPlanGroup.findByPk(session.sessionPlanId);
+                        if (!spg) continue;
+
+                        // Parse levels and attach exercises
+                        let levels = {};
+                        try {
+                            levels = typeof spg.levels === "string" ? JSON.parse(spg.levels) : spg.levels || {};
+                        } catch {
+                            levels = {};
+                        }
+
+                        const allExercises = await HolidaySessionExercise.findAll({
+                            where: { createdBy: spg.createdBy },
+                        });
+                        const exerciseMap = allExercises.reduce((acc, ex) => {
+                            acc[ex.id] = ex;
+                            return acc;
+                        }, {});
+
+                        for (const key of Object.keys(levels)) {
+                            for (const item of levels[key]) {
+                                if (Array.isArray(item.sessionExerciseId)) {
+                                    item.sessionExercises = item.sessionExerciseId
+                                        .map((id) => exerciseMap[id])
+                                        .filter(Boolean);
+                                } else {
+                                    item.sessionExercises = [];
+                                }
+                            }
+                        }
+
+                        // Attach mapping info
+                        session.sessionPlan = {
+                            id: spg.id,
+                            groupName: spg.groupName,
+                            levels,
+                            beginner_video: spg.beginner_video,
+                            intermediate_video: spg.intermediate_video,
+                            advanced_video: spg.advanced_video,
+                            pro_video: spg.pro_video,
+                            banner: spg.banner,
+                            player: spg.player,
+                            mapId: mapping.id,
+                            classScheduleId: mapping.classScheduleId,
+                            holidayCampId: mapping.holidayCampId,
+                            holidayCampDateId: mapping.holidayCampDateId,
+                            sessionPlanId: mapping.sessionPlanId,
+                            status: mapping.status,
+                            createdAt: mapping.createdAt,
+                            updatedAt: mapping.updatedAt,
+                        };
+
+                        filteredSessions.push(session);
+                    }
+
+                    date.dataValues.sessionsMap = filteredSessions;
+                }
+            }
+
+            venue.dataValues.holidayCamps = holidayCamps;
         }
 
         return {
@@ -483,7 +381,7 @@ exports.getHolidayClassByIdWithFullDetails = async (classId, createdBy) => {
 
         if (venue) {
             // =====================
-            // paymentGroupId → single integer
+            // Attach paymentGroups if exists
             // =====================
             let paymentGroups = [];
             if (venue.paymentGroupId) {
@@ -516,121 +414,92 @@ exports.getHolidayClassByIdWithFullDetails = async (classId, createdBy) => {
             venue.dataValues.paymentGroups = paymentGroups;
 
             // =====================
-            // termGroupId → array of IDs
+            // Extract holidayCampIds from venue
             // =====================
-            let termGroupIds = [];
-            if (typeof venue.termGroupId === "string") {
-                try {
-                    termGroupIds = JSON.parse(venue.termGroupId);
-                } catch {
-                    termGroupIds = [];
+            let holidayCampIds = [];
+            if (venue.holidayCampId) {
+                if (typeof venue.holidayCampId === "string") {
+                    try {
+                        holidayCampIds = JSON.parse(venue.holidayCampId);
+                    } catch {
+                        holidayCampIds = venue.holidayCampId
+                            .split(",")
+                            .map((id) => Number(id.trim()))
+                            .filter(Boolean);
+                    }
+                } else if (Array.isArray(venue.holidayCampId)) {
+                    holidayCampIds = venue.holidayCampId;
+                } else {
+                    holidayCampIds = [venue.holidayCampId];
                 }
-            } else if (Array.isArray(venue.termGroupId)) {
-                termGroupIds = venue.termGroupId;
             }
 
-            // Fetch all mappings once (for this class)
-            const mappings = await HolidayClassScheduleTermMap.findAll({
-                where: { classScheduleId: cls.id },
-            });
+            if (holidayCampIds.length === 0) {
+                venue.dataValues.holidayCamps = [];
+            } else {
+                // =====================
+                // Fetch all mappings for this class
+                // =====================
+                const mappings = await HolidayClassScheduleTermMap.findAll({
+                    where: { classScheduleId: cls.id },
+                });
 
-            // =====================
-            // Fetch term groups with terms
-            // =====================
-            if (termGroupIds.length > 0) {
-                const termGroups = await HolidayTermGroup.findAll({
-                    where: { id: termGroupIds },
+                // =====================
+                // Fetch HolidayCamps with HolidayCampDates
+                // =====================
+                const holidayCamps = await HolidayCamp.findAll({
+                    where: { id: holidayCampIds },
                     include: [
                         {
-                            model: HolidayTerm,
-                            as: "holidayTerms",
+                            model: HolidayCampDates,
+                            as: "holidayCampDates",
                             attributes: [
                                 "id",
-                                "termGroupId",
-                                "termName",
-                                "day",
+                                "holidayCampId",
                                 "startDate",
                                 "endDate",
-                                "exclusionDates",
-                                "totalSessions",
                                 "sessionsMap",
                             ],
                         },
                     ],
                 });
 
-                for (const termGroup of termGroups) {
-                    for (const term of termGroup.terms || []) {
-                        if (typeof term.exclusionDates === "string") {
+                for (const camp of holidayCamps) {
+                    for (const date of camp.holidayCampDates || []) {
+                        let sessionsMap = [];
+                        if (date.sessionsMap) {
                             try {
-                                term.dataValues.exclusionDates = JSON.parse(
-                                    term.exclusionDates
-                                );
+                                sessionsMap =
+                                    typeof date.sessionsMap === "string"
+                                        ? JSON.parse(date.sessionsMap)
+                                        : date.sessionsMap;
                             } catch {
-                                term.dataValues.exclusionDates = [];
+                                sessionsMap = [];
                             }
                         }
 
-                        let parsedSessionsMap = [];
-                        if (typeof term.sessionsMap === "string") {
-                            try {
-                                parsedSessionsMap = JSON.parse(term.sessionsMap);
-                            } catch {
-                                parsedSessionsMap = [];
-                            }
-                        } else {
-                            parsedSessionsMap = term.sessionsMap || [];
-                        }
-
-                        // ✅ Corrected loop: only include sessions present in ClassScheduleTermMap
                         const filteredSessions = [];
 
-                        for (let i = 0; i < parsedSessionsMap.length; i++) {
-                            const entry = parsedSessionsMap[i];
-                            if (!entry.sessionPlanId) continue;
+                        for (const session of sessionsMap) {
+                            if (!session.sessionPlanId) continue;
 
-                            const spg = await HolidaySessionPlanGroup.findByPk(entry.sessionPlanId, {
-                                attributes: [
-                                    "id",
-                                    "groupName",
-                                    "levels",
-                                    "type",
-                                    "pinned",
-                                    "beginner_video",
-                                    "intermediate_video",
-                                    "advanced_video",
-                                    "pro_video",
-                                    "banner",
-                                    "player",
-                                    "beginner_upload",
-                                    "intermediate_upload",
-                                    "advanced_upload",
-                                    "pro_upload",
-                                    "createdBy",
-                                    "createdAt",
-                                ],
-                            });
-
-                            if (!spg) continue;
-
-                            // ✅ Only include if mapping exists in ClassScheduleTermMap
-                            const relatedMappings = mappings.filter(
+                            const mapping = mappings.find(
                                 (m) =>
                                     m.classScheduleId === cls.id &&
-                                    m.termGroupId === termGroup.id &&
-                                    m.termId === term.id &&
-                                    m.sessionPlanId === spg.id
+                                    m.holidayCampId === camp.id &&
+                                    m.holidayCampDateId === date.id &&
+                                    m.sessionPlanId === session.sessionPlanId
                             );
 
-                            if (relatedMappings.length === 0) continue; // skip sessions not in map
+                            if (!mapping) continue; // Only include mapped sessions
 
-                            // Parse levels safely
+                            const spg = await HolidaySessionPlanGroup.findByPk(session.sessionPlanId);
+                            if (!spg) continue;
+
+                            // Parse levels
                             let levels = {};
                             try {
-                                levels =
-                                    typeof spg.levels === "string"
-                                        ? JSON.parse(spg.levels)
-                                        : spg.levels || {};
+                                levels = typeof spg.levels === "string" ? JSON.parse(spg.levels) : spg.levels || {};
                             } catch {
                                 levels = {};
                             }
@@ -663,7 +532,7 @@ exports.getHolidayClassByIdWithFullDetails = async (classId, createdBy) => {
                                 }
                             }
 
-                            // Uploaded ago calculation
+                            // Video info
                             const getElapsedTime = (createdAt) => {
                                 const now = new Date();
                                 const created = new Date(createdAt);
@@ -672,58 +541,23 @@ exports.getHolidayClassByIdWithFullDetails = async (classId, createdBy) => {
                                 const diffMinutes = Math.floor(diffSeconds / 60);
                                 const diffHours = Math.floor(diffMinutes / 60);
                                 const diffDays = Math.floor(diffHours / 24);
-
                                 if (diffDays > 0) return `${diffDays} day(s) ago`;
                                 if (diffHours > 0) return `${diffHours} hour(s) ago`;
                                 if (diffMinutes > 0) return `${diffMinutes} minute(s) ago`;
                                 return `${diffSeconds} second(s) ago`;
                             };
 
-                            // Build combined video info (duration + uploadedAgo)
                             const videoUploadedAgo = {};
-
-                            for (const level of [
-                                "beginner",
-                                "intermediate",
-                                "advanced",
-                                "pro",
-                            ]) {
+                            for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
                                 const video = spg[`${level}_video`];
-
-                                const videoPath =
-                                    typeof video === "string"
-                                        ? video
-                                        : video?.path || video?.url || null;
-
-                                if (videoPath) {
-                                    try {
-                                        const durationInSeconds = await getVideoDurationInSeconds(
-                                            videoPath
-                                        );
-                                        const formattedDuration = formatDuration(durationInSeconds);
-
-                                        videoUploadedAgo[`${level}_video_duration`] =
-                                            formattedDuration;
-                                        videoUploadedAgo[`${level}_video_uploadedAgo`] =
-                                            getElapsedTime(spg.createdAt);
-                                    } catch (err) {
-                                        console.error(
-                                            `Error getting duration for ${level} video:`,
-                                            err
-                                        );
-                                        videoUploadedAgo[`${level}_video_duration`] = null;
-                                        videoUploadedAgo[`${level}_video_uploadedAgo`] =
-                                            getElapsedTime(spg.createdAt);
-                                    }
+                                if (video) {
+                                    videoUploadedAgo[`${level}_video_uploadedAgo`] = getElapsedTime(spg.createdAt);
                                 } else {
-                                    videoUploadedAgo[`${level}_video_duration`] = null;
                                     videoUploadedAgo[`${level}_video_uploadedAgo`] = null;
                                 }
                             }
 
-                            const mapping = relatedMappings[i] || relatedMappings[0] || null;
-
-                            entry.sessionPlan = {
+                            session.sessionPlan = {
                                 id: spg.id,
                                 groupName: spg.groupName,
                                 levels,
@@ -734,32 +568,24 @@ exports.getHolidayClassByIdWithFullDetails = async (classId, createdBy) => {
                                 banner: spg.banner,
                                 player: spg.player,
                                 videoUploadedAgo,
-                                ...(mapping
-                                    ? {
-                                        mapId: mapping.id,
-                                        classScheduleId: mapping.classScheduleId,
-                                        termGroupId: mapping.termGroupId,
-                                        termId: mapping.termId,
-                                        sessionPlanId: mapping.sessionPlanId,
-                                        status: mapping.status,
-                                        createdAt: mapping.createdAt,
-                                        updatedAt: mapping.updatedAt,
-                                    }
-                                    : {}),
+                                mapId: mapping.id,
+                                classScheduleId: mapping.classScheduleId,
+                                holidayCampId: mapping.holidayCampId,
+                                holidayCampDateId: mapping.holidayCampDateId,
+                                sessionPlanId: mapping.sessionPlanId,
+                                status: mapping.status,
+                                createdAt: mapping.createdAt,
+                                updatedAt: mapping.updatedAt,
                             };
 
-                            // ✅ Add only mapped sessions
-                            filteredSessions.push(entry);
+                            filteredSessions.push(session);
                         }
 
-                        // ✅ Replace the old sessionsMap with filtered result
-                        term.dataValues.sessionsMap = filteredSessions;
+                        date.dataValues.sessionsMap = filteredSessions;
                     }
                 }
 
-                venue.dataValues.termGroups = termGroups;
-            } else {
-                venue.dataValues.termGroups = [];
+                venue.dataValues.holidayCamps = holidayCamps;
             }
         } else {
             cls.dataValues.venue = null;
