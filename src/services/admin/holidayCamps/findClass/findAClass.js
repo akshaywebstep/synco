@@ -322,11 +322,10 @@ exports.getAllHolidayVenuesWithHolidayClasses = async ({
                         createdBy: pg.createdBy,
                         createdAt: pg.createdAt,
                         updatedAt: pg.updatedAt,
-                        paymentPlans: (pg.paymentPlans || []).map((plan) => ({
+                        holidayPaymentPlans: (pg.holidayPaymentPlans  || []).map((plan) => ({
                             id: plan.id,
                             title: plan.title,
                             price: plan.price,
-                            priceLesson: plan.priceLesson,
                             interval: plan.interval,
                             duration: plan.duration,
                             students: plan.students,
