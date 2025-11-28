@@ -1,7 +1,7 @@
 const { logActivity } = require("../../../../utils/admin/activityLogger");
 const {
   getAllHolidayVenuesWithHolidayClasses,
-  getClassById,
+  getHolidayClassById,
   // getAllTermsForListing,
 } = require("../../../../services/admin/holidayCamps/findClass/findAClass");
 
@@ -67,6 +67,43 @@ exports.findAHolidayClassListing = async (req, res) => {
   } catch (error) {
     console.error("❌ findAClassListing Error:", error);
     await logActivity(req, PANEL, MODULE, "list", { oneLineMessage: error.message }, false);
+    return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
+
+exports.getHolidayClassScheduleById = async (req, res) => {
+  const { id } = req.params;
+  const createdBy = req.admin?.id;
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+  if (DEBUG) console.log(`🔍 Fetching class + venue for class ID: ${id}`);
+
+  try {
+    // ✅ Call service with only classId (no adminId)
+    const result = await getHolidayClassById(id, superAdminId);
+
+    if (!result.status) {
+      if (DEBUG) console.log("⚠️ Not found:", result.message);
+      return res.status(404).json({ status: false, message: result.message });
+    }
+
+    if (DEBUG) console.log("✅ Data fetched:", result.data);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "getById",
+      { oneLineMessage: `Fetched class schedule with ID: ${id}` },
+      true
+    );
+
+    return res.status(200).json({
+      status: true,
+      message: "Class and venue fetched successfully.",
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching class schedule:", error);
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };

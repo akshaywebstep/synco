@@ -358,9 +358,6 @@ exports.getAllVenuesWithClasses = async ({
   }
 };
 
-
-
-
 exports.getAllClasses = async (adminId) => {
   try {
 

@@ -361,3 +361,162 @@ exports.getAllHolidayVenuesWithHolidayClasses = async ({
         };
     }
 };
+
+exports.getHolidayClassById = async (classId, createdBy) => {
+  try {
+    if (!createdBy || isNaN(Number(createdBy))) {
+      return { status: false, message: "Invalid admin id." };
+    }
+
+    // 🔍 Fetch the class + venue
+    const cls = await HolidayClassSchedule.findOne({
+      where: {
+        id: classId,
+        createdBy: Number(createdBy)
+      },
+      include: [
+        {
+          model: HolidayVenue,
+          as: "venue",
+          required: true,
+          where: {
+            createdBy: {
+              [Op.or]: [
+                Number(createdBy), // superadmin
+                { [Op.ne]: null }  // admins
+              ]
+            }
+          }
+        }
+      ]
+    });
+
+    if (!cls) {
+      return { status: false, message: "Holiday class not found." };
+    }
+
+    const venue = cls.venue;
+
+    // ================================
+    // 🟦 PAYMENT GROUPS WITH PLANS
+    // ================================
+    let paymentGroups = [];
+    if (venue.paymentGroupId) {
+      paymentGroups = await HolidayPaymentGroup.findAll({
+        where: {
+          id: venue.paymentGroupId,
+          createdBy: {
+            [Op.or]: [
+              Number(createdBy),
+              venue.createdBy
+            ]
+          }
+        },
+        include: [
+          {
+            model: HolidayPaymentPlan,
+            as: "holidayPaymentPlans",
+            through: {
+              model: HolidayPaymentGroupHasPlan,
+              attributes: [
+                "id",
+                "payment_plan_id",
+                "payment_group_id",
+                "createdBy",
+                "createdAt",
+                "updatedAt"
+              ]
+            }
+          }
+        ],
+        order: [["createdAt", "DESC"]]
+      });
+    }
+
+    venue.dataValues.paymentGroups = paymentGroups;
+
+    // ================================
+    // 🟦 HOLIDAY CAMPS
+    // ================================
+    let holidayCampIds = [];
+
+    if (typeof venue.holidayCampId === "string") {
+      try {
+        holidayCampIds = JSON.parse(venue.holidayCampId);
+      } catch {
+        holidayCampIds = [];
+      }
+    } else if (Array.isArray(venue.holidayCampId)) {
+      holidayCampIds = venue.holidayCampId;
+    }
+
+    const holidayCamps = holidayCampIds.length
+      ? await HolidayCamp.findAll({
+          where: {
+            id: holidayCampIds,
+            createdBy: {
+              [Op.or]: [
+                Number(createdBy),
+                venue.createdBy
+              ]
+            }
+          }
+        })
+      : [];
+
+    venue.dataValues.holidayCamps = holidayCamps;
+
+    // ================================
+    // 🟦 HOLIDAY CAMP DATES
+    // ================================
+    const holidayCampDates = holidayCampIds.length
+      ? await HolidayCampDates.findAll({
+          where: {
+            holidayCampId: { [Op.in]: holidayCampIds },
+            createdBy: {
+              [Op.or]: [
+                Number(createdBy),
+                venue.createdBy
+              ]
+            }
+          },
+          attributes: [
+            "id",
+            "startDate",
+            "endDate",
+            "holidayCampId",
+            "totalDays",
+            "sessionsMap"
+          ]
+        })
+      : [];
+
+    venue.dataValues.holidayCampDates = holidayCampDates.map((d) => ({
+      id: d.id,
+      startDate: d.startDate,
+      endDate: d.endDate,
+      holidayCampId: d.holidayCampId,
+      totalDays: d.totalDays,
+      sessionsMap:
+        typeof d.sessionsMap === "string"
+          ? JSON.parse(d.sessionsMap)
+          : d.sessionsMap || []
+    }));
+
+    // ================================
+    // 🟦 RETURN FINAL RESPONSE
+    // ================================
+    return {
+      status: true,
+      message: "Holiday class details fetched successfully.",
+      data: cls
+    };
+
+  } catch (error) {
+    console.error("❌ getHolidayClassById Error:", error.message);
+    return {
+      status: false,
+      message: "Fetch failed: " + error.message
+    };
+  }
+};

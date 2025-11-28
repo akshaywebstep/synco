@@ -6,7 +6,7 @@ const permissionMiddleware = require("../../../middleware/admin/permission");
 const {
   findAHolidayClassListing,
   // getAllClassSchedules,
-  // getClassScheduleById,
+  getHolidayClassScheduleById,
   // findAClassByVenue,
   // listTerms,
 } = require("../../../controllers/admin/holidayCamps/findClass/findClassController");
@@ -18,12 +18,14 @@ router.get(
   permissionMiddleware("holiday-find-class", "view-listing"),
   findAHolidayClassListing
 );
-// router.get(
-//   "/:id",
-//   authMiddleware,
-//   permissionMiddleware("find-class", "view-listing"),
-//   getClassScheduleById
-// );
+
+router.get(
+  "/:id",
+  authMiddleware,
+  permissionMiddleware("holiday-find-class", "view-listing"),
+  getHolidayClassScheduleById
+);
+
 // router.get(
 //   "/list",
 //   authMiddleware,
