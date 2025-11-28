@@ -252,13 +252,13 @@ exports.createBooking = async (req, res) => {
         });
         const studentsHtml = students.length
           ? students
-              .map(
-                (s) =>
-                  `<p style="margin:0; font-size:13px; color:#5F5F6D;">
+            .map(
+              (s) =>
+                `<p style="margin:0; font-size:13px; color:#5F5F6D;">
              ${s.studentFirstName} ${s.studentLastName}
            </p>`
-              )
-              .join("")
+            )
+            .join("")
           : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
 
         for (const recipient of recipients) {
@@ -344,7 +344,7 @@ exports.getAllWaitingListBookings = async (req, res) => {
     };
 
     // ✅ Apply bookedBy filter
-   if (req.query.bookedBy) {
+    if (req.query.bookedBy) {
       let bookedByParam = req.query.bookedBy;
 
       // If multiple query params → array
@@ -801,8 +801,7 @@ exports.convertToMembership = async (req, res) => {
       subject,
     } = await emailModel.getEmailConfig(PANEL, "book-paid-trial");
 
-    if (DEBUG)
-      console.log("📧 Email config loaded:", { configStatus, subject });
+    if (DEBUG) console.log("📧 Email config loaded:", { configStatus, subject });
 
     if (!configStatus || !htmlTemplate) {
       console.warn("⚠️ Email not sent: missing template for book-membership");
@@ -816,32 +815,31 @@ exports.convertToMembership = async (req, res) => {
 
         for (const p of parentMetas) {
           try {
-            const student =
-              result.data.students?.find((st) => st.id === sId) || {};
+            if (!p.parentEmail) continue;
 
+            // ✅ Fetch all students for this parent in the same booking
+            const allStudents = await BookingStudentMeta.findAll({
+              where: { bookingTrialId: booking.id, parentId: p.id },
+            });
+
+            // ✅ Generate HTML list of all students
+            const studentsHtml = allStudents.length
+              ? allStudents
+                .map(
+                  (s) =>
+                    `<p style="margin:0; font-size:13px; color:#5F5F6D;">${s.studentFirstName} ${s.studentLastName}</p>`
+                )
+                .join("")
+              : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
+
+            // ✅ Replace placeholders in template
             const htmlBody = htmlTemplate
-              .replace(
-                /{{parentName}}/g,
-                `${p.parentFirstName} ${p.parentLastName}`
-              )
-              .replace(/{{studentFirstName}}/g, student.studentFirstName || "")
-              .replace(/{{studentLastName}}/g, student.studentLastName || "")
-              .replace(
-                /{{studentName}}/g,
-                `${student.studentFirstName || ""} ${
-                  student.studentLastName || ""
-                }`
-              )
+              .replace(/{{parentName}}/g, `${p.parentFirstName} ${p.parentLastName}`)
+              .replace(/{{studentsHtml}}/g, studentsHtml)
               .replace(/{{venueName}}/g, venueName)
               .replace(/{{className}}/g, classData.className || "N/A")
-              .replace(
-                /{{classTime}}/g,
-                `${classData.startTime} - ${classData.endTime}`
-              )
-              .replace(
-                /{{startDate}}/g,
-                booking?.trialDate || formData.startDate
-              )
+              .replace(/{{classTime}}/g, `${classData.startTime} - ${classData.endTime}`)
+              .replace(/{{startDate}}/g, booking?.trialDate || formData.startDate)
               .replace(/{{parentEmail}}/g, p.parentEmail || "")
               .replace(/{{parentPassword}}/g, "Synco123")
               .replace(/{{appName}}/g, "Synco")
@@ -862,10 +860,7 @@ exports.convertToMembership = async (req, res) => {
 
             if (DEBUG) console.log(`✅ Email sent to ${p.parentEmail}`);
           } catch (err) {
-            console.error(
-              `❌ Failed to send email to ${p.parentEmail}:`,
-              err.message
-            );
+            console.error(`❌ Failed to send email to ${p.parentEmail}:`, err.message);
           }
         }
       }
