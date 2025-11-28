@@ -110,13 +110,12 @@ const HolidayVenue = sequelize.define(
         paranoid: true, // ✅ Enable soft deletes
     }
 );
+// Associations
+HolidayVenue.associate = function (models) {
+    HolidayVenue.hasMany(models.HolidayClassSchedule, {
+        foreignKey: "venueId",
+        as: "holidayClassSchedules",
+    });
+};
 
 module.exports = HolidayVenue;
-// Associations
-// Associations
-// HolidayVenue.associate = function (models) {
-//     HolidayVenue.hasMany(models.HolidayClassSchedule, {
-//         foreignKey: "venueId",
-//         as: "holidayClassSchedules",
-//     });
-// };
