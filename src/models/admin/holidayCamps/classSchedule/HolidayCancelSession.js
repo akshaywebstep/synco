@@ -111,25 +111,25 @@ const HolidayCancelSession = sequelize.define(
 
 module.exports = HolidayCancelSession;
 
-HolidayCancelSession.associate = (models) => {
-  HolidayCancelSession.belongsTo(models.HolidayClassSchedule, {
-    foreignKey: "classScheduleId",
-    as: "holidayClassSchedule", // this "as" must match the include in the query
-    onDelete: "CASCADE",
-    onUpdate: "CASCADE",
-  });
+// HolidayCancelSession.associate = (models) => {
+//   HolidayCancelSession.belongsTo(models.HolidayClassSchedule, {
+//     foreignKey: "classScheduleId",
+//     as: "holidayClassSchedule", // this "as" must match the include in the query
+//     onDelete: "CASCADE",
+//     onUpdate: "CASCADE",
+//   });
 
-  HolidayCancelSession.belongsTo(models.HolidayClassScheduleTermMap, {
-    foreignKey: "mapId",
-    as: "termMap", // use this alias when including
-    onDelete: "CASCADE",
-    onUpdate: "CASCADE",
-  });
+//   HolidayCancelSession.belongsTo(models.HolidayClassScheduleTermMap, {
+//     foreignKey: "mapId",
+//     as: "termMap", // use this alias when including
+//     onDelete: "CASCADE",
+//     onUpdate: "CASCADE",
+//   });
 
-  HolidayCancelSession.belongsTo(models.HolidaySessionPlanGroup, {
-    foreignKey: "sessionPlanGroupId",
-    as: "holidaySessionPlanGroup", // alias to use in queries
-    onDelete: "CASCADE",
-    onUpdate: "CASCADE",
-  });
-};
+//   HolidayCancelSession.belongsTo(models.HolidaySessionPlanGroup, {
+//     foreignKey: "sessionPlanGroupId",
+//     as: "holidaySessionPlanGroup", // alias to use in queries
+//     onDelete: "CASCADE",
+//     onUpdate: "CASCADE",
+//   });
+// };

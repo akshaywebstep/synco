@@ -98,34 +98,34 @@ const HolidayClassScheduleTermMap = sequelize.define(
 );
 
 // ✅ Associations
-HolidayClassScheduleTermMap.associate = function (models) {
-  HolidayClassScheduleTermMap.belongsTo(models.HolidayClassSchedule, {
-    foreignKey: "classScheduleId",
-    as: "holidayClassSchedule",
-  });
+// HolidayClassScheduleTermMap.associate = function (models) {
+//   HolidayClassScheduleTermMap.belongsTo(models.HolidayClassSchedule, {
+//     foreignKey: "classScheduleId",
+//     as: "holidayClassSchedule",
+//   });
 
-  HolidayClassScheduleTermMap.belongsTo(models.HolidayTermGroup, {
-    foreignKey: "holidayCampId",
-    as: "holidayCamp",
-  });
+//   HolidayClassScheduleTermMap.belongsTo(models.HolidayTermGroup, {
+//     foreignKey: "holidayCampId",
+//     as: "holidayCamp",
+//   });
 
-  HolidayClassScheduleTermMap.belongsTo(models.HolidayTerm, {
-    foreignKey: "holidayCampDateId",
-    as: "holidayCampDate",
-  });
+//   HolidayClassScheduleTermMap.belongsTo(models.HolidayTerm, {
+//     foreignKey: "holidayCampDateId",
+//     as: "holidayCampDate",
+//   });
 
-  HolidayClassScheduleTermMap.belongsTo(models.HolidaySessionPlanGroup, {
-    // matches model name
-    foreignKey: "sessionPlanId",
-    as: "holiday_sessionPlan",
-  });
+//   HolidayClassScheduleTermMap.belongsTo(models.HolidaySessionPlanGroup, {
+//     // matches model name
+//     foreignKey: "sessionPlanId",
+//     as: "holiday_sessionPlan",
+//   });
 
-  HolidayClassScheduleTermMap.hasMany(models.HolidayCancelSession, {
-    foreignKey: "mapId",      // must match CancelSession.mapId
-    as: "HolidayCancelSessions",     // alias to use in include queries
-    onDelete: "CASCADE",
-    onUpdate: "CASCADE",
-  });
-};
+//   // HolidayClassScheduleTermMap.hasMany(models.HolidayCancelSession, {
+//   //   foreignKey: "mapId",      // must match CancelSession.mapId
+//   //   as: "HolidayCancelSessions",     // alias to use in include queries
+//   //   onDelete: "CASCADE",
+//   //   onUpdate: "CASCADE",
+//   // });
+// };
 
 module.exports = HolidayClassScheduleTermMap;

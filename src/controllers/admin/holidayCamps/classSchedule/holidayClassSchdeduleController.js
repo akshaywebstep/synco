@@ -1,6 +1,6 @@
 const { validateFormData } = require("../../../../utils/validateFormData");
 const ClassScheduleService = require("../../../../services/admin/holidayCamps/classSchedule/holidayClassSchedule");
-const TermService = require("../../../../services/admin/holidayCamps/termAndDates/holidayTerm");
+const HolidayCamDateService = require("../../../../services/admin/holidayCamps/campAndDates/holidayCampDates");
 const { logActivity } = require("../../../../utils/admin/activityLogger");
 const {
     getVideoDurationInSeconds,
@@ -8,8 +8,8 @@ const {
 } = require("../../../../utils/videoHelper");
 const { Op } = require("sequelize");
 const { HolidayVenue,
-    HolidayTermGroup,
-    HolidayTerm,
+    HolidayCamp,
+    HolidayCampDates,
     HolidayClassSchedule,
     HolidayClassScheduleTermMap, } = require("../../../../models");
 const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
@@ -92,11 +92,11 @@ exports.createHolidayClassSchedule = async (req, res) => {
             message: "Invalid venue selected. Venue does not exist.",
         });
     }
-    console.log("venue.holidayCampId:", venue.termGroupId);
+    console.log("venue.holidayCampId:", venue.holidayCampId);
     const holidayCampIds = JSON.parse(venue.holidayCampId || "[]").map(Number);
     console.log("Parsed holidayCampIds:", holidayCampIds);
 
-    const holidayCampDateRes = await TermService.getHolidayCampDatesByHolidayCampId(termGroupIds);
+    const holidayCampDateRes = await HolidayCamDateService.getHolidayCampDatesByHolidayCampId(termGroupIds);
     console.log("holidayCampDateRes:", holidayCampDateRes);
     const holidayCampDateIds = (holidayCampDateRes.data || []).map((t) => t.id);
     const holidayCampDateIdsString = JSON.stringify(holidayCampDateIds);

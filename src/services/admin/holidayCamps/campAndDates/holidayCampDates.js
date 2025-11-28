@@ -339,27 +339,163 @@ exports.getHolidayCampDatesById = async (id, adminId) => {
 };
 
 // ✅ GET TERMS BY TERM GROUP ID
-// exports.getTermsByTermGroupId = async (termGroupIds) => {
+exports.getHolidayCampDateByHolidayCampId = async (holidayCampIds) => {
+    try {
+        // Validate input
+        if (
+            !holidayCampIds ||
+            !Array.isArray(holidayCampIds) ||
+            holidayCampIds.length === 0
+        ) {
+            return {
+                status: false,
+                message: "No valid holiday camp IDs provided.",
+                data: [],
+            };
+        }
+
+        // Fetch Holiday Camp Dates
+        const holidayCampDates = await HolidayCampDates.findAll({
+            where: { holidayCampId: { [Op.in]: holidayCampIds } },
+            order: [["createdAt", "DESC"]],
+        });
+
+        const allSessionPlanIds = [];
+
+        // Parse each term and extract sessionPlanIds
+        const parsedTerms = holidayCampDates.map((holidayCampDate) => {
+            let sessions = [];
+
+            try {
+                const mapVal =
+                    typeof holidayCampDate.sessionsMap === "string"
+                        ? JSON.parse(holidayCampDate.sessionsMap)
+                        : holidayCampDate.sessionsMap;
+
+                if (Array.isArray(mapVal)) {
+                    sessions = mapVal;
+                    allSessionPlanIds.push(
+                        ...sessions.map((s) => s.sessionPlanId)
+                    );
+                }
+            } catch (err) {
+                console.warn("Invalid sessionsMap:", err);
+            }
+
+            return {
+                ...holidayCampDate.toJSON(),
+                _parsedSessions: sessions,
+            };
+        });
+
+        // Fetch Session Plan Groups
+        const uniquePlanIds = [...new Set(allSessionPlanIds)];
+
+        const sessionPlanGroups = await HolidaySessionPlanGroup.findAll({
+            where: { id: { [Op.in]: uniquePlanIds } },
+            attributes: [
+                "id",
+                "groupName",
+                "levels",
+                "beginner_video",
+                "intermediate_video",
+                "advanced_video",
+                "pro_video",
+                "banner",
+                "player",
+                "type",
+                "pinned",
+            ],
+            raw: true,
+        });
+
+        // Parse levels and collect exercise IDs
+        const sessionPlanMap = {};
+        const allExerciseIds = new Set();
+
+        sessionPlanGroups.forEach((spg) => {
+            let levels = {};
+
+            try {
+                levels = JSON.parse(spg.levels || "{}");
+            } catch {
+                levels = {};
+            }
+
+            ["beginner", "intermediate", "advanced", "pro"].forEach((level) => {
+                if (Array.isArray(levels[level])) {
+                    levels[level].forEach((entry) => {
+                        (entry.sessionExerciseId || []).forEach((id) =>
+                            allExerciseIds.add(id)
+                        );
+                    });
+                }
+            });
+
+            sessionPlanMap[spg.id] = { ...spg, levels };
+        });
+
+        // Fetch exercises
+        const sessionExercises = await HolidaySessionExercise.findAll({
+            where: { id: { [Op.in]: Array.from(allExerciseIds) } },
+            raw: true,
+        });
+
+        const exerciseMap = {};
+        sessionExercises.forEach((ex) => (exerciseMap[ex.id] = ex));
+
+        // Inject exercises into levels
+        Object.values(sessionPlanMap).forEach((spg) => {
+            ["beginner", "intermediate", "advanced", "pro"].forEach((level) => {
+                if (Array.isArray(spg.levels[level])) {
+                    spg.levels[level].forEach((entry) => {
+                        entry.sessionExercises = (entry.sessionExerciseId || [])
+                            .map((id) => exerciseMap[id])
+                            .filter(Boolean);
+                    });
+                }
+            });
+        });
+
+        // Build final enriched response
+        const enrichedTerms = parsedTerms.map(({ _parsedSessions, ...rest }) => ({
+            ...rest,
+            sessionsMap: Array.isArray(_parsedSessions)
+                ? _parsedSessions.map((s) => ({
+                      sessionDate: s.sessionDate,
+                      sessionPlanId: s.sessionPlanId,
+                      sessionPlan: sessionPlanMap[s.sessionPlanId] || null,
+                  }))
+                : [],
+        }));
+
+        return { status: true, data: enrichedTerms };
+    } catch (error) {
+        return { status: false, message: error.message };
+    }
+};
+
+// exports.getHolidayCampDateByHolidayCampId = async (holidayCampIds) => {
 //     try {
 //         // 🧩 Validate input
 //         if (
-//             !termGroupIds ||
-//             !Array.isArray(termGroupIds) ||
-//             termGroupIds.length === 0
+//             !holidayCampIds ||
+//             !Array.isArray(holidayCampIds) ||
+//             holidayCampIds.length === 0
 //         ) {
 //             return {
 //                 status: false,
-//                 message: "No valid term group IDs provided.",
+//                 message: "No valid holiday camp dates group IDs provided.",
 //                 data: [],
 //             };
 //         }
 
-//         const terms = await HolidayTerm.findAll({
-//             where: { termGroupId: { [Op.in]: termGroupIds } },
+//         const holidayCampDates = await HolidayCampDates.findAll({
+//             where: { holidayCampId: { [Op.in]: holidayCampIds } },
 //             include: [
 //                 {
-//                     model: HolidayTermGroup,
-//                     as: "holidayTermGroup",
+//                     model: HolidayCampDates,
+//                     as: "holidayCampDates",
 //                     attributes: ["id", "name", "createdAt", "createdBy"],
 //                 },
 //             ],
@@ -367,10 +503,9 @@ exports.getHolidayCampDatesById = async (id, adminId) => {
 //         });
 
 //         const allSessionPlanIds = [];
-//         const parsedTerms = terms.map((term) => {
+//         const parsedTerms = holidayCampDates.map((holidayCampDate) => {
 //             let sessions = [];
-//             let exclusions = [];
-
+           
 //             // Parse sessionsMap
 //             try {
 //                 sessions =
@@ -384,42 +519,10 @@ exports.getHolidayCampDatesById = async (id, adminId) => {
 //                 console.warn("Invalid sessionsMap:", err);
 //             }
 
-//             // Parse exclusionDates
-//             try {
-//                 exclusions =
-//                     typeof term.exclusionDates === "string"
-//                         ? JSON.parse(term.exclusionDates)
-//                         : term.exclusionDates;
-//             } catch (err) {
-//                 console.warn("Invalid exclusionDates:", err);
-//             }
-
 //             return {
 //                 ...term.toJSON(),
 //                 _parsedSessions: sessions,
-//                 _parsedExclusionDates: exclusions,
 //             };
-//         });
-
-//         // Seasonal priority mapping
-//         const seasonOrder = { autumn: 1, spring: 2, summer: 3 };
-//         function getSeasonPriority(termName) {
-//             if (!termName) return 99;
-//             const lowerName = termName.toLowerCase();
-//             if (lowerName.includes("autumn")) return seasonOrder.autumn;
-//             if (lowerName.includes("spring")) return seasonOrder.spring;
-//             if (lowerName.includes("summer")) return seasonOrder.summer;
-//             return 99; // other terms come last
-//         }
-
-//         // Sort parsed terms by season first, then createdAt DESC
-//         const sortedParsedTerms = parsedTerms.sort((a, b) => {
-//             const aPriority = getSeasonPriority(a.termName);
-//             const bPriority = getSeasonPriority(b.termName);
-
-//             if (aPriority !== bPriority) return aPriority - bPriority;
-
-//             return new Date(b.createdAt) - new Date(a.createdAt);
 //         });
 
 //         // Fetch Session Plan Groups
@@ -478,9 +581,8 @@ exports.getHolidayCampDatesById = async (id, adminId) => {
 
 //         // Construct final enriched response (omit _parsed fields)
 //         const enrichedTerms = sortedParsedTerms.map(
-//             ({ _parsedSessions, _parsedExclusionDates, ...rest }) => ({
+//             ({ _parsedSessions, ...rest }) => ({
 //                 ...rest,
-//                 exclusionDates: _parsedExclusionDates,
 //                 sessionsMap: Array.isArray(_parsedSessions)
 //                     ? _parsedSessions.map((s) => ({
 //                         sessionDate: s.sessionDate,

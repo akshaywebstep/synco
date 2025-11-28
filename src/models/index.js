@@ -107,10 +107,10 @@ const models = {
   HolidayCampDates: require("./admin/holidayCamps/campsAndDates/HolidayCampDates"),
 
   HolidayVenue: require("./admin/holidayCamps/venue/HolidayVenue"),
-  // HolidayClassSchedule: require("./admin/holidayCamps/classSchedule/HolidayClassSchedule"),
+  HolidayClassSchedule: require("./admin/holidayCamps/classSchedule/HolidayClassSchedule"),
 
-  // HolidayClassScheduleTermMap: require("./admin/holidayCamps/classSchedule/HolidayClassScheduleTermMap"),
-  // HolidayCancelSession: require("./admin/holidayCamps/classSchedule/HolidayCancelSession"),
+  HolidayClassScheduleTermMap: require("./admin/holidayCamps/classSchedule/HolidayClassScheduleTermMap"),
+  HolidayCancelSession: require("./admin/holidayCamps/classSchedule/HolidayCancelSession"),
 
 };
 

@@ -149,7 +149,7 @@ router.use("/holiday/payment-group", require("./holidayCampsRoutes/holidayPaymen
 
 router.use("/holiday/venue", require("./holidayCampsRoutes/holidayVenueRoutes"));
 
-// router.use("/holiday/class-schedule", require("./holidayCampsRoutes/holidayClassScheduleRoutes"));
+router.use("/holiday/class-schedule", require("./holidayCampsRoutes/holidayClassScheduleRoutes"));
 
 // Base: /api/admin/admin
 router.post(
