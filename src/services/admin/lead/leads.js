@@ -2263,19 +2263,25 @@ exports.getLeadandBookingDatabyLeadId = async (leadId, superAdminId, adminId) =>
     // ----------------------------------------------------
     // 🔐 ALLOWED ADMINS FIXED
     // ----------------------------------------------------
+    // 🔐 ALLOWED ADMINS FIXED
     let allowedAdminIds = [adminId];
 
-    if (superAdminId && superAdminId === adminId) {
+    // Include superAdmin if exists
+    if (superAdminId) {
+      // Include superAdmin + all admins managed by the superAdmin
       const managedAdmins = await Admin.findAll({
         where: { superAdminId },
         attributes: ["id"],
       });
 
       allowedAdminIds = [
-        superAdminId,
-        ...managedAdmins.map(a => a.id),
+        superAdminId,      // superadmin
+        ...managedAdmins.map(a => a.id),  // admins under superadmin
+        adminId            // the logged-in admin
       ];
     }
+
+    // Remove duplicates just in case
 
     // ----------------------------------------------------
     // 📌 Fetch Lead and related bookings
@@ -2322,7 +2328,6 @@ exports.getLeadandBookingDatabyLeadId = async (leadId, superAdminId, adminId) =>
     const allVenuesList = await Venue.findAll({
       where: { createdBy: { [Op.in]: allowedAdminIds } },
     });
-
     let nearestVenues = [];
 
     if (lead.postcode && allVenuesList.length > 0) {
@@ -2331,7 +2336,7 @@ exports.getLeadandBookingDatabyLeadId = async (leadId, superAdminId, adminId) =>
       if (coords) {
         nearestVenues = await Promise.all(
           allVenuesList
-            .filter(v => v.latitude && v.longitude) // only valid venues
+            .filter(v => v.latitude && v.longitude)
             .map((v) => ({
               ...v.dataValues,
               distance: Number(
