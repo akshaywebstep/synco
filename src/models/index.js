@@ -204,7 +204,7 @@ const {
 
   HolidayClassScheduleTermMap,
   HolidayCancelSession,
-  
+
   HolidayBooking,
   HolidayBookingStudentMeta,
   HolidayBookingParentMeta,
@@ -421,17 +421,46 @@ HolidayVenue.belongsTo(models.HolidayPaymentGroup, {
 });
 
 HolidayBooking.hasMany(HolidayBookingStudentMeta, {
-    foreignKey: "bookingId",
-    as: "students"
+  foreignKey: "bookingId",
+  as: "students"
 });
-// HolidayCancelSession.associate = (models) => {
-//   HolidayCancelSession.belongsTo(models.HolidayClassSchedule, {
-//     foreignKey: "classScheduleId",
-//     as: "holidayClassSchedule",
-//     onDelete: "CASCADE",
-//     onUpdate: "CASCADE",
-//   });
-// };
+
+HolidayBooking.associate = (models) => {
+
+  HolidayBooking.hasMany(models.HolidayBookingPayment, {
+    foreignKey: "holiday_booking_id",
+    as: "payments",
+  });
+
+};
+// 🧩 Booking -> ClassSchedule -> Venue
+HolidayBooking.belongsTo(HolidayClassSchedule, {
+  as: "holidayClassSchedules",
+  foreignKey: "classScheduleId",
+});
+HolidayBooking.belongsTo(models.HolidayVenue, { foreignKey: "venueId", as: "holidayVenue" });
+
+HolidayBooking.belongsTo(models.HolidayPaymentPlan, {
+  foreignKey: "paymentPlanId",
+  as: "holidayPaymentPlan",
+});
+
+// 🔹 A booking can have an optional discount
+HolidayBooking.belongsTo(models.Discount, {
+  foreignKey: "discountId",
+  as: "discount",
+});
+
+HolidayBooking.belongsTo(HolidayCamp, {
+    foreignKey: "holidayCampId",
+    as: "holidayCamp"
+});
+HolidayCamp.hasMany(HolidayBooking, {
+    foreignKey: "holidayCampId",
+    as: "bookings"
+});
+
+HolidayBooking.belongsTo(Admin, { foreignKey: 'bookedBy', as: 'bookedByAdmin' });
 
 // ====================== 📦 Module Exports ====================== //
 module.exports = {

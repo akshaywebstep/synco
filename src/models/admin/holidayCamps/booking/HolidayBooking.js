@@ -136,5 +136,12 @@ const HolidayBooking = sequelize.define(
         timestamps: true,
     }
 );
+HolidayBooking.associate = (models) => {
+    HolidayBooking.hasOne(models.HolidayBookingPayment, {
+        foreignKey: "holiday_booking_id",
+        as: "payment",
+    });
+
+};
 
 module.exports = HolidayBooking;

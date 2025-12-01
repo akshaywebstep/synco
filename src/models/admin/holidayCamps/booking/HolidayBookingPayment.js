@@ -89,8 +89,8 @@ const HolidayBookingPayment = sequelize.define(
 
 HolidayBookingPayment.associate = (models) => {
     HolidayBookingPayment.belongsTo(models.HolidayBooking, {
-        foreignKey: "holidayBookingId",
-        as: "holiday_booking",
+        foreignKey: "holiday_booking_id",   // ✅ Correct FK
+        as: "booking",                     // OPTIONAL alias
     });
 };
 

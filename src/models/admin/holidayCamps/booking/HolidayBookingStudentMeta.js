@@ -53,4 +53,6 @@ HolidayBookingStudentMeta.associate = (models) => {
   });
 };
 
+
+
 module.exports = HolidayBookingStudentMeta;

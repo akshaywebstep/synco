@@ -9,6 +9,8 @@ const {
     HolidayPaymentGroup,
     HolidayVenue,
     HolidayClassSchedule,
+    HolidayCamp,
+    HolidayCampDates,
     Discount,
     Admin,
     AdminRole,
@@ -367,5 +369,133 @@ exports.createHolidayBooking = async (data, adminId) => {
         await transaction.rollback();
         console.error("❌ Error creating holiday booking:", error);
         throw error;
+    }
+};
+
+exports.getHolidayBooking = async (superAdminId, adminId) => {
+    try {
+        // Validate admin ID
+        if (!adminId || isNaN(Number(adminId))) {
+            return { success: false, message: "Invalid admin ID.", data: [] };
+        }
+
+        const whereBooking = {};
+
+        // Determine accessible bookings
+        if (superAdminId && superAdminId === adminId) {
+            const managedAdmins = await Admin.findAll({
+                where: { superAdminId },
+                attributes: ["id"]
+            });
+
+            const adminIds = managedAdmins.map(a => a.id);
+            adminIds.push(superAdminId);
+
+            whereBooking.bookedBy = { [Op.in]: adminIds };
+        } else if (superAdminId && adminId) {
+            whereBooking.bookedBy = { [Op.in]: [adminId, superAdminId] };
+        } else {
+            whereBooking.bookedBy = adminId;
+        }
+
+        // Fetch booking + relations
+      let bookings = await HolidayBooking.findAll({
+    where: whereBooking,
+    include: [
+        {
+            model: HolidayBookingStudentMeta,
+            as: "students",
+            attributes: [
+                "id",
+                "bookingId",
+                "attendance",
+                "studentFirstName",
+                "studentLastName",
+                "dateOfBirth",
+                "age",
+                "gender",
+                "medicalInformation",
+                "createdAt",
+                "updatedAt",
+            ],
+            include: [
+                {
+                    model: HolidayBookingParentMeta,
+                    as: "parents",
+                },
+                {
+                    model: HolidayBookingEmergencyMeta,
+                    as: "emergencyContacts",
+                }
+            ]
+        },
+
+        { model: HolidayBookingPayment, as: "payment" },
+        { model: HolidayPaymentPlan, as: "holidayPaymentPlan" },
+        { model: HolidayVenue, as: "holidayVenue" },
+        { model: HolidayClassSchedule, as: "holidayClassSchedules" },
+
+        {
+            model: HolidayCamp,
+            as: "holidayCamp",
+            include: [
+                {
+                    model: HolidayCampDates,
+                    as: "holidayCampDates"
+                }
+            ]
+        },
+
+        { model: Discount, as: "discount" }
+    ],
+    order: [["id", "DESC"]]
+});
+
+        // ---------------------------
+        // TRANSFORM TO FINAL JSON
+        // ---------------------------
+        bookings = bookings.map(record => {
+            const booking = record.toJSON();
+
+            // ---------------------------
+            // Extract ALL parents & dedupe
+            // ---------------------------
+            const parentMap = {};
+            booking.students.forEach(student => {
+                (student.parents || []).forEach(parent => {
+                    parentMap[parent.id] = parent;
+                });
+                delete student.parents; // remove from inside student
+            });
+            booking.parents = Object.values(parentMap);
+
+            // ---------------------------
+            // Extract ALL emergency contacts & dedupe
+            // ---------------------------
+            const emergencyMap = {};
+            booking.students.forEach(student => {
+                (student.emergencyContacts || []).forEach(ec => {
+                    emergencyMap[ec.id] = ec;
+                });
+                delete student.emergencyContacts; // remove from inside student
+            });
+            booking.emergencyContacts = Object.values(emergencyMap);
+
+            return booking;
+        });
+
+        return {
+            success: true,
+            count: bookings.length,
+            data: bookings
+        };
+
+    } catch (error) {
+        console.error("❌ Error fetching holiday bookings:", error);
+        return {
+            success: false,
+            message: "Failed to fetch holiday booking data",
+            error: error.message
+        };
     }
 };

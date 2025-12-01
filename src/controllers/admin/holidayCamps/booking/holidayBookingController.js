@@ -5,6 +5,7 @@ const { logActivity } = require("../../../../utils/admin/activityLogger");
 const {
   createNotification,
 } = require("../../../../utils/admin/notificationHelper");
+const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -63,7 +64,7 @@ exports.createHolidayBooking = async (req, res) => {
 
     // ✅ Step 3: Validate student fields
     for (const [index, student] of formData.students.entries()) {
-      const requiredStudentFields = ["studentFirstName", "studentLastName", "dateOfBirth","medicalInformation"];
+      const requiredStudentFields = ["studentFirstName", "studentLastName", "dateOfBirth", "medicalInformation"];
 
       for (const field of requiredStudentFields) {
         if (!student[field] || student[field].toString().trim() === "") {
@@ -136,7 +137,7 @@ exports.createHolidayBooking = async (req, res) => {
     }
 
     // ✅ Step 5: Create booking via service
-    const result = await holidayBookingService.createHolidayBooking(formData,adminId);
+    const result = await holidayBookingService.createHolidayBooking(formData, adminId);
 
     if (!result.success) {
       return res.status(400).json({
@@ -165,6 +166,52 @@ exports.createHolidayBooking = async (req, res) => {
     });
   } catch (error) {
     if (DEBUG) console.error("❌ Error in createHolidayBooking Booking:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: DEBUG ? error.message : "Internal server error",
+    });
+  }
+};
+
+exports.getAllHolidayBooking = async (req, res) => {
+  const adminId = req.admin?.id;
+  try {
+    if (!adminId) {
+      return res.status(401).json({
+        status: false,
+        message: "Unauthorized: Admin ID not found.",
+      });
+    }
+     // ✅ Identify super admin
+        const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+        const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    // 🔹 Call service (no filters)
+    const result = await holidayBookingService.getHolidayBooking(
+      superAdminId,
+      adminId
+    );
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message || "Failed to fetch holiday bookings",
+      });
+    }
+
+    // 🔹 Log the activity
+    await logActivity(req, PANEL, MODULE, "fetch-all", null, true);
+
+    return res.status(200).json({
+      success: true,
+      message: "Holiday bookings fetched successfully",
+      count: result.count,
+      data: result.data,
+    });
+  } catch (error) {
+    if (DEBUG)
+      console.error("❌ Error in getAllHolidayBooking:", error);
 
     return res.status(500).json({
       success: false,
