@@ -112,6 +112,12 @@ const models = {
   HolidayClassScheduleTermMap: require("./admin/holidayCamps/classSchedule/HolidayClassScheduleTermMap"),
   HolidayCancelSession: require("./admin/holidayCamps/classSchedule/HolidayCancelSession"),
 
+  HolidayBooking: require("./admin/holidayCamps/booking/HolidayBooking"),
+  HolidayBookingStudentMeta: require("./admin/holidayCamps/booking/HolidayBookingStudentMeta"),
+  HolidayBookingParentMeta: require("./admin/holidayCamps/booking/HolidayBookingParentMeta"),
+  HolidayBookingEmergencyMeta: require("./admin/holidayCamps/booking/HolidayBookingEmergencyMeta"),
+  HolidayBookingPayment: require("./admin/holidayCamps/booking/HolidayBookingPayment"),
+
 };
 
 // =================== Apply Model-Level Associations =================== //
@@ -198,6 +204,13 @@ const {
 
   HolidayClassScheduleTermMap,
   HolidayCancelSession,
+  
+  HolidayBooking,
+  HolidayBookingStudentMeta,
+  HolidayBookingParentMeta,
+  HolidayBookingEmergencyMeta,
+  HolidayBookingPayment,
+
 } = models;
 
 // Many-to-Many
@@ -407,6 +420,10 @@ HolidayVenue.belongsTo(models.HolidayPaymentGroup, {
   as: "holidayPaymentGroup",
 });
 
+HolidayBooking.hasMany(HolidayBookingStudentMeta, {
+    foreignKey: "bookingId",
+    as: "students"
+});
 // HolidayCancelSession.associate = (models) => {
 //   HolidayCancelSession.belongsTo(models.HolidayClassSchedule, {
 //     foreignKey: "classScheduleId",
@@ -501,4 +518,11 @@ module.exports = {
 
   HolidayClassScheduleTermMap,
   HolidayCancelSession,
+
+  HolidayBooking,
+  HolidayBookingStudentMeta,
+  HolidayBookingParentMeta,
+  HolidayBookingEmergencyMeta,
+  HolidayBookingPayment,
+
 };

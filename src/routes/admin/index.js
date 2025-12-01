@@ -153,6 +153,8 @@ router.use("/holiday/class-schedule", require("./holidayCampsRoutes/holidayClass
 
 router.use("/holiday/find-class", require("./holidayCampsRoutes/holidayFindClassRoutes"));
 
+router.use("/holiday/booking", require("./holidayCampsRoutes/holidayBookingRoutes"));
+
 // Base: /api/admin/admin
 router.post(
   "/",
