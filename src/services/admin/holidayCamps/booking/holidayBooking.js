@@ -399,57 +399,61 @@ exports.getHolidayBooking = async (superAdminId, adminId) => {
         }
 
         // Fetch booking + relations
-      let bookings = await HolidayBooking.findAll({
-    where: whereBooking,
-    include: [
-        {
-            model: HolidayBookingStudentMeta,
-            as: "students",
-            attributes: [
-                "id",
-                "bookingId",
-                "attendance",
-                "studentFirstName",
-                "studentLastName",
-                "dateOfBirth",
-                "age",
-                "gender",
-                "medicalInformation",
-                "createdAt",
-                "updatedAt",
-            ],
+        let bookings = await HolidayBooking.findAll({
+            where: whereBooking,
             include: [
                 {
-                    model: HolidayBookingParentMeta,
-                    as: "parents",
+                    model: HolidayBookingStudentMeta,
+                    as: "students",
+                    attributes: [
+                        "id",
+                        "bookingId",
+                        "attendance",
+                        "studentFirstName",
+                        "studentLastName",
+                        "dateOfBirth",
+                        "age",
+                        "gender",
+                        "medicalInformation",
+                        "createdAt",
+                        "updatedAt",
+                    ],
+                    include: [
+                        {
+                            model: HolidayBookingParentMeta,
+                            as: "parents",
+                        },
+                        {
+                            model: HolidayBookingEmergencyMeta,
+                            as: "emergencyContacts",
+                        }
+                    ]
+                },
+
+                { model: HolidayBookingPayment, as: "payment" },
+                { model: HolidayPaymentPlan, as: "holidayPaymentPlan" },
+                { model: HolidayVenue, as: "holidayVenue" },
+                { model: HolidayClassSchedule, as: "holidayClassSchedules" },
+                {
+                    model: Admin,
+                    as: "bookedByAdmin",
+                    attributes: ["id", "firstName", "lastName"]
                 },
                 {
-                    model: HolidayBookingEmergencyMeta,
-                    as: "emergencyContacts",
-                }
-            ]
-        },
+                    model: HolidayCamp,
+                    as: "holidayCamp",
+                    include: [
+                        {
+                            model: HolidayCampDates,
+                            as: "holidayCampDates"
+                        }
+                    ]
+                },
 
-        { model: HolidayBookingPayment, as: "payment" },
-        { model: HolidayPaymentPlan, as: "holidayPaymentPlan" },
-        { model: HolidayVenue, as: "holidayVenue" },
-        { model: HolidayClassSchedule, as: "holidayClassSchedules" },
-
-        {
-            model: HolidayCamp,
-            as: "holidayCamp",
-            include: [
-                {
-                    model: HolidayCampDates,
-                    as: "holidayCampDates"
-                }
-            ]
-        },
-
-        { model: Discount, as: "discount" }
-    ],
-    order: [["id", "DESC"]]
-});
+                { model: Discount, as: "discount" }
+            ],
+            order: [["id", "DESC"]]
+        });
 
         // ---------------------------
         // TRANSFORM TO FINAL JSON
@@ -483,10 +487,52 @@ exports.getHolidayBooking = async (superAdminId, adminId) => {
 
             return booking;
         });
+        // ---------- SUMMARY METRICS ----------
+        let totalStudents = 0;
+        let revenue = 0;
+        let sourceCount = {}; // count based on admin full name
 
+        bookings.forEach(b => {
+
+            // Count students
+            if (b.students && Array.isArray(b.students)) {
+                totalStudents += b.students.length;
+            }
+
+            // Revenue
+            if (b.payment && b.payment.amount) {
+                revenue += Number(b.payment.amount);
+            }
+
+            // Count sources (admin name)
+            if (b.bookedByAdmin) {
+                const fullName =
+                    `${b.bookedByAdmin.firstName} ${b.bookedByAdmin.lastName}`.trim();
+
+                sourceCount[fullName] = (sourceCount[fullName] || 0) + 1;
+            }
+        });
+
+        // Average price
+        const averagePrice = bookings.length > 0
+            ? revenue / bookings.length
+            : 0;
+
+        // Top source (most frequent admin)
+        let topSource = null;
+        if (Object.keys(sourceCount).length > 0) {
+            topSource = Object.entries(sourceCount)
+                .sort((a, b) => b[1] - a[1])[0][0];
+        }
         return {
             success: true,
-            count: bookings.length,
+            // count: bookings.length,
+            summary: {
+                totalStudents,
+                revenue,
+                averagePrice,
+                topSource
+            },
             data: bookings
         };
 

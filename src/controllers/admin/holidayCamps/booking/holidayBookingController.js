@@ -176,23 +176,27 @@ exports.createHolidayBooking = async (req, res) => {
 
 exports.getAllHolidayBooking = async (req, res) => {
   const adminId = req.admin?.id;
+
   try {
+    // Validate admin
     if (!adminId) {
       return res.status(401).json({
-        status: false,
+        success: false,
         message: "Unauthorized: Admin ID not found.",
       });
     }
-     // ✅ Identify super admin
-        const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
-        const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
 
-    // 🔹 Call service (no filters)
+    // 🔹 Identify super admin
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    // 🔹 Fetch data from service
     const result = await holidayBookingService.getHolidayBooking(
       superAdminId,
       adminId
     );
 
+    // Handle errors from service
     if (!result.success) {
       return res.status(400).json({
         success: false,
@@ -200,15 +204,25 @@ exports.getAllHolidayBooking = async (req, res) => {
       });
     }
 
-    // 🔹 Log the activity
+    // 🔹 Log activity
     await logActivity(req, PANEL, MODULE, "fetch-all", null, true);
 
+    // 🔹 Extract summary
+    const summary = result.summary || {
+      totalStudents: 0,
+      revenue: 0,
+      averagePrice: 0,
+      topSource: null
+    };
+
+    // 🔹 Respond with all metrics
     return res.status(200).json({
       success: true,
       message: "Holiday bookings fetched successfully",
-      count: result.count,
+      summary: summary,
       data: result.data,
     });
+
   } catch (error) {
     if (DEBUG)
       console.error("❌ Error in getAllHolidayBooking:", error);
