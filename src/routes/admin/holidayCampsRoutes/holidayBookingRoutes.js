@@ -8,6 +8,7 @@ const {
   getAllHolidayBooking,
   sendEmail,
   getHolidayBookingById,
+  updateHolidayBooking,
 } = require("../../../controllers/admin/holidayCamps/booking/holidayBookingController");
 
 // ➕ Create Camp
@@ -29,10 +30,16 @@ router.get(
 router.post(
   "/send-email",
   authMiddleware,
-  permissionMiddleware("holiday-booking", "create"),
+  permissionMiddleware("holiday-booking", "view-listing"),
   sendEmail
 );
 
+router.put(
+  "/update/:bookingId",
+  authMiddleware,
+  permissionMiddleware("holiday-booking", "update"),
+  updateHolidayBooking
+);
 router.get(
   "/listBy/:bookingId",
   authMiddleware,

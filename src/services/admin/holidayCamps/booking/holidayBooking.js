@@ -13,8 +13,6 @@ const {
     HolidayCampDates,
     Discount,
     Admin,
-    AdminRole,
-    ClassSchedule,
 } = require("../../../../models");
 const { sequelize } = require("../../../../models");
 const { getEmailConfig } = require("../../../email");
@@ -763,5 +761,137 @@ exports.sendEmailToParents = async ({ bookingId }) => {
   } catch (error) {
     console.error("❌ sendEmailToParents Error:", error);
     return { status: false, message: error.message };
+  }
+};
+
+exports.updateHolidayBookingById = async (bookingId, data, adminId) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const booking = await HolidayBooking.findByPk(bookingId, {
+      include: [
+        { model: HolidayBookingStudentMeta, as: "students", include: [
+          { model: HolidayBookingParentMeta, as: "parents" },
+          { model: HolidayBookingEmergencyMeta, as: "emergencyContacts" }
+        ] }
+      ],
+      transaction
+    });
+
+    if (!booking) throw new Error("Booking not found");
+
+    // --------------------------------------------------
+    // 1️⃣ Handle new students
+    // --------------------------------------------------
+    const newStudents = data.students || [];
+    if (newStudents.length > 3) {
+      throw new Error("You can add a maximum of 3 students at a time");
+    }
+
+    // Capacity check
+    const classSchedule = await HolidayClassSchedule.findByPk(booking.classScheduleId, { transaction });
+    if (!classSchedule) throw new Error("Class schedule not found");
+
+    if (classSchedule.capacity < newStudents.length) {
+      throw new Error(`Not enough capacity. Available: ${classSchedule.capacity}, Requested: ${newStudents.length}`);
+    }
+
+    const createdStudents = [];
+
+    for (const studentData of newStudents) {
+      const newStudent = await HolidayBookingStudentMeta.create({
+        bookingId: booking.id,
+        studentFirstName: studentData.studentFirstName,
+        studentLastName: studentData.studentLastName,
+        dateOfBirth: studentData.dateOfBirth,
+        age: studentData.age,
+        gender: studentData.gender,
+        medicalInformation: studentData.medicalInformation,
+      }, { transaction });
+
+      // Parents
+      if (studentData.parents?.length) {
+        await Promise.all(studentData.parents.map(p =>
+          HolidayBookingParentMeta.create({
+            studentId: newStudent.id,
+            parentFirstName: p.parentFirstName,
+            parentLastName: p.parentLastName,
+            parentEmail: p.parentEmail,
+            parentPhoneNumber: p.parentPhoneNumber,
+            relationToChild: p.relationToChild,
+            howDidYouHear: p.howDidYouHear,
+          }, { transaction })
+        ));
+      }
+
+      // Emergency contacts
+      if (studentData.emergency) {
+        await HolidayBookingEmergencyMeta.create({
+          studentId: newStudent.id,
+          emergencyFirstName: studentData.emergency.emergencyFirstName,
+          emergencyLastName: studentData.emergency.emergencyLastName,
+          emergencyPhoneNumber: studentData.emergency.emergencyPhoneNumber,
+          emergencyRelation: studentData.emergency.emergencyRelation,
+        }, { transaction });
+      }
+
+      createdStudents.push(newStudent);
+    }
+
+    // Update total students & class capacity
+    if (createdStudents.length > 0) {
+      booking.totalStudents += createdStudents.length;
+      await booking.save({ transaction });
+
+      await classSchedule.update(
+        { capacity: classSchedule.capacity - createdStudents.length },
+        { transaction }
+      );
+    }
+
+    // --------------------------------------------------
+    // 2️⃣ Update parents & emergency contacts for existing students
+    // --------------------------------------------------
+    if (data.parents?.length) {
+      for (const parentData of data.parents) {
+        if (!parentData.parentId) continue;
+        await HolidayBookingParentMeta.update({
+          parentFirstName: parentData.parentFirstName,
+          parentLastName: parentData.parentLastName,
+          parentEmail: parentData.parentEmail,
+          parentPhoneNumber: parentData.parentPhoneNumber,
+          relationToChild: parentData.relationToChild,
+          howDidYouHear: parentData.howDidYouHear,
+        }, { where: { id: parentData.parentId }, transaction });
+      }
+    }
+
+    if (data.emergencyContacts?.length) {
+      for (const emergencyData of data.emergencyContacts) {
+        if (!emergencyData.emergencyId) continue;
+        await HolidayBookingEmergencyMeta.update({
+          emergencyFirstName: emergencyData.emergencyFirstName,
+          emergencyLastName: emergencyData.emergencyLastName,
+          emergencyPhoneNumber: emergencyData.emergencyPhoneNumber,
+          emergencyRelation: emergencyData.emergencyRelation,
+        }, { where: { id: emergencyData.emergencyId }, transaction });
+      }
+    }
+
+    await transaction.commit();
+
+    return {
+      success: true,
+      message: "Booking updated successfully",
+      data: {
+        bookingId: booking.id,
+        totalStudents: booking.totalStudents,
+        addedStudents: createdStudents.length,
+      }
+    };
+  } catch (error) {
+    await transaction.rollback();
+    console.error("❌ updateHolidayBookingById Error:", error);
+    throw error;
   }
 };
