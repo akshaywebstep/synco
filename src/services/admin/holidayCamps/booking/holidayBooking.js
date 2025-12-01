@@ -17,7 +17,7 @@ const {
     ClassSchedule,
 } = require("../../../../models");
 const { sequelize } = require("../../../../models");
-
+const { getEmailConfig } = require("../../../email");
 const stripePromise = require("../../../../utils/payment/pay360/stripe");
 const {
     createCustomer,
@@ -27,7 +27,6 @@ const {
     getStripePaymentDetails,
 } = require("../../../../controllers/test/payment/stripe/stripeController");
 const sendEmail = require("../../../../utils/email/sendEmail");
-const { getEmailConfig } = require("../../../email");
 const emailModel = require("../../../../services/email");
 const PANEL = "admin";
 
@@ -130,7 +129,7 @@ exports.createHolidayBooking = async (data, adminId) => {
                 discountId: data.discountId,
                 totalStudents: data.totalStudents,
                 paymentPlanId: data.paymentPlanId,
-                status: "pending",
+                status: "active",
                 bookedBy: adminId,
                 type: "paid",
                 serviceType: "holiday camp",
@@ -544,4 +543,225 @@ exports.getHolidayBooking = async (superAdminId, adminId) => {
             error: error.message
         };
     }
+};
+exports.getBookingById = async (bookingId, superAdminId, adminId) => {
+  try {
+    // Validate bookingId
+    if (!bookingId || isNaN(Number(bookingId))) {
+      return { success: false, message: "Invalid booking ID." };
+    }
+
+    // Build access filter
+    const whereBooking = { id: bookingId };
+
+    if (superAdminId && superAdminId === adminId) {
+      // super admin can access
+      whereBooking.bookedBy = { [Op.in]: [superAdminId] };
+    } else if (superAdminId && adminId) {
+      whereBooking.bookedBy = { [Op.in]: [adminId, superAdminId] };
+    } else if (adminId) {
+      whereBooking.bookedBy = adminId;
+    }
+
+    // Fetch booking with full relations (same as getHolidayBooking)
+    let record = await HolidayBooking.findOne({
+      where: whereBooking,
+      include: [
+        {
+          model: HolidayBookingStudentMeta,
+          as: "students",
+          include: [
+            { model: HolidayBookingParentMeta, as: "parents" },
+            { model: HolidayBookingEmergencyMeta, as: "emergencyContacts" }
+          ]
+        },
+
+        { model: HolidayBookingPayment, as: "payment" },
+        { model: HolidayPaymentPlan, as: "holidayPaymentPlan" },
+        { model: HolidayVenue, as: "holidayVenue" },
+        { model: HolidayClassSchedule, as: "holidayClassSchedules" },
+        { model: Discount, as: "discount" },
+
+        {
+          model: Admin,
+          as: "bookedByAdmin",
+          attributes: ["id", "firstName", "lastName"]
+        },
+        {
+          model: HolidayCamp,
+          as: "holidayCamp",
+          include: [{ model: HolidayCampDates, as: "holidayCampDates" }]
+        }
+      ]
+    });
+
+    if (!record) {
+      return { success: false, message: "Booking not found or access denied." };
+    }
+
+    // Convert to JSON
+    let booking = record.toJSON();
+
+    // ---------------------------
+    // Parent extraction + merge
+    // ---------------------------
+    const parentMap = {};
+    booking.students.forEach(st => {
+      (st.parents || []).forEach(p => { parentMap[p.id] = p; });
+      delete st.parents; 
+    });
+    booking.parents = Object.values(parentMap);
+
+    // ---------------------------
+    // Emergency extraction + merge
+    // ---------------------------
+    const emergencyMap = {};
+    booking.students.forEach(st => {
+      (st.emergencyContacts || []).forEach(ec => { emergencyMap[ec.id] = ec; });
+      delete st.emergencyContacts;
+    });
+    booking.emergencyContacts = Object.values(emergencyMap);
+
+    // ---------------------------
+    // SUMMARY METRICS (single booking)
+    // ---------------------------
+    const totalStudents = booking.students?.length || 0;
+    const revenue = booking.payment?.amount ? Number(booking.payment.amount) : 0;
+    const averagePrice = revenue; // since single booking
+    const topSource = booking.bookedByAdmin
+      ? `${booking.bookedByAdmin.firstName} ${booking.bookedByAdmin.lastName}`
+      : null;
+
+    return {
+      success: true,
+      summary: {
+        totalStudents,
+        revenue,
+        averagePrice,
+        topSource
+      },
+      data: booking
+    };
+
+  } catch (error) {
+    console.error("❌ getBookingById service error:", error);
+    return { success: false, message: error.message };
+  }
+};
+
+exports.sendEmailToParents = async ({ bookingId }) => {
+  try {
+    // 1️⃣ Fetch booking
+    const booking = await HolidayBooking.findByPk(bookingId);
+    if (!booking) {
+      return { status: false, message: "Booking not found" };
+    }
+
+    // 2️⃣ Fetch all students in booking
+    const studentMetas = await HolidayBookingStudentMeta.findAll({
+      where: { bookingId },
+    });
+
+    if (!studentMetas.length) {
+      return { status: false, message: "No students found for this booking" };
+    }
+
+    // 3️⃣ Fetch venue & class schedule
+    const venue = await HolidayVenue.findByPk(booking.venueId);
+    const classSchedule = await HolidayClassSchedule.findByPk(booking.classScheduleId);
+
+    const venueName = venue?.venueName || venue?.name || "Unknown Venue";
+    const className = classSchedule?.className || "Unknown Class";
+    const classTime =
+      classSchedule?.classTime || classSchedule?.startTime || "TBA";
+
+    const startDate = booking.startDate || "TBA";
+    const additionalNote = booking.additionalNote?.trim() || "";
+
+    // 4️⃣ Load email config/template
+    const emailConfigResult = await getEmailConfig(
+      "admin",
+      "send-email-holiday-listing"
+    );
+
+    if (!emailConfigResult.status) {
+      return { status: false, message: "Email config missing" };
+    }
+
+    const { emailConfig, htmlTemplate, subject } = emailConfigResult;
+    const sentTo = [];
+
+    // 5️⃣ Build students HTML list
+    const studentsHtml = `
+      <ul>
+        ${studentMetas
+          .map(
+            (s) =>
+              `<li>${s.studentFirstName} ${s.studentLastName} (Age: ${s.age}, Gender: ${s.gender})</li>`
+          )
+          .join("")}
+      </ul>
+    `;
+
+    // 6️⃣ Fetch ALL parents for these students
+    const allParents = await HolidayBookingParentMeta.findAll({
+      where: { studentId: studentMetas.map((s) => s.id) },
+    });
+
+    // Deduplicate by email
+    const uniqueParents = {};
+    allParents.forEach((p) => {
+      if (p.parentEmail) uniqueParents[p.parentEmail] = p;
+    });
+
+    // 7️⃣ Email each parent
+    for (const parentEmail in uniqueParents) {
+      const parent = uniqueParents[parentEmail];
+
+      const noteHtml = additionalNote
+        ? `<p><strong>Additional Note:</strong> ${additionalNote}</p>`
+        : "";
+
+      // Replace template variables
+      const finalHtml = htmlTemplate
+        .replace(/{{parentName}}/g, parent.parentFirstName)
+        .replace(/{{studentsList}}/g, studentsHtml)
+        .replace(/{{status}}/g, booking.status)
+        .replace(/{{venueName}}/g, venueName)
+        .replace(/{{className}}/g, className)
+        .replace(/{{classTime}}/g, classTime)
+        .replace(/{{startDate}}/g, startDate)
+        .replace(/{{additionalNoteSection}}/g, noteHtml)
+        .replace(/{{appName}}/g, "Synco")
+        .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
+        .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png")
+        .replace(/{{year}}/g, new Date().getFullYear());
+
+      const recipient = [
+        {
+          name: `${parent.parentFirstName} ${parent.parentLastName}`,
+          email: parent.parentEmail,
+        },
+      ];
+
+      const sendResult = await sendEmail(emailConfig, {
+        recipient,
+        subject,
+        htmlBody: finalHtml,
+      });
+
+      if (sendResult.status) {
+        sentTo.push(parent.parentEmail);
+      }
+    }
+
+    return {
+      status: true,
+      message: `Emails sent to ${sentTo.length} parents`,
+      sentTo,
+    };
+  } catch (error) {
+    console.error("❌ sendEmailToParents Error:", error);
+    return { status: false, message: error.message };
+  }
 };

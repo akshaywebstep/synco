@@ -233,3 +233,118 @@ exports.getAllHolidayBooking = async (req, res) => {
     });
   }
 };
+
+exports.sendEmail = async (req, res) => {
+  const { bookingIds } = req.body;
+
+  if (!Array.isArray(bookingIds) || bookingIds.length === 0) {
+    return res.status(400).json({
+      status: false,
+      message: "bookingIds (array) is required",
+    });
+  }
+
+  try {
+    const results = await Promise.all(
+      bookingIds.map(async (bookingId) => {
+        const result =
+          await holidayBookingService.sendEmailToParents({
+            bookingId,
+          });
+
+        await logActivity(
+          req,
+          PANEL,
+          MODULE,
+          "send",
+          {
+            message: `Email attempt for bookingId ${bookingId}: ${result.message}`,
+          },
+          result.status
+        );
+
+        return { bookingId, ...result };
+      })
+    );
+
+    const allSentTo = results.flatMap((r) => r.sentTo || []);
+
+    return res.status(200).json({
+      status: true,
+      message: `Emails processed for ${bookingIds.length} bookings`,
+      results,
+      sentTo: allSentTo,
+    });
+  } catch (error) {
+    console.error("❌ Controller Send Email Error:", error);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "send",
+      { error: error.message },
+      false
+    );
+    return res.status(500).json({ status: false, message: "Server error" });
+  }
+};
+
+exports.getHolidayBookingById = async (req, res) => {
+  const adminId = req.admin?.id;
+  const bookingId = req.params.bookingId;
+
+  try {
+    // Validate admin
+    if (!adminId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized: Admin ID not found.",
+      });
+    }
+
+    // Validate bookingId
+    if (!bookingId) {
+      return res.status(400).json({
+        success: false,
+        message: "bookingId is required.",
+      });
+    }
+
+    // 🔹 Get super admin
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    // 🔹 Call service
+    const result = await holidayBookingService.getBookingById(
+      bookingId,
+      superAdminId,
+      adminId
+    );
+
+    if (!result.success) {
+      return res.status(404).json({
+        success: false,
+        message: result.message || "Booking not found",
+      });
+    }
+
+    // 🔹 Log activity
+    await logActivity(req, PANEL, MODULE, "fetch-one", { bookingId }, true);
+
+    // 🔹 Response
+    return res.status(200).json({
+      success: true,
+      message: "Holiday booking fetched successfully",
+      data: result.data,               // no summary included
+    });
+
+  } catch (error) {
+    if (DEBUG)
+      console.error("❌ Error in getHolidayBookingById:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: DEBUG ? error.message : "Internal server error",
+    });
+  }
+};
