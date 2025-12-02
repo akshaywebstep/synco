@@ -1,44 +1,58 @@
 const {
-  CustomTemplate,TemplateCategory
+  CustomTemplate, TemplateCategory
 } = require("../../../../models");
 TemplateCategoryService = require("./templateCategory");
 const { Op } = require("sequelize");
 
 // ✅ Create a new class
 exports.createCustomTemplate = async (data) => {
-    try {
-        const savedcustomTemplate = await CustomTemplate.create(data);
-        return { status: true, data: savedcustomTemplate };
-    } catch (error) {
-        console.error("❌ createCustomTemplate Error:", error);
-        return { status: false, message: error.message };
+  try {
+    // (1) make sure category ID always saved as array
+    if (!Array.isArray(data.template_category_id)) {
+      data.template_category_id = [data.template_category_id];
     }
+
+    const savedcustomTemplate = await CustomTemplate.create(data);
+    return { status: true, data: savedcustomTemplate };
+  } catch (error) {
+    console.error("❌ createCustomTemplate Error:", error);
+    return { status: false, message: error.message };
+  }
 };
+
 // ✅ LIST custom templates (filter by category if provided, dynamic admin scoping)
 exports.listCustomTemplates = async (createdBy, templateCategoryId = null) => {
   try {
     const where = { createdBy: Number(createdBy) };
 
     if (templateCategoryId) {
-      where.template_category_id = Number(templateCategoryId);
+      const filterId = Number(templateCategoryId);
+      // (2) array search condition for JSON column
+      where.template_category_id = {
+        [Op.or]: [
+          { [Op.contains]: [filterId] },   // PostgreSQL / Sequelize JSON contains
+          sequelize.where(
+            sequelize.fn("JSON_CONTAINS", sequelize.col("template_category_id"), JSON.stringify(filterId)),
+            1
+          )
+        ]
+      };
     }
 
-    // Fetch templates
     const templates = await CustomTemplate.findAll({
       where,
       order: [["id", "DESC"]],
       raw: true,
     });
 
-    // Fetch category names created by this admin
-    const catResult =await TemplateCategoryService.listTemplateCategories(createdBy);
+    const catResult = await TemplateCategoryService.listTemplateCategories(createdBy);
     const catMap = {};
 
     catResult.data.forEach((cat) => {
-      catMap[cat.id] = cat.category; // Map {2: "Cancellations"}
+      catMap[cat.id] = cat.category;
     });
 
-    // Final grouping
+    // ✅ Final grouping format must stay same:
     const grouped = {
       email: [],
       text: [],
@@ -50,17 +64,26 @@ exports.listCustomTemplates = async (createdBy, templateCategoryId = null) => {
     };
 
     templates.forEach((temp) => {
-      const mode = temp.mode_of_communication; // email/text
-      const catName = catMap[temp.template_category_id] || "Uncategorized";
+      const mode = temp.mode_of_communication;
 
-      if (!bucket[mode][catName]) {
-        bucket[mode][catName] = [];
-      }
+      // (3) read array of IDs
+      let catIds = temp.template_category_id;
 
-      bucket[mode][catName].push(temp);
+      console.log('catIdtesmp', catIds);
+
+      catIds = catIds ? JSON.parse(catIds) : [];
+
+      const catNames = catIds.map(id => catMap[id] || "Uncategorized");
+
+      // (5) push template under each category name
+      catNames.forEach(catName => {
+        if (!bucket[mode][catName]) {
+          bucket[mode][catName] = [];
+        }
+        bucket[mode][catName].push(temp);
+      });
     });
 
-    // Convert objects into arrays
     for (const mode of ["email", "text"]) {
       Object.keys(bucket[mode]).forEach((cat) => {
         grouped[mode].push({
@@ -87,7 +110,7 @@ exports.deleteCustomTemplate = async (id, adminId) => {
     }
 
     await template.update({ deletedBy: adminId });
-    await template.destroy(); // paranoid true → soft delete
+    await template.destroy();
 
     return { status: true, message: "Custom template deleted successfully." };
   } catch (error) {
@@ -95,6 +118,7 @@ exports.deleteCustomTemplate = async (id, adminId) => {
     return { status: false, message: error.message };
   }
 };
+
 // ✅ UPDATE custom template
 exports.updateCustomTemplate = async (id, data, adminId) => {
   try {
@@ -104,6 +128,11 @@ exports.updateCustomTemplate = async (id, data, adminId) => {
       return { status: false, message: "Template not found or you don't have permission to update this template." };
     }
 
+    // (6) ensure update also stores array
+    if (!Array.isArray(data.template_category_id)) {
+      data.template_category_id = [data.template_category_id];
+    }
+
     const updated = await template.update(data);
     return { status: true, data: updated };
   } catch (error) {
@@ -111,6 +140,7 @@ exports.updateCustomTemplate = async (id, data, adminId) => {
     return { status: false, message: error.message };
   }
 };
+
 // ✅ FETCH custom template by ID (admin scoped)
 exports.getCustomTemplateById = async (id, adminId) => {
   try {

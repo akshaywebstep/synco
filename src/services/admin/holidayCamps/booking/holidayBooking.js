@@ -135,6 +135,7 @@ exports.createHolidayBooking = async (data, adminId) => {
         status: "active",
         bookedBy: adminId,
         bookingType: "paid",
+        marketingChannel: "website",
         type: "paid",
         serviceType: "holiday camp",
       },
@@ -529,7 +530,7 @@ exports.getHolidayBooking = async (superAdminId, adminId) => {
 
     // Average price
     const averagePrice = bookings.length > 0
-      ? revenue / bookings.length
+      ? Number((revenue / bookings.length).toFixed(2))
       : 0;
 
     // Top source (most frequent admin)
@@ -845,140 +846,6 @@ exports.sendEmailToParents = async ({ bookingId }) => {
   }
 };
 
-// exports.updateHolidayBookingById = async (bookingId, data, adminId) => {
-//   const transaction = await sequelize.transaction();
-
-//   try {
-//     const booking = await HolidayBooking.findByPk(bookingId, {
-//       include: [
-//         {
-//           model: HolidayBookingStudentMeta, as: "students", include: [
-//             { model: HolidayBookingParentMeta, as: "parents" },
-//             { model: HolidayBookingEmergencyMeta, as: "emergencyContacts" }
-//           ]
-//         }
-//       ],
-//       transaction
-//     });
-
-//     if (!booking) throw new Error("Booking not found");
-
-//     // --------------------------------------------------
-//     // 1️⃣ Handle new students
-//     // --------------------------------------------------
-//     const newStudents = data.students || [];
-//     if (newStudents.length > 3) {
-//       throw new Error("You can add a maximum of 3 students at a time");
-//     }
-
-//     // Capacity check
-//     const classSchedule = await HolidayClassSchedule.findByPk(booking.classScheduleId, { transaction });
-//     if (!classSchedule) throw new Error("Class schedule not found");
-
-//     if (classSchedule.capacity < newStudents.length) {
-//       throw new Error(`Not enough capacity. Available: ${classSchedule.capacity}, Requested: ${newStudents.length}`);
-//     }
-
-//     const createdStudents = [];
-
-//     for (const studentData of newStudents) {
-//       const newStudent = await HolidayBookingStudentMeta.create({
-//         bookingId: booking.id,
-//         studentFirstName: studentData.studentFirstName,
-//         studentLastName: studentData.studentLastName,
-//         dateOfBirth: studentData.dateOfBirth,
-//         age: studentData.age,
-//         gender: studentData.gender,
-//         medicalInformation: studentData.medicalInformation,
-//       }, { transaction });
-
-//       // Parents
-//       if (studentData.parents?.length) {
-//         await Promise.all(studentData.parents.map(p =>
-//           HolidayBookingParentMeta.create({
-//             studentId: newStudent.id,
-//             parentFirstName: p.parentFirstName,
-//             parentLastName: p.parentLastName,
-//             parentEmail: p.parentEmail,
-//             parentPhoneNumber: p.parentPhoneNumber,
-//             relationToChild: p.relationToChild,
-//             howDidYouHear: p.howDidYouHear,
-//           }, { transaction })
-//         ));
-//       }
-
-//       // Emergency contacts
-//       if (studentData.emergency) {
-//         await HolidayBookingEmergencyMeta.create({
-//           studentId: newStudent.id,
-//           emergencyFirstName: studentData.emergency.emergencyFirstName,
-//           emergencyLastName: studentData.emergency.emergencyLastName,
-//           emergencyPhoneNumber: studentData.emergency.emergencyPhoneNumber,
-//           emergencyRelation: studentData.emergency.emergencyRelation,
-//         }, { transaction });
-//       }
-
-//       createdStudents.push(newStudent);
-//     }
-
-//     // Update total students & class capacity
-//     if (createdStudents.length > 0) {
-//       booking.totalStudents += createdStudents.length;
-//       await booking.save({ transaction });
-
-//       await classSchedule.update(
-//         { capacity: classSchedule.capacity - createdStudents.length },
-//         { transaction }
-//       );
-//     }
-
-//     // --------------------------------------------------
-//     // 2️⃣ Update parents & emergency contacts for existing students
-//     // --------------------------------------------------
-//     if (data.parents?.length) {
-//       for (const parentData of data.parents) {
-//         if (!parentData.parentId) continue;
-//         await HolidayBookingParentMeta.update({
-//           parentFirstName: parentData.parentFirstName,
-//           parentLastName: parentData.parentLastName,
-//           parentEmail: parentData.parentEmail,
-//           parentPhoneNumber: parentData.parentPhoneNumber,
-//           relationToChild: parentData.relationToChild,
-//           howDidYouHear: parentData.howDidYouHear,
-//         }, { where: { id: parentData.parentId }, transaction });
-//       }
-//     }
-
-//     if (data.emergencyContacts?.length) {
-//       for (const emergencyData of data.emergencyContacts) {
-//         if (!emergencyData.emergencyId) continue;
-//         await HolidayBookingEmergencyMeta.update({
-//           emergencyFirstName: emergencyData.emergencyFirstName,
-//           emergencyLastName: emergencyData.emergencyLastName,
-//           emergencyPhoneNumber: emergencyData.emergencyPhoneNumber,
-//           emergencyRelation: emergencyData.emergencyRelation,
-//         }, { where: { id: emergencyData.emergencyId }, transaction });
-//       }
-//     }
-
-//     await transaction.commit();
-
-//     return {
-//       success: true,
-//       message: "Booking updated successfully",
-//       data: {
-//         bookingId: booking.id,
-//         totalStudents: booking.totalStudents,
-//         addedStudents: createdStudents.length,
-//       }
-//     };
-//   } catch (error) {
-//     await transaction.rollback();
-//     console.error("❌ updateHolidayBookingById Error:", error);
-//     throw error;
-//   }
-// };
-
 exports.updateHolidayBookingById = async (bookingId, data, adminId) => {
   const transaction = await sequelize.transaction();
 
@@ -1240,6 +1107,7 @@ exports.waitingListCreate = async (data, adminId) => {
         bookingType: "waiting list",
         type: "waiting list",
         serviceType: "holiday camp",
+        marketingChannel: "website",
       },
       { transaction }
     );
@@ -1402,3 +1270,437 @@ exports.waitingListCreate = async (data, adminId) => {
     throw error;
   }
 };
+
+// exports.holidayCampsReports = async (superAdminId, adminId) => {
+//   try {
+//     // ----------------------------
+//     //  Access filter placeholder
+//     // ----------------------------
+//     // If you have admin-scoping logic, populate whereBooking accordingly.
+//     // Example:
+//     // const whereBooking = { /* ...restrict by admin or superAdmin...*/ };
+//     const whereBooking = {}; // <-- add access rules here if needed
+
+//     // ----------------------------
+//     //  Date ranges for growth calc
+//     // ----------------------------
+//     const now = new Date();
+//     const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+//     const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+//     const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+
+//     // ----------------------------
+//     //  1) TOTAL REVENUE (all payments)
+//     // ----------------------------
+//     const totalRevenue = Number(
+//       (await HolidayBookingPayment.sum("amount", {
+//         // If you want to restrict to booking scope, join by holiday_booking_id via whereBooking logic
+//         // where: { /* ... */ }
+//       })) || 0
+//     );
+
+//     // ----------------------------
+//     //  2) REVENUE & BOOKING COUNTS PER CAMP (all time)
+//     //     Also used to compute averageRevenuePerCamp
+//     // ----------------------------
+//     const revenuePerCampRows = await HolidayBooking.findAll({
+//       attributes: [
+//         "holidayCampId",
+//         [sequelize.fn("SUM", sequelize.col("totalStudents")), "studentsCount"],
+//         [sequelize.fn("COUNT", sequelize.col("HolidayBooking.id")), "bookingCount"],
+//         // join payment to sum amount
+//         [sequelize.literal(`(
+//             SELECT IFNULL(SUM(hbp.amount),0)
+//             FROM holiday_booking_payment hbp
+//             WHERE hbp.holiday_booking_id = HolidayBooking.id
+//         )`), "dummyPayment"], // we will do aggregated payments differently below
+//       ],
+//       where: whereBooking,
+//       group: ["holidayCampId"],
+//       raw: true,
+//     });
+
+//     // A better payments-by-camp query (aggregate joining payments)
+//     const paymentsByCamp = await sequelize.query(
+//       `
+//       SELECT hb.holidayCampId AS holidayCampId, IFNULL(SUM(hbp.amount),0) AS revenue
+//       FROM holiday_booking hb
+//       LEFT JOIN holiday_booking_payment hbp ON hbp.holiday_booking_id = hb.id
+//       ${Object.keys(whereBooking).length ? "WHERE /* add booking filters here */" : ""}
+//       GROUP BY hb.holidayCampId
+//       `,
+//       { type: sequelize.QueryTypes.SELECT }
+//     );
+
+//     // Build map for quick lookups
+//     const paymentsByCampMap = paymentsByCamp.reduce((acc, r) => {
+//       acc[r.holidayCampId] = Number(r.revenue || 0);
+//       return acc;
+//     }, {});
+
+//     // camps list (unique holidayCampIds)
+//     const campIds = revenuePerCampRows.map((r) => r.holidayCampId).filter(Boolean);
+//     const numCamps = campIds.length || 0;
+
+//     // average revenue per camp (average of revenues across camps)
+//     const totalRevenueForCamps = campIds.reduce((s, id) => s + (paymentsByCampMap[id] || 0), 0);
+//     const averageRevenuePerCamp = numCamps > 0 ? Number((totalRevenueForCamps / numCamps).toFixed(2)) : 0;
+
+//     // ----------------------------
+//     //  3) GROWTH (month-over-month) for active bookings
+//     //     We'll compute booking counts and revenue growth for 'active' bookings
+//     // ----------------------------
+//     const activeWhere = {
+//       ...whereBooking,
+//       status: "active",
+//       createdAt: { [Op.gte]: startOfLastMonth, [Op.lte]: now },
+//     };
+
+//     // count active bookings in last two months (split)
+//     const activeThisMonthCount = await HolidayBooking.count({
+//       where: {
+//         ...whereBooking,
+//         status: "active",
+//         createdAt: { [Op.gte]: startOfThisMonth, [Op.lte]: now },
+//       },
+//     });
+
+//     const activeLastMonthCount = await HolidayBooking.count({
+//       where: {
+//         ...whereBooking,
+//         status: "active",
+//         createdAt: { [Op.gte]: startOfLastMonth, [Op.lte]: endOfLastMonth },
+//       },
+//     });
+
+//     const bookingsCountGrowthPercent =
+//       activeLastMonthCount === 0
+//         ? null
+//         : Number((((activeThisMonthCount - activeLastMonthCount) / activeLastMonthCount) * 100).toFixed(2));
+
+//     // revenue growth for active bookings (month over month)
+//     const revenueThisMonthRow = await sequelize.query(
+//       `
+//       SELECT IFNULL(SUM(hbp.amount),0) AS revenue
+//       FROM holiday_booking hb
+//       LEFT JOIN holiday_booking_payment hbp ON hbp.holiday_booking_id = hb.id
+//       WHERE hb.status = 'active' AND hb.createdAt >= :startThis AND hb.createdAt <= :now
+//       `,
+//       {
+//         type: sequelize.QueryTypes.SELECT,
+//         replacements: { startThis: startOfThisMonth, now },
+//       }
+//     );
+
+//     const revenueLastMonthRow = await sequelize.query(
+//       `
+//       SELECT IFNULL(SUM(hbp.amount),0) AS revenue
+//       FROM holiday_booking hb
+//       LEFT JOIN holiday_booking_payment hbp ON hbp.holiday_booking_id = hb.id
+//       WHERE hb.status = 'active' AND hb.createdAt >= :startLast AND hb.createdAt <= :endLast
+//       `,
+//       {
+//         type: sequelize.QueryTypes.SELECT,
+//         replacements: { startLast: startOfLastMonth, endLast: endOfLastMonth },
+//       }
+//     );
+
+//     const revenueThisMonth = Number(revenueThisMonthRow?.[0]?.revenue || 0);
+//     const revenueLastMonth = Number(revenueLastMonthRow?.[0]?.revenue || 0);
+
+//     const revenueGrowthPercent = revenueLastMonth === 0 ? null : Number((((revenueThisMonth - revenueLastMonth) / revenueLastMonth) * 100).toFixed(2));
+
+//     // average growth: we'll return both bookingsCountGrowthPercent and revenueGrowthPercent,
+//     // plus a simple combined average (if both exist)
+//     let averageGrowth = null;
+//     if (bookingsCountGrowthPercent !== null && revenueGrowthPercent !== null) {
+//       averageGrowth = Number(((bookingsCountGrowthPercent + revenueGrowthPercent) / 2).toFixed(2));
+//     } else if (bookingsCountGrowthPercent !== null) {
+//       averageGrowth = bookingsCountGrowthPercent;
+//     } else if (revenueGrowthPercent !== null) {
+//       averageGrowth = revenueGrowthPercent;
+//     }
+
+//     // ----------------------------
+//     //  4) AVERAGE AGE OF CHILD (active bookings)
+//     // ----------------------------
+//     const avgAgeRow = await HolidayBookingStudentMeta.findOne({
+//       attributes: [[sequelize.fn("AVG", sequelize.col("age")), "avgAge"]],
+//       include: [
+//         {
+//           model: HolidayBooking,
+//           attributes: [],
+//           where: { status: "active", ...whereBooking },
+//         },
+//       ],
+//       raw: true,
+//     });
+//     const averageAge = avgAgeRow ? Number(Number(avgAgeRow.avgAge || 0).toFixed(2)) : 0;
+
+//     // ----------------------------
+//     //  5) CHART → TOTAL STUDENTS PER CAMP (active bookings)
+//     // ----------------------------
+//     const studentsPerCampRows = await HolidayBooking.findAll({
+//       attributes: [
+//         "holidayCampId",
+//         [sequelize.fn("SUM", sequelize.col("totalStudents")), "enrolledStudents"]
+//       ],
+//       where: { status: "active", ...whereBooking },
+//       group: ["holidayCampId"],
+//       raw: true,
+//     });
+
+//     const totalStudentsChart = studentsPerCampRows.map(r => ({
+//       holidayCampId: r.holidayCampId,
+//       enrolledStudents: Number(r.enrolledStudents || 0)
+//     }));
+
+//     // ----------------------------
+//     //  6) CAMPS REGISTRATIONS (waiting list) + capacity percent + untapped business
+//     // ----------------------------
+//     // Get waiting list counts per camp
+//     const waitingPerCampRows = await HolidayBooking.findAll({
+//       attributes: [
+//         "holidayCampId",
+//         [sequelize.fn("COUNT", sequelize.col("id")), "waitingCount"],
+//       ],
+//       where: { status: "waiting list", ...whereBooking },
+//       group: ["holidayCampId"],
+//       raw: true,
+//     });
+
+//     // get capacity per camp: sum class schedule capacity grouped by holidayCampId
+//     const capacityRows = await HolidayClassSchedule.findAll({
+//       attributes: [
+//         "holidayCampId",
+//         [sequelize.fn("SUM", sequelize.col("capacity")), "totalCapacity"],
+//       ],
+//       group: ["holidayCampId"],
+//       raw: true,
+//     });
+
+//     const capacityMap = capacityRows.reduce((acc, r) => {
+//       acc[r.holidayCampId] = Number(r.totalCapacity || 0);
+//       return acc;
+//     }, {});
+
+//     const enrolledMap = studentsPerCampRows.reduce((acc, r) => {
+//       acc[r.holidayCampId] = Number(r.enrolledStudents || 0);
+//       return acc;
+//     }, {});
+
+//     const waitingMap = waitingPerCampRows.reduce((acc, r) => {
+//       acc[r.holidayCampId] = Number(r.waitingCount || 0);
+//       return acc;
+//     }, {});
+
+//     // Build camps registration report
+//     const campRegistrations = Array.from(new Set([
+//       ...Object.keys(capacityMap),
+//       ...Object.keys(waitingMap),
+//       ...Object.keys(enrolledMap),
+//       ...campIds.map(String),
+//     ])).map(idStr => {
+//       const id = Number(idStr);
+//       const capacity = capacityMap[id] || 0;
+//       const enrolled = enrolledMap[id] || 0;
+//       const waiting = waitingMap[id] || 0;
+//       const percentFilled = capacity > 0 ? Number(((enrolled / capacity) * 100).toFixed(2)) : 0;
+//       const untappedBusiness = Math.max(0, capacity - enrolled);
+
+//       return {
+//         holidayCampId: id,
+//         capacity,
+//         enrolled,
+//         waiting,
+//         percentFilled,
+//         untappedBusiness,
+//       };
+//     });
+
+//     // ----------------------------
+//     //  7) REGISTRATION PER CAMP (active) -> revenue and percentage of total revenue + growth per camp
+//     // ----------------------------
+//     // revenue per camp (active bookings only)
+//     const revenuePerCampActive = await sequelize.query(
+//       `
+//       SELECT hb.holidayCampId AS holidayCampId, IFNULL(SUM(hbp.amount),0) AS revenue
+//       FROM holiday_booking hb
+//       LEFT JOIN holiday_booking_payment hbp ON hbp.holiday_booking_id = hb.id
+//       WHERE hb.status = 'active'
+//       GROUP BY hb.holidayCampId
+//       `,
+//       { type: sequelize.QueryTypes.SELECT }
+//     );
+
+//     const revenuePerCampActiveMap = revenuePerCampActive.reduce((acc, r) => {
+//       acc[r.holidayCampId] = Number(r.revenue || 0);
+//       return acc;
+//     }, {});
+
+//     // compute percentage of total revenue
+//     const totalActiveRevenue = Object.values(revenuePerCampActiveMap).reduce((s, v) => s + v, 0);
+//     const registrationPerCamp = Object.keys(revenuePerCampActiveMap).map(k => {
+//       const campId = Number(k);
+//       const revenue = revenuePerCampActiveMap[campId] || 0;
+//       const percentOfTotal = totalActiveRevenue > 0 ? Number(((revenue / totalActiveRevenue) * 100).toFixed(2)) : 0;
+//       return { holidayCampId: campId, revenue: Number(revenue.toFixed(2)), percentOfTotal };
+//     });
+
+//     // per-camp growth (revenue) comparing current month vs previous month (active only)
+//     const growthPerCampRows = await sequelize.query(
+//       `
+//       SELECT
+//         hb.holidayCampId AS holidayCampId,
+//         SUM(CASE WHEN hb.createdAt >= :startThis AND hb.createdAt <= :now THEN IFNULL(hbp.amount,0) ELSE 0 END) AS revenueThisMonth,
+//         SUM(CASE WHEN hb.createdAt >= :startLast AND hb.createdAt <= :endLast THEN IFNULL(hbp.amount,0) ELSE 0 END) AS revenueLastMonth
+//       FROM holiday_booking hb
+//       LEFT JOIN holiday_booking_payment hbp ON hbp.holiday_booking_id = hb.id
+//       WHERE hb.status = 'active'
+//       GROUP BY hb.holidayCampId
+//       `,
+//       {
+//         type: sequelize.QueryTypes.SELECT,
+//         replacements: { startThis: startOfThisMonth, now, startLast: startOfLastMonth, endLast: endOfLastMonth },
+//       }
+//     );
+
+//     const campGrowth = growthPerCampRows.map(r => {
+//       const last = Number(r.revenueLastMonth || 0);
+//       const cur = Number(r.revenueThisMonth || 0);
+//       return {
+//         holidayCampId: r.holidayCampId,
+//         revenueThisMonth: Number(cur.toFixed(2)),
+//         revenueLastMonth: Number(last.toFixed(2)),
+//         growthPercent: last === 0 ? null : Number((((cur - last) / last) * 100).toFixed(2)),
+//       };
+//     });
+
+//     // ----------------------------
+//     //  8) ENROLLED STUDENTS (active) -> totals, by age buckets, by gender
+//     // ----------------------------
+//     const enrolledStudentsTotalRow = await HolidayBookingStudentMeta.findOne({
+//       attributes: [[sequelize.fn("COUNT", sequelize.col("HolidayBookingStudentMeta.id")), "total"]],
+//       include: [{ model: HolidayBooking, attributes: [], where: { status: "active", ...whereBooking } }],
+//       raw: true,
+//     });
+//     const enrolledStudentsTotal = Number(enrolledStudentsTotalRow?.total || 0);
+
+//     // By age buckets
+//     const ageBuckets = [
+//       { key: "0-4", min: 0, max: 4 },
+//       { key: "5-7", min: 5, max: 7 },
+//       { key: "8-10", min: 8, max: 10 },
+//       { key: "11+", min: 11, max: 150 },
+//     ];
+
+//     const ageBucketCounts = {};
+//     for (const bucket of ageBuckets) {
+//       const whereAge = {
+//         age: { [Op.gte]: bucket.min },
+//         // [Op.lte] only if max < 150
+//       };
+//       if (bucket.max < 150) whereAge.age[Op.lte] = bucket.max;
+
+//       const row = await HolidayBookingStudentMeta.findOne({
+//         attributes: [[sequelize.fn("COUNT", sequelize.col("id")), "count"]],
+//         where: whereAge,
+//         include: [{ model: HolidayBooking, attributes: [], where: { status: "active", ...whereBooking } }],
+//         raw: true,
+//       });
+
+//       const count = Number(row?.count || 0);
+//       ageBucketCounts[bucket.key] = {
+//         total: count,
+//         percentage: enrolledStudentsTotal > 0 ? Number(((count / enrolledStudentsTotal) * 100).toFixed(2)) : 0,
+//       };
+//     }
+
+//     // By gender
+//     const genders = await HolidayBookingStudentMeta.findAll({
+//       attributes: ["gender", [sequelize.fn("COUNT", sequelize.col("id")), "count"]],
+//       include: [{ model: HolidayBooking, attributes: [], where: { status: "active", ...whereBooking } }],
+//       group: ["gender"],
+//       raw: true,
+//     });
+
+//     const genderCounts = genders.reduce((acc, r) => {
+//       acc[r.gender || "unknown"] = {
+//         total: Number(r.count || 0),
+//         percentage: enrolledStudentsTotal > 0 ? Number(((Number(r.count) / enrolledStudentsTotal) * 100).toFixed(2)) : 0,
+//       };
+//       return acc;
+//     }, {});
+
+//     // ----------------------------
+//     //  9) MARKETING CHANNEL PERFORMANCE (from booking.marketingChannel)
+//     // ----------------------------
+//     const marketingRows = await HolidayBooking.findAll({
+//       attributes: ["marketingChannel", [sequelize.fn("COUNT", sequelize.col("id")), "count"]],
+//       where: { ...whereBooking },
+//       group: ["marketingChannel"],
+//       raw: true,
+//     });
+
+//     const totalBookingsForMarketing = marketingRows.reduce((s, r) => s + Number(r.count || 0), 0);
+//     const marketingPerformance = marketingRows.map(r => ({
+//       channel: r.marketingChannel || "unknown",
+//       total: Number(r.count || 0),
+//       percentage: totalBookingsForMarketing > 0 ? Number(((Number(r.count) / totalBookingsForMarketing) * 100).toFixed(2)) : 0,
+//     }));
+
+//     // ----------------------------
+//     // 10) TOP AGENTS (by bookedBy) -> include admin firstname/lastname
+//     // ----------------------------
+//     const topAgentsRows = await HolidayBooking.findAll({
+//       attributes: ["bookedBy", [sequelize.fn("COUNT", sequelize.col("id")), "count"]],
+//       where: { ...whereBooking },
+//       group: ["bookedBy"],
+//       order: [[sequelize.literal("count"), "DESC"]],
+//       limit: 10,
+//       raw: true,
+//     });
+
+//     // Get admin info for top agents
+//     const agentIds = topAgentsRows.map(r => r.bookedBy).filter(Boolean);
+//     const admins = await Admin.findAll({ where: { id: { [Op.in]: agentIds } }, attributes: ["id", "firstName", "lastName"], raw: true });
+//     const adminMap = admins.reduce((acc, a) => { acc[a.id] = a; return acc; }, {});
+
+//     const topAgents = topAgentsRows.map(r => ({
+//       agentId: r.bookedBy,
+//       firstName: adminMap[r.bookedBy]?.firstName || null,
+//       lastName: adminMap[r.bookedBy]?.lastName || null,
+//       count: Number(r.count || 0),
+//     }));
+
+//     // ----------------------------
+//     //  Build final report object
+//     // ----------------------------
+//     const report = {
+//       totalRevenue: Number(totalRevenue.toFixed(2)),
+//       averageRevenuePerCamp,
+//       growth: {
+//         bookingsCountGrowthPercent,
+//         revenueGrowthPercent,
+//         averageGrowth,
+//       },
+//       averageAge,
+//       totalStudentsChart,
+//       campRegistrations,
+//       registrationPerCamp,
+//       campGrowth, // per-camp month-over-month revenue growth
+//       enrolledStudents: {
+//         total: enrolledStudentsTotal,
+//         byAge: ageBucketCounts,
+//         byGender: genderCounts,
+//       },
+//       marketingPerformance,
+//       topAgents,
+//     };
+
+//     return { success: true, data: report };
+//   } catch (error) {
+//     console.error("❌ holidayCampsReports error:", error);
+//     throw error;
+//   }
+// };

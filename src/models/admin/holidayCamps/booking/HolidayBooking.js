@@ -130,6 +130,19 @@ const HolidayBooking = sequelize.define(
             defaultValue: null,
             comment: "Type of service for the booking",
         },
+        marketingChannel: {
+            type: DataTypes.ENUM(
+                "facebook",
+                "instagram",
+                "referral",
+                "website",
+                "others",
+                "social"
+            ),
+            allowNull: false,
+            defaultValue: "website",
+            comment: "Marketing source of the booking",
+        },
     },
     {
         tableName: "holiday_booking",

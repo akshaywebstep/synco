@@ -13,8 +13,10 @@ const MODULE = "custom-template";
 
 // ✅ CREATE Template Category
 exports.createCustomTemplate = async (req, res) => {
-    const formData = req.body;
+    const formData = req.body || {};
     const { mode_of_communication, title, template_category_id, sender_name, content } = formData;
+
+    console.log('mode_of_communication', req);
 
     // ✅ Strict mode check
     if (!["email", "text"].includes(mode_of_communication)) {
@@ -23,6 +25,12 @@ exports.createCustomTemplate = async (req, res) => {
             status: false,
             message: "mode_of_communication must be either email or text only.",
         });
+    }
+
+    // ✅ Convert template_category_id to array if not already an array
+    let categoryIds = template_category_id;
+    if (!Array.isArray(categoryIds)) {
+        categoryIds = [template_category_id];
     }
 
     // ✅ Validate required fields dynamically
@@ -53,9 +61,9 @@ exports.createCustomTemplate = async (req, res) => {
         let parsedContent = content;
         if (typeof content === "string") {
             try {
-                parsedContent = JSON.parse(content); // if valid JSON string → convert
+                parsedContent = JSON.parse(content);
             } catch {
-                parsedContent = content; // otherwise keep as normal text
+                parsedContent = content;
             }
         }
 
@@ -63,7 +71,7 @@ exports.createCustomTemplate = async (req, res) => {
         let payload = {
             title,
             mode_of_communication,
-            template_category_id,
+            template_category_id: categoryIds,
             createdBy: req.admin.id,
             content: parsedContent
         };
@@ -72,7 +80,6 @@ exports.createCustomTemplate = async (req, res) => {
             payload.sender_name = sender_name;
         }
 
-        // ❗ If email, ensure sender_name is NOT saved
         if (mode_of_communication === "email") {
             delete payload.sender_name;
         }
@@ -85,10 +92,12 @@ exports.createCustomTemplate = async (req, res) => {
         }
 
         await logActivity(req, PANEL, MODULE, "create", { message: "Created successfully" }, true);
+
         const adminFullName =
             req.admin?.name ||
             `${req.admin?.firstName || ""} ${req.admin?.lastName || ""}`.trim() ||
             "Unknown Admin";
+
         const msg = `Custom template created successfully by ${adminFullName}`;
 
         await createNotification(req, "Custom Template Created", msg, "Support");
@@ -105,14 +114,14 @@ exports.createCustomTemplate = async (req, res) => {
         return res.status(500).json({ status: false, message: "Server error." });
     }
 };
+
 // ✅ LIST API
 exports.listCustomTemplates = async (req, res) => {
     const { template_category_id } = req.query;
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
 
-    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
     if (DEBUG) console.log("📥 Listing all template categories");
-    const result = await CustomTemplate.listCustomTemplates(superAdminId, template_category_id);
+
+    const result = await CustomTemplate.listCustomTemplates(req.admin.id, template_category_id);
 
     if (!result.status) {
         await logActivity(req, PANEL, MODULE, "list", { message: result.message }, false);
@@ -130,12 +139,16 @@ exports.deleteCustomTemplate = async (req, res) => {
 
     if (!result.status) {
         await logActivity(req, PANEL, MODULE, "delete", { message: result.message }, false);
+
         const adminFullName =
             req.admin?.name ||
             `${req.admin?.firstName || ""} ${req.admin?.lastName || ""}`.trim() ||
             "Unknown Admin";
-        const msg = `Custom template created successfully by ${adminFullName}`;
-        await createNotification(req, "Custom Template Created", msg, "Support");
+
+        const msg = `Custom template delete failed by ${adminFullName}`;
+
+        await createNotification(req, "Custom Template Delete Failed", msg, "Support");
+
         return res.status(404).json({ status: false, message: result.message });
     }
 
@@ -149,7 +162,7 @@ exports.updateCustomTemplate = async (req, res) => {
     const formData = req.body;
     const { mode_of_communication, title, template_category_id, sender_name, content } = formData;
 
-    // Strict mode check
+    // ✅ Strict mode check
     if (!["email", "text"].includes(mode_of_communication)) {
         await logActivity(req, PANEL, MODULE, "update", { message: "Invalid communication mode" }, false);
         return res.status(400).json({
@@ -158,7 +171,13 @@ exports.updateCustomTemplate = async (req, res) => {
         });
     }
 
-    // Validate required fields dynamically
+    // ✅ Convert to array
+    let categoryIds = template_category_id;
+    if (!Array.isArray(categoryIds)) {
+        categoryIds = [template_category_id];
+    }
+
+    // ✅ Validation
     const rules = {
         requiredFields: ["mode_of_communication", "title", "template_category_id"],
     };
@@ -182,7 +201,7 @@ exports.updateCustomTemplate = async (req, res) => {
     }
 
     try {
-        // Allow content as JSON or text
+        // ✅ Parse content
         let parsedContent = content;
         if (typeof content === "string") {
             try {
@@ -192,12 +211,12 @@ exports.updateCustomTemplate = async (req, res) => {
             }
         }
 
-        // Prepare update payload
+        // ✅ Payload
         let payload = {
             title,
             mode_of_communication,
-            template_category_id,
-            content: parsedContent,
+            template_category_id: categoryIds,
+            content: parsedContent
         };
 
         if (mode_of_communication === "text") {
@@ -219,6 +238,7 @@ exports.updateCustomTemplate = async (req, res) => {
             req.admin?.name ||
             `${req.admin?.firstName || ""} ${req.admin?.lastName || ""}`.trim() ||
             "Unknown Admin";
+
         const msg = `Custom template updated successfully by ${adminFullName}`;
 
         await logActivity(req, PANEL, MODULE, "update", { message: "Updated successfully" }, true);
@@ -229,12 +249,14 @@ exports.updateCustomTemplate = async (req, res) => {
             message: "Custom template updated successfully.",
             data: result.data,
         });
+
     } catch (error) {
         console.error("❌ Error:", error);
         await logActivity(req, PANEL, MODULE, "update", { oneLineMessage: error.message }, false);
         return res.status(500).json({ status: false, message: "Server error." });
     }
 };
+
 // ✅ FETCH BY ID API
 exports.getCustomTemplate = async (req, res) => {
     const { id } = req.params;

@@ -21,14 +21,9 @@ const CustomTemplate = sequelize.define(
     },
 
     template_category_id: {
-      type: DataTypes.BIGINT.UNSIGNED,
+      type: DataTypes.JSON, // 👈 Now stores array of IDs
       allowNull: false,
-      references: {
-        model: "template_category", // ✅ FIXED HERE
-        key: "id",
-      },
-      onDelete: "CASCADE",
-      onUpdate: "CASCADE",
+      defaultValue: [], // 👈 Default empty array
     },
 
     tags: {
