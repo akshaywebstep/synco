@@ -9,6 +9,9 @@ const {
   sendEmail,
   getHolidayBookingById,
   updateHolidayBooking,
+  addCommentForHolidayCamp,
+  listCommentsForHolidayCamp,
+
 } = require("../../../controllers/admin/holidayCamps/booking/holidayBookingController");
 
 // ➕ Create Camp
@@ -45,5 +48,19 @@ router.get(
   authMiddleware,
   permissionMiddleware("holiday-booking", "view-listing"),
   getHolidayBookingById
+);
+
+router.post(
+  "/create",
+  authMiddleware,
+  permissionMiddleware("holiday-comment", "create"),
+  addCommentForHolidayCamp
+);
+
+router.get(
+  "/list",
+  authMiddleware,
+  permissionMiddleware("holiday-comment", "view-listing"),
+  listCommentsForHolidayCamp
 );
 module.exports = router;

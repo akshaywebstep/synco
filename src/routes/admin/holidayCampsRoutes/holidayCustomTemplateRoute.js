@@ -8,7 +8,7 @@ const {
     deleteCustomTemplate,
     updateCustomTemplate,
     getCustomTemplate
-} = require("../../../controllers/admin/holidayCamps/EmailAndTextTemplates/customTemplateController");
+} = require("../../../controllers/admin/holidayCamps/emailAndTextTemplates/customTemplateController");
 
 router.post(
     "/create",
