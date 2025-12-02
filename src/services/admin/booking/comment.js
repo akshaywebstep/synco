@@ -2,7 +2,7 @@ const debug = require("debug")("service:comments");
 const { sequelize, Comment, Admin } = require("../../../models");
 const DEBUG = process.env.DEBUG === "true";
 
-exports.addCommentForFreeTrial = async ({ commentBy = null, comment, commentType = "free" }) => {
+exports.addCommentForFreeTrial = async ({ commentBy = null, comment, commentType = "free", serviceType = "weekly class" }) => {
     const transaction = await sequelize.transaction();
     try {
         if (DEBUG) debug("🔍 Starting addCommentForFreeTrial service...");
@@ -21,7 +21,7 @@ exports.addCommentForFreeTrial = async ({ commentBy = null, comment, commentType
         }
 
         // Create comment
-        const newComment = await Comment.create({ commentBy, comment, commentType }, { transaction });
+        const newComment = await Comment.create({ commentBy, comment, commentType, serviceType }, { transaction });
         if (DEBUG) debug("✅ Comment created:", newComment.id);
 
         await transaction.commit();
@@ -38,12 +38,15 @@ exports.addCommentForFreeTrial = async ({ commentBy = null, comment, commentType
         return { status: false, message: error.message };
     }
 };
-exports.listCommentsForFreeTrial = async ({ commentType = "free" }) => {
+exports.listCommentsForFreeTrial = async ({ commentType = "free", serviceType = "weekly class" }) => {
     try {
         debug("🔍 Starting listComments service...");
 
         const comments = await Comment.findAll({
-            where: { commentType },
+            where: {
+                commentType,
+                serviceType,  // ⭐ FILTER BY SERVICETYPE
+            },
             include: [
                 {
                     model: Admin,
@@ -52,11 +55,8 @@ exports.listCommentsForFreeTrial = async ({ commentType = "free" }) => {
                     required: false,
                 },
             ],
-
             order: [["createdAt", "DESC"]],
         });
-
-        debug(`✅ Found ${comments.length} comments`);
 
         return {
             status: true,
@@ -64,7 +64,6 @@ exports.listCommentsForFreeTrial = async ({ commentType = "free" }) => {
             data: comments,
         };
     } catch (error) {
-        debug("❌ listComments Error:", error);
         return { status: false, message: error.message };
     }
 };
@@ -72,7 +71,8 @@ exports.listCommentsForFreeTrial = async ({ commentType = "free" }) => {
 exports.addCommentForMembership = async ({
     commentBy = null,
     comment,
-    commentType = "paid", // default as per model
+    commentType = "paid",
+    serviceType = "weekly class",
 }) => {
     const t = await sequelize.transaction();
     try {
@@ -96,6 +96,7 @@ exports.addCommentForMembership = async ({
                 commentBy,
                 comment,
                 commentType,
+                serviceType,
             },
             { transaction: t }
         );
@@ -119,7 +120,7 @@ exports.addCommentForMembership = async ({
     }
 };
 
-exports.listCommentsForMembership = async ({ commentType = "paid" }) => {
+exports.listCommentsForMembership = async ({ commentType = "paid", serviceType = "weekly class" }) => {
     try {
         debug("🔍 Starting listComments service...");
 

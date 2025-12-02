@@ -129,6 +129,7 @@ exports.createHolidayBooking = async (data, adminId) => {
         paymentPlanId: data.paymentPlanId,
         status: "active",
         bookedBy: adminId,
+        bookingType: "paid",
         type: "paid",
         serviceType: "holiday camp",
       },
@@ -668,6 +669,8 @@ exports.getBookingById = async (bookingId, superAdminId, adminId) => {
         payment_status: booking.payment.payment_status,
         payment_date: booking.payment.payment_date,
         failure_reason: booking.payment.failure_reason,
+        email: booking.payment.email,
+        billingAddress: booking.payment.billingAddress,
 
         gatewayResponse: stripeChargeDetails
           ? {
