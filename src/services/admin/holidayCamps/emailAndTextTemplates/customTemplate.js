@@ -5,18 +5,27 @@ TemplateCategoryService = require("./templateCategory");
 const { Op } = require("sequelize");
 
 // ✅ Create a new class
+// Service: createCustomTemplate
 exports.createCustomTemplate = async (data) => {
   try {
-    // (1) make sure category ID always saved as array
+    // Always ensure categories are arrays
     if (!Array.isArray(data.template_category_id)) {
       data.template_category_id = [data.template_category_id];
     }
 
-    const savedcustomTemplate = await CustomTemplate.create(data);
-    return { status: true, data: savedcustomTemplate };
+    const savedTemplate = await CustomTemplate.create(data);
+
+    return {
+      status: true,
+      data: savedTemplate
+    };
+
   } catch (error) {
-    console.error("❌ createCustomTemplate Error:", error);
-    return { status: false, message: error.message };
+    console.error("❌ Service createCustomTemplate Error:", error);
+    return {
+      status: false,
+      message: error.message
+    };
   }
 };
 
