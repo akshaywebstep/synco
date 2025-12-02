@@ -125,7 +125,10 @@ exports.listCommentsForMembership = async ({ commentType = "paid", serviceType =
         debug("🔍 Starting listComments service...");
 
         const comments = await Comment.findAll({
-            where: { commentType },
+            where: {
+                commentType,
+                serviceType,  // ⭐ FILTER BY SERVICETYPE
+            },
             include: [
                 {
                     model: Admin,
