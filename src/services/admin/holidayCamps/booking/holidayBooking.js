@@ -314,7 +314,7 @@ exports.createHolidayBooking = async (data, adminId) => {
               .replace(/{{parentPhoneNumber}}/g, firstParent.parentPhoneNumber || "")
               .replace(/{{className}}/g, "Holiday Camp")
               .replace(/{{classTime}}/g, data.time || "")
-              .replace(/{{startDate}}/g, data.date || "")
+              // .replace(/{{date}}/g, data.date || "")
               .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
               .replace(/{{parentPassword}}/g, "Synco123")
               .replace(/{{appName}}/g, "Synco")
@@ -845,6 +845,140 @@ exports.sendEmailToParents = async ({ bookingId }) => {
   }
 };
 
+// exports.updateHolidayBookingById = async (bookingId, data, adminId) => {
+//   const transaction = await sequelize.transaction();
+
+//   try {
+//     const booking = await HolidayBooking.findByPk(bookingId, {
+//       include: [
+//         {
+//           model: HolidayBookingStudentMeta, as: "students", include: [
+//             { model: HolidayBookingParentMeta, as: "parents" },
+//             { model: HolidayBookingEmergencyMeta, as: "emergencyContacts" }
+//           ]
+//         }
+//       ],
+//       transaction
+//     });
+
+//     if (!booking) throw new Error("Booking not found");
+
+//     // --------------------------------------------------
+//     // 1️⃣ Handle new students
+//     // --------------------------------------------------
+//     const newStudents = data.students || [];
+//     if (newStudents.length > 3) {
+//       throw new Error("You can add a maximum of 3 students at a time");
+//     }
+
+//     // Capacity check
+//     const classSchedule = await HolidayClassSchedule.findByPk(booking.classScheduleId, { transaction });
+//     if (!classSchedule) throw new Error("Class schedule not found");
+
+//     if (classSchedule.capacity < newStudents.length) {
+//       throw new Error(`Not enough capacity. Available: ${classSchedule.capacity}, Requested: ${newStudents.length}`);
+//     }
+
+//     const createdStudents = [];
+
+//     for (const studentData of newStudents) {
+//       const newStudent = await HolidayBookingStudentMeta.create({
+//         bookingId: booking.id,
+//         studentFirstName: studentData.studentFirstName,
+//         studentLastName: studentData.studentLastName,
+//         dateOfBirth: studentData.dateOfBirth,
+//         age: studentData.age,
+//         gender: studentData.gender,
+//         medicalInformation: studentData.medicalInformation,
+//       }, { transaction });
+
+//       // Parents
+//       if (studentData.parents?.length) {
+//         await Promise.all(studentData.parents.map(p =>
+//           HolidayBookingParentMeta.create({
+//             studentId: newStudent.id,
+//             parentFirstName: p.parentFirstName,
+//             parentLastName: p.parentLastName,
+//             parentEmail: p.parentEmail,
+//             parentPhoneNumber: p.parentPhoneNumber,
+//             relationToChild: p.relationToChild,
+//             howDidYouHear: p.howDidYouHear,
+//           }, { transaction })
+//         ));
+//       }
+
+//       // Emergency contacts
+//       if (studentData.emergency) {
+//         await HolidayBookingEmergencyMeta.create({
+//           studentId: newStudent.id,
+//           emergencyFirstName: studentData.emergency.emergencyFirstName,
+//           emergencyLastName: studentData.emergency.emergencyLastName,
+//           emergencyPhoneNumber: studentData.emergency.emergencyPhoneNumber,
+//           emergencyRelation: studentData.emergency.emergencyRelation,
+//         }, { transaction });
+//       }
+
+//       createdStudents.push(newStudent);
+//     }
+
+//     // Update total students & class capacity
+//     if (createdStudents.length > 0) {
+//       booking.totalStudents += createdStudents.length;
+//       await booking.save({ transaction });
+
+//       await classSchedule.update(
+//         { capacity: classSchedule.capacity - createdStudents.length },
+//         { transaction }
+//       );
+//     }
+
+//     // --------------------------------------------------
+//     // 2️⃣ Update parents & emergency contacts for existing students
+//     // --------------------------------------------------
+//     if (data.parents?.length) {
+//       for (const parentData of data.parents) {
+//         if (!parentData.parentId) continue;
+//         await HolidayBookingParentMeta.update({
+//           parentFirstName: parentData.parentFirstName,
+//           parentLastName: parentData.parentLastName,
+//           parentEmail: parentData.parentEmail,
+//           parentPhoneNumber: parentData.parentPhoneNumber,
+//           relationToChild: parentData.relationToChild,
+//           howDidYouHear: parentData.howDidYouHear,
+//         }, { where: { id: parentData.parentId }, transaction });
+//       }
+//     }
+
+//     if (data.emergencyContacts?.length) {
+//       for (const emergencyData of data.emergencyContacts) {
+//         if (!emergencyData.emergencyId) continue;
+//         await HolidayBookingEmergencyMeta.update({
+//           emergencyFirstName: emergencyData.emergencyFirstName,
+//           emergencyLastName: emergencyData.emergencyLastName,
+//           emergencyPhoneNumber: emergencyData.emergencyPhoneNumber,
+//           emergencyRelation: emergencyData.emergencyRelation,
+//         }, { where: { id: emergencyData.emergencyId }, transaction });
+//       }
+//     }
+
+//     await transaction.commit();
+
+//     return {
+//       success: true,
+//       message: "Booking updated successfully",
+//       data: {
+//         bookingId: booking.id,
+//         totalStudents: booking.totalStudents,
+//         addedStudents: createdStudents.length,
+//       }
+//     };
+//   } catch (error) {
+//     await transaction.rollback();
+//     console.error("❌ updateHolidayBookingById Error:", error);
+//     throw error;
+//   }
+// };
+
 exports.updateHolidayBookingById = async (bookingId, data, adminId) => {
   const transaction = await sequelize.transaction();
 
@@ -852,7 +986,9 @@ exports.updateHolidayBookingById = async (bookingId, data, adminId) => {
     const booking = await HolidayBooking.findByPk(bookingId, {
       include: [
         {
-          model: HolidayBookingStudentMeta, as: "students", include: [
+          model: HolidayBookingStudentMeta,
+          as: "students",
+          include: [
             { model: HolidayBookingParentMeta, as: "parents" },
             { model: HolidayBookingEmergencyMeta, as: "emergencyContacts" }
           ]
@@ -863,101 +999,143 @@ exports.updateHolidayBookingById = async (bookingId, data, adminId) => {
 
     if (!booking) throw new Error("Booking not found");
 
-    // --------------------------------------------------
-    // 1️⃣ Handle new students
-    // --------------------------------------------------
-    const newStudents = data.students || [];
-    if (newStudents.length > 3) {
-      throw new Error("You can add a maximum of 3 students at a time");
-    }
-
-    // Capacity check
     const classSchedule = await HolidayClassSchedule.findByPk(booking.classScheduleId, { transaction });
     if (!classSchedule) throw new Error("Class schedule not found");
 
-    if (classSchedule.capacity < newStudents.length) {
-      throw new Error(`Not enough capacity. Available: ${classSchedule.capacity}, Requested: ${newStudents.length}`);
+    let addedStudentsCount = 0;
+
+    // ============================================================
+    // 1️⃣ STUDENTS: UPDATE IF ID EXISTS, CREATE IF NOT
+    // ============================================================
+    if (Array.isArray(data.students)) {
+      for (const student of data.students) {
+
+        // ---------------------------
+        // 🔹 UPDATE existing student
+        // ---------------------------
+        if (student.id) {
+          await HolidayBookingStudentMeta.update(
+            {
+              studentFirstName: student.studentFirstName,
+              studentLastName: student.studentLastName,
+              dateOfBirth: student.dateOfBirth,
+              age: student.age,
+              gender: student.gender,
+              medicalInformation: student.medicalInformation,
+            },
+            { where: { id: student.id }, transaction }
+          );
+        }
+
+        // ---------------------------
+        // 🔹 CREATE new student
+        // ---------------------------
+        else {
+          if (classSchedule.capacity < 1) {
+            throw new Error(`No capacity available. Remaining: ${classSchedule.capacity}`);
+          }
+
+          const newStudent = await HolidayBookingStudentMeta.create(
+            {
+              bookingId: booking.id,
+              studentFirstName: student.studentFirstName,
+              studentLastName: student.studentLastName,
+              dateOfBirth: student.dateOfBirth,
+              age: student.age,
+              gender: student.gender,
+              medicalInformation: student.medicalInformation,
+            },
+            { transaction }
+          );
+
+          addedStudentsCount++;
+          classSchedule.capacity -= 1;
+          await classSchedule.save({ transaction });
+        }
+      }
     }
 
-    const createdStudents = [];
-
-    for (const studentData of newStudents) {
-      const newStudent = await HolidayBookingStudentMeta.create({
-        bookingId: booking.id,
-        studentFirstName: studentData.studentFirstName,
-        studentLastName: studentData.studentLastName,
-        dateOfBirth: studentData.dateOfBirth,
-        age: studentData.age,
-        gender: studentData.gender,
-        medicalInformation: studentData.medicalInformation,
-      }, { transaction });
-
-      // Parents
-      if (studentData.parents?.length) {
-        await Promise.all(studentData.parents.map(p =>
-          HolidayBookingParentMeta.create({
-            studentId: newStudent.id,
-            parentFirstName: p.parentFirstName,
-            parentLastName: p.parentLastName,
-            parentEmail: p.parentEmail,
-            parentPhoneNumber: p.parentPhoneNumber,
-            relationToChild: p.relationToChild,
-            howDidYouHear: p.howDidYouHear,
-          }, { transaction })
-        ));
-      }
-
-      // Emergency contacts
-      if (studentData.emergency) {
-        await HolidayBookingEmergencyMeta.create({
-          studentId: newStudent.id,
-          emergencyFirstName: studentData.emergency.emergencyFirstName,
-          emergencyLastName: studentData.emergency.emergencyLastName,
-          emergencyPhoneNumber: studentData.emergency.emergencyPhoneNumber,
-          emergencyRelation: studentData.emergency.emergencyRelation,
-        }, { transaction });
-      }
-
-      createdStudents.push(newStudent);
-    }
-
-    // Update total students & class capacity
-    if (createdStudents.length > 0) {
-      booking.totalStudents += createdStudents.length;
+    // If new students were added, update totalStudents
+    if (addedStudentsCount > 0) {
+      booking.totalStudents += addedStudentsCount;
       await booking.save({ transaction });
-
-      await classSchedule.update(
-        { capacity: classSchedule.capacity - createdStudents.length },
-        { transaction }
-      );
     }
 
-    // --------------------------------------------------
-    // 2️⃣ Update parents & emergency contacts for existing students
-    // --------------------------------------------------
-    if (data.parents?.length) {
-      for (const parentData of data.parents) {
-        if (!parentData.parentId) continue;
-        await HolidayBookingParentMeta.update({
-          parentFirstName: parentData.parentFirstName,
-          parentLastName: parentData.parentLastName,
-          parentEmail: parentData.parentEmail,
-          parentPhoneNumber: parentData.parentPhoneNumber,
-          relationToChild: parentData.relationToChild,
-          howDidYouHear: parentData.howDidYouHear,
-        }, { where: { id: parentData.parentId }, transaction });
+    // ============================================================
+    // 2️⃣ PARENTS: UPDATE IF ID EXISTS, CREATE IF NOT
+    // ============================================================
+    if (Array.isArray(data.parents)) {
+      for (const p of data.parents) {
+
+        // UPDATE parent
+        if (p.id) {
+          await HolidayBookingParentMeta.update(
+            {
+              parentFirstName: p.parentFirstName,
+              parentLastName: p.parentLastName,
+              parentEmail: p.parentEmail,
+              parentPhoneNumber: p.parentPhoneNumber,
+              relationToChild: p.relationToChild,
+              howDidYouHear: p.howDidYouHear,
+            },
+            { where: { id: p.id }, transaction }
+          );
+        }
+
+        // CREATE new parent
+        else {
+          if (!p.studentId) continue;
+
+          await HolidayBookingParentMeta.create(
+            {
+              studentId: p.studentId,
+              parentFirstName: p.parentFirstName,
+              parentLastName: p.parentLastName,
+              parentEmail: p.parentEmail,
+              parentPhoneNumber: p.parentPhoneNumber,
+              relationToChild: p.relationToChild,
+              howDidYouHear: p.howDidYouHear,
+            },
+            { transaction }
+          );
+        }
       }
     }
 
-    if (data.emergencyContacts?.length) {
-      for (const emergencyData of data.emergencyContacts) {
-        if (!emergencyData.emergencyId) continue;
-        await HolidayBookingEmergencyMeta.update({
-          emergencyFirstName: emergencyData.emergencyFirstName,
-          emergencyLastName: emergencyData.emergencyLastName,
-          emergencyPhoneNumber: emergencyData.emergencyPhoneNumber,
-          emergencyRelation: emergencyData.emergencyRelation,
-        }, { where: { id: emergencyData.emergencyId }, transaction });
+    // ============================================================
+    // 3️⃣ EMERGENCY CONTACTS: UPDATE IF ID EXISTS, CREATE IF NOT
+    // ============================================================
+    if (Array.isArray(data.emergencyContacts)) {
+      for (const e of data.emergencyContacts) {
+
+        // UPDATE existing emergency contact
+        if (e.id) {
+          await HolidayBookingEmergencyMeta.update(
+            {
+              emergencyFirstName: e.emergencyFirstName,
+              emergencyLastName: e.emergencyLastName,
+              emergencyPhoneNumber: e.emergencyPhoneNumber,
+              emergencyRelation: e.emergencyRelation,
+            },
+            { where: { id: e.id }, transaction }
+          );
+        }
+
+        // CREATE new emergency contact
+        else {
+          if (!e.studentId) continue;
+
+          await HolidayBookingEmergencyMeta.create(
+            {
+              studentId: e.studentId,
+              emergencyFirstName: e.emergencyFirstName,
+              emergencyLastName: e.emergencyLastName,
+              emergencyPhoneNumber: e.emergencyPhoneNumber,
+              emergencyRelation: e.emergencyRelation,
+            },
+            { transaction }
+          );
+        }
       }
     }
 
@@ -966,12 +1144,12 @@ exports.updateHolidayBookingById = async (bookingId, data, adminId) => {
     return {
       success: true,
       message: "Booking updated successfully",
-      data: {
-        bookingId: booking.id,
+      details: {
+        addedStudents: addedStudentsCount,
         totalStudents: booking.totalStudents,
-        addedStudents: createdStudents.length,
       }
     };
+
   } catch (error) {
     await transaction.rollback();
     console.error("❌ updateHolidayBookingById Error:", error);
@@ -980,67 +1158,247 @@ exports.updateHolidayBookingById = async (bookingId, data, adminId) => {
 };
 
 exports.addCommentForHolidayCamp = async ({ commentBy = null, comment, commentType = "paid", serviceType = "holiday camp" }) => {
-    const transaction = await sequelize.transaction();
-    try {
-        if (DEBUG) debug("🔍 Starting addCommentForHolidayCamp service...");
+  const transaction = await sequelize.transaction();
+  try {
+    if (DEBUG) debug("🔍 Starting addCommentForHolidayCamp service...");
 
-        let admin = null;
+    let admin = null;
 
-        // Validate admin if provided
-        if (commentBy) {
-            admin = await Admin.findByPk(commentBy, { transaction });
-            if (!admin) {
-                await transaction.rollback();
-                if (DEBUG) debug("❌ Admin not found:", commentBy);
-                return { status: false, message: "Admin not found." };
-            }
-            if (DEBUG) debug("✅ Admin validated:", admin.id);
-        }
-
-        // Create comment
-        const newComment = await Comment.create({ commentBy, comment, commentType, serviceType }, { transaction });
-        if (DEBUG) debug("✅ Comment created:", newComment.id);
-
-        await transaction.commit();
-        if (DEBUG) debug("🎉 Transaction committed successfully");
-
-        return {
-            status: true,
-            message: "Comment added successfully.",
-            data: { comment: newComment, admin },
-        };
-    } catch (error) {
+    // Validate admin if provided
+    if (commentBy) {
+      admin = await Admin.findByPk(commentBy, { transaction });
+      if (!admin) {
         await transaction.rollback();
-        if (DEBUG) debug("❌ addCommentForHolidayCamp Error:", error);
-        return { status: false, message: error.message };
+        if (DEBUG) debug("❌ Admin not found:", commentBy);
+        return { status: false, message: "Admin not found." };
+      }
+      if (DEBUG) debug("✅ Admin validated:", admin.id);
     }
+
+    // Create comment
+    const newComment = await Comment.create({ commentBy, comment, commentType, serviceType }, { transaction });
+    if (DEBUG) debug("✅ Comment created:", newComment.id);
+
+    await transaction.commit();
+    if (DEBUG) debug("🎉 Transaction committed successfully");
+
+    return {
+      status: true,
+      message: "Comment added successfully.",
+      data: { comment: newComment, admin },
+    };
+  } catch (error) {
+    await transaction.rollback();
+    if (DEBUG) debug("❌ addCommentForHolidayCamp Error:", error);
+    return { status: false, message: error.message };
+  }
 };
-exports.listCommentsForHolidayCamp = async ({ commentType = "free", serviceType = "holiday camp" }) => {
-    try {
-        debug("🔍 Starting listCommentsForHolidayCamp service...");
+exports.listCommentsForHolidayCamp = async ({ commentType = "paid", serviceType = "holiday camp" }) => {
+  try {
+    debug("🔍 Starting listCommentsForHolidayCamp service...");
 
-        const comments = await Comment.findAll({
-            where: {
-                commentType,
-                serviceType,  
-            },
-            include: [
-                {
-                    model: Admin,
-                    as: "bookedByAdmin",
-                    attributes: ["id", "firstName", "lastName", "email", "roleId", "status", "profile"],
-                    required: false,
-                },
-            ],
-            order: [["createdAt", "DESC"]],
-        });
+    const comments = await Comment.findAll({
+      where: {
+        commentType,
+        serviceType,
+      },
+      include: [
+        {
+          model: Admin,
+          as: "bookedByAdmin",
+          attributes: ["id", "firstName", "lastName", "email", "roleId", "status", "profile"],
+          required: false,
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+    });
 
-        return {
-            status: true,
-            message: "✅ Comments fetched successfully",
-            data: comments,
-        };
-    } catch (error) {
-        return { status: false, message: error.message };
+    return {
+      status: true,
+      message: "✅ Comments fetched successfully",
+      data: comments,
+    };
+  } catch (error) {
+    return { status: false, message: error.message };
+  }
+};
+
+exports.waitingListCreate = async (data, adminId) => {
+  const transaction = await sequelize.transaction();
+  try {
+    // ==================================================
+    //  CREATE WAITING-LIST BOOKING
+    // ==================================================
+    const booking = await HolidayBooking.create(
+      {
+        venueId: data.venueId,
+        classScheduleId: data.classScheduleId,
+        holidayCampId: data.holidayCampId,
+        totalStudents: data.totalStudents,
+        status: "waiting list",
+        bookedBy: adminId,
+        bookingType: "waiting list",
+        type: "waiting list",
+        serviceType: "holiday camp",
+      },
+      { transaction }
+    );
+
+    // Create Students
+    const students = await Promise.all(
+      (data.students || []).map((s) =>
+        HolidayBookingStudentMeta.create(
+          {
+            bookingId: booking.id,
+            studentFirstName: s.studentFirstName,
+            studentLastName: s.studentLastName,
+            dateOfBirth: s.dateOfBirth,
+            age: s.age,
+            gender: s.gender,
+            medicalInformation: s.medicalInformation,
+          },
+          { transaction }
+        )
+      )
+    );
+
+    const firstStudent = students[0];
+
+    if (firstStudent) {
+      // Parent Meta
+      if (data.parents?.length) {
+        await Promise.all(
+          data.parents.map((p) =>
+            HolidayBookingParentMeta.create(
+              {
+                studentId: firstStudent.id,
+                parentFirstName: p.parentFirstName,
+                parentLastName: p.parentLastName,
+                parentEmail: p.parentEmail,
+                parentPhoneNumber: p.parentPhoneNumber,
+                relationToChild: p.relationToChild,
+                howDidYouHear: p.howDidYouHear,
+              },
+              { transaction }
+            )
+          )
+        );
+      }
+
+      // Emergency Meta
+      if (data.emergency) {
+        await HolidayBookingEmergencyMeta.create(
+          {
+            studentId: firstStudent.id,
+            emergencyFirstName: data.emergency.emergencyFirstName,
+            emergencyLastName: data.emergency.emergencyLastName,
+            emergencyPhoneNumber: data.emergency.emergencyPhoneNumber,
+            emergencyRelation: data.emergency.emergencyRelation,
+          },
+          { transaction }
+        );
+      }
     }
+
+    // ==================================================
+    //  CHECK CLASS SCHEDULE CAPACITY
+    // ==================================================
+    const classSchedule = await HolidayClassSchedule.findByPk(data.classScheduleId);
+
+    if (!classSchedule) {
+      throw new Error("Invalid class schedule ID");
+    }
+
+    // If capacity exists — do NOT allow waiting list
+    if (classSchedule.capacity > 0) {
+      return {
+        success: false,
+        message: `This class still has capacity = ${classSchedule.capacity}. You cannot join the waiting list.`,
+      };
+    }
+
+    // ==================================================
+    //  SEND EMAIL (NO PAYMENT LOGIC)
+    // ==================================================
+    try {
+      const { status: configStatus, emailConfig, htmlTemplate, subject } =
+        await emailModel.getEmailConfig(PANEL, "holiday-camp-booking-waiting-list");
+
+      if (configStatus && htmlTemplate) {
+        const firstParent = data.parents?.[0];
+
+        if (firstParent?.parentEmail) {
+          const studentsHtml = students
+            .map(
+              (student) => `
+                <tr>
+                    <td style="padding:5px;">
+                        <p style="margin:0;font-size:13px;font-weight:600;">Student Name:</p>
+                        <p style="margin:0;font-size:13px;">${student.studentFirstName} ${student.studentLastName}</p>
+                    </td>
+                    <td style="padding:5px;">
+                        <p style="margin:0;font-size:13px;font-weight:600;">Age:</p>
+                        <p style="margin:0;font-size:13px;">${student.age}</p>
+                    </td>
+                    <td style="padding:5px;">
+                        <p style="margin:0;font-size:13px;font-weight:600;">Gender:</p>
+                        <p style="margin:0;font-size:13px;">${student.gender}</p>
+                    </td>
+                </tr>
+            `
+            )
+            .join("");
+
+          const venue = await HolidayVenue.findByPk(data.venueId);
+
+          const htmlBody = htmlTemplate
+            .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`)
+            .replace(/{{venueName}}/g, venue?.name || "")
+            .replace(/{{relationToChild}}/g, firstParent.relationToChild || "")
+            .replace(/{{parentPhoneNumber}}/g, firstParent.parentPhoneNumber || "")
+            .replace(/{{className}}/g, "Holiday Camp")
+            .replace(/{{classTime}}/g, data.time || "")
+            // .replace(/{{date}}/g, data.date || "")
+            .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
+            .replace(/{{parentPassword}}/g, "Synco123")
+            .replace(/{{appName}}/g, "Synco")
+            .replace(/{{year}}/g, new Date().getFullYear())
+            .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
+            .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png")
+            .replace(/{{studentsTable}}/g, studentsHtml);
+
+          await sendEmail(emailConfig, {
+            recipient: [
+              {
+                name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
+                email: firstParent.parentEmail,
+              },
+            ],
+            subject,
+            htmlBody,
+          });
+
+          console.log(`📧 Waiting-list email sent to ${firstParent.parentEmail}`);
+        } else {
+          console.warn("⚠️ No parent email found");
+        }
+      } else {
+        console.warn("⚠️ Email template not found for 'holiday-camp-booking-waiting-list'");
+      }
+    } catch (emailErr) {
+      console.error("❌ Email sending error:", emailErr.message);
+    }
+
+    await transaction.commit();
+
+    return {
+      success: true,
+      message: "Waiting list booking created successfully.",
+      bookingId: booking.id,
+    };
+  } catch (error) {
+    await transaction.rollback();
+    console.error("❌ Error creating waiting list booking:", error);
+    throw error;
+  }
 };

@@ -11,6 +11,7 @@ const {
   updateHolidayBooking,
   addCommentForHolidayCamp,
   listCommentsForHolidayCamp,
+  waitingListCreate,
 
 } = require("../../../controllers/admin/holidayCamps/booking/holidayBookingController");
 
@@ -51,16 +52,23 @@ router.get(
 );
 
 router.post(
-  "/create",
+  "/comment/create",
   authMiddleware,
   permissionMiddleware("holiday-comment", "create"),
   addCommentForHolidayCamp
 );
 
 router.get(
-  "/list",
+  "/comment/list",
   authMiddleware,
   permissionMiddleware("holiday-comment", "view-listing"),
   listCommentsForHolidayCamp
+);
+
+router.post(
+  "/waiting-list/create",
+  authMiddleware,
+  permissionMiddleware("holiday-booking-waiting", "create"),
+  waitingListCreate
 );
 module.exports = router;

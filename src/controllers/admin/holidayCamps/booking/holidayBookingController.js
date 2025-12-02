@@ -376,46 +376,75 @@ exports.updateHolidayBooking = async (req, res) => {
     }
 
     // ------------------------------------------------------------
-    // 🔎 Step 1: Validate Students
+    // 🔎 Step 1: Validate Students (ONLY for new students)
     // ------------------------------------------------------------
-    if (formData.students?.length) {
-      if (formData.students.length > 3) {
-        return res.status(400).json({ success: false, message: "You can add a maximum of 3 students at a time" });
-      }
-
+    if (Array.isArray(formData.students)) {
       for (const [index, student] of formData.students.entries()) {
-        const requiredStudentFields = ["studentFirstName", "studentLastName", "dateOfBirth", "medicalInformation"];
-        for (const field of requiredStudentFields) {
-          if (!student[field] || student[field].toString().trim() === "") {
-            return res.status(400).json({ success: false, message: `Student ${index + 1} ${field} is required` });
+
+        // Validate NEW students (no ID)
+        if (!student.id) {
+          const requiredFields = ["studentFirstName", "studentLastName", "dateOfBirth", "medicalInformation"];
+          for (const field of requiredFields) {
+            if (!student[field] || student[field].toString().trim() === "") {
+              return res.status(400).json({
+                success: false,
+                message: `New Student ${index + 1} → ${field} is required`
+              });
+            }
           }
         }
       }
     }
 
     // ------------------------------------------------------------
-    // 🔎 Step 2: Validate Parents
+    // 🔎 Step 2: Validate Parents (ONLY for new parents)
     // ------------------------------------------------------------
-    if (formData.parents?.length) {
+    if (Array.isArray(formData.parents)) {
       for (const [index, parent] of formData.parents.entries()) {
-        const requiredParentFields = ["parentFirstName", "parentLastName", "parentEmail", "parentPhoneNumber", "relationToChild", "howDidYouHear"];
-        for (const field of requiredParentFields) {
-          if (!parent[field] || parent[field].toString().trim() === "") {
-            return res.status(400).json({ success: false, message: `Parent ${index + 1} ${field} is required` });
+
+        if (!parent.id) { // NEW parent
+          const requiredFields = [
+            "parentFirstName",
+            "parentLastName",
+            "parentEmail",
+            "parentPhoneNumber",
+            "relationToChild",
+            "howDidYouHear"
+          ];
+
+          for (const field of requiredFields) {
+            if (!parent[field] || parent[field].toString().trim() === "") {
+              return res.status(400).json({
+                success: false,
+                message: `New Parent ${index + 1} → ${field} is required`
+              });
+            }
           }
         }
       }
     }
 
     // ------------------------------------------------------------
-    // 🔎 Step 3: Validate Emergency Contacts
+    // 🔎 Step 3: Validate Emergency Contacts (ONLY new ones)
     // ------------------------------------------------------------
-    if (formData.emergencyContacts?.length) {
+    if (Array.isArray(formData.emergencyContacts)) {
       for (const [index, emergency] of formData.emergencyContacts.entries()) {
-        const requiredEmergencyFields = ["emergencyFirstName", "emergencyLastName", "emergencyPhoneNumber", "emergencyRelation"];
-        for (const field of requiredEmergencyFields) {
-          if (!emergency[field] || emergency[field].toString().trim() === "") {
-            return res.status(400).json({ success: false, message: `Emergency ${field} is required` });
+
+        if (!emergency.id) { // NEW emergency contact
+          const requiredFields = [
+            "emergencyFirstName",
+            "emergencyLastName",
+            "emergencyPhoneNumber",
+            "emergencyRelation"
+          ];
+
+          for (const field of requiredFields) {
+            if (!emergency[field] || emergency[field].toString().trim() === "") {
+              return res.status(400).json({
+                success: false,
+                message: `New Emergency Contact ${index + 1} → ${field} is required`
+              });
+            }
           }
         }
       }
@@ -424,22 +453,39 @@ exports.updateHolidayBooking = async (req, res) => {
     // ------------------------------------------------------------
     // ⚙️ Step 4: Call Update Service
     // ------------------------------------------------------------
-    const result = await holidayBookingService.updateHolidayBookingById(bookingId, formData, adminId);
+    const result = await holidayBookingService.updateHolidayBookingById(
+      bookingId,
+      formData,
+      adminId
+    );
 
     // ------------------------------------------------------------
     // 📝 Step 5: Activity Log & Notification
     // ------------------------------------------------------------
     await logActivity(req, PANEL, MODULE, "update", formData, true);
-    await createNotification(req, "Holiday Booking Updated Successfully", `Booking updated by ${req.admin?.firstName || "Admin"} ${req.admin?.lastName || ""}.`, "System");
+
+    await createNotification(
+      req,
+      "Holiday Booking Updated Successfully",
+      `Booking updated by ${req.admin?.firstName || "Admin"} ${req.admin?.lastName || ""}.`,
+      "System"
+    );
 
     // ------------------------------------------------------------
     // 📤 Step 6: Response
     // ------------------------------------------------------------
-    return res.status(200).json({ success: true, message: "Holiday Booking updated successfully", data: result.data });
+    return res.status(200).json({
+      success: true,
+      message: "Holiday Booking updated successfully",
+      data: result.details
+    });
 
   } catch (error) {
     console.error("❌ updateHolidayBooking Error:", error);
-    return res.status(500).json({ success: false, message: DEBUG ? error.message : "Internal server error" });
+    return res.status(500).json({
+      success: false,
+      message: DEBUG ? error.message : "Internal server error"
+    });
   }
 };
 
@@ -467,7 +513,7 @@ exports.addCommentForHolidayCamp = async (req, res) => {
     const result = await holidayBookingService.addCommentForHolidayCamp({
       commentBy,
       comment: payload.comment,
-      commentType: payload.commentType || "free",
+      commentType: payload.commentType || "paid",
     });
 
     if (!result.status) {
@@ -520,7 +566,7 @@ exports.addCommentForHolidayCamp = async (req, res) => {
 
 exports.listCommentsForHolidayCamp = async (req, res) => {
   try {
-    const commentType = req.query.commentType ;
+    const commentType = req.query.commentType;
 
     const result = await holidayBookingService.listCommentsForHolidayCamp({
       commentType,
@@ -558,5 +604,147 @@ exports.listCommentsForHolidayCamp = async (req, res) => {
     );
 
     return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
+
+exports.waitingListCreate = async (req, res) => {
+  try {
+    const adminId = req.admin?.id || null;
+    const formData = req.body;
+
+    if (DEBUG)
+      console.log(
+        "📥 Incoming booking data:",
+        JSON.stringify(formData, null, 2)
+      );
+
+    // ✅ Step 1: Validate required main fields (stop at first missing)
+    const requiredFields = [
+      "venueId",
+      "classScheduleId",
+      "totalStudents",
+    ];
+
+    for (const field of requiredFields) {
+      if (!formData[field] || formData[field] === "") {
+        return res.status(400).json({
+          success: false,
+          message: `${field} is required`,
+        });
+      }
+    }
+
+    // ✅ Step 2: Validate nested arrays
+    if (!Array.isArray(formData.students) || formData.students.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one student is required",
+      });
+    }
+
+    if (!Array.isArray(formData.parents) || formData.parents.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one parent is required",
+      });
+    }
+
+    if (!formData.emergency) {
+      return res.status(400).json({
+        success: false,
+        message: "Emergency contact details are required",
+      });
+    }
+
+    // ✅ Step 3: Validate student fields
+    for (const [index, student] of formData.students.entries()) {
+      const requiredStudentFields = ["studentFirstName", "studentLastName", "dateOfBirth", "medicalInformation"];
+
+      for (const field of requiredStudentFields) {
+        if (!student[field] || student[field].toString().trim() === "") {
+          return res.status(400).json({
+            success: false,
+            message: `Student ${index + 1} ${field} is required`,
+          });
+        }
+      }
+    }
+
+    // ✅ Step 4: Validate parent fields
+    for (const [index, parent] of formData.parents.entries()) {
+      const requiredParentFields = [
+        "parentFirstName",
+        "parentLastName",
+        "parentEmail",
+        "parentPhoneNumber",
+        "relationToChild",
+        "howDidYouHear",
+      ];
+
+      for (const field of requiredParentFields) {
+        if (!parent[field] || parent[field].toString().trim() === "") {
+          return res.status(400).json({
+            success: false,
+            message: `Parent ${index + 1} ${field} is required`,
+          });
+        }
+      }
+    }
+
+    // ✅ Step 5: Validate emergency contact fields
+    const requiredEmergencyFields = [
+      "emergencyFirstName",
+      "emergencyLastName",
+      "emergencyPhoneNumber",
+      "emergencyRelation",
+    ];
+
+    for (const field of requiredEmergencyFields) {
+      if (
+        !formData.emergency[field] ||
+        formData.emergency[field].toString().trim() === ""
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: `Emergency ${field} is required`,
+        });
+      }
+    }
+
+    // ✅ Step 5: Create booking via service
+    const result = await holidayBookingService.waitingListCreate(formData, adminId);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message || "Failed to create booking",
+      });
+    }
+
+    if (DEBUG) console.log("✅ Holiday Waiting List Booking created successfully:", result);
+
+    // ✅ Step 6: Log and notify
+    await logActivity(req, PANEL, MODULE, "create", formData.data, true);
+    await createNotification(
+      req,
+      "Holiday Waiting List Booking Created Successfully",
+      `The booking was created by ${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""
+      }.`,
+      "System"
+    );
+
+    // ✅ Step 7: Response
+    return res.status(201).json({
+      success: true,
+      message: "Holiday Waiting List Booking created successfully",
+      data: result,
+    });
+  } catch (error) {
+    if (DEBUG) console.error("❌ Error in waitingListCreate Booking:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: DEBUG ? error.message : "Internal server error",
+    });
   }
 };
