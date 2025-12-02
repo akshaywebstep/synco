@@ -8,9 +8,9 @@ const { Op } = require("sequelize");
 // Service: createCustomTemplate
 exports.createCustomTemplate = async (data) => {
   try {
-    // Always ensure categories are arrays
-    if (!Array.isArray(data.template_category_id)) {
-      data.template_category_id = [data.template_category_id];
+    // Ensure string format before saving
+    if (Array.isArray(data.template_category_id)) {
+      data.template_category_id = JSON.stringify(data.template_category_id);
     }
 
     const savedTemplate = await CustomTemplate.create(data);
@@ -22,6 +22,7 @@ exports.createCustomTemplate = async (data) => {
 
   } catch (error) {
     console.error("❌ Service createCustomTemplate Error:", error);
+
     return {
       status: false,
       message: error.message

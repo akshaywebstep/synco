@@ -13,141 +13,139 @@ const MODULE = "custom-template";
 
 // ✅ CREATE Template Category
 exports.createCustomTemplate = async (req, res) => {
-    try {
-        const formData = req.body || {};
+  try {
+    const formData = req.body || {};
 
-        const {
-            mode_of_communication,
-            title,
-            template_category_id,
-            sender_name,
-            content
-        } = formData;
+    const {
+      mode_of_communication,
+      title,
+      template_category_id,
+      sender_name,
+      content
+    } = formData;
 
-        console.log("📩 Incoming Body:", req.body);
+    console.log("📩 Incoming Body:", req.body);
 
-        /** -------------------------------------------------------
-         * 1) Validate Mode of Communication
-         * -------------------------------------------------------- */
-        if (!["email", "text"].includes(mode_of_communication)) {
-            await logActivity(req, PANEL, MODULE, "create", { message: "Invalid communication mode" }, false);
-            return res.status(400).json({
-                status: false,
-                message: "mode_of_communication must be either 'email' or 'text'."
-            });
-        }
-
-        /** -------------------------------------------------------
-         * 2) Validate Required Fields
-         * -------------------------------------------------------- */
-        let requiredFields = ["mode_of_communication", "title", "template_category_id"];
-
-        if (mode_of_communication === "text") requiredFields.push("sender_name", "content");
-        if (mode_of_communication === "email") requiredFields.push("content");
-
-        const missingFields = requiredFields.filter(f => !formData[f]);
-
-        if (missingFields.length > 0) {
-            const errorMsg = `Missing required fields: ${missingFields.join(", ")}`;
-
-            await logActivity(req, PANEL, MODULE, "create", { message: errorMsg }, false);
-
-            return res.status(400).json({
-                status: false,
-                message: errorMsg
-            });
-        }
-
-        /** -------------------------------------------------------
-         * 3) Make sure category is always an array
-         * -------------------------------------------------------- */
-        let categoryIds = template_category_id;
-
-        if (!Array.isArray(categoryIds)) {
-            categoryIds = template_category_id ? [template_category_id] : [];
-        }
-
-        if (categoryIds.length === 0) {
-            return res.status(400).json({
-                status: false,
-                message: "template_category_id is required."
-            });
-        }
-
-        /** -------------------------------------------------------
-         * 4) Parse content (Accepts JSON or String)
-         * -------------------------------------------------------- */
-        let parsedContent = content;
-
-        if (typeof content === "string") {
-            try {
-                parsedContent = JSON.parse(content);
-            } catch {
-                parsedContent = content; // keep as plain string
-            }
-        }
-
-        /** -------------------------------------------------------
-         * 5) Prepare Save Payload
-         * -------------------------------------------------------- */
-        const payload = {
-            title,
-            mode_of_communication,
-            template_category_id: categoryIds,
-            content: parsedContent,
-            createdBy: req.admin?.id
-        };
-
-        if (mode_of_communication === "text") {
-            payload.sender_name = sender_name;
-        }
-
-        /** -------------------------------------------------------
-         * 6) Call Service Layer
-         * -------------------------------------------------------- */
-        const result = await CustomTemplate.createCustomTemplate(payload);
-
-        if (!result.status) {
-            await logActivity(req, PANEL, MODULE, "create", { message: result.message }, false);
-            return res.status(500).json({
-                status: false,
-                message: "Failed to create custom template."
-            });
-        }
-
-        /** -------------------------------------------------------
-         * 7) Log Activity + Notifications
-         * -------------------------------------------------------- */
-        const adminName =
-            req.admin?.name ||
-            `${req.admin?.firstName || ""} ${req.admin?.lastName || ""}`.trim() ||
-            "Unknown Admin";
-
-        const noteMessage = `Custom template created successfully by ${adminName}`;
-
-        await createNotification(req, "Custom Template Created", noteMessage, "Support");
-
-        await logActivity(req, PANEL, MODULE, "create", { message: "Template created successfully" }, true);
-
-        /** -------------------------------------------------------
-         * 8) SUCCESS RESPONSE
-         * -------------------------------------------------------- */
-        return res.status(201).json({
-            status: true,
-            message: "Custom template created successfully.",
-            data: result.data
-        });
-
-    } catch (error) {
-        console.error("❌ Controller Error:", error);
-
-        await logActivity(req, PANEL, MODULE, "create", { oneLineMessage: error.message }, false);
-
-        return res.status(500).json({
-            status: false,
-            message: "Internal server error."
-        });
+    /* -------------------------------------------------------
+     * 1) Validate Mode of Communication
+     * ------------------------------------------------------ */
+    if (!["email", "text"].includes(mode_of_communication)) {
+      await logActivity(req, PANEL, MODULE, "create", { message: "Invalid communication mode" }, false);
+      return res.status(400).json({
+        status: false,
+        message: "mode_of_communication must be either 'email' or 'text'."
+      });
     }
+
+    /* -------------------------------------------------------
+     * 2) Validate Required Fields
+     * ------------------------------------------------------ */
+    let required = ["mode_of_communication", "title"];
+
+    if (mode_of_communication === "text") required.push("sender_name", "content");
+    if (mode_of_communication === "email") required.push("content");
+
+    const missing = required.filter(f => !formData[f]);
+
+    if (missing.length) {
+      const msg = `Missing required fields: ${missing.join(", ")}`;
+      await logActivity(req, PANEL, MODULE, "create", { message: msg }, false);
+
+      return res.status(400).json({
+        status: false,
+        message: msg
+      });
+    }
+
+    /* -------------------------------------------------------
+     * 3) Normalize category IDs (ALWAYS ARRAY)
+     * ------------------------------------------------------ */
+    let categoryIds = template_category_id;
+
+    if (!Array.isArray(categoryIds)) {
+      categoryIds = template_category_id ? [template_category_id] : [];
+    }
+
+    if (categoryIds.length === 0) {
+      return res.status(400).json({
+        status: false,
+        message: "template_category_id is required."
+      });
+    }
+
+    /* -------------------------------------------------------
+     * 4) Parse content (JSON or plain string)
+     * ------------------------------------------------------ */
+    let parsedContent = content;
+    if (typeof content === "string") {
+      try {
+        parsedContent = JSON.parse(content);
+      } catch {
+        parsedContent = content;
+      }
+    }
+
+    /* -------------------------------------------------------
+     * 5) Final Payload (Convert categoryIds to STRING)
+     * ------------------------------------------------------ */
+    const payload = {
+      title,
+      mode_of_communication,
+      template_category_id: JSON.stringify(categoryIds),   // IMPORTANT ✔
+      content: parsedContent,
+      createdBy: req.admin?.id
+    };
+
+    if (mode_of_communication === "text") {
+      payload.sender_name = sender_name;
+    }
+
+    /* -------------------------------------------------------
+     * 6) Call Service Layer
+     * ------------------------------------------------------ */
+    const result = await CustomTemplate.createCustomTemplate(payload);
+
+    if (!result.status) {
+      await logActivity(req, PANEL, MODULE, "create", { message: result.message }, false);
+      return res.status(500).json({
+        status: false,
+        message: result.message
+      });
+    }
+
+    /* -------------------------------------------------------
+     * 7) Log Activity + Notification
+     * ------------------------------------------------------ */
+    const adminName =
+      req.admin?.name ||
+      `${req.admin?.firstName || ""} ${req.admin?.lastName || ""}`.trim() ||
+      "Unknown Admin";
+
+    const notifMsg = `Custom template created successfully by ${adminName}`;
+
+    await createNotification(req, "Custom Template Created", notifMsg, "Support");
+
+    await logActivity(req, PANEL, MODULE, "create", { message: "Template created successfully" }, true);
+
+    /* -------------------------------------------------------
+     * 8) SUCCESS RESPONSE
+     * ------------------------------------------------------ */
+    return res.status(201).json({
+      status: true,
+      message: "Custom template created successfully.",
+      data: result.data
+    });
+
+  } catch (error) {
+    console.error("❌ Controller Error:", error);
+
+    await logActivity(req, PANEL, MODULE, "create", { oneLineMessage: error.message }, false);
+
+    return res.status(500).json({
+      status: false,
+      message: "Internal server error."
+    });
+  }
 };
 
 // ✅ LIST API

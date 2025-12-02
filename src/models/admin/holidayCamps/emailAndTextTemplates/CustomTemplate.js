@@ -21,9 +21,9 @@ const CustomTemplate = sequelize.define(
     },
 
     template_category_id: {
-      type: DataTypes.JSON, // 👈 Now stores array of IDs
+      type: DataTypes.TEXT('long'),   // 👈 LONGTEXT (MySQL)
       allowNull: false,
-      defaultValue: [], // 👈 Default empty array
+      defaultValue: "[]",             // 👈 store empty array as string
     },
 
     tags: {
