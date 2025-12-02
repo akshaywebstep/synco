@@ -387,6 +387,56 @@ exports.createHolidayBooking = async (data, adminId) => {
   }
 };
 
+exports.cancelHolidayBookingById = async (bookingId, data, adminId) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    // 1️⃣ Fetch booking
+    const booking = await HolidayBooking.findByPk(bookingId);
+
+    if (!booking) {
+      throw new Error("Booking not found.");
+    }
+
+    // 2️⃣ Prevent duplicate cancellation
+    if (booking.status === "cancelled") {
+      throw new Error("Booking is already cancelled.");
+    }
+
+    // 3️⃣ Update booking status + save fields
+    await booking.update(
+      {
+        status: "cancelled",
+        bookingType: "cancelled",    // as per your requirement
+        cancelReason: data.cancelReason || null,
+        additionalNotes: data.additionalNotes || null,
+      },
+      { transaction }
+    );
+
+    // 4️⃣ Restore class capacity (optional – uncomment if needed)
+    const classSchedule = await HolidayClassSchedule.findByPk(booking.classScheduleId);
+    if (classSchedule) {
+      await classSchedule.update(
+        { capacity: classSchedule.capacity + booking.totalStudents },
+        { transaction }
+      );
+    }
+
+    await transaction.commit();
+
+    return {
+      success: true,
+      message: "Booking cancelled successfully.",
+      bookingId: booking.id,
+    };
+  } catch (error) {
+    await transaction.rollback();
+    console.error("❌ Error cancelling holiday booking:", error.message);
+    throw error;
+  }
+};
+
 exports.getHolidayBooking = async (superAdminId, adminId) => {
   try {
     // Validate admin ID

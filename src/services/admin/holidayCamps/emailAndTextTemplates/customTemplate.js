@@ -4,7 +4,6 @@ const {
 TemplateCategoryService = require("./templateCategory");
 const { Op } = require("sequelize");
 
-// ✅ Create a new class
 // Service: createCustomTemplate
 exports.createCustomTemplate = async (data) => {
   try {

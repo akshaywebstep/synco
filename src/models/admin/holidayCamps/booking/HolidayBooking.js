@@ -11,7 +11,7 @@ const HolidayBooking = sequelize.define(
         },
 
         bookingType: {
-            type: DataTypes.ENUM("paid", "removed", "waiting list"),
+            type: DataTypes.ENUM("paid", "removed", "waiting list","cancelled"),
             allowNull: false,
             defaultValue: "waiting list",
             comment: "booking, paid = membership booking",
@@ -116,6 +116,17 @@ const HolidayBooking = sequelize.define(
             onUpdate: "CASCADE",
             onDelete: "RESTRICT",
             comment: "Admin ID who created the booking",
+        },
+        cancelReason: {
+            type: DataTypes.TEXT,
+            allowNull: true,
+            comment: "Reason for cancellation (if status = cancelled)",
+        },
+
+        additionalNotes: {
+            type: DataTypes.TEXT,
+            allowNull: true,
+            comment: "Extra notes for booking",
         },
 
         serviceType: {

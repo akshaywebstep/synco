@@ -176,6 +176,101 @@ exports.createHolidayBooking = async (req, res) => {
   }
 };
 
+exports.cancelHolidayBookingById = async (req, res) => {
+  try {
+    const adminId = req.admin?.id || null;
+    const bookingId = req.params.id;
+    const formData = req.body;   // { cancelReason, additionalNotes (optional) }
+
+    if (DEBUG) {
+      console.log("📥 Cancel Booking Payload:", JSON.stringify(formData, null, 2));
+      console.log("📥 Booking ID:", bookingId);
+    }
+
+    // -------------------------------------------
+    // ✅ Validate bookingId
+    // -------------------------------------------
+    if (!bookingId) {
+      return res.status(400).json({
+        success: false,
+        message: "Booking ID is required",
+      });
+    }
+
+    // -------------------------------------------
+    // ✅ Validate cancelReason (mandatory)
+    // -------------------------------------------
+    if (!formData.cancelReason || formData.cancelReason.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "cancelReason is required",
+      });
+    }
+
+    // -------------------------------------------
+    // ✅ Call service
+    // -------------------------------------------
+    const result = await holidayBookingService.cancelHolidayBookingById(
+      bookingId,
+      {
+        cancelReason: formData.cancelReason,
+        additionalNotes: formData.additionalNotes || null,
+      },
+      adminId
+    );
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message || "Failed to cancel booking",
+      });
+    }
+
+    // -------------------------------------------
+    // ✅ Log activity
+    // -------------------------------------------
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "cancel",
+      {
+        bookingId,
+        cancelReason: formData.cancelReason,
+        additionalNotes: formData.additionalNotes || "",
+      },
+      true
+    );
+
+    // -------------------------------------------
+    // ✅ Send notification
+    // -------------------------------------------
+    await createNotification(
+      req,
+      "Holiday Booking Cancelled",
+      `Booking ID ${bookingId} was cancelled by ${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""
+      }.`,
+      "System"
+    );
+
+    // -------------------------------------------
+    // ✅ Send response
+    // -------------------------------------------
+    return res.status(200).json({
+      success: true,
+      message: "Holiday Booking cancelled successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("❌ Error in cancelHolidayBookingById:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: DEBUG ? error.message : "Internal server error",
+    });
+  }
+};
+
 exports.getAllHolidayBooking = async (req, res) => {
   const adminId = req.admin?.id;
 

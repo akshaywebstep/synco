@@ -13,6 +13,7 @@ const {
   listCommentsForHolidayCamp,
   waitingListCreate,
   getHolidayCampsReports,
+  cancelHolidayBookingById,
 } = require("../../../controllers/admin/holidayCamps/booking/holidayBookingController");
 
 // ➕ Create Camp
@@ -76,5 +77,12 @@ router.get(
   authMiddleware,
   permissionMiddleware("holiday-booking", "view-listing"),
   getHolidayCampsReports
+);
+
+router.put(
+  "/cancel/:id",
+  authMiddleware,
+  permissionMiddleware("holiday-booking", "update"),
+  cancelHolidayBookingById
 );
 module.exports = router;
