@@ -118,6 +118,9 @@ const models = {
   HolidayBookingEmergencyMeta: require("./admin/holidayCamps/booking/HolidayBookingEmergencyMeta"),
   HolidayBookingPayment: require("./admin/holidayCamps/booking/HolidayBookingPayment"),
 
+  CustomTemplate: require("./admin/holidayCamps/EmailAndTextTemplates/customTemplate/CustomTemplate"),
+  TemplateCategory: require("./admin/holidayCamps/EmailAndTextTemplates/templatecategory/TemplateCategory"),
+  ToDoList: require("./admin/holidayCamps/toDoList/ToDoList"),
 };
 
 // =================== Apply Model-Level Associations =================== //
@@ -210,6 +213,10 @@ const {
   HolidayBookingParentMeta,
   HolidayBookingEmergencyMeta,
   HolidayBookingPayment,
+
+  CustomTemplate,
+  TemplateCategory,
+  ToDoList,
 
 } = models;
 
@@ -452,12 +459,12 @@ HolidayBooking.belongsTo(models.Discount, {
 });
 
 HolidayBooking.belongsTo(HolidayCamp, {
-    foreignKey: "holidayCampId",
-    as: "holidayCamp"
+  foreignKey: "holidayCampId",
+  as: "holidayCamp"
 });
 HolidayCamp.hasMany(HolidayBooking, {
-    foreignKey: "holidayCampId",
-    as: "bookings"
+  foreignKey: "holidayCampId",
+  as: "bookings"
 });
 
 HolidayBooking.belongsTo(Admin, { foreignKey: 'bookedBy', as: 'bookedByAdmin' });
@@ -553,5 +560,9 @@ module.exports = {
   HolidayBookingParentMeta,
   HolidayBookingEmergencyMeta,
   HolidayBookingPayment,
+
+  CustomTemplate,
+  TemplateCategory,
+  ToDoList,
 
 };

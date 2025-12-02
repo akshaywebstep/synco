@@ -154,7 +154,9 @@ router.use("/holiday/class-schedule", require("./holidayCampsRoutes/holidayClass
 router.use("/holiday/find-class", require("./holidayCampsRoutes/holidayFindClassRoutes"));
 
 router.use("/holiday/booking", require("./holidayCampsRoutes/holidayBookingRoutes"));
-
+router.use("/holiday/template-category", require("./holidayCampsRoutes/holidayTemplateCategoryRoutes"));
+router.use("/holiday/custom-template", require("./holidayCampsRoutes/holidayCustomTemplateRoute"));
+router.use("/holiday/to-do-list", require("./holidayCampsRoutes/holidayCampsToDoRoutes"));
 // Base: /api/admin/admin
 router.post(
   "/",
