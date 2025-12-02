@@ -158,6 +158,7 @@ exports.addCommentForWaitingList = async ({
     commentBy = null,
     comment,
     commentType = "waiting list", // default as per model
+    serviceType = "weekly class",
 }) => {
     const t = await sequelize.transaction();
     try {
@@ -181,6 +182,7 @@ exports.addCommentForWaitingList = async ({
                 commentBy,
                 comment,
                 commentType,
+                serviceType,
             },
             { transaction: t }
         );
@@ -204,12 +206,15 @@ exports.addCommentForWaitingList = async ({
     }
 };
 
-exports.listCommentsForWaitingList = async ({ commentType = "waiting list" }) => {
+exports.listCommentsForWaitingList = async ({ commentType = "waiting list", serviceType = "serviceType" }) => {
     try {
         debug("🔍 Starting listComments service...");
 
         const comments = await Comment.findAll({
-            where: { commentType },
+            where: {
+                commentType,
+                serviceType,  // ⭐ FILTER BY SERVICETYPE
+            },
             include: [
                 {
                     model: Admin,
@@ -270,3 +275,4 @@ exports.listComments = async ({ commentType }) => {
         return { status: false, message: error.message };
     }
 };
+
