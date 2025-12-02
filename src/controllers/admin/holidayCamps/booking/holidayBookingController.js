@@ -1,7 +1,9 @@
 const { validateFormData } = require("../../../../utils/validateFormData");
 const holidayBookingService = require("../../../../services/admin/holidayCamps/booking/holidayBooking");
 const { logActivity } = require("../../../../utils/admin/activityLogger");
-
+const {
+  Admin,
+} = require("../../../../models");
 const {
   createNotification,
 } = require("../../../../utils/admin/notificationHelper");
@@ -745,6 +747,53 @@ exports.waitingListCreate = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: DEBUG ? error.message : "Internal server error",
+    });
+  }
+};
+
+exports.getHolidayCampsReports = async (req, res) => {
+  const adminId = req.admin?.id;
+
+  try {
+    // Validate admin
+   // Validate admin
+    if (!adminId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized: Admin ID not found.",
+      });
+    }
+
+  // 🔹 Identify super admin
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    // ---- Call the Service ----
+    const report = await holidayBookingService.holidayCampsReports(
+      superAdminId,
+      adminId
+    );
+
+    if (!report.success) {
+      return res.status(400).json({
+        success: false,
+        message: report.message,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Holiday camp reports fetched successfully.",
+      data: report.data,
+    });
+
+  } catch (error) {
+    console.error("❌ Error fetching holiday camps report:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error.",
+      error: error.message,
     });
   }
 };
