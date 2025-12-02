@@ -13,8 +13,8 @@ const HolidayBooking = sequelize.define(
         bookingType: {
             type: DataTypes.ENUM("paid", "removed", "waiting list"),
             allowNull: false,
-            defaultValue: "free",
-            comment: "Paid = trial booking, paid = membership booking",
+            defaultValue: "waiting list",
+            comment: "booking, paid = membership booking",
         },
 
         // ✅ FK → Venues.id
