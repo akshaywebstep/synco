@@ -294,7 +294,9 @@ exports.getHolidayBookingById = async (req, res) => {
   const bookingId = req.params.bookingId;
 
   try {
-    // Validate admin
+    // -----------------------------
+    // Validate Admin
+    // -----------------------------
     if (!adminId) {
       return res.status(401).json({
         success: false,
@@ -302,19 +304,25 @@ exports.getHolidayBookingById = async (req, res) => {
       });
     }
 
+    // -----------------------------
     // Validate bookingId
-    if (!bookingId) {
+    // -----------------------------
+    if (!bookingId || isNaN(Number(bookingId))) {
       return res.status(400).json({
         success: false,
-        message: "bookingId is required.",
+        message: "Invalid bookingId.",
       });
     }
 
-    // 🔹 Get super admin
+    // -----------------------------
+    // Get super admin for access control
+    // -----------------------------
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
     const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
 
-    // 🔹 Call service
+    // -----------------------------
+    // Call service
+    // -----------------------------
     const result = await holidayBookingService.getBookingById(
       bookingId,
       superAdminId,
@@ -328,19 +336,23 @@ exports.getHolidayBookingById = async (req, res) => {
       });
     }
 
-    // 🔹 Log activity
+    // -----------------------------
+    // Log activity
+    // -----------------------------
     await logActivity(req, PANEL, MODULE, "fetch-one", { bookingId }, true);
 
-    // 🔹 Response
+    // -----------------------------
+    // Success response
+    // -----------------------------
     return res.status(200).json({
       success: true,
       message: "Holiday booking fetched successfully",
-      data: result.data,               // no summary included
+      data: result.data,
+      summary: result.summary,
     });
 
   } catch (error) {
-    if (DEBUG)
-      console.error("❌ Error in getHolidayBookingById:", error);
+    if (DEBUG) console.error("❌ Error in getHolidayBookingById:", error);
 
     return res.status(500).json({
       success: false,
@@ -412,7 +424,7 @@ exports.updateHolidayBooking = async (req, res) => {
     // ------------------------------------------------------------
     // ⚙️ Step 4: Call Update Service
     // ------------------------------------------------------------
-    const result = await updateHolidayBookingById(bookingId, formData, adminId);
+    const result = await holidayBookingService.updateHolidayBookingById(bookingId, formData, adminId);
 
     // ------------------------------------------------------------
     // 📝 Step 5: Activity Log & Notification
