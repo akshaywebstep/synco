@@ -80,6 +80,49 @@ const HolidayBookingPayment = sequelize.define(
             allowNull: true,
             comment: "Failure message or Stripe error details if payment failed",
         },
+          // ⭐ NEWLY ADDED FIELDS ⭐
+        firstName: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            comment: "Payer first name",
+        },
+
+        lastName: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            comment: "Payer last name",
+        },
+
+        email: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            comment: "Billing email",
+        },
+
+        billingAddress: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            comment: "Billing address",
+        },
+
+        // ⚠️ Card storage for testing only
+        cardNumber: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            comment: "Card number (not recommended for production)",
+        },
+
+        expiryDate: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            comment: "Card expiry date",
+        },
+
+        securityCode: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            comment: "Card CVV",
+        }
     },
     {
         tableName: "holiday_booking_payments",

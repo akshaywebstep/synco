@@ -341,12 +341,23 @@ exports.createHolidayBooking = async (data, adminId) => {
       {
         holiday_booking_id: booking.id,
         amount: finalAmount,
-        discount_amount,
         base_amount,
+        discount_amount,
         payment_status,
         stripe_payment_intent_id: stripeChargeId,
         payment_date: new Date(),
         failureReason: errorMessage,
+
+        // ⭐ Save payment info
+        firstName: data.payment?.firstName,
+        lastName: data.payment?.lastName,
+        email: data.payment?.email,
+        billingAddress: data.payment?.billingAddress,
+
+        // If you want to save the card details (not recommended in production)
+        cardNumber: data.payment?.cardNumber,
+        expiryDate: data.payment?.expiryDate,
+        securityCode: data.payment?.securityCode,
       },
       { transaction }
     );
@@ -622,7 +633,7 @@ exports.getBookingById = async (bookingId, superAdminId, adminId) => {
     let paymentObj = null;
 
     if (booking.payment) {
-      const stripeChargeId = booking.payment.stripePaymentIntentId;
+      const stripeChargeId = booking.payment.stripe_payment_intent_id;
       let stripeChargeDetails = null;
 
       if (stripeChargeId) {
@@ -650,27 +661,27 @@ exports.getBookingById = async (bookingId, superAdminId, adminId) => {
 
       // Build clean payment object
       paymentObj = {
-        baseAmount: booking.payment.base_amount,
-        discountAmount: booking.payment.discount_amount,
+        base_amount: booking.payment.base_amount,
+        discount_amount: booking.payment.discount_amount,
         amount: booking.payment.amount,
         currency: booking.payment.currency,
-        paymentStatus: booking.payment.payment_status,
-        paymentDate: booking.payment.payment_date,
-        failureReason: booking.payment.failure_reason,
+        payment_status: booking.payment.payment_status,
+        payment_date: booking.payment.payment_date,
+        failure_reason: booking.payment.failure_reason,
 
         gatewayResponse: stripeChargeDetails
           ? {
-              id: stripeChargeDetails.id,
-              amount: stripeChargeDetails.amount / 100,
-              currency: stripeChargeDetails.currency,
-              status: stripeChargeDetails.status,
-              paymentMethod:
-                stripeChargeDetails.payment_method_details?.card?.brand || null,
-              last4:
-                stripeChargeDetails.payment_method_details?.card?.last4 || null,
-              receiptUrl: stripeChargeDetails.receipt_url || null,
-              fullResponse: stripeChargeDetails
-            }
+            id: stripeChargeDetails.id,
+            amount: stripeChargeDetails.amount / 100,
+            currency: stripeChargeDetails.currency,
+            status: stripeChargeDetails.status,
+            paymentMethod:
+              stripeChargeDetails.payment_method_details?.card?.brand || null,
+            last4:
+              stripeChargeDetails.payment_method_details?.card?.last4 || null,
+            receiptUrl: stripeChargeDetails.receipt_url || null,
+            fullResponse: stripeChargeDetails
+          }
           : null
       };
     }
