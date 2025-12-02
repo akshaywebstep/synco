@@ -1,13 +1,13 @@
 
 
-const { validateFormData } = require("../../../../../utils/validateFormData");
-const { logActivity } = require("../../../../../utils/admin/activityLogger");
-const { createNotification } = require("../../../../../utils/admin/notificationHelper");
+const { validateFormData } = require("../../../../utils/validateFormData");
+const { logActivity } = require("../../../../utils/admin/activityLogger");
+const { createNotification } = require("../../../../utils/admin/notificationHelper");
 // const TemplateCategory = require("../../../../../services/admin/holidayCamps/emailAndTextTemplates/templateCategory/templateCategory");
 const DEBUG = process.env.DEBUG === "true";
-const CustomTemplate = require("../../../../../services/admin/holidayCamps/emailAndTextTemplates/customTemplate/customTemplate");
-const { getMainSuperAdminOfAdmin } = require("../../../../../utils/auth");
-const { getCustomTemplateById } = require("../../../../../services/admin/holidayCamps/emailAndTextTemplates/customTemplate/customTemplate");
+const CustomTemplate = require("../../../../services/admin/holidayCamps/emailAndTextTemplates/customTemplate");
+const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
+const { getCustomTemplateById } = require("../../../../services/admin/holidayCamps/emailAndTextTemplates/customTemplate");
 const PANEL = "admin";
 const MODULE = "custom-template";
 
@@ -113,7 +113,6 @@ exports.listCustomTemplates = async (req, res) => {
     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
     if (DEBUG) console.log("📥 Listing all template categories");
     const result = await CustomTemplate.listCustomTemplates(superAdminId, template_category_id);
-
 
     if (!result.status) {
         await logActivity(req, PANEL, MODULE, "list", { message: result.message }, false);

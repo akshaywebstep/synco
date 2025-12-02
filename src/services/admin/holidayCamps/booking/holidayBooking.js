@@ -12,6 +12,7 @@ const {
   HolidayCamp,
   HolidayCampDates,
   Discount,
+  Comment,
   Admin,
 } = require("../../../../models");
 const { sequelize } = require("../../../../models");
@@ -27,7 +28,7 @@ const {
 const sendEmail = require("../../../../utils/email/sendEmail");
 
 const debug = require("debug")("service:comments");
-const { sequelize, Comment, Admin } = require("../../../../models");
+
 const DEBUG = process.env.DEBUG === "true";
 const emailModel = require("../../../../services/email");
 const PANEL = "admin";

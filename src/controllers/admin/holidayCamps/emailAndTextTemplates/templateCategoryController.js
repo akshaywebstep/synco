@@ -1,12 +1,12 @@
 
 
-const { validateFormData } = require("../../../../../utils/validateFormData");
-const { logActivity } = require("../../../../../utils/admin/activityLogger");
+const { validateFormData } = require("../../../../utils/validateFormData");
+const { logActivity } = require("../../../../utils/admin/activityLogger");
 // const TemplateCategory = require("../../../../holidayCamps/emailAndTextTemplates/templateCategory/templateCategory");
-const { createNotification } = require("../../../../../utils/admin/notificationHelper");
-const TemplateCategory = require("../../../../../services/admin/holidayCamps/emailAndTextTemplates/templateCategory/templateCategory");
+const { createNotification } = require("../../../../utils/admin/notificationHelper");
+const TemplateCategory = require("../../../../services/admin/holidayCamps/emailAndTextTemplates/templateCategory");
 const DEBUG = process.env.DEBUG === "true";
-const { getMainSuperAdminOfAdmin } = require("../../../../../utils/auth");
+const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
 
 const PANEL = "admin";
 const MODULE = "template-category";
@@ -90,7 +90,6 @@ exports.listTemplateCategories = async (req, res) => {
   await logActivity(req, PANEL, MODULE, "list", { message: "Fetched successfully" }, true);
   return res.status(200).json({ status: true, data: result.data });
 };
-
 
 // ✅ DELETE template category (soft delete)
 // exports.deleteTemplateCategory = async (req, res) => {

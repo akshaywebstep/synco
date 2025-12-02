@@ -8,7 +8,7 @@ const {
     deleteCustomTemplate,
     updateCustomTemplate,
     getCustomTemplate
-} = require("../../../controllers/admin/holidayCamps/EmailAndTextTemplates/customTemplate/customTemplateController");
+} = require("../../../controllers/admin/holidayCamps/EmailAndTextTemplates/customTemplateController");
 
 router.post(
     "/create",
@@ -42,6 +42,5 @@ router.put(
   permissionMiddleware("holiday-custom-template", "update"),
   updateCustomTemplate
 );
-
 
 module.exports = router;

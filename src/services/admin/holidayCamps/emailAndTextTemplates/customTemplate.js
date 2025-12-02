@@ -1,7 +1,7 @@
 const {
   CustomTemplate,TemplateCategory
-} = require("../../../../../models");
-TemplateCategoryService = require("../templateCategory/templateCategory");
+} = require("../../../../models");
+TemplateCategoryService = require("./templateCategory");
 const { Op } = require("sequelize");
 
 // ✅ Create a new class
@@ -76,7 +76,6 @@ exports.listCustomTemplates = async (createdBy, templateCategoryId = null) => {
     return { status: false, message: error.message, data: [] };
   }
 };
-
 
 // ✅ DELETE custom template (soft delete + track deletedBy)
 exports.deleteCustomTemplate = async (id, adminId) => {
