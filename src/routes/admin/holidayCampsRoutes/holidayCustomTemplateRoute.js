@@ -16,6 +16,7 @@ router.post(
     permissionMiddleware("holiday-custom-template", "create"),
     createCustomTemplate
 );
+
 router.get(
     "/list",
     authMiddleware,

@@ -129,21 +129,26 @@ exports.deleteCustomTemplate = async (id, adminId) => {
 };
 
 // ✅ UPDATE custom template
+// ✅ UPDATE custom template
 exports.updateCustomTemplate = async (id, data, adminId) => {
   try {
-    const template = await CustomTemplate.findOne({ where: { id, createdBy: Number(adminId) } });
+    // Fetch template only if created by this admin
+    const template = await CustomTemplate.findOne({
+      where: { id, createdBy: Number(adminId) }
+    });
 
     if (!template) {
-      return { status: false, message: "Template not found or you don't have permission to update this template." };
+      return {
+        status: false,
+        message: "Template not found or you don't have permission to update this template."
+      };
     }
 
-    // (6) ensure update also stores array
-    if (!Array.isArray(data.template_category_id)) {
-      data.template_category_id = [data.template_category_id];
-    }
-
+    // Update directly (data must already be validated/stringified in controller)
     const updated = await template.update(data);
+
     return { status: true, data: updated };
+
   } catch (error) {
     console.error("❌ updateCustomTemplate Error:", error);
     return { status: false, message: error.message };
