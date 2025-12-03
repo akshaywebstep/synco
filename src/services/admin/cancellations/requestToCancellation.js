@@ -236,7 +236,7 @@ exports.getRequestToCancel = async ({
           ],
         },
       ],
-      order: [["createdAt", "DESC"]],
+      order: [["updatedAt", "ASC"]],
     });
 
     // Parse current data

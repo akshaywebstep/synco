@@ -138,6 +138,7 @@ exports.createCancelBooking = async ({
         additionalNote: additionalNote ?? existingCancel.additionalNote,
         cancelDate: cancelDate ?? existingCancel.cancelDate,
         cancellationType,
+         updatedAt: new Date(),
       });
 
       if (cancellationType === "immediate") {
