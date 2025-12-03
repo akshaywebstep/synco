@@ -1,5 +1,4 @@
-const { ToDoList } = require("../../../../models")
-
+const { ToDoList, Admin } = require("../../../../models")
 // ✅ Create Task
 exports.createTask = async (data) => {
     try {
@@ -22,14 +21,17 @@ exports.listTasks = async (createdBy) => {
     }
 
     try {
+        // Fetch all tasks for the user
         const tasks = await ToDoList.findAll({
             where: { createdBy: Number(createdBy) },
-            order: [["id", "DESC"]],
+            order: [
+                ["sort_order", "ASC"],
+                ["id", "DESC"]
+            ],
+            raw: true,
         });
 
-        // -------------------------------------------
-        // Group tasks by status (your required keys)
-        // -------------------------------------------
+        // Group tasks by status
         const grouped = {
             to_do: [],
             in_progress: [],
@@ -37,38 +39,46 @@ exports.listTasks = async (createdBy) => {
             completed: [],
         };
 
-        tasks.forEach((task) => {
-            const status = (task.status || "").toLowerCase();
+        // Collect all admin IDs (creator + assigned)
+        const adminIdsSet = new Set();
+        tasks.forEach(task => {
+            if (task.created_by) adminIdsSet.add(task.created_by);
 
-            switch (status) {
-                case "to_do":
-                case "to-do":
-                case "todo":
-                    grouped.to_do.push(task);
-                    break;
+            let assigned = task.assignedAdmins || task.assigned_admins;
 
-                case "in_progress":
-                case "in-progress":
-                case "in progress":
-                    grouped.in_progress.push(task);
-                    break;
-
-                case "in_review":
-                case "in-review":
-                case "in review":
-                    grouped.in_review.push(task);
-                    break;
-
-                case "completed":
-                    grouped.completed.push(task);
-                    break;
-
-                default:
-                    // Unknown status → Put into to_do by default (optional)
-                    grouped.to_do.push(task);
+            if (typeof assigned === "string") {
+                try { assigned = JSON.parse(assigned.replace(/'/g, '"')); }
+                catch { assigned = []; }
             }
+
+            if (!Array.isArray(assigned)) assigned = [];
+            assigned.forEach(id => adminIdsSet.add(id));
         });
 
+        const adminIds = Array.from(adminIdsSet);
+
+        // Fetch all admins
+        const admins = await Admin.findAll({
+            where: { id: adminIds },
+            attributes: ["id", "firstName", "lastName"],
+            raw: true,
+        });
+
+        const adminMap = Object.fromEntries(
+            admins.map(a => [String(a.id), { firstName: a.firstName, lastName: a.lastName }])
+        );
+
+        // Process tasks
+        for (let task of tasks) {
+            task.sortOrder = task.sort_order ?? 0;
+            task.attachments = safeJson(task.attachments);
+            task.assignedAdmins = safeJson(task.assignedAdmins || task.assigned_admins) || [];
+            task.assignedAdminDetails = task.assignedAdmins.map(id => adminMap[id] || {});
+            task.createdByDetails = task.created_by ? (adminMap[String(task.created_by)] || {}) : {};
+            const status = (task.status || "").toLowerCase();
+            if (grouped[status]) grouped[status].push(task);
+            else grouped.to_do.push(task);
+        }
         return { status: true, data: grouped };
 
     } catch (error) {
@@ -76,6 +86,36 @@ exports.listTasks = async (createdBy) => {
         return { status: false, message: error.message, data: {} };
     }
 };
+
+// ----------------------------------------------------
+// Helper To Safely Parse JSON
+// ----------------------------------------------------
+function safeJson(value) {
+    if (!value) return [];
+
+    // Already an array
+    if (Array.isArray(value)) return value;
+
+    // Case: MySQL returns value like [1,5,8] (NOT a JSON string)
+    if (typeof value === "string" && value.startsWith("[") && value.endsWith("]")) {
+        try {
+            return JSON.parse(
+                value
+                    .replace(/'/g, '"')    // replace single quotes with double quotes
+                    .replace(/\s/g, "")    // remove spaces
+            );
+        } catch (e) {
+            return [];
+        }
+    }
+
+    // Default fallback
+    try {
+        return JSON.parse(value);
+    } catch {
+        return [];
+    }
+}
 
 // ✅ Get One Task
 exports.getTaskById = async (id) => {
@@ -89,16 +129,44 @@ exports.getTaskById = async (id) => {
     }
 };
 
-// ✅ Update Task
-exports.updateTask = async (id, data) => {
+// ✅ Update Only Status
+exports.updateTaskStatus = async (id, status) => {
     try {
-        const updated = await ToDoList.update(data, {
-            where: { id: Number(id) },
-            returning: true,
-        });
-        return { status: true, message: "Updated successfully" };
+        const updated = await ToDoList.update(
+            { status },
+            { where: { id: Number(id) } }
+        );
+
+        if (!updated[0])
+            return { status: false, message: "Task not found" };
+
+        return { status: true, message: "Status updated successfully" };
     } catch (error) {
-        console.error("❌ updateTask Error:", error);
+        console.error("❌ updateTaskStatus Error:", error);
+        return { status: false, message: error.message };
+    }
+};
+
+// ⭐ Update Task Sort Orders in bulk
+exports.updateSortOrder = async (sortOrderArray) => {
+    try {
+        if (!Array.isArray(sortOrderArray))
+            return { status: false, message: "sortOrder must be an array" };
+
+        let order = 1;
+
+        for (let taskId of sortOrderArray) {
+            await ToDoList.update(
+                { sort_order: order },
+                { where: { id: Number(taskId) } }
+            );
+            order++;
+        }
+
+        return { status: true, message: "Sort order updated successfully" };
+
+    } catch (error) {
+        console.error("❌ updateSortOrder Error:", error);
         return { status: false, message: error.message };
     }
 };
@@ -113,3 +181,17 @@ exports.deleteTask = async (id) => {
         return { status: false, message: error.message };
     }
 };
+
+// ✅ Update Task
+// exports.updateTask = async (id, data) => {
+//     try {
+//         const updated = await ToDoList.update(data, {
+//             where: { id: Number(id) },
+//             returning: true,
+//         });
+//         return { status: true, message: "Updated successfully" };
+//     } catch (error) {
+//         console.error("❌ updateTask Error:", error);
+//         return { status: false, message: error.message };
+//     }
+// };

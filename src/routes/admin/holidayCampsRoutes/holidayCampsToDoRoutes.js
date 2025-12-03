@@ -4,7 +4,7 @@ const authMiddleware = require("../../../middleware/admin/authenticate");
 const permissionMiddleware = require("../../../middleware/admin/permission");
 
 const {
-  createTask, listTasks, getTaskById, updateTask, deleteTask
+  createTask, listTasks, getTaskById, updateTaskStatus, deleteTask,updateSortOrder,
 } = require("../../../controllers/admin/holidayCamps/toDoList/ToDoController");
 
 router.post(
@@ -29,10 +29,17 @@ router.get(
 );
 
 router.put(
-  "/update/:id",
+  "/update-status",
   authMiddleware,
   permissionMiddleware("to-do", "update"),
-  updateTask
+  updateTaskStatus
+);
+
+router.put(
+  "/update-sort-order",
+  authMiddleware,
+  permissionMiddleware("to-do", "update"),
+  updateSortOrder
 );
 
 router.delete(

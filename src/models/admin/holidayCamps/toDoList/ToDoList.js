@@ -21,6 +21,13 @@ const ToDoList = sequelize.define(
       type: DataTypes.JSON,
       allowNull: true,
     },
+    sortOrder: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,  // ✅ add this
+      field: "sort_order",
+    },
+
     createdBy: {
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
