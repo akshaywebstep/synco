@@ -18,7 +18,7 @@ exports.listTasks = async (createdBy) => {
         return {
             status: false,
             message: "Invalid super admin ID",
-            data: [],
+            data: {},
         };
     }
 
@@ -27,10 +27,34 @@ exports.listTasks = async (createdBy) => {
             where: { createdBy: Number(createdBy) },
             order: [["id", "DESC"]],
         });
-        return { status: true, data: tasks };
+
+        // -------------------------------------------
+        // Group tasks by their status
+        // -------------------------------------------
+        const grouped = {
+            "to-do": [],
+            "in-progress": [],
+            "completed": [],
+            "pending": [],
+        };
+
+        tasks.forEach((task) => {
+            const status = (task.status || "").toLowerCase();
+
+            if (grouped[status]) {
+                grouped[status].push(task);
+            } else {
+                // If status not in predefined keys, create dynamically
+                if (!grouped[status]) grouped[status] = [];
+                grouped[status].push(task);
+            }
+        });
+
+        return { status: true, data: grouped };
+
     } catch (error) {
         console.error("❌ listTasks Error:", error);
-        return { status: false, message: error.message, data: [] };
+        return { status: false, message: error.message, data: {} };
     }
 };
 
