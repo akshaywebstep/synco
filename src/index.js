@@ -12,13 +12,35 @@ const port = process.env.PORT || 3000;
 // ✅ Middleware
 // app.use(cors());
 // ✅ CORS (REPLACE your old app.use(cors()))
-app.use(
-  cors({
-    origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
-    methods: "GET,POST,PUT,DELETE",
-    credentials: true,
-  })
-);
+// app.use(
+//   cors({
+//     origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
+//     methods: "GET,POST,PUT,DELETE",
+//     credentials: true,
+//   })
+// );
+
+const allowedLocalhosts = [
+  /http:\/\/localhost:\d+$/,
+  /http:\/\/127\.0\.0\.1:\d+$/
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests without origin (Postman, curl)
+    if (!origin) return callback(null, true);
+
+    // Check localhost
+    const isAllowed = allowedLocalhosts.some((regex) => regex.test(origin));
+
+    if (isAllowed) return callback(null, true);
+
+    // Otherwise block
+    return callback(new Error("Not allowed by CORS"));
+  },
+  methods: "GET,POST,PUT,DELETE",
+  credentials: true
+}));
 
 // ⚙️ Practically remove payload limit (1GB+)
 app.use(bodyParser.json({ limit: "1000mb" }));
