@@ -236,7 +236,7 @@ exports.getFullCancelBooking = async ({
           ],
         },
       ],
-      order: [["updatedAt", "ASC"]],
+      order: [["updatedAt", "DESC"]],
     });
 
     // Parse current data
