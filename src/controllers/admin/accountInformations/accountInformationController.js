@@ -15,7 +15,7 @@ const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "account_information";
 
-//  controller account information controller
+//  Listing
 
 exports.getAllStudentsListing = async (req, res) => {
   try {
