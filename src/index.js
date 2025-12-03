@@ -10,7 +10,15 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // ✅ Middleware
-app.use(cors());
+// app.use(cors());
+// ✅ CORS (REPLACE your old app.use(cors()))
+app.use(
+  cors({
+    origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
+    methods: "GET,POST,PUT,DELETE",
+    credentials: true,
+  })
+);
 
 // ⚙️ Practically remove payload limit (1GB+)
 app.use(bodyParser.json({ limit: "1000mb" }));
@@ -29,7 +37,7 @@ app.use("/api/admin/profile", require("./routes/admin/profileRoutes")); // Admin
 
 app.use("/api/admin", require("./routes/admin")); // Manage Admins
 app.use("/api/location", require("./routes/location")); // Manage members
-app.use("/api/location", require("./routes/location")); // Manage members
+// app.use("/api/location", require("./routes/location")); // Manage members
 
 app.use("/api/test", require("./routes/test")); // Test
 

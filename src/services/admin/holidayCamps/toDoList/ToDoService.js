@@ -1,6 +1,5 @@
-// const { ToDoList } = require("../../../../models/admin/holidayCamps/toDoList");
-
 const { ToDoList } = require("../../../../models")
+
 // ✅ Create Task
 exports.createTask = async (data) => {
     try {
@@ -29,24 +28,44 @@ exports.listTasks = async (createdBy) => {
         });
 
         // -------------------------------------------
-        // Group tasks by their status
+        // Group tasks by status (your required keys)
         // -------------------------------------------
         const grouped = {
-            "to-do": [],
-            "in-progress": [],
-            "completed": [],
-            "pending": [],
+            to_do: [],
+            in_progress: [],
+            in_review: [],
+            completed: [],
         };
 
         tasks.forEach((task) => {
             const status = (task.status || "").toLowerCase();
 
-            if (grouped[status]) {
-                grouped[status].push(task);
-            } else {
-                // If status not in predefined keys, create dynamically
-                if (!grouped[status]) grouped[status] = [];
-                grouped[status].push(task);
+            switch (status) {
+                case "to_do":
+                case "to-do":
+                case "todo":
+                    grouped.to_do.push(task);
+                    break;
+
+                case "in_progress":
+                case "in-progress":
+                case "in progress":
+                    grouped.in_progress.push(task);
+                    break;
+
+                case "in_review":
+                case "in-review":
+                case "in review":
+                    grouped.in_review.push(task);
+                    break;
+
+                case "completed":
+                    grouped.completed.push(task);
+                    break;
+
+                default:
+                    // Unknown status → Put into to_do by default (optional)
+                    grouped.to_do.push(task);
             }
         });
 
