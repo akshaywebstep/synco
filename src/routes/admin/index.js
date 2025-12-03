@@ -157,6 +157,10 @@ router.use("/holiday/booking", require("./holidayCampsRoutes/holidayBookingRoute
 router.use("/holiday/template-category", require("./holidayCampsRoutes/holidayTemplateCategoryRoutes"));
 router.use("/holiday/custom-template", require("./holidayCampsRoutes/holidayCustomTemplateRoute"));
 router.use("/holiday/to-do-list", require("./holidayCampsRoutes/holidayCampsToDoRoutes"));
+
+router.use("/folder", require("./holidayCampsRoutes/folderRoutes"));
+router.use("/folder", require("./holidayCampsRoutes/filesRoutes"));
+
 // Base: /api/admin/admin
 router.post(
   "/",

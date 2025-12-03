@@ -121,6 +121,9 @@ const models = {
   CustomTemplate: require("./admin/holidayCamps/emailAndTextTemplates/CustomTemplate"),
   TemplateCategory: require("./admin/holidayCamps/emailAndTextTemplates/Templatecategory"),
   ToDoList: require("./admin/holidayCamps/toDoList/ToDoList"),
+
+  Folder:require("./admin/holidayCamps/folder/Folder"),
+  Files:require("./admin/holidayCamps/folder/Files"),
 };
 
 // =================== Apply Model-Level Associations =================== //
@@ -218,6 +221,8 @@ const {
   TemplateCategory,
   ToDoList,
 
+  Folder,
+  Files,
 } = models;
 
 // Many-to-Many
@@ -565,4 +570,6 @@ module.exports = {
   TemplateCategory,
   ToDoList,
 
+  Folder,
+  Files,
 };
