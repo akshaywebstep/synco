@@ -1,4 +1,6 @@
-const { ToDoList, Admin } = require("../../../../models")
+const { ToDoList, Admin,sequelize, Comment } = require("../../../../models")
+const debug = require("debug")("service:comments");
+const DEBUG = process.env.DEBUG === "true";
 // ✅ Create Task
 exports.createTask = async (data) => {
     try {
@@ -218,16 +220,68 @@ exports.deleteTask = async (id) => {
     }
 };
 
-// ✅ Update Task
-// exports.updateTask = async (id, data) => {
+// exports.addCommentForToDo = async ({ commentBy = null, comment, commentType = "to do", serviceType = "to do" }) => {
+//     const transaction = await sequelize.transaction();
 //     try {
-//         const updated = await ToDoList.update(data, {
-//             where: { id: Number(id) },
-//             returning: true,
-//         });
-//         return { status: true, message: "Updated successfully" };
+//         if (DEBUG) debug("🔍 Starting addCommentForFreeTrial service...");
+
+//         let admin = null;
+
+//         // Validate admin if provided
+//         if (commentBy) {
+//             admin = await Admin.findByPk(commentBy, { transaction });
+//             if (!admin) {
+//                 await transaction.rollback();
+//                 if (DEBUG) debug("❌ Admin not found:", commentBy);
+//                 return { status: false, message: "Admin not found." };
+//             }
+//             if (DEBUG) debug("✅ Admin validated:", admin.id);
+//         }
+
+//         // Create comment
+//         const newComment = await Comment.create({ commentBy, comment, commentType, serviceType }, { transaction });
+//         if (DEBUG) debug("✅ Comment created:", newComment.id);
+
+//         await transaction.commit();
+//         if (DEBUG) debug("🎉 Transaction committed successfully");
+
+//         return {
+//             status: true,
+//             message: "Comment added successfully.",
+//             data: { comment: newComment, admin },
+//         };
 //     } catch (error) {
-//         console.error("❌ updateTask Error:", error);
+//         await transaction.rollback();
+//         if (DEBUG) debug("❌ addCommentForToDo Error:", error);
+//         return { status: false, message: error.message };
+//     }
+// };
+// exports.listCommentsForToDo = async ({ commentType = "to do", serviceType = "to do" }) => {
+//     try {
+//         debug("🔍 Starting listComments service...");
+
+//         const comments = await Comment.findAll({
+//             where: {
+//                 commentType,
+//                 serviceType,  // ⭐ FILTER BY SERVICETYPE
+//             },
+//             include: [
+//                 {
+//                     model: Admin,
+//                     as: "bookedByAdmin",
+//                     attributes: ["id", "firstName", "lastName", "email", "roleId", "status", "profile"],
+//                     required: false,
+//                 },
+//             ],
+//             order: [["createdAt", "DESC"]],
+//         });
+
+//         return {
+//             status: true,
+//             message: "✅ Comments fetched successfully",
+//             data: comments,
+//         };
+//     } catch (error) {
 //         return { status: false, message: error.message };
 //     }
 // };

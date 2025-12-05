@@ -32,14 +32,14 @@ const Comment = sequelize.define(
 
         // ✅ Comment type (ENUM)
         commentType: {
-            type: DataTypes.ENUM("free", "paid", "waiting list","lead"),
+            type: DataTypes.ENUM("free", "paid", "waiting list","lead","to do"),
             allowNull: false,
             defaultValue: "free",
             comment: "Type of comment (free, paid, waiting list)",
         },
 
         serviceType: {
-            type: DataTypes.ENUM("weekly class", "birthday party", "one to one","holiday camp"),
+            type: DataTypes.ENUM("weekly class", "birthday party", "one to one","holiday camp","to do"),
             allowNull: true,
             defaultValue: "weekly class",
             comment: "Type of comment (weekly class, birthday party,holiday camp)",

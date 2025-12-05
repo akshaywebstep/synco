@@ -10,7 +10,7 @@ const MODULE = "to-do";
 
 // ✅ CREATE TASK
 exports.createTask = async (req, res) => {
-  const { title, description, attachments, assignedAdmins, status, priority } = req.body;
+  const { title, description, attachments, assignedAdmins, status,comment, priority } = req.body;
 
   const validation = validateFormData(req.body, {
     requiredFields: ["title", "description"],
@@ -29,6 +29,7 @@ exports.createTask = async (req, res) => {
       assignedAdmins: assignedAdmins || null,
       status,
       priority,
+      comment,
       createdBy: req.admin.id,
     });
 
@@ -152,21 +153,6 @@ exports.updateSortOrder = async (req, res) => {
     return res.status(500).json({ status: false, message: error.message });
   }
 };
-
-// ✅ UPDATE TASK
-// exports.updateTask = async (req, res) => {
-//   const { id } = req.params;
-//   const result = await ToDoService.updateTask(id, req.body);
-
-//   if (!result.status) {
-//     await logActivity(req, PANEL, MODULE, "update", { message: result.message }, false);
-//     return res.status(500).json({ status: false, message: result.message });
-//   }
-
-//   await logActivity(req, PANEL, MODULE, "update", { message: "Updated successfully" }, true);
-//   return res.status(200).json({ status: true, message: "Task updated successfully" });
-// };
-
 // ✅ DELETE TASK
 exports.deleteTask = async (req, res) => {
   const { id } = req.params;
@@ -180,3 +166,122 @@ exports.deleteTask = async (req, res) => {
   await logActivity(req, PANEL, MODULE, "delete", { message: "Deleted successfully" }, true);
   return res.status(200).json({ status: true, message: "Task deleted successfully" });
 };
+
+// ✅ Add Comment for Free Trial
+// exports.addCommentForToDo = async (req, res) => {
+//   const payload = req.body;
+
+//   if (DEBUG) console.log("🎯 Add Comment Payload:", payload);
+
+//   // ✅ Validate request body
+//   const { isValid, error } = validateFormData(payload, {
+//     requiredFields: ["comment"], // comment is required
+//     optionalFields: ["commentType"],
+//   });
+
+//   if (!isValid) {
+//     await logActivity(req, PANEL, MODULE, "create", error, false);
+//     if (DEBUG) console.log("❌ Validation failed:", error);
+//     return res.status(400).json({ status: false, ...error });
+//   }
+
+//   try {
+//     // ✅ Use authenticated admin ID
+//     const commentBy = req.admin?.id || null;
+
+//     const result = await ToDoService.addCommentForToDo({
+//       commentBy,
+//       comment: payload.comment,
+//       commentType: payload.commentType || "to do",
+//     });
+
+//     if (!result.status) {
+//       await logActivity(req, PANEL, MODULE, "create", result, false);
+//       if (DEBUG) console.log("❌ Comment creation failed:", result.message);
+//       return res.status(400).json({ status: false, message: result.message });
+//     }
+
+//     // ✅ Log admin activity
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "create",
+//       { message: `Comment added for to do list` },
+//       true
+//     );
+//     if (DEBUG) console.log("📝 Activity logged successfully");
+
+//     // ✅ Notify admins
+//     const createdBy = req.admin?.firstName || "An admin";
+//     await createNotification(
+//       req,
+//       "New Comment",
+//       `${createdBy} added a comment for to do list.`,
+//       "Admins"
+//     );
+//     if (DEBUG) console.log("🔔 Notification created for admins");
+
+//     return res.status(201).json({
+//       status: true,
+//       message: "✅ Comment added successfully.",
+//       data: result.data,
+//     });
+//   } catch (error) {
+//     console.error("❌ Error adding comment:", error);
+
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "create",
+//       { error: error.message },
+//       false
+//     );
+
+//     return res.status(500).json({ status: false, message: "Server error." });
+//   }
+// };
+
+// exports.listCommentsForToDo = async (req, res) => {
+//   try {
+//     const commentType = req.query.commentType || "to do";
+
+//     const result = await ToDoService.listCommentsForToDo({
+//       commentType,
+//     });
+
+//     if (!result.status) {
+//       await logActivity(req, PANEL, MODULE, "list", result, false);
+//       return res.status(400).json({ status: false, message: result.message });
+//     }
+
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "list",
+//       { message: "Comments listed successfully" },
+//       true
+//     );
+
+//     return res.status(200).json({
+//       status: true,
+//       message: "✅ Comments fetched successfully",
+//       data: result.data,
+//     });
+//   } catch (error) {
+//     console.error("❌ Error listing comments:", error);
+
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "list",
+//       { error: error.message },
+//       false
+//     );
+
+//     return res.status(500).json({ status: false, message: "Server error." });
+//   }
+// };

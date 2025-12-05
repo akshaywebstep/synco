@@ -12,6 +12,12 @@ const ToDoList = sequelize.define(
     title: {
       type: DataTypes.STRING(200),
       allowNull: false,
+      
+    },
+    comment: {
+      type: DataTypes.STRING(200),
+      allowNull: true,
+      defaultValue:null,
     },
     description: {
       type: DataTypes.TEXT,
