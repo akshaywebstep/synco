@@ -21,9 +21,9 @@ exports.listTasks = async (createdBy) => {
     }
 
     try {
-        // Fetch all tasks for the user
+        // Fetch tasks
         const tasks = await ToDoList.findAll({
-            where: { createdBy: Number(createdBy) },
+            where: { created_by: Number(createdBy) },
             order: [
                 ["sort_order", "ASC"],
                 ["id", "DESC"]
@@ -39,36 +39,43 @@ exports.listTasks = async (createdBy) => {
             completed: [],
         };
 
-        // Collect all admin IDs (creator + assigned)
+        // Collect creator + assigned admin IDs
         const adminIdsSet = new Set();
+
         tasks.forEach(task => {
-            if (task.created_by) adminIdsSet.add(task.created_by);
+            // Creator ID (handles created_by or createdBy)
+            const creatorId = task.created_by ?? task.createdBy;
+            if (creatorId) adminIdsSet.add(Number(creatorId));
 
+            // Assigned admins
             let assigned = task.assignedAdmins || task.assigned_admins;
-
             if (typeof assigned === "string") {
                 try { assigned = JSON.parse(assigned.replace(/'/g, '"')); }
                 catch { assigned = []; }
             }
 
             if (!Array.isArray(assigned)) assigned = [];
-            assigned.forEach(id => adminIdsSet.add(id));
+            assigned.forEach(id => adminIdsSet.add(Number(id)));
         });
 
         const adminIds = Array.from(adminIdsSet);
 
-        // Fetch all admins
+        // Fetch all required admins
         const admins = await Admin.findAll({
             where: { id: adminIds },
-            attributes: ["id", "firstName", "lastName", "profile"], // make sure profile exists
+            attributes: ["id", "firstName", "lastName", "profile"],
             raw: true,
         });
 
-        // Map admins by ID
+        // Build admin map
         const adminMap = Object.fromEntries(
             admins.map(a => [
                 String(a.id),
-                { id: a.id, name: `${a.firstName} ${a.lastName}`.trim(), profile: a.profile || "/reportsIcons/Avatar.png" }
+                {
+                    id: a.id,
+                    name: `${a.firstName} ${a.lastName}`.trim(),
+                    profile: a.profile 
+                }
             ])
         );
 
@@ -77,13 +84,31 @@ exports.listTasks = async (createdBy) => {
             task.sortOrder = task.sort_order ?? 0;
             task.attachments = safeJson(task.attachments);
 
-            // Transform assignedAdmins to full objects
+            // Assigned admins → full objects
             const assignedIds = safeJson(task.assignedAdmins || task.assigned_admins) || [];
-            task.assignedAdmins = assignedIds.map(id => adminMap[id] || { id, name: "Unknown", profile: "/reportsIcons/Avatar.png" });
+            task.assignedAdmins = assignedIds.map(id => {
+                const key = String(id);
+                return adminMap[key] || {
+                    id,
+                    name: "Unknown",
+                    profile: "/reportsIcons/Avatar.png"
+                };
+            });
 
-            // Optional: still keep createdByDetails
-            task.createdByDetails = task.created_by ? (adminMap[String(task.created_by)] || {}) : {};
+            // Creator ID
+            const creatorId = task.created_by ?? task.createdBy;
+            const creatorKey = String(creatorId);
 
+            // CreatedByDetails → always match admin table
+            task.createdByDetails = adminMap[creatorKey]
+                ? adminMap[creatorKey]
+                : {
+                    id: creatorId,
+                    name: "Unknown",
+                    profile: "/reportsIcons/Avatar.png"
+                };
+
+            // Group by status
             const status = (task.status || "").toLowerCase();
             if (grouped[status]) grouped[status].push(task);
             else grouped.to_do.push(task);

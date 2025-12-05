@@ -1,9 +1,9 @@
-const { validateFormData } = require("../../../utils/validateFormData");
-const { logActivity } = require("../../../utils/admin/activityLogger");
+const { validateFormData } = require("../../../../utils/validateFormData");
+const { logActivity } = require("../../../../utils/admin/activityLogger");
 
-const RecruitmentLeadService = require("../../../services/admin/recruitment/coach/recruitmentLead");
-const { createNotification } = require("../../../utils/admin/notificationHelper");
-const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
+const RecruitmentLeadService = require("../../../../services/admin/recruitment/venueManager/vmRecruitmentLead");
+const { createNotification } = require("../../../../utils/admin/notificationHelper");
+const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -13,7 +13,7 @@ const MODULE = "recruitment-lead";
 // ✅ CREATE RECRUITMENT LEAD
 // ----------------------------------------
 
-exports.createRecruitmentLead = async (req, res) => {
+exports.createVmRecruitmentLead = async (req, res) => {
     if (DEBUG) console.log("▶️ Incoming Request Body:", req.body);
 
     const {
@@ -60,7 +60,7 @@ exports.createRecruitmentLead = async (req, res) => {
         // -------------------------------
         if (DEBUG) console.log("💾 Creating Recruitment Lead…");
 
-        const result = await RecruitmentLeadService.createRecruitmentLead({
+        const result = await RecruitmentLeadService.createRecruitmentVmLead({
             firstName,
             lastName,
             dob,
@@ -73,7 +73,7 @@ exports.createRecruitmentLead = async (req, res) => {
             status: "pending",
             level,
             createdBy: adminId,
-            appliedFor: "coach",
+            appliedFor: "venue manager",
         });
 
         if (DEBUG) console.log("💾 Create Service Result:", result);
@@ -113,7 +113,7 @@ exports.createRecruitmentLead = async (req, res) => {
     }
 };
 
-exports.getAllRecruitmentLead = async (req, res) => {
+exports.getAllVmRecruitmentLead = async (req, res) => {
   const adminId = req.admin?.id;
 
   if (!adminId) {
@@ -126,7 +126,7 @@ exports.getAllRecruitmentLead = async (req, res) => {
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
-    const result = await RecruitmentLeadService.getAllRecruitmentLead(superAdminId,); // ✅ pass adminId
+    const result = await RecruitmentLeadService.getAllVmRecruitmentLead(superAdminId,); // ✅ pass adminId
     await logActivity(req, PANEL, MODULE, "list", result, result.status);
     return res.status(result.status ? 200 : 500).json(result);
   } catch (error) {
@@ -143,7 +143,7 @@ exports.getAllRecruitmentLead = async (req, res) => {
   }
 };
 
-exports.getRecruitmentLeadById = async (req, res) => {
+exports.getVmRecruitmentLeadById = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id;
 
@@ -161,11 +161,11 @@ exports.getRecruitmentLeadById = async (req, res) => {
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
-    const result = await RecruitmentLeadService.getRecruitmentLeadById(id, superAdminId); // ✅ pass adminId
+    const result = await RecruitmentLeadService.getVmRecruitmentLeadById(id, superAdminId); // ✅ pass adminId
     await logActivity(req, PANEL, MODULE, "getById", result, result.status);
     return res.status(result.status ? 200 : 404).json(result);
   } catch (error) {
-    console.error("❌ Error in getRecruitmentLeadById:", error);
+    console.error("❌ Error in getVmRecruitmentLeadById:", error);
     await logActivity(
       req,
       PANEL,

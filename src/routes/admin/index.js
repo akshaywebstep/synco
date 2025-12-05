@@ -161,8 +161,11 @@ router.use("/holiday/to-do-list", require("./holidayCampsRoutes/holidayCampsToDo
 router.use("/folder", require("./holidayCampsRoutes/folderRoutes"));
 router.use("/folder", require("./holidayCampsRoutes/filesRoutes"));
 
-router.use("/recruitment", require("./recruitmentRoutes/recruitmentRoutes"));
-router.use("/candidate-profile", require("./recruitmentRoutes/candidateProfileRoutes"));
+router.use("/coach/recruitment", require("./recruitmentRoutes/coachRecruitmentRoutes"));
+router.use("/coach/candidate-profile", require("./recruitmentRoutes/coachCandidateProfileRoutes"));
+
+router.use("/venue-manager/recruitment/", require("./recruitmentRoutes/vmRecruitmentRoutes"));
+router.use("/venue-manager/candidate-profile", require("./recruitmentRoutes/vmCandidateProfileRoutes"));
 
 // Base: /api/admin/admin
 router.post(

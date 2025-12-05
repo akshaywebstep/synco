@@ -7,7 +7,7 @@ const {
   createRecruitmentLead,
   getAllRecruitmentLead,
   getRecruitmentLeadById,
-} = require("../../../controllers/admin/recruitment/recruitmentLeadController");
+} = require("../../../controllers/admin/recruitment/coach/recruitmentLeadController");
 
 router.post(
   "/create",

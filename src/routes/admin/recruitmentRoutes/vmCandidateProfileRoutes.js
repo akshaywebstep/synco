@@ -7,8 +7,8 @@ const multer = require("multer");
 const upload = multer({ storage: multer.memoryStorage() });
 
 const {
-    createCandidateProfile
-} = require("../../../controllers/admin/recruitment/candidateProfileController");
+    createVmCandidateProfile
+} = require("../../../controllers/admin/recruitment/venueManager/vmCandidateProfileController");
 
 router.post(
     "/create",
@@ -17,21 +17,7 @@ router.post(
     ]),
     authMiddleware,
     permissionMiddleware("candidate_profile", "create"),
-    createCandidateProfile
+    createVmCandidateProfile
 );
-
-// router.get(
-//   "/list",
-//   authMiddleware,
-//   permissionMiddleware("recruitment-lead", "view-listing"),
-//   getAllRecruitmentLead
-// );
-
-// router.get(
-//   "/listBy/:id",
-//   authMiddleware,
-//   permissionMiddleware("recruitment-lead", "view-listing"),
-//   getRecruitmentLeadById
-// );
 
 module.exports = router;

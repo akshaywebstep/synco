@@ -49,7 +49,7 @@ exports.getAllVmRecruitmentLead = async (adminId) => {
     const recruitmentLead = await RecruitmentLead.findAll({
       where: {
         createdBy: Number(adminId),
-        appliedFor: "coach"  // ⭐ static filter added here
+        appliedFor: "venue manager"  // ⭐ static filter added here
       },
 
       include: [
@@ -177,43 +177,127 @@ exports.getAllVmRecruitmentLead = async (adminId) => {
   }
 };
 
-exports.getRecruitmentLeadById = async (id, adminId) => {
+// exports.getVmRecruitmentLeadById = async (id, adminId) => {
+//   try {
+//     if (!adminId || isNaN(Number(adminId))) {
+//       return {
+//         status: false,
+//         message: "Invalid admin or super admin ID",
+//         data: [],
+//       };
+//     }
+
+//     const recruitmentLead = await RecruitmentLead.findOne({
+//       where: { id, createdBy: Number(adminId) },
+//       include: [
+//         { model: CandidateProfile, as: "candidateProfile" }
+//       ],
+//     });
+
+//     if (!recruitmentLead) {
+//       return { status: false, message: "recruitmentLead not found or unauthorized." };
+//     }
+
+//     const leadJson = recruitmentLead.toJSON();
+//     const profile = leadJson.candidateProfile;
+
+//     if (profile?.bookPracticalAssessment) {
+//       try {
+//         profile.bookPracticalAssessment = JSON.parse(profile.bookPracticalAssessment);
+
+//         for (let item of profile.bookPracticalAssessment) {
+
+//           const venue = await Venue.findByPk(item.venueId);
+//           const classInfo = await ClassSchedule.findByPk(item.classId);
+
+//           item.venue = venue ? venue.toJSON() : null;
+//           item.classDetails = classInfo ? classInfo.toJSON() : null;
+
+//           // Venue Manager
+//           if (item.assignToVenueManagerId) {
+//             const admin = await Admin.findByPk(item.assignToVenueManagerId, {
+//               attributes: ["id", "firstName", "lastName", "email"],
+//             });
+//             item.venueManager = admin ? admin.toJSON() : null;
+//           } else {
+//             item.venueManager = null;
+//           }
+//         }
+
+//       } catch (err) {
+//         profile.bookPracticalAssessment = [];
+//       }
+//     }
+
+//     // 🔥 Add telephone call score percentage
+//     leadJson.telephoneCallScorePercentage = calculateTelephoneCallScore(profile);
+
+//     return { status: true, data: leadJson };
+
+//   } catch (error) {
+//     return {
+//       status: false,
+//       message: "Get recruitmentLead failed. " + error.message,
+//     };
+//   }
+// };
+
+exports.getVmRecruitmentLeadById = async (id, adminId) => {
   try {
     if (!adminId || isNaN(Number(adminId))) {
       return {
         status: false,
         message: "Invalid admin or super admin ID",
-        data: [],
+        data: {},
       };
     }
 
     const recruitmentLead = await RecruitmentLead.findOne({
-      where: { id, createdBy: Number(adminId) },
+      where: { id }, // remove createdBy filter
+      attributes: [
+        "id",
+        "firstName",
+        "lastName",
+        "email",
+        "dob",
+        "age",
+        "phoneNumber",
+        "postcode",
+        "appliedFor",
+        "managementExperience",
+        "level",
+        "dbs",
+        "status",
+        "createdBy",
+      ],
       include: [
-        { model: CandidateProfile, as: "candidateProfile" }
+        {
+          model: CandidateProfile,
+          as: "candidateProfile",
+        },
       ],
     });
 
     if (!recruitmentLead) {
-      return { status: false, message: "recruitmentLead not found or unauthorized." };
+      return { status: false, message: "recruitmentLead not found or unauthorized.", data: {} };
     }
 
+    // Convert to JSON
     const leadJson = recruitmentLead.toJSON();
-    const profile = leadJson.candidateProfile;
+    const profile = leadJson.candidateProfile || {};
 
-    if (profile?.bookPracticalAssessment) {
+    // Parse bookPracticalAssessment if exists
+    if (profile.bookPracticalAssessment) {
       try {
         profile.bookPracticalAssessment = JSON.parse(profile.bookPracticalAssessment);
 
         for (let item of profile.bookPracticalAssessment) {
-
           const venue = await Venue.findByPk(item.venueId);
           const classInfo = await ClassSchedule.findByPk(item.classId);
 
           item.venue = venue ? venue.toJSON() : null;
           item.classDetails = classInfo ? classInfo.toJSON() : null;
 
-          // Venue Manager
           if (item.assignToVenueManagerId) {
             const admin = await Admin.findByPk(item.assignToVenueManagerId, {
               attributes: ["id", "firstName", "lastName", "email"],
@@ -223,21 +307,41 @@ exports.getRecruitmentLeadById = async (id, adminId) => {
             item.venueManager = null;
           }
         }
-
       } catch (err) {
         profile.bookPracticalAssessment = [];
       }
     }
 
-    // 🔥 Add telephone call score percentage
-    leadJson.telephoneCallScorePercentage = calculateTelephoneCallScore(profile);
+    // Calculate telephone call score
+    const telephoneCallScorePercentage = calculateTelephoneCallScore(profile);
 
-    return { status: true, data: leadJson };
-
+    // Return all attributes individually at top level
+    return {
+      status: true,
+      data: {
+        id: leadJson.id,
+        firstName: leadJson.firstName,
+        lastName: leadJson.lastName,
+        email: leadJson.email,
+        dob: leadJson.dob,
+        age: leadJson.age,
+        phoneNumber: leadJson.phoneNumber,
+        postcode: leadJson.postcode,
+        appliedFor: leadJson.appliedFor,
+        managementExperience: leadJson.managementExperience,
+        level: leadJson.level,
+        dbs: leadJson.dbs,
+        status: leadJson.status,
+        createdBy: leadJson.createdBy,
+        candidateProfile: profile,
+        telephoneCallScorePercentage,
+      },
+    };
   } catch (error) {
     return {
       status: false,
       message: "Get recruitmentLead failed. " + error.message,
+      data: {},
     };
   }
 };
