@@ -523,7 +523,6 @@ exports.updateHolidaySessionExercise = async (req, res) => {
     }
 
     // ✅ STEP 4: Decide which images to keep
-    // ✅ STEP 4: Decide which images to keep
     const existingImages = Array.isArray(existing.data.imageUrl)
       ? existing.data.imageUrl
       : JSON.parse(existing.data.imageUrl || "[]");

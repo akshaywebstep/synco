@@ -161,6 +161,9 @@ router.use("/holiday/to-do-list", require("./holidayCampsRoutes/holidayCampsToDo
 router.use("/folder", require("./holidayCampsRoutes/folderRoutes"));
 router.use("/folder", require("./holidayCampsRoutes/filesRoutes"));
 
+router.use("/recruitment", require("./recruitmentRoutes/recruitmentRoutes"));
+router.use("/candidate-profile", require("./recruitmentRoutes/candidateProfileRoutes"));
+
 // Base: /api/admin/admin
 router.post(
   "/",

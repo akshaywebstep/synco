@@ -124,6 +124,9 @@ const models = {
 
   Folder:require("./admin/holidayCamps/folder/Folder"),
   Files:require("./admin/holidayCamps/folder/Files"),
+
+  RecruitmentLead:require("./admin/recruitment/RecruitmentLead"),
+  CandidateProfile:require("./admin/recruitment/CandidateProfile"),
 };
 
 // =================== Apply Model-Level Associations =================== //
@@ -223,6 +226,9 @@ const {
 
   Folder,
   Files,
+
+  RecruitmentLead,
+  CandidateProfile,
 } = models;
 
 // Many-to-Many
@@ -472,6 +478,16 @@ HolidayCamp.hasMany(HolidayBooking, {
   as: "bookings"
 });
 
+RecruitmentLead.hasOne(CandidateProfile, {
+  foreignKey: "recruitmentLeadId",
+  as: "candidateProfile",
+});
+
+CandidateProfile.belongsTo(RecruitmentLead, {
+  foreignKey: "recruitmentLeadId",
+  as: "lead",
+});
+
 HolidayBooking.belongsTo(Admin, { foreignKey: 'bookedBy', as: 'bookedByAdmin' });
 
 // ====================== 📦 Module Exports ====================== //
@@ -572,4 +588,7 @@ module.exports = {
 
   Folder,
   Files,
+
+  RecruitmentLead,
+  CandidateProfile,
 };
