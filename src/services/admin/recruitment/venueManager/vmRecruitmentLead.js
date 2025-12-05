@@ -1,5 +1,8 @@
 const { RecruitmentLead, CandidateProfile, Venue, ClassSchedule, Admin } = require("../../../../models");
 const { Op } = require("sequelize");
+const { getEmailConfig } = require("../../../../services/email");
+const sendEmail = require("../../../../utils/email/sendEmail");
+const emailModel = require("../../../../services/email");
 
 exports.createRecruitmentVmLead = async (data) => {
   try {
@@ -343,5 +346,94 @@ exports.getVmRecruitmentLeadById = async (id, adminId) => {
       message: "Get recruitmentLead failed. " + error.message,
       data: {},
     };
+  }
+};
+
+exports.rejectRecruitmentStatusById = async (id, adminId) => {
+  try {
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "Invalid admin or super admin ID",
+      };
+    }
+
+    // Find recruitment lead
+    const recruitmentLead = await RecruitmentLead.findOne({
+      where: { id, createdBy: Number(adminId) },
+    });
+
+    if (!recruitmentLead) {
+      return {
+        status: false,
+        message: "Recruitment lead not found or unauthorized.",
+      };
+    }
+
+    // Update status
+    recruitmentLead.status = "rejected";
+    await recruitmentLead.save();
+
+    return {
+      status: true,
+      message: "Recruitment lead status updated to rejected.",
+      data: recruitmentLead.toJSON(),
+    };
+
+  } catch (error) {
+    console.error("❌ rejectRecruitmentStatusById Error:", error);
+    return {
+      status: false,
+      message: "Failed to reject recruitment lead. " + error.message,
+    };
+  }
+};
+
+exports.sendEmail = async ({ recruitmentLeadId, admin }) => {
+  try {
+    // 1️⃣ Fetch recruitment lead
+    const lead = await RecruitmentLead.findOne({
+      where: { id: recruitmentLeadId },
+      include: [{ model: CandidateProfile, as: "candidateProfile" }],
+    });
+
+    if (!lead) {
+      return { status: false, message: "Recruitment lead not found.", sentTo: [] };
+    }
+
+    if (!lead.email) {
+      return { status: false, message: "Candidate email not found.", sentTo: [] };
+    }
+
+    const candidateName = `${lead.firstName || ""} ${lead.lastName || ""}`.trim();
+    const adminName = `${admin?.firstName || "Admin"} ${admin?.lastName || ""}`.trim();
+
+    // 2️⃣ Load email template
+    const { status: configStatus, emailConfig, htmlTemplate, subject } =
+      await emailModel.getEmailConfig("admin", "candidate-profile-reject");
+
+    if (!configStatus || !htmlTemplate) {
+      return { status: false, message: "Email template not configured.", sentTo: [] };
+    }
+
+    // 3️⃣ Prepare email body
+    const htmlBody = htmlTemplate
+      .replace(/{{candidateName}}/g, candidateName)
+      .replace(/{{email}}/g, lead.email)
+      .replace(/{{applicationStatus}}/g, lead.status)
+      .replace(/{{adminName}}/g, adminName)
+      .replace(/{{year}}/g, new Date().getFullYear().toString());
+
+    // 4️⃣ Send email
+    await sendEmail(emailConfig, {
+      recipient: [{ name: candidateName, email: lead.email }],
+      subject: subject || "Candidate Profile Update",
+      htmlBody,
+    });
+
+    return { status: true, message: "Email sent successfully.", sentTo: [lead.email] };
+  } catch (err) {
+    console.error("❌ RecruitmentLeadService.sendEmail Error:", err);
+    return { status: false, message: "Failed to send email.", error: err.message, sentTo: [] };
   }
 };

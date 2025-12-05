@@ -191,7 +191,7 @@ exports.createVmCandidateProfile = async (req, res) => {
 
                     // 2️⃣ Fetch email template
                     const { status: configStatus, emailConfig, htmlTemplate, subject } =
-                        await emailModel.getEmailConfig(PANEL, "candidate-profile");
+                        await emailModel.getEmailConfig(PANEL, "candidate-profile-vm");
 
                     if (configStatus && htmlTemplate) {
                         const htmlBody = htmlTemplate
@@ -215,7 +215,7 @@ exports.createVmCandidateProfile = async (req, res) => {
 
                         console.log(`📧 Qualification email sent to recruitment lead: ${leadEmail}`);
                     } else {
-                        console.warn("⚠️ Email template not found for 'candidate-profile'");
+                        console.warn("⚠️ Email template not found for 'candidate-profile-vm'");
                     }
                 }
             } catch (emailErr) {

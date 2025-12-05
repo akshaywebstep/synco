@@ -8,7 +8,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 const {
     createCandidateProfile
-} = require("../../../controllers/admin/recruitment/coach/candidateProfileController");
+} = require("../../../controllers/admin/recruitment/coach/coachCandidateProfileController");
 
 router.post(
     "/create",
@@ -19,6 +19,5 @@ router.post(
     permissionMiddleware("candidate_profile", "create"),
     createCandidateProfile
 );
-
 
 module.exports = router;

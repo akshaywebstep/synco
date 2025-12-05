@@ -16,7 +16,7 @@ router.post(
         { name: "uploadCv", maxCount: 1 }
     ]),
     authMiddleware,
-    permissionMiddleware("candidate_profile", "create"),
+    permissionMiddleware("candidate_profile-venue-manager", "create"),
     createVmCandidateProfile
 );
 

@@ -1,7 +1,7 @@
 const { validateFormData } = require("../../../../utils/validateFormData");
 const { logActivity } = require("../../../../utils/admin/activityLogger");
 
-const RecruitmentLeadService = require("../../../../services/admin/recruitment/coach/recruitmentLead");
+const RecruitmentLeadService = require("../../../../services/admin/recruitment/coach/coachRecruitmentLead");
 const { createNotification } = require("../../../../utils/admin/notificationHelper");
 const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
 
@@ -175,5 +175,101 @@ exports.getRecruitmentLeadById = async (req, res) => {
       false
     );
     return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
+
+exports.rejectRecruitmentLeadStatus = async (req, res) => {
+  const { id } = req.params;  // recruitment lead id
+  const adminId = req.admin?.id;
+
+  if (!id) {
+    return res.status(400).json({ status: false, message: "Recruitment Lead ID is required." });
+  }
+
+  if (!adminId) {
+    return res
+      .status(401)
+      .json({ status: false, message: "Unauthorized. Admin ID missing." });
+  }
+
+  try {
+    // -----------------------------------
+    // 🔧 SERVICE CALL
+    // -----------------------------------
+    const result = await RecruitmentLeadService.rejectRecruitmentStatusById(id, adminId);
+
+    // Log Activity
+    await logActivity(req, PANEL, MODULE, "reject", result, result.status);
+
+    return res.status(result.status ? 200 : 400).json(result);
+
+  } catch (error) {
+    console.error("❌ Error in rejectRecruitmentLeadStatus:", error);
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "reject",
+      { oneLineMessage: error.message },
+      false
+    );
+
+    return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
+
+exports.sendEmail = async (req, res) => {
+  const { recruitmentLeadId } = req.body;
+
+  if (!Array.isArray(recruitmentLeadId) || recruitmentLeadId.length === 0) {
+    return res.status(400).json({
+      status: false,
+      message: "recruitmentLeadId (array) is required",
+    });
+  }
+
+  try {
+    const results = await Promise.all(
+      recruitmentLeadId.map(async (leadId) => {
+        const result = await RecruitmentLeadService.sendEmail({
+          recruitmentLeadId: leadId,
+          admin: req.admin,
+        });
+
+        await logActivity(
+          req,
+          PANEL,
+          MODULE,
+          "send",
+          { message: `Email attempt for recruitmentLeadId ${leadId}: ${result.message}` },
+          result.status
+        );
+
+        return { recruitmentLeadId: leadId, ...result };
+      })
+    );
+
+    const allSentTo = results.flatMap((r) => r.sentTo || []);
+
+    return res.status(200).json({
+      status: true,
+      message: `Emails send candidate(s)`,
+      results,
+      sentTo: allSentTo,
+    });
+  } catch (error) {
+    console.error("❌ Controller Send Email Error:", error);
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "send",
+      { error: error.message },
+      false
+    );
+
+    return res.status(500).json({ status: false, message: "Server error" });
   }
 };

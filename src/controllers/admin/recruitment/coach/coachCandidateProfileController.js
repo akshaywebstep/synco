@@ -1,6 +1,6 @@
 const { validateFormData } = require("../../../../utils/validateFormData");
 const { logActivity } = require("../../../../utils/admin/activityLogger");
-const CandidateProfileService = require("../../../../services/admin/recruitment/coach/candidateProfile");
+const CandidateProfileService = require("../../../../services/admin/recruitment/coach/coachCandidateProfile");
 const { createNotification } = require("../../../../utils/admin/notificationHelper");
 const { getEmailConfig } = require("../../../../services/email");
 const sendEmail = require("../../../../utils/email/sendEmail");
@@ -182,7 +182,7 @@ exports.createCandidateProfile = async (req, res) => {
                     emailConfig,
                     htmlTemplate,
                     subject
-                } = await emailModel.getEmailConfig(PANEL, "candidate-profile-qualified");
+                } = await emailModel.getEmailConfig(PANEL, "candidate-profile-coach");
 
                 if (configStatus && htmlTemplate) {
 
@@ -206,7 +206,7 @@ exports.createCandidateProfile = async (req, res) => {
 
                     console.log(`📧 Qualification email sent to ${telephoneCallSetupEmail}`);
                 } else {
-                    console.warn("⚠️ Email template not found for 'candidate-profile-qualified'");
+                    console.warn("⚠️ Email template not found for 'candidate-profile-coach'");
                 }
             } catch (emailErr) {
                 console.error("❌ Error sending qualification email:", emailErr.message);
