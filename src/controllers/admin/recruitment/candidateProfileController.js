@@ -1,6 +1,6 @@
 const { validateFormData } = require("../../../utils/validateFormData");
 const { logActivity } = require("../../../utils/admin/activityLogger");
-const CandidateProfileService = require("../../../services/admin/recruitment/candidateProfile");
+const CandidateProfileService = require("../../../services/admin/recruitment/coach/candidateProfile");
 const { createNotification } = require("../../../utils/admin/notificationHelper");
 const { getEmailConfig } = require("../../../services/email");
 const sendEmail = require("../../../utils/email/sendEmail");

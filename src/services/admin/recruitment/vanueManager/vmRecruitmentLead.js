@@ -1,18 +1,18 @@
-const { RecruitmentLead, CandidateProfile, Venue, ClassSchedule, Admin } = require("../../../models");
+const { RecruitmentLead, CandidateProfile, Venue, ClassSchedule, Admin } = require("../../../../models");
 const { Op } = require("sequelize");
 
-exports.createRecruitmentLead = async (data) => {
+exports.createRecruitmentVmLead = async (data) => {
   try {
     data.status = "pending";
     if (process.env.DEBUG === "true") {
       console.log("▶️ Data passed to model:", data);
     }
 
-    const recruitmentLead = await RecruitmentLead.create(data);
+    const recruitmentVmLead = await RecruitmentLead.create(data);
 
-    return { status: true, data: recruitmentLead.get({ plain: true }) };
+    return { status: true, data: recruitmentVmLead.get({ plain: true }) };
   } catch (error) {
-    console.error("❌ Error creating recruitmentLead:", error);
+    console.error("❌ Error creating createRecruitmentVmLead:", error);
     return { status: false, message: error.message };
   }
 };
@@ -36,7 +36,7 @@ function calculateTelephoneCallScore(profile) {
 }
 
 // ✅ GET ALL - by admin
-exports.getAllRecruitmentLead = async (adminId) => {
+exports.getAllVmRecruitmentLead = async (adminId) => {
   try {
     if (!adminId || isNaN(Number(adminId))) {
       return {
@@ -172,7 +172,7 @@ exports.getAllRecruitmentLead = async (adminId) => {
   } catch (error) {
     return {
       status: false,
-      message: "Fetch recruitmentLead failed. " + error.message,
+      message: "Fetch getAllVmRecruitmentLead failed. " + error.message,
     };
   }
 };

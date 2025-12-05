@@ -166,10 +166,11 @@ exports.updateSortOrder = async (sortOrderArray) => {
         let order = 1;
 
         for (let taskId of sortOrderArray) {
-            await ToDoList.update(
-                { sort_order: order },
+            const [updatedRows] = await ToDoList.update(
+                { sortOrder: order }, // use model field name
                 { where: { id: Number(taskId) } }
             );
+            console.log(`Task ID ${taskId} updated rows: ${updatedRows}`);
             order++;
         }
 

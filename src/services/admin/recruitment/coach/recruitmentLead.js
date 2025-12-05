@@ -1,18 +1,18 @@
-const { RecruitmentLead, CandidateProfile, Venue, ClassSchedule, Admin } = require("../../../models");
+const { RecruitmentLead, CandidateProfile, Venue, ClassSchedule, Admin } = require("../../../../models");
 const { Op } = require("sequelize");
 
-exports.createRecruitmentVmLead = async (data) => {
+exports.createRecruitmentLead = async (data) => {
   try {
     data.status = "pending";
     if (process.env.DEBUG === "true") {
       console.log("▶️ Data passed to model:", data);
     }
 
-    const recruitmentVmLead = await RecruitmentLead.create(data);
+    const recruitmentLead = await RecruitmentLead.create(data);
 
-    return { status: true, data: recruitmentVmLead.get({ plain: true }) };
+    return { status: true, data: recruitmentLead.get({ plain: true }) };
   } catch (error) {
-    console.error("❌ Error creating createRecruitmentVmLead:", error);
+    console.error("❌ Error creating recruitmentLead:", error);
     return { status: false, message: error.message };
   }
 };

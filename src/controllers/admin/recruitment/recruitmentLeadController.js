@@ -1,7 +1,7 @@
 const { validateFormData } = require("../../../utils/validateFormData");
 const { logActivity } = require("../../../utils/admin/activityLogger");
 
-const RecruitmentLeadService = require("../../../services/admin/recruitment/recruitmentLead");
+const RecruitmentLeadService = require("../../../services/admin/recruitment/coach/recruitmentLead");
 const { createNotification } = require("../../../utils/admin/notificationHelper");
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 

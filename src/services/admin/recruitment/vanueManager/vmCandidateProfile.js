@@ -1,7 +1,7 @@
-const { CandidateProfile, RecruitmentLead } = require("../../../models");
+const { CandidateProfile, RecruitmentLead } = require("../../../../models");
 const { Op } = require("sequelize");
 
-exports.createCandidateProfile = async (data) => {
+exports.createVmCandidateProfile = async (data) => {
     try {
         // Always set CandidateProfile status
         data.status = "recruited";
@@ -23,7 +23,7 @@ exports.createCandidateProfile = async (data) => {
 
         return { status: true, data: candidateProfile.get({ plain: true }) };
     } catch (error) {
-        console.error("❌ Error creating createCandidateProfile:", error);
+        console.error("❌ Error creating createVmCandidateProfile:", error);
         return { status: false, message: error.message };
     }
 };
