@@ -14,6 +14,7 @@ const {
     listFoldersWithFiles,
     deleteSingleFileUrl,
     getFolderWithFilesById,
+    downloadFile,
 } = require("../../../controllers/admin/holidayCamps/folder/filesController");
 
 // ➕ Upload Files
@@ -45,6 +46,13 @@ router.delete(
     authMiddleware,
     permissionMiddleware("file", "view-listing"),
     deleteSingleFileUrl
+);
+
+router.get(
+    "/download/:fileId",
+    authMiddleware,
+    permissionMiddleware("file", "view-listing"),
+    downloadFile
 );
 
 module.exports = router;

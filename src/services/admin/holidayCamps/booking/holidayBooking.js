@@ -26,7 +26,7 @@ const {
   getStripePaymentDetails,
 } = require("../../../../controllers/test/payment/stripe/stripeController");
 const sendEmail = require("../../../../utils/email/sendEmail");
-
+const moment = require("moment");
 const debug = require("debug")("service:comments");
 
 const DEBUG = process.env.DEBUG === "true";
@@ -1322,7 +1322,7 @@ exports.waitingListCreate = async (data, adminId) => {
   }
 };
 
-exports.holidayCampsReports = async (superAdminId, adminId) => {
+exports.holidayCampsReports = async (superAdminId, adminId, filterType) => {
   try {
     //----------------------------------------
     // ACCESS CONTROL (same as getHolidayBooking)
@@ -1354,6 +1354,34 @@ exports.holidayCampsReports = async (superAdminId, adminId) => {
       whereBooking.bookedBy = adminId;
     }
 
+    // 🗓️ Dynamic date filter
+    let startDate, endDate;
+
+    if (filterType === "thisMonth") {
+      startDate = moment().startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+    } else if (filterType === "lastMonth") {
+      startDate = moment().subtract(1, "month").startOf("month").toDate();
+      endDate = moment().subtract(1, "month").endOf("month").toDate();
+    } else if (filterType === "last3Months") {
+      startDate = moment().subtract(3, "months").startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+    } else if (filterType === "last6Months") {
+      startDate = moment().subtract(6, "months").startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+    } else {
+      throw new Error("Invalid filterType. Use thisMonth | lastMonth | last3Months | last6Months");
+    }
+
+    const dateFilter = {
+      createdAt: {
+        [Op.between]: [startDate, endDate]
+      }
+    };
+    const allowed = Array.isArray(whereBooking.bookedBy?.[Op.in])
+      ? whereBooking.bookedBy[Op.in]
+      : [whereBooking.bookedBy];
+
     //----------------------------------------
     // Date ranges
     //----------------------------------------
@@ -1373,7 +1401,10 @@ exports.holidayCampsReports = async (superAdminId, adminId) => {
               model: HolidayBooking,
               as: "booking",
               attributes: [],
-              where: whereBooking,
+              where: {
+                ...whereBooking,
+                ...dateFilter
+              }
             }
           ]
         })
@@ -1382,40 +1413,40 @@ exports.holidayCampsReports = async (superAdminId, adminId) => {
 
     const revenueThisMonthRow = await sequelize.query(
       `
-      SELECT IFNULL(SUM(hbp.amount),0) AS revenue
-      FROM holiday_booking hb
-      LEFT JOIN holiday_booking_payments hbp ON hbp.holiday_booking_id = hb.id
-      WHERE hb.bookedBy IN(:allowed)
-      AND hb.createdAt >= :startThis AND hb.createdAt <= :now
-      `,
+  SELECT IFNULL(SUM(hbp.amount),0) AS revenue
+  FROM holiday_booking hb
+  LEFT JOIN holiday_booking_payments hbp ON hbp.holiday_booking_id = hb.id
+  WHERE hb.bookedBy IN(:allowed)
+  AND hb.createdAt BETWEEN :startDate AND :endDate
+  `,
       {
         type: sequelize.QueryTypes.SELECT,
         replacements: {
           allowed: Array.isArray(whereBooking.bookedBy?.[Op.in])
             ? whereBooking.bookedBy[Op.in]
             : [whereBooking.bookedBy],
-          startThis: startOfThisMonth,
-          now,
+          startDate,
+          endDate
         }
       }
     );
 
     const revenueLastMonthRow = await sequelize.query(
       `
-      SELECT IFNULL(SUM(hbp.amount),0) AS revenue
-      FROM holiday_booking hb
-      LEFT JOIN holiday_booking_payments hbp ON hbp.holiday_booking_id = hb.id
-      WHERE hb.bookedBy IN(:allowed)
-      AND hb.createdAt >= :startLast AND hb.createdAt <= :endLast
-      `,
+  SELECT IFNULL(SUM(hbp.amount),0) AS revenue
+  FROM holiday_booking hb
+  LEFT JOIN holiday_booking_payments hbp ON hbp.holiday_booking_id = hb.id
+  WHERE hb.bookedBy IN(:allowed)
+  AND hb.createdAt BETWEEN :startDate AND :endDate
+  `,
       {
         type: sequelize.QueryTypes.SELECT,
         replacements: {
           allowed: Array.isArray(whereBooking.bookedBy?.[Op.in])
             ? whereBooking.bookedBy[Op.in]
             : [whereBooking.bookedBy],
-          startLast: startOfLastMonth,
-          endLast: endOfLastMonth,
+          startDate,
+          endDate
         }
       }
     );
@@ -1439,7 +1470,8 @@ exports.holidayCampsReports = async (superAdminId, adminId) => {
         [sequelize.fn("SUM", sequelize.col("totalStudents")), "studentsCount"],
         [sequelize.fn("COUNT", sequelize.col("HolidayBooking.id")), "bookingCount"],
       ],
-      where: whereBooking,
+      where: { ...whereBooking, ...dateFilter },
+
       group: ["holidayCampId"],
       raw: true,
     });
@@ -1455,11 +1487,8 @@ exports.holidayCampsReports = async (superAdminId, adminId) => {
       `,
       {
         type: sequelize.QueryTypes.SELECT,
-        replacements: {
-          allowed: Array.isArray(whereBooking.bookedBy?.[Op.in])
-            ? whereBooking.bookedBy[Op.in]
-            : [whereBooking.bookedBy],
-        }
+        replacements: { allowed, startDate, endDate }
+
       }
     );
 
@@ -1667,11 +1696,8 @@ exports.holidayCampsReports = async (superAdminId, adminId) => {
       `,
       {
         type: sequelize.QueryTypes.SELECT,
-        replacements: {
-          allowed: Array.isArray(whereBooking.bookedBy?.[Op.in])
-            ? whereBooking.bookedBy[Op.in]
-            : [whereBooking.bookedBy],
-        }
+        replacements: { allowed, startDate, endDate }
+
       }
     );
 
@@ -1700,51 +1726,71 @@ exports.holidayCampsReports = async (superAdminId, adminId) => {
     });
 
     // ----------------------------
-    // 8) CAMP GROWTH PER CAMP
+    // 8) REGISTERATION PER CAMP GROWTH AND REVENUE
     // ----------------------------
     const growthPerCampRows = await sequelize.query(
       `
-        SELECT
-          hb.holidayCampId AS holidayCampId,
-          SUM(CASE WHEN hb.createdAt >= :startThis AND hb.createdAt <= :now THEN IFNULL(hbp.amount,0) ELSE 0 END) AS revenueThisMonth,
-          SUM(CASE WHEN hb.createdAt >= :startLast AND hb.createdAt <= :endLast THEN IFNULL(hbp.amount,0) ELSE 0 END) AS revenueLastMonth
-        FROM holiday_booking hb
-        LEFT JOIN holiday_booking_payments hbp ON hbp.holiday_booking_id = hb.id
-        WHERE hb.status='active'
-        AND hb.bookedBy IN(:allowed)
-        GROUP BY hb.holidayCampId
-      `,
+    SELECT
+      hc.id AS holidayCampId,
+      hv.name AS venueName,
+
+      SUM(
+  CASE WHEN hb.createdAt BETWEEN :startDate AND :endDate
+  THEN IFNULL(hbp.amount, 0) 
+  ELSE 0 
+  END
+) AS revenueThisMonth,
+
+SUM(
+  CASE WHEN hb.createdAt BETWEEN :startDate AND :endDate
+  THEN IFNULL(hbp.amount, 0) 
+  ELSE 0 
+  END
+) AS revenueLastMonth
+
+    FROM holiday_camp hc
+    JOIN holiday_booking hb ON hb.holidayCampId = hc.id
+    JOIN holiday_venues hv ON hv.id = hb.venueId
+    LEFT JOIN holiday_booking_payments hbp 
+      ON hbp.holiday_booking_id = hb.id
+
+    WHERE hb.status = 'active'
+      AND hb.bookedBy IN(:allowed)
+
+    GROUP BY hc.id, hv.name
+  `,
       {
         type: sequelize.QueryTypes.SELECT,
         replacements: {
-          allowed: Array.isArray(whereBooking.bookedBy?.[Op.in])
-            ? whereBooking.bookedBy[Op.in]
-            : [whereBooking.bookedBy],
-          startThis: startOfThisMonth,
-          now,
-          startLast: startOfLastMonth,
-          endLast: endOfLastMonth,
-        },
+          allowed,     // define as shown earlier
+          startDate,
+          endDate
+        }
+
       }
     );
 
-    const campGrowth = growthPerCampRows.map(r => {
+    const growth = [];
+    const revenue = [];
+
+    growthPerCampRows.forEach(r => {
       const last = Number(r.revenueLastMonth || 0);
       const cur = Number(r.revenueThisMonth || 0);
 
-      let growthPercent;
-      if (last === 0) {
-        growthPercent = cur === 0 ? 0 : 100; // or you can set growthPercent = cur if you prefer
-      } else {
-        growthPercent = Number((((cur - last) / last) * 100).toFixed(2));
-      }
+      const growthPercent =
+        last === 0 ? (cur === 0 ? 0 : 100) : Number((((cur - last) / last) * 100).toFixed(2));
 
-      return {
+      growth.push({
         holidayCampId: r.holidayCampId,
-        revenueThisMonth: Number(cur.toFixed(2)),
-        revenueLastMonth: Number(last.toFixed(2)),
-        growthPercent,
-      };
+        venueName: r.venueName,
+        growthPercent
+      });
+
+      revenue.push({
+        holidayCampId: r.holidayCampId,
+        venueName: r.venueName,
+        growthPercent
+      });
     });
 
     // ----------------------------
@@ -1974,12 +2020,11 @@ exports.holidayCampsReports = async (superAdminId, adminId) => {
         // ---------- CAMPS REGISTRATION ----------
         campsRegistration: campsRegistration,
         // ---------- CAMP GROWTH ----------
-        campGrowth: campGrowth.map(c => ({
-          holidayCampId: c.holidayCampId,
-          revenueThisMonth: c.revenueThisMonth,
-          revenueLastMonth: c.revenueLastMonth,
-          growthPercent: c.growthPercent,
-        })),
+
+        registeration_perCamp_growth_and_venue: {
+          growth,
+          revenue
+        },
 
         // ---------- ENROLLED STUDENTS ----------
         enrolledStudents: {

@@ -273,3 +273,61 @@ exports.sendEmail = async (req, res) => {
     return res.status(500).json({ status: false, message: "Server error" });
   }
 };
+
+exports.getAllRecruitmentLeadRport = async (req, res) => {
+  try {
+    const adminId = req.admin?.id;
+
+    if (!adminId) {
+      return res.status(401).json({
+        status: false,
+        message: "Unauthorized. Admin ID missing.",
+      });
+    }
+
+    // 🔍 Get parent super admin
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    if (!superAdminId) {
+      return res.status(400).json({
+        status: false,
+        message: "Super admin not found for this admin.",
+      });
+    }
+
+    // 📌 Service call
+    const result = await RecruitmentLeadService.getAllRecruitmentLeadRport(
+      superAdminId
+    );
+
+    // 📝 Activity Log
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { superAdminId },
+      result.status
+    );
+
+    return res.status(result.status ? 200 : 400).json(result);
+
+  } catch (error) {
+    console.error("❌ Controller Error getAllRecruitmentLeadRport:", error);
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { oneLineMessage: error.message },
+      false
+    );
+
+    return res.status(500).json({
+      status: false,
+      message: "Server error while fetching recruitment report.",
+    });
+  }
+};

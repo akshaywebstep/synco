@@ -148,3 +148,59 @@ exports.deleteSingleFileUrl = async ({ file_id, urlToDelete, deletedBy }) => {
         };
     }
 };
+
+exports.downloadFileById = async (fileId) => {
+    try {
+        if (!fileId || isNaN(Number(fileId))) {
+            return {
+                status: false,
+                message: "No valid file ID found for this request.",
+                data: null,
+            };
+        }
+
+        const file = await Files.findOne({
+            where: { id: Number(fileId) },
+            attributes: ["id", "uploadFiles", "createdAt"],
+        });
+
+        if (!file) {
+            return {
+                status: false,
+                message: "File not found.",
+                data: null,
+            };
+        }
+
+        let uploadFiles = file.uploadFiles;
+
+        // FIX: uploadFiles is stored as a STRING → parse it
+        if (typeof uploadFiles === "string") {
+            uploadFiles = JSON.parse(uploadFiles);
+        }
+
+        if (!uploadFiles || uploadFiles.length === 0) {
+            return {
+                status: false,
+                message: "No uploaded file found for this entry.",
+                data: null,
+            };
+        }
+
+        return {
+            status: true,
+            message: "File fetched successfully.",
+            data: {
+                id: file.id,
+                fileUrl: uploadFiles[0],     // first file
+                createdAt: file.createdAt,
+            },
+        };
+
+    } catch (error) {
+        return {
+            status: false,
+            message: `Unable to fetch file. ${error.message}`,
+        };
+    }
+};

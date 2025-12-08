@@ -273,3 +273,58 @@ exports.sendEmail = async (req, res) => {
     return res.status(500).json({ status: false, message: "Server error" });
   }
 };
+
+exports.sendOfferEmail = async (req, res) => {
+  const { recruitmentLeadId } = req.body;
+
+  if (!Array.isArray(recruitmentLeadId) || recruitmentLeadId.length === 0) {
+    return res.status(400).json({
+      status: false,
+      message: "recruitmentLeadId (array) is required",
+    });
+  }
+
+  try {
+    const results = await Promise.all(
+      recruitmentLeadId.map(async (leadId) => {
+        const result = await RecruitmentLeadService.sendOfferEmail({
+          recruitmentLeadId: leadId,
+          admin: req.admin,
+        });
+
+        await logActivity(
+          req,
+          PANEL,
+          MODULE,
+          "send",
+          { message: `Email attempt for recruitmentLeadId ${leadId}: ${result.message}` },
+          result.status
+        );
+
+        return { recruitmentLeadId: leadId, ...result };
+      })
+    );
+
+    const allSentTo = results.flatMap((r) => r.sentTo || []);
+
+    return res.status(200).json({
+      status: true,
+      message: `Emails send candidate(s)`,
+      results,
+      sentTo: allSentTo,
+    });
+  } catch (error) {
+    console.error("❌ Controller Send Email Error:", error);
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "send",
+      { error: error.message },
+      false
+    );
+
+    return res.status(500).json({ status: false, message: "Server error" });
+  }
+};

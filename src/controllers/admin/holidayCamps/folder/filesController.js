@@ -188,88 +188,88 @@ exports.listFoldersWithFiles = async (req, res) => {
 
         const folders = foldersResult.data;
 
-       const foldersWithFiles = await Promise.all(
-    folders.map(async folder => {
-
-        if (DEBUG) {
-            console.log(`\n\n==============================`);
-            console.log(`📁 Processing Folder ID: ${folder.id} | Name: ${folder.name}`);
-            console.log(`==============================`);
-        }
-
-        const filesResult = await FilesService.listFiles({
-            page: 1,
-            limit: 1000,
-            folder_id: folder.id
-        });
-
-        if (DEBUG) {
-            console.log(`📄 FilesService.listFiles Result for folder ${folder.id}:`, filesResult);
-        }
-
-        const files = filesResult.status ? filesResult.data : [];
-
-        if (DEBUG) {
-            console.log(`📦 Total file records inside folder ${folder.id}: ${files.length}`);
-        }
-
-        // ------------------------------------------------------
-        // 🟩 TOTAL FILES = number of file URLs
-        // ------------------------------------------------------
-        const totalFiles = files.reduce((sum, file) => {
-            if (DEBUG) {
-                console.log(
-                    `➡️ File ID: ${file.id} has ${file.uploadFiles.length} uploaded files`
-                );
-            }
-            return sum + file.uploadFiles.length;
-        }, 0);
-
-        if (DEBUG) {
-            console.log(`📊 Total upload files count inside folder ${folder.id}: ${totalFiles}`);
-        }
-
-        // ------------------------------------------------------
-        // 🟩 TOTAL SPACE USED (real URL sizes)
-        // ------------------------------------------------------
-        let totalBytes = 0;
-
-        for (const file of files) {
-            for (const upload of file.uploadFiles) {
-                if (DEBUG) {
-                    console.log(`🔗 Checking file size for URL: ${upload.url}`);
-                }
-
-                const size = await getFileSizeFromUrl(upload.url);
+        const foldersWithFiles = await Promise.all(
+            folders.map(async folder => {
 
                 if (DEBUG) {
-                    console.log(`📏 Size for URL: ${upload.url} = ${size} bytes`);
+                    console.log(`\n\n==============================`);
+                    console.log(`📁 Processing Folder ID: ${folder.id} | Name: ${folder.name}`);
+                    console.log(`==============================`);
                 }
 
-                totalBytes += size;
-            }
-        }
+                const filesResult = await FilesService.listFiles({
+                    page: 1,
+                    limit: 1000,
+                    folder_id: folder.id
+                });
 
-        if (DEBUG) {
-            console.log(`📐 Total bytes for folder ${folder.id}: ${totalBytes}`);
-        }
+                if (DEBUG) {
+                    console.log(`📄 FilesService.listFiles Result for folder ${folder.id}:`, filesResult);
+                }
 
-        // Convert bytes → MB
-        const totalSpaceUsed = `${(totalBytes / (1024 * 1024)).toFixed(2)}mb`;
+                const files = filesResult.status ? filesResult.data : [];
 
-        if (DEBUG) {
-            console.log(`💾 Total space used in folder ${folder.id}: ${totalSpaceUsed}`);
-        }
+                if (DEBUG) {
+                    console.log(`📦 Total file records inside folder ${folder.id}: ${files.length}`);
+                }
 
-        return {
-            id: folder.id,
-            name: folder.name,
-            totalFiles,
-            totalSpaceUsed,
-            files
-        };
-    })
-);
+                // ------------------------------------------------------
+                // 🟩 TOTAL FILES = number of file URLs
+                // ------------------------------------------------------
+                const totalFiles = files.reduce((sum, file) => {
+                    if (DEBUG) {
+                        console.log(
+                            `➡️ File ID: ${file.id} has ${file.uploadFiles.length} uploaded files`
+                        );
+                    }
+                    return sum + file.uploadFiles.length;
+                }, 0);
+
+                if (DEBUG) {
+                    console.log(`📊 Total upload files count inside folder ${folder.id}: ${totalFiles}`);
+                }
+
+                // ------------------------------------------------------
+                // 🟩 TOTAL SPACE USED (real URL sizes)
+                // ------------------------------------------------------
+                let totalBytes = 0;
+
+                for (const file of files) {
+                    for (const upload of file.uploadFiles) {
+                        if (DEBUG) {
+                            console.log(`🔗 Checking file size for URL: ${upload.url}`);
+                        }
+
+                        const size = await getFileSizeFromUrl(upload.url);
+
+                        if (DEBUG) {
+                            console.log(`📏 Size for URL: ${upload.url} = ${size} bytes`);
+                        }
+
+                        totalBytes += size;
+                    }
+                }
+
+                if (DEBUG) {
+                    console.log(`📐 Total bytes for folder ${folder.id}: ${totalBytes}`);
+                }
+
+                // Convert bytes → MB
+                const totalSpaceUsed = `${(totalBytes / (1024 * 1024)).toFixed(2)}mb`;
+
+                if (DEBUG) {
+                    console.log(`💾 Total space used in folder ${folder.id}: ${totalSpaceUsed}`);
+                }
+
+                return {
+                    id: folder.id,
+                    name: folder.name,
+                    totalFiles,
+                    totalSpaceUsed,
+                    files
+                };
+            })
+        );
 
         return res.status(200).json({
             status: true,
@@ -461,6 +461,72 @@ exports.deleteSingleFileUrl = async (req, res) => {
         return res.status(500).json({
             status: false,
             message: "Server error while deleting file URL.",
+        });
+    }
+};
+
+exports.downloadFile = async (req, res) => {
+    const { fileId } = req.params;
+
+    if (DEBUG) {
+        console.log("\n================ DOWNLOAD FILE ================");
+        console.log("📥 Incoming Download Request");
+        console.log("🆔 fileId:", fileId);
+    }
+
+    if (!fileId) {
+        return res.status(400).json({
+            status: false,
+            message: "fileId is required.",
+        });
+    }
+
+    try {
+        const result = await FilesService.downloadFileById(fileId);
+
+        if (DEBUG) {
+            console.log("📤 Service Response:", result);
+        }
+
+        // Log action
+        await logActivity(
+            req,
+            PANEL,
+            MODULE,
+            "downloadFile",
+            { fileId },
+            result.status
+        );
+
+        if (!result.status) {
+            return res.status(400).json(result);
+        }
+
+        const { fileUrl } = result.data;
+
+        if (DEBUG) {
+            console.log("🌐 Redirecting To File URL:", fileUrl);
+        }
+
+        if (!fileUrl) {
+            return res.status(400).json({
+                status: false,
+                message: "File URL missing.",
+            });
+        }
+
+        // ✅ BEST PRACTICE FOR EXTERNAL FILES:
+        // Redirect user to file for direct download
+        return res.redirect(fileUrl);
+
+    } catch (error) {
+        console.error("❌ Download File Error:", error);
+
+        await logActivity(req, PANEL, MODULE, "downloadFile", error, false);
+
+        return res.status(500).json({
+            status: false,
+            message: "Server error while downloading file.",
         });
     }
 };

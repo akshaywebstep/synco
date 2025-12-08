@@ -848,10 +848,10 @@ exports.waitingListCreate = async (req, res) => {
 
 exports.getHolidayCampsReports = async (req, res) => {
   const adminId = req.admin?.id;
-
+  const { filterType = "thisMonth" } = req.query;
   try {
     // Validate admin
-   // Validate admin
+    // Validate admin
     if (!adminId) {
       return res.status(401).json({
         success: false,
@@ -859,14 +859,15 @@ exports.getHolidayCampsReports = async (req, res) => {
       });
     }
 
-  // 🔹 Identify super admin
+    // 🔹 Identify super admin
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
     const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
 
     // ---- Call the Service ----
     const report = await holidayBookingService.holidayCampsReports(
       superAdminId,
-      adminId
+      adminId,
+      filterType
     );
 
     if (!report.success) {

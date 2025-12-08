@@ -36,13 +36,7 @@ const RecruitmentLead = sequelize.define(
         postcode: { type: DataTypes.STRING, allowNull: true },
 
         managementExperience: {
-            type: DataTypes.ENUM(
-                "1 year",
-                "2 years",
-                "3 years",
-                "4 years",
-                "5 years"
-            ),
+            type: DataTypes.STRING, 
             allowNull: true,
         },
 

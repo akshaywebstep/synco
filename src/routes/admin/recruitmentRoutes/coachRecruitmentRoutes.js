@@ -9,6 +9,7 @@ const {
   getRecruitmentLeadById,
   rejectRecruitmentLeadStatus,
   sendEmail,
+  getAllRecruitmentLeadRport,
 } = require("../../../controllers/admin/recruitment/coach/coachRecruitmentLeadController");
 
 router.post(
@@ -44,6 +45,13 @@ router.post(
   authMiddleware,
   permissionMiddleware("recruitment-lead", "view-listing"),
   sendEmail
+);
+
+router.get(
+  "/report/",
+  authMiddleware,
+  permissionMiddleware("recruitment-lead", "view-listing"),
+  getAllRecruitmentLeadRport
 );
 
 module.exports = router;

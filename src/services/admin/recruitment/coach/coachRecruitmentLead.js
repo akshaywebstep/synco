@@ -332,3 +332,154 @@ exports.sendEmail = async ({ recruitmentLeadId, admin }) => {
     return { status: false, message: "Failed to send email.", error: err.message, sentTo: [] };
   }
 };
+
+exports.getAllRecruitmentLeadRport = async (adminId) => {
+  try {
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "Invalid admin or super admin ID",
+        data: [],
+      };
+    }
+
+    // Fetch full coach recruitment list
+    const recruitmentLead = await RecruitmentLead.findAll({
+      where: {
+        createdBy: Number(adminId),
+        appliedFor: "coach"
+      },
+      include: [
+        { model: CandidateProfile, as: "candidateProfile" }
+      ],
+      order: [["createdAt", "DESC"]],
+    });
+
+    // Get current & previous month range
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+    const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+
+    // Count helpers
+    const counters = {
+      thisMonth: {
+        totalLeads: 0,
+        telephoneCalls: 0,
+        practicalAssessments: 0,
+        hires: 0
+      },
+      lastMonth: {
+        totalLeads: 0,
+        telephoneCalls: 0,
+        practicalAssessments: 0,
+        hires: 0
+      }
+    };
+
+    for (const lead of recruitmentLead) {
+
+      const leadMonth = new Date(lead.createdAt).getMonth();
+      const leadYear = new Date(lead.createdAt).getFullYear();
+      const profile = lead.candidateProfile;
+
+      const bucket =
+        leadMonth === currentMonth && leadYear === currentYear
+          ? counters.thisMonth
+          : leadMonth === lastMonth && leadYear === lastMonthYear
+            ? counters.lastMonth
+            : null;
+
+      if (!bucket) continue;
+
+      // ============================
+      // TOTAL LEADS (status = pending)
+      // ============================
+      if (lead.status === "pending") {
+        bucket.totalLeads++;
+      }
+
+      // ============================
+      // TELEPHONE INTERVIEW COUNT
+      // ============================
+      if (
+        profile &&
+        profile.telephoneCallSetupDate &&
+        profile.telephoneCallSetupTime
+      ) {
+        bucket.telephoneCalls++;
+      }
+
+      // ============================
+      // PRACTICAL ASSESSMENT COUNT
+      // ============================
+      if (
+        profile &&
+        profile.bookPracticalAssessment &&
+        Array.isArray(profile.bookPracticalAssessment) &&
+        profile.bookPracticalAssessment.length > 0
+      ) {
+        bucket.practicalAssessments++;
+      }
+
+      // ============================
+      // HIRES (status = recruited)
+      // ============================
+      if (lead.status === "recruited") {
+        bucket.hires++;
+      }
+    }
+
+    // ============================
+    // CONVERSION RATE CALCULATION
+    // ============================
+    const conversionRate = {
+      thisMonth:
+        counters.thisMonth.totalLeads > 0
+          ? ((counters.thisMonth.hires / counters.thisMonth.totalLeads) * 100).toFixed(0)
+          : 0,
+      lastMonth:
+        counters.lastMonth.totalLeads > 0
+          ? ((counters.lastMonth.hires / counters.lastMonth.totalLeads) * 100).toFixed(0)
+          : 0
+    };
+
+    return {
+      status: true,
+      message: "Recruitment report fetched successfully.",
+      data: {
+        report: {
+          totalLeads: {
+            current: counters.thisMonth.totalLeads,
+            previous: counters.lastMonth.totalLeads
+          },
+          telephoneInterviews: {
+            current: counters.thisMonth.telephoneCalls,
+            previous: counters.lastMonth.telephoneCalls
+          },
+          practicalAssessments: {
+            current: counters.thisMonth.practicalAssessments,
+            previous: counters.lastMonth.practicalAssessments
+          },
+          hires: {
+            current: counters.thisMonth.hires,
+            previous: counters.lastMonth.hires
+          },
+          conversionRate: {
+            current: conversionRate.thisMonth + "%",
+            previous: conversionRate.lastMonth + "%"
+          }
+        }
+      }
+
+    };
+
+  } catch (error) {
+    return {
+      status: false,
+      message: "Fetch recruitmentLead failed. " + error.message,
+    };
+  }
+};
