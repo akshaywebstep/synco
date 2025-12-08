@@ -167,6 +167,9 @@ router.use("/coach/candidate-profile", require("./recruitmentRoutes/coachCandida
 router.use("/venue-manager/recruitment/", require("./recruitmentRoutes/vmRecruitmentRoutes"));
 router.use("/venue-manager/candidate-profile", require("./recruitmentRoutes/vmCandidateProfileRoutes"));
 
+router.use("/franchise/recruitment/", require("./recruitmentRoutes/franchiseRecruitmentRoutes"));
+router.use("/franchise/candidate-profile", require("./recruitmentRoutes/franchiseCandidateProfileRoutes"));
+
 // Base: /api/admin/admin
 router.post(
   "/",

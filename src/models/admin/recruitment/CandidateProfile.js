@@ -51,6 +51,20 @@ const CandidateProfile = sequelize.define(
             ] 
             */
         },
+        discoveryDay: {
+            type: DataTypes.JSON,
+            allowNull: true
+            /*
+            [
+            {date,time}]
+
+            */
+        },
+        location: { type: DataTypes.STRING, allowNull: true },
+
+        capitalAvailable: {
+            type: DataTypes.STRING, allowNull: true
+        },
 
         result: { type: DataTypes.STRING, allowNull: true },
     },

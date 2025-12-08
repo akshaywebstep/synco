@@ -49,3 +49,40 @@ exports.getAllFolders = async (adminId) => {
         };
     }
 };
+
+exports.getFolderById = async (folderId) => {
+    try {
+        if (!folderId || isNaN(Number(folderId))) {
+            return {
+                status: false,
+                message: "No valid folder ID found for this request.",
+                data: null,
+            };
+        }
+
+        const folder = await Folder.findOne({
+            where: { id: Number(folderId) },
+            attributes: ["id", "name", "createdBy", "createdAt", "updatedAt"],
+        });
+
+        if (!folder) {
+            return {
+                status: false,
+                message: "Folder not found.",
+                data: null,
+            };
+        }
+
+        return {
+            status: true,
+            message: "Folder fetched successfully.",
+            data: folder,
+        };
+
+    } catch (error) {
+        return {
+            status: false,
+            message: `Unable to fetch folder. ${error.message}`,
+        };
+    }
+};

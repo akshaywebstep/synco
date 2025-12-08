@@ -13,6 +13,7 @@ const {
     createFiles,
     listFoldersWithFiles,
     deleteSingleFileUrl,
+    getFolderWithFilesById,
 } = require("../../../controllers/admin/holidayCamps/folder/filesController");
 
 // ➕ Upload Files
@@ -30,6 +31,13 @@ router.get(
     authMiddleware,
     permissionMiddleware("file", "view-listing"),
     listFoldersWithFiles
+);
+
+router.get(
+    "/list/uploadFiles/:id",
+    authMiddleware,
+    permissionMiddleware("file", "view-listing"),
+    getFolderWithFilesById
 );
 
 router.delete(

@@ -286,6 +286,134 @@ exports.listFoldersWithFiles = async (req, res) => {
     }
 };
 
+exports.getFolderWithFilesById = async (req, res) => {
+    const adminId = req.admin?.id;
+    const folderId = req.params?.id;
+
+    try {
+        if (!folderId || isNaN(Number(folderId))) {
+            return res.status(400).json({
+                status: false,
+                message: "Invalid folder ID.",
+            });
+        }
+
+        // ------------------------------------------------------
+        // 🟦 Get Super Admin of main admin (same as listFoldersWithFiles)
+        // ------------------------------------------------------
+        const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+        const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+        // ------------------------------------------------------
+        // 🟦 Get folder details
+        // ------------------------------------------------------
+        const folderResult = await FolderService.getFolderById(folderId);
+
+        if (!folderResult.status) {
+            return res.status(404).json({
+                status: false,
+                message: folderResult.message,
+            });
+        }
+
+        const folder = folderResult.data;
+
+        if (DEBUG) {
+            console.log(`\n\n==============================`);
+            console.log(`📁 Fetching Single Folder ID: ${folder.id} | Name: ${folder.name}`);
+            console.log(`==============================`);
+        }
+
+        // ------------------------------------------------------
+        // 🟦 Fetch files for this folder
+        // ------------------------------------------------------
+        const filesResult = await FilesService.listFiles({
+            page: 1,
+            limit: 1000,
+            folder_id: folder.id
+        });
+
+        if (DEBUG) {
+            console.log(`📄 FilesService.listFiles Result for folder ${folder.id}:`, filesResult);
+        }
+
+        const files = filesResult.status ? filesResult.data : [];
+
+        if (DEBUG) {
+            console.log(`📦 Total file records inside folder ${folder.id}: ${files.length}`);
+        }
+
+        // ------------------------------------------------------
+        // 🟩 TOTAL FILES = number of uploaded file URLs
+        // ------------------------------------------------------
+        const totalFiles = files.reduce((sum, file) => {
+            if (DEBUG) {
+                console.log(
+                    `➡️ File ID: ${file.id} has ${file.uploadFiles.length} uploaded files`
+                );
+            }
+            return sum + file.uploadFiles.length;
+        }, 0);
+
+        if (DEBUG) {
+            console.log(`📊 Total upload files count inside folder ${folder.id}: ${totalFiles}`);
+        }
+
+        // ------------------------------------------------------
+        // 🟩 TOTAL STORAGE SPACE USED
+        // ------------------------------------------------------
+        let totalBytes = 0;
+
+        for (const file of files) {
+            for (const upload of file.uploadFiles) {
+                if (DEBUG) {
+                    console.log(`🔗 Checking file size for URL: ${upload.url}`);
+                }
+
+                const size = await getFileSizeFromUrl(upload.url);
+
+                if (DEBUG) {
+                    console.log(`📏 Size for URL: ${upload.url} = ${size} bytes`);
+                }
+
+                totalBytes += size;
+            }
+        }
+
+        if (DEBUG) {
+            console.log(`📐 Total bytes for folder ${folder.id}: ${totalBytes}`);
+        }
+
+        const totalSpaceUsed = `${(totalBytes / (1024 * 1024)).toFixed(2)}mb`;
+
+        if (DEBUG) {
+            console.log(`💾 Total space used in folder ${folder.id}: ${totalSpaceUsed}`);
+        }
+
+        // ------------------------------------------------------
+        // 🟩 Final Response
+        // ------------------------------------------------------
+        return res.status(200).json({
+            status: true,
+            message: "Folder fetched successfully.",
+            data: {
+                id: folder.id,
+                name: folder.name,
+                totalFiles,
+                totalSpaceUsed,
+                files
+            }
+        });
+
+    } catch (error) {
+        console.error("❌ Get Folder With Files Error:", error);
+        return res.status(500).json({
+            status: false,
+            message: "Server error while fetching folder.",
+        });
+    }
+};
+
 exports.deleteSingleFileUrl = async (req, res) => {
     const { file_id, url } = req.body;
 
