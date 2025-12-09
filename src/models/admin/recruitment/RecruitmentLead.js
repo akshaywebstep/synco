@@ -15,6 +15,9 @@ const RecruitmentLead = sequelize.define(
         lastName: { type: DataTypes.STRING, allowNull: false },
         dob: { type: DataTypes.DATEONLY, allowNull: true },
         age: { type: DataTypes.INTEGER, allowNull: true },
+        gender: {
+            type: DataTypes.STRING, allowNull:false,
+        },
 
         email: {
             type: DataTypes.STRING,

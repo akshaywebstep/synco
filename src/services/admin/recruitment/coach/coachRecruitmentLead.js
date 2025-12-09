@@ -343,7 +343,6 @@ exports.getAllRecruitmentLeadRport = async (adminId) => {
       };
     }
 
-    // Fetch full coach recruitment list
     const recruitmentLead = await RecruitmentLead.findAll({
       where: {
         createdBy: Number(adminId),
@@ -355,36 +354,66 @@ exports.getAllRecruitmentLeadRport = async (adminId) => {
       order: [["createdAt", "DESC"]],
     });
 
-    // Get current & previous month range
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
-
     const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
     const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
 
-    // Count helpers
-    const counters = {
-      thisMonth: {
-        totalLeads: 0,
-        telephoneCalls: 0,
-        practicalAssessments: 0,
-        hires: 0
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    const chartData = {
+      leads: {
+        currentYear: Object.fromEntries(monthNames.map(m => [m, 0])),
+        lastYear: Object.fromEntries(monthNames.map(m => [m, 0]))
       },
-      lastMonth: {
-        totalLeads: 0,
-        telephoneCalls: 0,
-        practicalAssessments: 0,
-        hires: 0
+      hires: {
+        currentYear: Object.fromEntries(monthNames.map(m => [m, 0])),
+        lastYear: Object.fromEntries(monthNames.map(m => [m, 0]))
       }
     };
 
-    for (const lead of recruitmentLead) {
+    const counters = {
+      thisMonth: { totalLeads: 0, telephoneCalls: 0, practicalAssessments: 0, hires: 0 },
+      lastMonth: { totalLeads: 0, telephoneCalls: 0, practicalAssessments: 0, hires: 0 }
+    };
+    const qualificationStats = {
+      faQualification: 0,
+      dbsCertificate: 0,
+      coachingExperience: 0,
+      noExperience: 0
+    };
 
-      const leadMonth = new Date(lead.createdAt).getMonth();
-      const leadYear = new Date(lead.createdAt).getFullYear();
+    // ========= DEMOGRAPHICS ===========
+    const ageCount = {};
+    const genderCount = { Male: 0, Female: 0, Others: 0 };
+    // Normalize gender
+    let g = (recruitmentLead.gender || "Others").toString().trim().toLowerCase();
+
+    if (g === "male" || g === "m") g = "Male";
+    else if (g === "female" || g === "f") g = "Female";
+    else g = "Others";
+
+    genderCount[g] = (genderCount[g] || 0) + 1;
+
+    const venueCount = {};
+    let totalCallScore = 0;
+    let totalCallMax = 0;
+    let totalPracticalScore = 0;
+    let totalPracticalMax = 0;
+    let totalPracticalLeadsWithAssessment = 0;
+    const leadSourceCount = {};
+    const venueDemandCount = {};
+    const topAgentCount = {};
+
+    for (const lead of recruitmentLead) {
+      const created = new Date(lead.createdAt);
+      const leadMonth = created.getMonth();
+      const leadYear = created.getFullYear();
+      const monthName = monthNames[leadMonth];
       const profile = lead.candidateProfile;
 
+      // ========== THIS MONTH & LAST MONTH =============
       const bucket =
         leadMonth === currentMonth && leadYear === currentYear
           ? counters.thisMonth
@@ -392,88 +421,256 @@ exports.getAllRecruitmentLeadRport = async (adminId) => {
             ? counters.lastMonth
             : null;
 
-      if (!bucket) continue;
+      if (bucket) {
+        if (lead.status === "pending") bucket.totalLeads++;
 
-      // ============================
-      // TOTAL LEADS (status = pending)
-      // ============================
+        if (profile?.telephoneCallSetupDate && profile?.telephoneCallSetupTime)
+          bucket.telephoneCalls++;
+
+        let booked = profile?.bookPracticalAssessment;
+        if (typeof booked === "string") {
+          try { booked = JSON.parse(booked); } catch { booked = []; }
+        }
+        if (lead.status === "recruited" && Array.isArray(booked))
+          bucket.practicalAssessments += booked.length;
+
+        if (lead.status === "recruited") bucket.hires++;
+      }
+
+      // ========== MONTHLY CHART DATA ==========
       if (lead.status === "pending") {
-        bucket.totalLeads++;
+        if (leadYear === currentYear) chartData.leads.currentYear[monthName]++;
+        if (leadYear === currentYear - 1) chartData.leads.lastYear[monthName]++;
       }
 
-      // ============================
-      // TELEPHONE INTERVIEW COUNT
-      // ============================
-      if (
-        profile &&
-        profile.telephoneCallSetupDate &&
-        profile.telephoneCallSetupTime
-      ) {
-        bucket.telephoneCalls++;
-      }
-
-      // ============================
-      // PRACTICAL ASSESSMENT COUNT
-      // ============================
-      if (
-        profile &&
-        profile.bookPracticalAssessment &&
-        Array.isArray(profile.bookPracticalAssessment) &&
-        profile.bookPracticalAssessment.length > 0
-      ) {
-        bucket.practicalAssessments++;
-      }
-
-      // ============================
-      // HIRES (status = recruited)
-      // ============================
       if (lead.status === "recruited") {
-        bucket.hires++;
+        if (leadYear === currentYear) chartData.hires.currentYear[monthName]++;
+        if (leadYear === currentYear - 1) chartData.hires.lastYear[monthName]++;
       }
-    }
 
-    // ============================
-    // CONVERSION RATE CALCULATION
-    // ============================
-    const conversionRate = {
-      thisMonth:
-        counters.thisMonth.totalLeads > 0
-          ? ((counters.thisMonth.hires / counters.thisMonth.totalLeads) * 100).toFixed(0)
-          : 0,
-      lastMonth:
-        counters.lastMonth.totalLeads > 0
-          ? ((counters.lastMonth.hires / counters.lastMonth.totalLeads) * 100).toFixed(0)
-          : 0
+      // ========== DEMOGRAPHICS ==========
+      // AGE
+      if (lead.age) {
+        ageCount[lead.age] = (ageCount[lead.age] || 0) + 1;
+      }
+
+      // GENDER
+      const g = lead.gender || "Others";
+      genderCount[g] = (genderCount[g] || 0) + 1;
+
+      // VENUE
+      let booked = profile?.bookPracticalAssessment;
+      if (typeof booked === "string") {
+        try { booked = JSON.parse(booked); } catch { booked = []; }
+      }
+
+      if (Array.isArray(booked)) {
+        for (const b of booked) {
+          const venueId = b?.venueId;
+          if (venueId) venueCount[venueId] = (venueCount[venueId] || 0) + 1;
+        }
+      }
+
+      // === QUALIFICATIONS & EXPERIENCE ===
+      if (lead.level === "yes") {
+        qualificationStats.faQualification++;
+      }
+
+      if (lead.dbs === "yes") {
+        qualificationStats.dbsCertificate++;
+      }
+
+      if (lead.managementExperience === "yes") {
+        qualificationStats.coachingExperience++;
+      } else if (lead.managementExperience === "no") {
+        qualificationStats.noExperience++;
+      }
+      // const totalLeads = recruitmentLead.length;
+
+      // === ONBOARDING RESULTS
+      if (profile) {
+        const skills = [
+          profile.telePhoneCallDeliveryCommunicationSkill,
+          profile.telePhoneCallDeliveryPassionCoaching,
+          profile.telePhoneCallDeliveryExperience,
+          profile.telePhoneCallDeliveryKnowledgeOfSSS
+        ];
+
+        const validSkills = skills.filter(s => typeof s === "number");
+        if (validSkills.length > 0) {
+          totalCallScore += validSkills.reduce((a, b) => a + b, 0);
+          totalCallMax += validSkills.length * 5; // max score per skill = 5
+        }
+      }
+      if (typeof booked === "string") {
+        try { booked = JSON.parse(booked); } catch { booked = []; }
+      }
+      if (Array.isArray(booked) && booked.length > 0) {
+        totalPracticalLeadsWithAssessment++; // increment counter
+      }
+
+      // === SOURCE COUNT 
+      if (lead.candidateProfile) { // candidateProfile exists
+        const source = lead.candidateProfile.howDidYouHear?.trim();
+        if (source) {
+          leadSourceCount[source] = (leadSourceCount[source] || 0) + 1;
+        } else {
+          leadSourceCount["Other"] = (leadSourceCount["Other"] || 0) + 1;
+        }
+      }
+
+      // == HIGH DEMAND VENUE
+      if (lead.candidateProfile) {
+        let booked = lead.candidateProfile.bookPracticalAssessment;
+
+        // Parse if string
+        if (typeof booked === "string") {
+          try { booked = JSON.parse(booked); } catch { booked = []; }
+        }
+
+        if (Array.isArray(booked)) {
+          for (const b of booked) {
+            const venueId = b?.venueId;
+            if (venueId) {
+              venueDemandCount[venueId] = (venueDemandCount[venueId] || 0) + 1;
+            }
+          }
+        }
+      }
+
+      if (lead.status === "recruited") {
+        const agentId = lead.createdBy;
+        if (!topAgentCount[agentId]) {
+          topAgentCount[agentId] = {
+            totalHires: 0,
+            firstName: lead.firstName || "",
+            lastName: lead.lastName || ""
+          };
+        }
+        topAgentCount[agentId].totalHires++;
+      }
+
+    }
+    const totalLeads = recruitmentLead.length;
+    const averageCallGrade = totalCallMax > 0 ? Math.round((totalCallScore / totalCallMax) * 100) : 0;
+    const averagePracticalGrade = totalLeads > 0
+      ? Math.round((totalPracticalLeadsWithAssessment / totalLeads) * 100)
+      : 0;
+
+    const byLeadSource = Object.keys(leadSourceCount).map(source => ({
+      source,
+      count: leadSourceCount[source],
+      percent: totalLeads > 0
+        ? ((leadSourceCount[source] / totalLeads) * 100).toFixed(0) + "%"
+        : "0%"
+    }));
+
+    const averageCoachEducationPassMark = averageCallGrade;
+    // ========= CONVERT DEMOGRAPHICS TO COUNT + PERCENT =========
+
+    // AGE
+    const byAge = Object.keys(ageCount).map(age => ({
+      age: Number(age),
+      count: ageCount[age],
+      percent: ((ageCount[age] / totalLeads) * 100).toFixed(0) + "%"
+    }));
+
+    // GENDER
+    const byGender = Object.keys(genderCount).map(g => ({
+      gender: g,
+      count: genderCount[g],
+      percent: ((genderCount[g] / totalLeads) * 100).toFixed(0) + "%"
+    }));
+
+    // VENUE (with venue name)
+    const venues = await Venue.findAll();
+    const byVenue = Object.keys(venueCount).map(id => {
+      const venue = venues.find(v => v.id == id);
+      return {
+        venueName: venue ? venue.name : "Unknown",
+        count: venueCount[id],
+        percent: ((venueCount[id] / totalLeads) * 100).toFixed(0) + "%"
+      };
+    });
+
+    const highDemandVenues = Object.keys(venueDemandCount).map(id => {
+      const venue = venues.find(v => v.id == id);
+      return {
+        venueName: venue ? venue.name : "Unknown",
+        count: venueDemandCount[id],
+        percent: totalLeads > 0
+          ? ((venueDemandCount[id] / totalLeads) * 100).toFixed(0) + "%"
+          : "0%"
+      };
+    });
+
+    const topAgents = Object.keys(topAgentCount)
+      .map(agentId => ({
+        agentId,
+        firstName: topAgentCount[agentId].firstName,
+        lastName: topAgentCount[agentId].lastName,
+        totalHires: topAgentCount[agentId].totalHires
+      }))
+      .sort((a, b) => b.totalHires - a.totalHires); // highest hires first
+
+    // ========= MAIN REPORT =========
+    const calcRate = (value, total) =>
+      total > 0 ? ((value / total) * 100).toFixed(0) + "%" : "0%";
+
+    const report = {
+      totalLeads: {
+        current: counters.thisMonth.totalLeads,
+        previous: counters.lastMonth.totalLeads,
+        conversionRate: calcRate(counters.thisMonth.totalLeads, counters.thisMonth.totalLeads)
+      },
+      telephoneInterviews: {
+        current: counters.thisMonth.telephoneCalls,
+        previous: counters.lastMonth.telephoneCalls,
+        conversionRate: calcRate(counters.thisMonth.telephoneCalls, counters.thisMonth.totalLeads)
+      },
+      practicalAssessments: {
+        current: counters.thisMonth.practicalAssessments,
+        previous: counters.lastMonth.practicalAssessments,
+        conversionRate: calcRate(counters.thisMonth.practicalAssessments, counters.thisMonth.totalLeads)
+      },
+      hires: {
+        current: counters.thisMonth.hires,
+        previous: counters.lastMonth.hires,
+        conversionRate: calcRate(counters.thisMonth.hires, counters.thisMonth.totalLeads)
+      },
+      conversionRate: {
+        current: calcRate(counters.thisMonth.hires, counters.thisMonth.totalLeads),
+        previous: calcRate(counters.lastMonth.hires, counters.lastMonth.totalLeads)
+      }
+
     };
 
     return {
       status: true,
       message: "Recruitment report fetched successfully.",
       data: {
-        report: {
-          totalLeads: {
-            current: counters.thisMonth.totalLeads,
-            previous: counters.lastMonth.totalLeads
-          },
-          telephoneInterviews: {
-            current: counters.thisMonth.telephoneCalls,
-            previous: counters.lastMonth.telephoneCalls
-          },
-          practicalAssessments: {
-            current: counters.thisMonth.practicalAssessments,
-            previous: counters.lastMonth.practicalAssessments
-          },
-          hires: {
-            current: counters.thisMonth.hires,
-            previous: counters.lastMonth.hires
-          },
-          conversionRate: {
-            current: conversionRate.thisMonth + "%",
-            previous: conversionRate.lastMonth + "%"
-          }
-        }
+        report,
+        chartData,
+        demographics: {
+          byAge,
+          byGender,
+          byVenue
+        },
+        qualifications: {
+          faQualification: qualificationStats.faQualification,
+          dbsCertificate: qualificationStats.dbsCertificate,
+          coachingExperience: qualificationStats.coachingExperience,
+          noExperience: qualificationStats.noExperience
+        },
+        onboardingResults: {
+          averageCallGrade: averageCallGrade + "%",
+          averagePracticalAssessmentGrade: averagePracticalGrade + "%",
+          averageCoachEducationPassMark: averageCoachEducationPassMark + "%"
+        },
+        sourceOfLeads: byLeadSource,
+        highDemandVenues,
+        topAgents ,
       }
-
     };
 
   } catch (error) {
