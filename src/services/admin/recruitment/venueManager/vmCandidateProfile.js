@@ -21,7 +21,11 @@ exports.createVmCandidateProfile = async (data) => {
             );
         }
 
-        return { status: true, data: candidateProfile.get({ plain: true }) };
+        return {
+            status: true,
+            message: "Candidate Profile Created Successfully",
+            data: candidateProfile.get({ plain: true })
+        };
     } catch (error) {
         console.error("❌ Error creating createVmCandidateProfile:", error);
         return { status: false, message: error.message };

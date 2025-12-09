@@ -21,7 +21,11 @@ exports.createCandidateProfile = async (data) => {
             );
         }
 
-        return { status: true, data: candidateProfile.get({ plain: true }) };
+        return {
+            status: true,
+            message: "Candidate Profile Created",
+            data: candidateProfile.get({ plain: true })
+        };
     } catch (error) {
         console.error("❌ Error creating createCandidateProfile:", error);
         return { status: false, message: error.message };

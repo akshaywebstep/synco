@@ -10,12 +10,13 @@ const {
   rejectFranchiseRecruitmentStatusById,
   sendEmail,
   sendOfferEmail,
+  getAllFranchiseRecruitmentLeadRport,
 } = require("../../../controllers/admin/recruitment/franchise/franchiseRecruitmentLeadController");
 
 router.post(
   "/create",
   authMiddleware,
-  permissionMiddleware("recruitment-lead-franchise-franchise", "create"),
+  permissionMiddleware("recruitment-lead-franchise", "create"),
   createRecruitmentFranchiseLead
 );
 
@@ -52,6 +53,13 @@ router.post(
   authMiddleware,
   permissionMiddleware("recruitment-lead-franchise", "view-listing"),
   sendOfferEmail
+);
+
+router.get(
+  "/report/",
+  authMiddleware,
+  permissionMiddleware("recruitment-lead-franchise", "view-listing"),
+  getAllFranchiseRecruitmentLeadRport
 );
 
 module.exports = router;

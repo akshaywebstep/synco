@@ -12,7 +12,9 @@ exports.createRecruitmentLead = async (data) => {
 
     const recruitmentLead = await RecruitmentLead.create(data);
 
-    return { status: true, data: recruitmentLead.get({ plain: true }) };
+    return { status: true,
+      message: "Recuitment Lead Created Succesfully",
+       data: recruitmentLead.get({ plain: true }) };
   } catch (error) {
     console.error("❌ Error creating recruitmentLead:", error);
     return { status: false, message: error.message };
@@ -146,6 +148,7 @@ exports.getAllRecruitmentLead = async (adminId) => {
     const totalApplicationsPercent = totalApplications > 0 ? "100%" : "0%";
     return {
       status: true,
+      message: "Recuitment Lead and  Succesfully",
       totals: [
         {
           name: "totalApplications",

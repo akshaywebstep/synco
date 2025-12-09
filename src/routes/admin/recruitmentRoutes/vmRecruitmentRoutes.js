@@ -9,6 +9,7 @@ const {
   getVmRecruitmentLeadById,
   rejectRecruitmentLeadStatus,
   sendEmail,
+  getAllVmRecruitmentLeadRport,
 } = require("../../../controllers/admin/recruitment/venueManager/vmRecruitmentLeadController");
 
 router.post(
@@ -44,6 +45,13 @@ router.post(
   authMiddleware,
   permissionMiddleware("recruitment-coach-lead-venue-manager", "view-listing"),
   sendEmail
+);
+
+router.get(
+  "/report/",
+  authMiddleware,
+  permissionMiddleware("recruitment-coach-lead-venue-manager", "view-listing"),
+  getAllVmRecruitmentLeadRport
 );
 
 module.exports = router;
