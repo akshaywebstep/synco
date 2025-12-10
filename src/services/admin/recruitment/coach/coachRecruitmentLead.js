@@ -270,7 +270,21 @@ exports.rejectRecruitmentStatusById = async (id, adminId) => {
       };
     }
 
-    // Update status
+    // ------------------------------------------
+    // 🔍 NEW CHECK: Candidate profile must exist
+    // ------------------------------------------
+    const candidateProfile = await CandidateProfile.findOne({
+      where: { recruitmentLeadId: recruitmentLead.id },
+    });
+
+    if (!candidateProfile) {
+      return {
+        status: false,
+        message: "Cannot reject. Candidate profile does not exist.",
+      };
+    }
+
+    // Update status to rejected
     recruitmentLead.status = "rejected";
     await recruitmentLead.save();
 

@@ -863,6 +863,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
           "removed",
           "attended",
           "not attended",
+          "expired",
         ], // only these statuses
       },
     };
