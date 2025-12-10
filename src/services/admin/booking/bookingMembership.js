@@ -234,7 +234,6 @@ exports.createBooking = async (data, options) => {
         classScheduleId: data.classScheduleId,
         startDate: data.startDate || null,
         serviceType: "weekly class membership",
-        // keyInformation: data.keyInformation || null,
         bookingType: data.paymentPlanId ? "paid" : "free",
         paymentPlanId: data.paymentPlanId || null,
         status: data.status || "active",

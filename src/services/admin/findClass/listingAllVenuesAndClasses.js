@@ -176,12 +176,13 @@ exports.getAllVenuesWithClasses = async ({
           return null;
         }
 
+        // ---------- PAYMENT GROUPS ----------
         const paymentGroups =
           venue.paymentGroupId != null
             ? await PaymentGroup.findAll({
               where: {
                 id: venue.paymentGroupId,
-                createdBy: Number(createdBy) // ✅ filter by super admin
+                createdBy: Number(createdBy),
               },
               include: [
                 {
@@ -204,10 +205,11 @@ exports.getAllVenuesWithClasses = async ({
             })
             : [];
 
+        // ---------- PARSE TERM GROUP IDS ----------
         let termGroupIds = [];
         if (typeof venue.termGroupId === "string") {
           try {
-            termGroupIds = JSON.parse(venue.termGroupId);
+            termGroupIds = JSON.parse(venue.termGroupId || "[]");
           } catch {
             termGroupIds = [];
           }
@@ -215,20 +217,23 @@ exports.getAllVenuesWithClasses = async ({
           termGroupIds = venue.termGroupId;
         }
 
+        // ---------- LOAD TERM GROUPS ----------
         const termGroups = termGroupIds.length
           ? await TermGroup.findAll({
             where: {
               id: termGroupIds,
-              createdBy: Number(createdBy) // ✅ filter by super admin
-            }
+              createdBy: Number(createdBy),
+            },
+            attributes: ["id", "name"],
           })
           : [];
 
-        const terms = termGroupIds.length
+        // ---------- LOAD TERMS (DB-side filter) ----------
+        const termsFromDb = termGroupIds.length
           ? await Term.findAll({
             where: {
               termGroupId: { [Op.in]: termGroupIds },
-              createdBy: Number(createdBy) // ✅ filter by super admin
+              createdBy: Number(createdBy),
             },
             attributes: [
               "id",
@@ -244,24 +249,48 @@ exports.getAllVenuesWithClasses = async ({
           })
           : [];
 
-        const parsedTerms = terms.map((t) => ({
-          id: t.id,
-          name: t.termName,
-          day: t.day,
-          startDate: t.startDate,
-          endDate: t.endDate,
-          termGroupId: t.termGroupId,
-          exclusionDates:
-            typeof t.exclusionDates === "string"
-              ? JSON.parse(t.exclusionDates)
-              : t.exclusionDates || [],
-          totalSessions: t.totalSessions,
-          sessionsMap:
-            typeof t.sessionsMap === "string"
-              ? JSON.parse(t.sessionsMap)
-              : t.sessionsMap || [],
-        }));
+        // ---------- PARSE TERMS & JSON FIELDS ----------
+        const parsedTerms = termsFromDb.map((t) => {
+          // safe parse helpers
+          const parseJSONSafe = (val) => {
+            if (val == null) return [];
+            if (typeof val === "string") {
+              try {
+                return JSON.parse(val);
+              } catch {
+                return [];
+              }
+            }
+            return val;
+          };
 
+          return {
+            id: t.id,
+            name: t.termName,
+            day: t.day,
+            startDate: t.startDate,
+            endDate: t.endDate,
+            termGroupId: t.termGroupId,
+            exclusionDates: parseJSONSafe(t.exclusionDates),
+            totalSessions: t.totalSessions || 0,
+            sessionsMap: parseJSONSafe(t.sessionsMap),
+          };
+        });
+
+        // ---------- FILTER TERMS AGAINST LOADED TERM GROUPS ----------
+        // This guarantees we only return terms that belong to the termGroups we actually fetched.
+        const validGroupIds = new Set(termGroups.map((g) => g.id));
+        const filteredTerms = parsedTerms.filter((pt) =>
+          validGroupIds.has(pt.termGroupId)
+        );
+
+        // ---------- FILTER TERM GROUPS TO ONLY THOSE THAT HAVE TERMS ----------
+        const usedTermGroupIds = new Set(filteredTerms.map((t) => t.termGroupId));
+        const filteredTermGroups = termGroups.filter((g) =>
+          usedTermGroupIds.has(g.id)
+        );
+
+        // ---------- CLASS SCHEDULES ----------
         const venueClasses = (venue.classSchedules || []).reduce((acc, cls) => {
           const day = cls.day;
           if (!day) return acc;
@@ -277,28 +306,26 @@ exports.getAllVenuesWithClasses = async ({
           return acc;
         }, {});
 
+        // ---------- DISTANCE ----------
         const venueLat = parseFloat(venue.latitude);
         const venueLng = parseFloat(venue.longitude);
-        // const distanceMiles =
-        //   hasCoordinates && !isNaN(venueLat) && !isNaN(venueLng)
-        //     ? parseFloat(
-        //       calculateDistance(
-        //         userLatitude,
-        //         userLongitude,
-        //         venueLat,
-        //         venueLng
-        //       ).toFixed(1)
-        //     )
-        //     : null;
 
         const distanceMiles =
           !isNaN(venueLat) &&
             !isNaN(venueLng) &&
             typeof userLatitude === "number" &&
             typeof userLongitude === "number"
-            ? parseFloat(calculateDistance(userLatitude, userLongitude, venueLat, venueLng).toFixed(1))
+            ? parseFloat(
+              calculateDistance(
+                userLatitude,
+                userLongitude,
+                venueLat,
+                venueLng
+              ).toFixed(1)
+            )
             : null;
 
+        // ---------- FINAL RETURN ----------
         return {
           venueId: venue.id,
           venueName: venue.name,
@@ -313,6 +340,7 @@ exports.getAllVenuesWithClasses = async ({
           postal_code: venue.postal_code,
           distanceMiles,
           classes: venueClasses,
+
           paymentGroups: paymentGroups.map((pg) => ({
             id: pg.id,
             name: pg.name,
@@ -337,11 +365,13 @@ exports.getAllVenuesWithClasses = async ({
               PaymentGroupHasPlan: plan.PaymentGroupHasPlan || null,
             })),
           })),
-          termGroups: termGroups.map((group) => ({
+
+          termGroups: filteredTermGroups.map((group) => ({
             id: group.id,
             name: group.name,
           })),
-          terms: parsedTerms,
+
+          terms: filteredTerms,
         };
       })
     );
@@ -485,11 +515,12 @@ exports.getClassById = async (classId, createdBy) => {
     // Fetch termGroups with nested terms & sessions
     // =====================
     let termGroups = [];
+
     if (termGroupIds.length) {
       termGroups = await TermGroup.findAll({
         where: {
           id: termGroupIds,
-          createdBy: Number(createdBy) // ✅ filter by admin
+          createdBy: Number(createdBy)
         },
         include: [{ model: Term, as: "terms" }],
       });
@@ -506,7 +537,7 @@ exports.getClassById = async (classId, createdBy) => {
             ? JSON.parse(term.sessionsMap || "[]")
             : term.sessionsMap || [];
 
-          // Enrich sessionPlan data
+          // Enrich sessionPlan
           for (const entry of parsedMap) {
             if (!entry.sessionPlanId) continue;
 
@@ -514,7 +545,8 @@ exports.getClassById = async (classId, createdBy) => {
               attributes: [
                 "id", "groupName", "levels",
                 "beginner_video", "intermediate_video", "advanced_video", "pro_video",
-                "banner", "player", "beginner_upload", "intermediate_upload", "pro_upload", "advanced_upload",
+                "banner", "player",
+                "beginner_upload", "intermediate_upload", "pro_upload", "advanced_upload",
               ],
             });
 
@@ -524,7 +556,24 @@ exports.getClassById = async (classId, createdBy) => {
           term.dataValues.sessionsMap = parsedMap;
         }
       }
+    }
 
+    // --------------------------------------------------
+    // 🚨 CHECK EMPTY TERMS (Your requirement)
+    // --------------------------------------------------
+    let noTerms = false;
+
+    if (!termGroups.length) {
+      noTerms = true;
+    } else {
+      const hasAnyTerms = termGroups.some(g => g.terms && g.terms.length > 0);
+      if (!hasAnyTerms) noTerms = true;
+    }
+
+    if (noTerms) {
+      venue.dataValues.termGroups = [];
+      venue.dataValues.noTermsMessage = "This venue does not have any term and dates.";
+    } else {
       venue.dataValues.termGroups = termGroups;
     }
 
@@ -559,387 +608,3 @@ exports.getClassById = async (classId, createdBy) => {
     return { status: false, message: "Fetch failed: " + error.message };
   }
 };
-
-// exports.getAllVenuesWithClasses = async ({ userLat, userLng, createdBy }) => {
-//   try {
-//     // ✅ Default location if user coords not provided
-//     const currentLat = userLat ?? 51.5;
-//     const currentLng = userLng ?? -0.1;
-
-//     const venues = await Venue.findAll({
-//       where: {
-//         ...(createdBy ? { createdBy } : {}),
-//       },
-//       include: [
-//         {
-//           model: ClassSchedule,
-//           as: "classSchedules",
-//           required: false,
-//         },
-//         {
-//           model: PaymentPlan,
-//           as: "paymentPlan",
-//           required: false,
-//           attributes: [
-//             "id",
-//             "title",
-//             "price",
-//             "interval",
-//             "students",
-//             "duration",
-//             "joiningFee",
-//             "HolidayCampPackage",
-//             "termsAndCondition",
-//           ],
-//         },
-//       ],
-//       order: [["id", "ASC"]],
-//     });
-
-//     if (!venues || venues.length === 0) {
-//       return { status: true, data: [] };
-//     }
-
-//     const formattedVenues = await Promise.all(
-//       venues.map(async (venue) => {
-//         const safeParse = (val) => {
-//           if (!val) return null;
-//           try {
-//             return typeof val === "string" ? JSON.parse(val) : val;
-//           } catch {
-//             return null;
-//           }
-//         };
-
-//         // ✅ Parse related IDs
-//         const paymentPlanIds = parseSafeArray(venue.paymentPlanId);
-//         const termGroupIds = parseSafeArray(venue.termGroupId);
-
-//         // ✅ Fetch related payment plans & terms
-//         const paymentPlans = await PaymentPlan.findAll({
-//           where: { id: { [Op.in]: paymentPlanIds } },
-//         });
-
-//         const termGroups = await TermGroup.findAll({
-//           where: { id: { [Op.in]: termGroupIds } },
-//         });
-
-//         const terms = await Term.findAll({
-//           where: { termGroupId: { [Op.in]: termGroupIds } },
-//           attributes: [
-//             "id",
-//             "termName",
-//             "startDate",
-//             "endDate",
-//             "termGroupId",
-//             "exclusionDates",
-//             "totalSessions",
-//             "sessionsMap",
-//           ],
-//         });
-
-//         const parsedTerms = terms.map((t) => ({
-//           id: t.id,
-//           name: t.termName,
-//           startDate: t.startDate,
-//           endDate: t.endDate,
-//           termGroupId: t.termGroupId,
-//           exclusionDates: safeParse(t.exclusionDates),
-//           totalSessions: t.totalSessions,
-//           sessionsMap: safeParse(t.sessionsMap) || [],
-//         }));
-
-//         // ✅ Prepare class list
-//         const venueClasses = venue.classSchedules.reduce((acc, cls) => {
-//           const day = cls.day; // Use day exactly as stored: "Monday", "Sunday", etc.
-//           if (!day) return acc;
-
-//           if (!acc[day]) acc[day] = [];
-
-//           acc[day].push({
-//             classId: cls.id,
-//             className: cls.className,
-//             time: `${cls.startTime} - ${cls.endTime}`,
-//             capacity: cls.capacity,
-//             allowFreeTrial: !!cls.allowFreeTrial,
-//           });
-
-//           return acc;
-//         }, {});
-
-//         // ✅ Distance Calculation
-//         const venueLat = parseFloat(venue.latitude);
-//         const venueLng = parseFloat(venue.longitude);
-//         const distanceMiles =
-//           !isNaN(venueLat) && !isNaN(venueLng)
-//             ? parseFloat(
-//                 calculateDistance(
-//                   currentLat,
-//                   currentLng,
-//                   venueLat,
-//                   venueLng
-//                 ).toFixed(1)
-//               )
-//             : null;
-
-//         return {
-//           venueId: venue.id,
-//           venueName: venue.name,
-//           area: venue.area,
-//           address: venue.address,
-//           facility: venue.facility,
-//           congestionNote: venue.congestionNote,
-//           parkingNote: venue.parkingNote,
-//           latitude: venue.latitude,
-//           longitude: venue.longitude,
-//           createdAt: venue.createdAt,
-//           postal_code: venue.postal_code,
-//           distanceMiles,
-//           classes: venueClasses, // ✅ Grouped by day
-//           paymentPlans: paymentPlans.map((plan) => ({
-//             id: plan.id,
-//             title: plan.title,
-//             price: plan.price,
-//             interval: plan.interval,
-//             students: plan.students,
-//             duration: plan.duration,
-//             joiningFee: plan.joiningFee,
-//             holidayCampPackage: plan.HolidayCampPackage,
-//             termsAndCondition: plan.termsAndCondition,
-//           })),
-//           termGroups: termGroups.map((group) => ({
-//             id: group.id,
-//             name: group.name,
-//           })),
-//           terms: parsedTerms,
-//         };
-//       })
-//     );
-
-//     return { status: true, data: formattedVenues };
-//   } catch (error) {
-//     console.error("❌ getAllVenuesWithClasses Error:", error);
-//     return {
-//       status: false,
-//       message: error.message || "Failed to fetch class listings",
-//     };
-//   }
-// };
-
-// ✅ SINGLE VENUE SERVICE
-// exports.getVenueWithClassesById = async (venueId, onlyAvailable) => {
-//   try {
-//     const venues = await Venue.findAll({
-//       where: { id: venueId },
-//       include: [
-//         { model: ClassSchedule, as: "classSchedules", required: false },
-//         {
-//           model: PaymentPlan,
-//           as: "paymentPlan",
-//           required: false,
-//           attributes: [
-//             "id",
-//             "title",
-//             "price",
-//             "interval",
-//             "duration",
-//             "joiningFee",
-//             "HolidayCampPackage",
-//             "termsAndCondition",
-//           ],
-//         },
-//         {
-//           model: Term,
-//           as: "term",
-//           required: false,
-//           include: [
-//             {
-//               model: SessionPlanGroup,
-//               as: "sessionPlanGroup",
-//               required: false,
-//             },
-//           ],
-//         },
-//       ],
-//     });
-
-//     if (!venues.length) {
-//       return { status: false, message: `No venue found with ID ${venueId}` };
-//     }
-
-//     const venue = venues[0];
-
-//     // ✅ Inline Safe JSON parse
-//     const safeParse = (val) => {
-//       if (!val) return null;
-//       try {
-//         return typeof val === "string" ? JSON.parse(val) : val;
-//       } catch (err) {
-//         console.warn("⚠️ Failed to parse JSON:", val);
-//         return null;
-//       }
-//     };
-
-//     const plan = venue.paymentPlan;
-//     const term = venue.term;
-//     const sessionPlan = term?.sessionPlanGroup;
-//     const parsedLevels = sessionPlan?.levels
-//       ? safeParse(sessionPlan.levels)
-//       : null;
-
-//     const venueClasses = venue.classSchedules
-//       .map((cls) => {
-//         const isFull =
-//           cls.capacity === 0 ||
-//           cls.capacity === null ||
-//           cls.capacity === undefined;
-
-//         return {
-//           classId: cls.id,
-//           className: cls.className,
-//           day: cls.day,
-//           time: `${cls.startTime} - ${cls.endTime}`,
-//           capacity: cls.capacity,
-//           status: isFull ? "Fully Booked" : `${cls.capacity} spaces`,
-//           allowFreeTrial: cls.allowFreeTrial,
-//           available: !isFull,
-//           price: plan ? `${plan.price} (${plan.interval})` : "TBD",
-//           term: term
-//             ? {
-//                 termName: term.termName,
-//                 startDate: term.startDate,
-//                 endDate: term.endDate,
-//                 exclusionDates: term.exclusionDates,
-//                 totalSessions: term.totalSessions,
-//                 sessionPlanGroup: sessionPlan
-//                   ? {
-//                       groupName: sessionPlan.groupName,
-//                       sortOrder: sessionPlan.sortOrder,
-//                       levels: parsedLevels, // ✅ parsed
-//                       beginner_banner: sessionPlan.beginner_banner,
-//                       beginner_video: sessionPlan.beginner_video,
-//                       intermediate_banner: sessionPlan.intermediate_banner,
-//                       intermediate_video: sessionPlan.intermediate_video,
-//                       pro_banner: sessionPlan.pro_banner,
-//                       pro_video: sessionPlan.pro_video,
-//                       advanced_banner: sessionPlan.advanced_banner,
-//                       advanced_video: sessionPlan.advanced_video,
-//                     }
-//                   : null,
-//               }
-//             : null,
-//         };
-//       })
-//       .filter((cls) => (onlyAvailable ? cls.available : true));
-
-//     return {
-//       status: true,
-//       data: {
-//         venueId: venue.id,
-//         venueName: venue.name,
-//         area: venue.area,
-//         address: venue.address,
-//         facility: venue.facility,
-//         congestionNote: venue.congestionNote,
-//         parkingNote: venue.parkingNote,
-//         paymentPlan: plan
-//           ? {
-//               id: plan.id,
-//               title: plan.title,
-//               price: plan.price,
-//               interval: plan.interval,
-//               duration: plan.duration,
-//               joiningFee: plan.joiningFee,
-//               holidayCampPackage: plan.HolidayCampPackage,
-//               termsAndCondition: plan.termsAndCondition,
-//             }
-//           : null,
-//         classes: venueClasses,
-//       },
-//     };
-//   } catch (error) {
-//     console.error("❌ getVenueWithClassesById Error:", error);
-//     return { status: false, message: "Failed to fetch venue class listing" };
-//   }
-// };
-
-// exports.getAllTermsForListing = async () => {
-//   try {
-//     const terms = await Term.findAll({
-//       order: [["createdAt", "DESC"]],
-//       include: [
-//         {
-//           model: SessionPlanGroup,
-//           as: "sessionPlanGroup",
-//           attributes: [
-//             "id",
-//             "groupName",
-//             "sortOrder",
-//             "levels",
-//             "beginner_banner",
-//             "beginner_video",
-//             "intermediate_banner",
-//             "intermediate_video",
-//             "advanced_banner",
-//             "advanced_video",
-//             "pro_banner",
-//             "pro_video",
-//             "createdAt",
-//             "updatedAt",
-//           ],
-//         },
-//       ],
-//     });
-
-//     // ✅ Parse JSON fields safely
-//     const safeParse = (val, fallback = []) => {
-//       if (!val) return fallback;
-//       try {
-//         return typeof val === "string" ? JSON.parse(val) : val;
-//       } catch {
-//         return fallback;
-//       }
-//     };
-
-//     const formattedTerms = terms.map((term) => {
-//       const parsedSessionsMap = safeParse(term.sessionsMap, []);
-//       const parsedExclusionDates = safeParse(term.exclusionDates, []);
-
-//       return {
-//         id: term.id,
-//         termName: term.termName,
-//         startDate: term.startDate,
-//         endDate: term.endDate,
-//         exclusionDates: parsedExclusionDates,
-//         totalSessions: term.totalSessions,
-//         sessionsMap: parsedSessionsMap, // ✅ now proper array, NOT string
-//         createdAt: term.createdAt,
-//         updatedAt: term.updatedAt,
-//         sessionPlanGroup: term.sessionPlanGroup
-//           ? {
-//               id: term.sessionPlanGroup.id,
-//               groupName: term.sessionPlanGroup.groupName,
-//               sortOrder: term.sessionPlanGroup.sortOrder,
-//               beginner_banner: term.sessionPlanGroup.beginner_banner,
-//               beginner_video: term.sessionPlanGroup.beginner_video,
-//               intermediate_banner: term.sessionPlanGroup.intermediate_banner,
-//               intermediate_video: term.sessionPlanGroup.intermediate_video,
-//               advanced_banner: term.sessionPlanGroup.advanced_banner,
-//               advanced_video: term.sessionPlanGroup.advanced_video,
-//               pro_banner: term.sessionPlanGroup.pro_banner,
-//               pro_video: term.sessionPlanGroup.pro_video,
-//               levels: safeParse(term.sessionPlanGroup.levels, {}),
-//             }
-//           : null,
-//       };
-//     });
-
-//     return { status: true, data: formattedTerms };
-//   } catch (error) {
-//     console.error("❌ getAllTermsForListing Error:", error.message);
-//     return {
-//       status: false,
-//       message: "Failed to fetch terms. " + error.message,
-//     };
-//   }
-// };
