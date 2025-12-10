@@ -3,54 +3,179 @@ const { logActivity } = require("../../../../utils/admin/activityLogger");
 const { createNotification } = require("../../../../utils/admin/notificationHelper");
 const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
 const ToDoService = require("../../../../services/admin/holidayCamps/toDoList/ToDoService");
+const path = require("path");
+const fs = require("fs");
+const os = require("os");
+const { uploadToFTP } = require("../../../../utils/uploadToFTP");
+const { saveFile } = require("../../../../utils/fileHandler");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "to-do";
 
-// ✅ CREATE TASK
+// CREATE TASK WITH FTP FILE UPLOAD
 exports.createTask = async (req, res) => {
-  const { title, description, attachments, assignedAdmins, status,comment, priority } = req.body;
-
-  const validation = validateFormData(req.body, {
-    requiredFields: ["title", "description"],
-  });
-
-  if (!validation.isValid) {
-    await logActivity(req, PANEL, MODULE, "create", { message: validation.error }, false);
-    return res.status(400).json({ status: false, message: validation.error });
-  }
-
   try {
+    const { title, description, assignedAdmins, status, comment, priority } = req.body;
+    const files = req.files || [];
+    const adminId = req.admin.id;
+
+    let uploadedUrls = [];
+
+    // ============================
+    // 1️⃣ VALIDATIONS
+    // ============================
+    if (!title || !description) {
+      return res.status(400).json({ status: false, message: "Title & description are required" });
+    }
+
+    // Normalize Multer files → array
+    let filesArray = [];
+    if (Array.isArray(files)) {
+      filesArray = files;
+    } else {
+      filesArray = Object.values(files).flat();
+    }
+
+    // Validate file types
+    const allowedExtensions = [ // Images
+      "jpg", "jpeg", "png", "webp", "gif", "bmp", "svg", "tiff",
+
+      // Documents
+      "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv",
+      "txt", "rtf", "odt",
+
+      // Code/Text
+      "json", "xml", "html", "md",
+
+      // Videos
+      "mp4", "mov", "avi", "mkv", "webm",
+
+      // Audio
+      "mp3", "wav", "aac", "flac", "ogg",
+
+      // Compressed
+      "zip", "rar", "7z", "tar", "gz"];
+    for (const file of filesArray) {
+      const ext = path.extname(file.originalname).toLowerCase().slice(1);
+      if (!allowedExtensions.includes(ext)) {
+        return res.status(400).json({ status: false, message: `Invalid file type: ${file.originalname}` });
+      }
+    }
+
+    // ============================
+    // 2️⃣ UPLOAD FILES TO FTP
+    // ============================
+    for (const file of filesArray) {
+      const uniqueId = Date.now() + "_" + Math.floor(Math.random() * 1e9);
+      const ext = path.extname(file.originalname).toLowerCase();
+      const fileName = `${uniqueId}${ext}`;
+
+      const localPath = path.join(
+        process.cwd(),
+        "uploads",
+        "temp",
+        "admin",
+        `${adminId}`,
+        "todo",
+        fileName
+      );
+
+      // Save temporary
+      await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
+      await saveFile(file, localPath);
+
+      try {
+        const remotePath = `uploads/temp/admin/${adminId}/todo/${fileName}`;
+        const publicUrl = await uploadToFTP(localPath, remotePath);
+
+        if (publicUrl) {
+          uploadedUrls.push(publicUrl);
+        }
+      } finally {
+        // Remove temp file
+        await fs.promises.unlink(localPath).catch(() => { });
+      }
+    }
+
+    // ============================
+    // 3️⃣ CONVERT URLS → [{ url }]
+    // ============================
+    const formattedAttachments = uploadedUrls.map(url => ({ url }));
+
+    // ============================
+    // 4️⃣ SAVE TASK TO DB
+    // ============================
     const result = await ToDoService.createTask({
       title,
       description,
-      attachments: attachments || null,
+      attachments: JSON.stringify(formattedAttachments),
       assignedAdmins: assignedAdmins || null,
       status,
       priority,
       comment,
-      createdBy: req.admin.id,
+      createdBy: adminId,
     });
 
     if (!result.status) {
-      await logActivity(req, PANEL, MODULE, "create", { message: result.message }, false);
       return res.status(500).json({ status: false, message: result.message });
     }
 
-    await logActivity(req, PANEL, MODULE, "create", { message: "Created successfully" }, true);
+    return res.status(201).json({
+      status: true,
+      message: "Task created successfully",
+      data: result.data,
+    });
 
-    const adminFullName = req.admin?.name || "Unknown Admin";
-    await createNotification(req, "Task Created", `New task added by ${adminFullName}`, "Support");
-
-    return res.status(201).json({ status: true, message: "Task created successfully", data: result.data });
-
-  } catch (error) {
-    console.error("❌ createTask controller Error:", error);
-    await logActivity(req, PANEL, MODULE, "create", { message: error.message }, false);
+  } catch (err) {
+    console.error("❌ createTask Error:", err);
     return res.status(500).json({ status: false, message: "Server error" });
   }
 };
+
+// ✅ CREATE TASK
+// exports.createTask = async (req, res) => {
+//   const { title, description, attachments, assignedAdmins, status,comment, priority } = req.body;
+
+//   const validation = validateFormData(req.body, {
+//     requiredFields: ["title", "description"],
+//   });
+
+//   if (!validation.isValid) {
+//     await logActivity(req, PANEL, MODULE, "create", { message: validation.error }, false);
+//     return res.status(400).json({ status: false, message: validation.error });
+//   }
+
+//   try {
+//     const result = await ToDoService.createTask({
+//       title,
+//       description,
+//       attachments: attachments || null,
+//       assignedAdmins: assignedAdmins || null,
+//       status,
+//       priority,
+//       comment,
+//       createdBy: req.admin.id,
+//     });
+
+//     if (!result.status) {
+//       await logActivity(req, PANEL, MODULE, "create", { message: result.message }, false);
+//       return res.status(500).json({ status: false, message: result.message });
+//     }
+
+//     await logActivity(req, PANEL, MODULE, "create", { message: "Created successfully" }, true);
+
+//     const adminFullName = req.admin?.name || "Unknown Admin";
+//     await createNotification(req, "Task Created", `New task added by ${adminFullName}`, "Support");
+
+//     return res.status(201).json({ status: true, message: "Task created successfully", data: result.data });
+
+//   } catch (error) {
+//     console.error("❌ createTask controller Error:", error);
+//     await logActivity(req, PANEL, MODULE, "create", { message: error.message }, false);
+//     return res.status(500).json({ status: false, message: "Server error" });
+//   }
+// };
 
 // ✅ LIST TASKS (By Super Admin)
 exports.listTasks = async (req, res) => {
