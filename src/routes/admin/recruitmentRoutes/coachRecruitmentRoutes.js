@@ -6,10 +6,12 @@ const permissionMiddleware = require("../../../middleware/admin/permission");
 const {
   createRecruitmentLead,
   getAllRecruitmentLead,
+  getAllCoachAndVmRecruitmentLead,
   getRecruitmentLeadById,
   rejectRecruitmentLeadStatus,
   sendEmail,
   getAllRecruitmentLeadRport,
+  getAllVenues,
 } = require("../../../controllers/admin/recruitment/coach/coachRecruitmentLeadController");
 
 router.post(
@@ -20,10 +22,24 @@ router.post(
 );
 
 router.get(
+  "/listing/venue",
+  authMiddleware,
+  permissionMiddleware("recruitment-lead", "view-listing"),
+  getAllVenues
+);
+
+router.get(
   "/list",
   authMiddleware,
   permissionMiddleware("recruitment-lead", "view-listing"),
   getAllRecruitmentLead
+);
+
+router.get(
+  "/list/all",
+  authMiddleware,
+  permissionMiddleware("recruitment-lead", "view-listing"),
+  getAllCoachAndVmRecruitmentLead
 );
 
 router.get(

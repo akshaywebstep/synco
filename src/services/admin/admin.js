@@ -204,7 +204,6 @@ exports.getAllAdmins = async (superAdminId, includeSuperAdmin = false) => {
       }
       : { superAdminId: Number(superAdminId) };
 
-
     const admins = await Admin.findAll({
       where: whereCondition,
       attributes: { exclude: ["password", "resetOtp", "resetOtpExpiry"] },

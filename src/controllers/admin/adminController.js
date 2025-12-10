@@ -268,15 +268,6 @@ exports.createAdmin = async (req, res) => {
           }))
           : [];
 
-      // const mailData = {
-      //   // recipient: [{ name, email }],
-      //   recipient: [{ firstName, lastName, email }],
-      //   cc: mapRecipients(emailConfig.cc),
-      //   bcc: mapRecipients(emailConfig.bcc),
-      //   subject: emailSubject,
-      //   htmlBody,
-      //   attachments: [],
-      // };
       const mailData = {
         recipient: [
           {

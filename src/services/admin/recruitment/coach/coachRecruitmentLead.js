@@ -12,9 +12,11 @@ exports.createRecruitmentLead = async (data) => {
 
     const recruitmentLead = await RecruitmentLead.create(data);
 
-    return { status: true,
+    return {
+      status: true,
       message: "Recuitment Lead Created Succesfully",
-       data: recruitmentLead.get({ plain: true }) };
+      data: recruitmentLead.get({ plain: true })
+    };
   } catch (error) {
     console.error("❌ Error creating recruitmentLead:", error);
     return { status: false, message: error.message };
@@ -672,7 +674,7 @@ exports.getAllRecruitmentLeadRport = async (adminId) => {
         },
         sourceOfLeads: byLeadSource,
         highDemandVenues,
-        topAgents ,
+        topAgents,
       }
     };
 
@@ -680,6 +682,192 @@ exports.getAllRecruitmentLeadRport = async (adminId) => {
     return {
       status: false,
       message: "Fetch recruitmentLead failed. " + error.message,
+    };
+  }
+};
+
+// ✅ GET ALL - by admin
+exports.getAllCoachAndVmRecruitmentLead = async (adminId) => {
+  try {
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "Invalid admin or super admin ID",
+        data: [],
+      };
+    }
+
+    const recruitmentLead = await RecruitmentLead.findAll({
+      where: {
+        createdBy: Number(adminId),
+        appliedFor: {
+          [Op.in]: ["coach", "venue manager"]   // ⭐ get both
+        }
+      },
+
+      include: [
+        { model: CandidateProfile, as: "candidateProfile" }
+      ],
+      order: [["createdAt", "DESC"]],
+    });
+
+    const formatted = [];
+
+    for (const lead of recruitmentLead) {
+      const leadJson = lead.toJSON();
+      const profile = leadJson.candidateProfile;
+
+      if (profile?.bookPracticalAssessment) {
+        try {
+          profile.bookPracticalAssessment = JSON.parse(profile.bookPracticalAssessment);
+
+          for (let item of profile.bookPracticalAssessment) {
+            // Fetch venue & class
+            const venue = await Venue.findByPk(item.venueId);
+            const classInfo = await ClassSchedule.findByPk(item.classId);
+
+            item.venue = venue ? venue.toJSON() : null;
+            item.classDetails = classInfo ? classInfo.toJSON() : null;
+
+            // 🔹 Fetch venue manager (from Admin table)
+            if (item.assignToVenueManagerId) {
+              const admin = await Admin.findByPk(item.assignToVenueManagerId, {
+                attributes: ["id", "firstName", "lastName", "email"],
+              });
+
+              item.venueManager = admin ? admin.toJSON() : null;
+            } else {
+              item.venueManager = null;
+            }
+          }
+
+        } catch (err) {
+          profile.bookPracticalAssessment = [];
+        }
+      }
+
+      formatted.push(leadJson);
+    }
+    // ---------- TOTALS FIXED (FOR BOTH COACH + VENUE MANAGER) ----------
+
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    // Count all valid applications (having candidateProfile)
+    const totalApplications = recruitmentLead.filter(
+      (lead) => lead.candidateProfile !== null
+    ).length;
+
+    // New applications this month
+    const totalNewApplications = recruitmentLead.filter(
+      (lead) =>
+        lead.candidateProfile !== null &&
+        new Date(lead.createdAt).getMonth() === currentMonth &&
+        new Date(lead.createdAt).getFullYear() === currentYear
+    ).length;
+
+    // Applications that reached assessments
+    const totalToAssessments = recruitmentLead.filter(
+      (lead) => {
+        const book = lead.candidateProfile?.bookPracticalAssessment;
+
+        return book && Array.isArray(book) && book.length > 0;
+      }
+    ).length;
+
+    // Applications successfully recruited (valid for both coach + venue manager)
+    const totalToRecruitment = recruitmentLead.filter(
+      (lead) =>
+        lead.status === "recruited" && lead.candidateProfile !== null
+    ).length;
+
+    // ---------- PERCENTAGES ----------
+    const pct = (count) =>
+      totalApplications > 0
+        ? ((count / totalApplications) * 100).toFixed(2) + "%"
+        : "0%";
+
+    return {
+      status: true,
+      message: "Recruitment lead fetched successfully.",
+      totals: [
+        {
+          name: "totalApplications",
+          count: totalApplications,
+          percent: pct(totalApplications),
+        },
+        {
+          name: "totalNewApplications",
+          count: totalNewApplications,
+          percent: pct(totalNewApplications),
+        },
+        {
+          name: "totalToAssessments",
+          count: totalToAssessments,
+          percent: pct(totalToAssessments),
+        },
+        {
+          name: "totalToRecruitment",
+          count: totalToRecruitment,
+          percent: pct(totalToRecruitment),
+        },
+      ],
+      data: formatted,
+    };
+
+  } catch (error) {
+    return {
+      status: false,
+      message: "Fetch recruitmentLead failed. " + error.message,
+    };
+  }
+};
+
+// venue list
+exports.getAllVenues = async (createdBy) => {
+  try {
+    if (!createdBy || isNaN(Number(createdBy))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
+
+    const venues = await Venue.findAll({
+      where: { createdBy: Number(createdBy) },
+      order: [["createdAt", "DESC"]],
+      attributes: [
+        "id",
+        "area",
+        "name",
+        "address",
+        "facility",
+        "parkingNote",
+        "howToEnterFacility",
+        "paymentGroupId",
+        "isCongested",
+        "hasParking",
+        "termGroupId",
+        "latitude",
+        "longitude",
+        "postal_code",
+        "createdBy",
+        "createdAt",
+        "updatedAt",
+      ],
+    });
+    return {
+      status: true,
+      message: "Venues fetched successfully.",
+      data: venues,
+    };
+  } catch (error) {
+    console.error("❌ getAllVenues Error:", error);
+    return {
+      status: false,
+      message: "Failed to fetch venues.",
     };
   }
 };

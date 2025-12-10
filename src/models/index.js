@@ -122,11 +122,13 @@ const models = {
   TemplateCategory: require("./admin/holidayCamps/emailAndTextTemplates/Templatecategory"),
   ToDoList: require("./admin/holidayCamps/toDoList/ToDoList"),
 
-  Folder:require("./admin/holidayCamps/folder/Folder"),
-  Files:require("./admin/holidayCamps/folder/Files"),
+  Folder: require("./admin/holidayCamps/folder/Folder"),
+  Files: require("./admin/holidayCamps/folder/Files"),
 
-  RecruitmentLead:require("./admin/recruitment/RecruitmentLead"),
-  CandidateProfile:require("./admin/recruitment/CandidateProfile"),
+  RecruitmentLead: require("./admin/recruitment/RecruitmentLead"),
+  CandidateProfile: require("./admin/recruitment/CandidateProfile"),
+
+  CoachVenueAllocation: require("./admin/coaches/CoachVenueAllocation"),
 };
 
 // =================== Apply Model-Level Associations =================== //
@@ -229,6 +231,8 @@ const {
 
   RecruitmentLead,
   CandidateProfile,
+
+  CoachVenueAllocation,
 } = models;
 
 // Many-to-Many
@@ -488,6 +492,28 @@ CandidateProfile.belongsTo(RecruitmentLead, {
   as: "lead",
 });
 
+CoachVenueAllocation.associate = (models) => {
+  CoachVenueAllocation.belongsTo(models.Venue, {
+    foreignKey: "venueId",
+    as: "venue",
+  });
+
+  CoachVenueAllocation.belongsTo(models.Admin, {
+    foreignKey: "createdBy",
+    as: "creator",
+  });
+};
+
+Admin.hasMany(CoachVenueAllocation, {
+  foreignKey: "coachId",
+  as: "coachAllocations",
+});
+
+CoachVenueAllocation.belongsTo(Admin, {
+  foreignKey: "coachId",
+  as: "coach",
+});
+
 HolidayBooking.belongsTo(Admin, { foreignKey: 'bookedBy', as: 'bookedByAdmin' });
 
 // ====================== 📦 Module Exports ====================== //
@@ -591,4 +617,6 @@ module.exports = {
 
   RecruitmentLead,
   CandidateProfile,
+
+  CoachVenueAllocation,
 };

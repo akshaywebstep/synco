@@ -331,3 +331,66 @@ exports.getAllRecruitmentLeadRport = async (req, res) => {
     });
   }
 };
+
+exports.getAllCoachAndVmRecruitmentLead = async (req, res) => {
+  const adminId = req.admin?.id;
+
+  if (!adminId) {
+    return res
+      .status(401)
+      .json({ status: false, message: "Unauthorized. Admin ID missing." });
+  }
+
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+
+  try {
+    const result = await RecruitmentLeadService.getAllCoachAndVmRecruitmentLead(superAdminId,); // ✅ pass adminId
+    await logActivity(req, PANEL, MODULE, "list", result, result.status);
+    return res.status(result.status ? 200 : 500).json(result);
+  } catch (error) {
+    console.error("❌ Error in getAllRecruitmentLead:", error);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { oneLineMessage: error.message },
+      false
+    );
+    return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
+
+// ✅ Get All Venues
+exports.getAllVenues = async (req, res) => {
+  const createdBy = req.admin?.id;
+
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+
+  try {
+    const result = await RecruitmentLeadService.getAllVenues(superAdminId);
+
+    await logActivity(req, PANEL, MODULE, "list", result, result.status);
+
+    if (!result.status) {
+      return res.status(500).json({
+        status: false,
+        message: result.message || "Failed to fetch venues.",
+      });
+    }
+
+    return res.status(200).json({
+      status: true,
+      message: "Venues fetched successfully.",
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ Get All Venues Controller Error:", error.message);
+    return res.status(500).json({
+      status: false,
+      message: "Server error while fetching venues.",
+    });
+  }
+};

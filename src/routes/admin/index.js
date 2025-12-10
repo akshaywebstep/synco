@@ -170,6 +170,8 @@ router.use("/venue-manager/candidate-profile", require("./recruitmentRoutes/vmCa
 router.use("/franchise/recruitment/", require("./recruitmentRoutes/franchiseRecruitmentRoutes"));
 router.use("/franchise/candidate-profile", require("./recruitmentRoutes/franchiseCandidateProfileRoutes"));
 
+router.use("/coach-profile/venue-allocate/", require("./coachProfileRoutes/coachProfileRoutes"));
+
 // Base: /api/admin/admin
 router.post(
   "/",
