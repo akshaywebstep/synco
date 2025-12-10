@@ -1027,6 +1027,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
         // PaymentData with parsed gatewayResponse & transactionMeta
         let parsedGatewayResponse = {};
         let parsedTransactionMeta = {};
+        let parsedGoCardlessBillingRequest = {};
 
         try {
           if (payment?.gatewayResponse) {
@@ -1039,6 +1040,16 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
           console.error("Invalid gatewayResponse JSON", e);
         }
 
+        try {
+          if (payment?.goCardlessBillingRequest) {
+            parsedGoCardlessBillingRequest =
+              typeof payment.goCardlessBillingRequest === "string"
+                ? JSON.parse(payment.goCardlessBillingRequest)
+                : payment.goCardlessBillingRequest;
+          }
+        } catch (e) {
+          console.error("Invalid goCardlessBillingRequest JSON", e);
+        }
         try {
           if (payment?.transactionMeta) {
             parsedTransactionMeta =
@@ -1071,6 +1082,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
             commerceType: payment.commerceType,
             createdAt: payment.createdAt,
             updatedAt: payment.updatedAt,
+            goCardlessBillingRequest: parsedGoCardlessBillingRequest,
             gatewayResponse: parsedGatewayResponse,
             transactionMeta: parsedTransactionMeta,
             totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
@@ -2592,6 +2604,10 @@ exports.getBookingsById = async (bookingId) => {
           } catch {
             return p.transactionMeta;
           }
+        })(),
+        goCardlessBankAccount: (() => {
+          try { return JSON.parse(p.goCardlessBankAccount); }
+          catch { return p.goCardlessBankAccount; }
         })(),
       })) || [];
 
