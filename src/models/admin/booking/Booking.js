@@ -95,7 +95,8 @@ const Booking = sequelize.define(
         "frozen",
         "waiting list",
         "request_to_cancel",
-        "removed"
+        "removed",
+        "expired",
       ),
       allowNull: false,
       defaultValue: "pending",

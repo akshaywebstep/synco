@@ -21,7 +21,7 @@ const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
 
 const bcrypt = require("bcrypt");
-const { Sequelize, Op } = require("sequelize"); 
+const { Sequelize, Op } = require("sequelize");
 
 const axios = require("axios");
 
@@ -34,7 +34,69 @@ function generateBookingId(length = 12) {
   return result;
 }
 const DEBUG = process.env.DEBUG === "true";
+
+async function updateBookingStats() {
+  const debugData = [];
+
+  try {
+    const bookings = await Booking.findAll(); // now checking ALL bookings
+
+    if (!bookings || bookings.length === 0) {
+      return {
+        status: false,
+        message: "No bookings found.",
+        data: debugData,
+      };
+    }
+
+    const now = new Date();
+
+    for (const booking of bookings) {
+      const bookingDebug = {
+        bookingId: booking.id,
+        startDate: booking.startDate,
+        status: booking.status,
+        actions: [],
+      };
+
+      // ================================
+      // 🔹 Only Expire Waiting List Logic
+      // ================================
+      if (booking.status === "waiting list" && booking.startDate) {
+        const start = new Date(booking.startDate);
+
+        const waitingDays = Math.ceil(
+          (start.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+        );
+
+        if (waitingDays < 0) {
+          await booking.update({ status: "expired" });
+          bookingDebug.actions.push("status updated to expired");
+          console.log(`Booking ${booking.id} expired (waitingDays passed)`);
+        }
+      }
+
+      debugData.push(bookingDebug);
+    }
+
+    return {
+      status: true,
+      message: "Waiting list expiration check completed.",
+      data: debugData,
+    };
+
+  } catch (error) {
+    return {
+      status: false,
+      message: "Error updating booking stats.",
+      error: error.message,
+      data: debugData,
+    };
+  }
+}
+
 exports.getBookingById = async (id, adminId, superAdminId) => {
+  await updateBookingStats();
   console.log("==============================================");
   console.log("📘 [Service] getBookingById Started");
   console.log("🔍 Incoming Params:", { id, adminId, superAdminId });
@@ -221,6 +283,7 @@ exports.getBookingById = async (id, adminId, superAdminId) => {
 };
 
 exports.getWaitingList = async (filters = {}) => {
+  await updateBookingStats();
   try {
     const trialWhere = {
       bookingType: {
@@ -232,7 +295,7 @@ exports.getWaitingList = async (filters = {}) => {
 
     const adminWhere = {};
 
-     if (filters.bookedBy) {
+    if (filters.bookedBy) {
       // Ensure bookedBy is always an array
       const bookedByArray = Array.isArray(filters.bookedBy)
         ? filters.bookedBy
@@ -300,7 +363,7 @@ exports.getWaitingList = async (filters = {}) => {
       where: {
         serviceType: "weekly class trial",
         ...trialWhere,
-        status: "waiting list",
+        status: { [Op.in]: ["waiting list", "expired"] },
       },
       // where: trialWhere,
       include: [

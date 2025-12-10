@@ -866,6 +866,13 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
         ], // only these statuses
       },
     };
+    whereBooking[Op.or] = [
+      { status: { [Op.ne]: "waiting list" } }, // keep everything else
+      {
+        status: "waiting list",
+        paymentPlanId: { [Op.not]: null } // only valid waiting list
+      }
+    ];
     const whereVenue = {};
 
     console.log(`filters - `, filters);
