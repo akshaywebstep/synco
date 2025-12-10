@@ -322,15 +322,28 @@ exports.sendEmail = async ({ recruitmentLeadId, admin }) => {
     const candidateName = `${lead.firstName || ""} ${lead.lastName || ""}`.trim();
     const adminName = `${admin?.firstName || "Admin"} ${admin?.lastName || ""}`.trim();
 
-    // 2️⃣ Load email template
+    // ------------------------------------------
+    // 2️⃣ Choose template based on lead.status
+    // ------------------------------------------
+    let templateType = "candidate-profile-reject"; // default
+    
+    if (lead.status === "venue manager") {
+      templateType = "venue-manager-reject";   // <-- your new template
+    } else if (lead.status === "coach") {
+      templateType = "coach-reject";           // <-- optional coach template
+    }
+
+    // ------------------------------------------
+    // 3️⃣ Load email template
+    // ------------------------------------------
     const { status: configStatus, emailConfig, htmlTemplate, subject } =
-      await emailModel.getEmailConfig("admin", "candidate-profile-reject");
+      await emailModel.getEmailConfig("admin", templateType);
 
     if (!configStatus || !htmlTemplate) {
       return { status: false, message: "Email template not configured.", sentTo: [] };
     }
 
-    // 3️⃣ Prepare email body
+    // 4️⃣ Prepare email body
     const htmlBody = htmlTemplate
       .replace(/{{candidateName}}/g, candidateName)
       .replace(/{{email}}/g, lead.email)
@@ -338,7 +351,7 @@ exports.sendEmail = async ({ recruitmentLeadId, admin }) => {
       .replace(/{{adminName}}/g, adminName)
       .replace(/{{year}}/g, new Date().getFullYear().toString());
 
-    // 4️⃣ Send email
+    // 5️⃣ Send email
     await sendEmail(emailConfig, {
       recipient: [{ name: candidateName, email: lead.email }],
       subject: subject || "Candidate Profile Update",
@@ -346,6 +359,7 @@ exports.sendEmail = async ({ recruitmentLeadId, admin }) => {
     });
 
     return { status: true, message: "Email sent successfully.", sentTo: [lead.email] };
+
   } catch (err) {
     console.error("❌ RecruitmentLeadService.sendEmail Error:", err);
     return { status: false, message: "Failed to send email.", error: err.message, sentTo: [] };
