@@ -21,6 +21,7 @@ exports.createRecruitmentLead = async (req, res) => {
         lastName,
         dob,
         age,
+        gender,
         email,
         phoneNumber,
         postcode,
@@ -44,6 +45,7 @@ exports.createRecruitmentLead = async (req, res) => {
             "managementExperience",
             "dbs",
             "level",
+            "gender",
         ],
     });
 
@@ -70,6 +72,7 @@ exports.createRecruitmentLead = async (req, res) => {
             postcode,
             managementExperience,
             dbs,
+            gender,
             status: "pending",
             level,
             createdBy: adminId,
