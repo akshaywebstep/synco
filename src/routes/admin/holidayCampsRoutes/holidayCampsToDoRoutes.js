@@ -2,8 +2,9 @@ const express = require("express");
 const router = express.Router();
 const authMiddleware = require("../../../middleware/admin/authenticate");
 const permissionMiddleware = require("../../../middleware/admin/permission");
-const storage = multer.memoryStorage();
 const multer = require("multer");
+
+const storage = multer.memoryStorage();
 const upload = multer(); // ✅ Handles multipart/form-data
 
 const {
