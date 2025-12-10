@@ -190,7 +190,7 @@ exports.createHolidaySessionExercise = async (req, res) => {
       await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
       await saveFile(file, localPath);
 
-      const remotePath = `temp/admin/${req.admin.id}/holidaySessionExercise/${sessionExerciseId}/${fileName}`;
+      const remotePath = `uploads/temp/admin/${req.admin.id}/holidaySessionExercise/${sessionExerciseId}/${fileName}`;
       const publicUrl = await uploadToFTP(localPath, remotePath);
 
       if (publicUrl) savedImagePaths.push(publicUrl);
@@ -503,7 +503,7 @@ exports.updateHolidaySessionExercise = async (req, res) => {
 
         try {
           console.log("⬆️ STEP 3b: Uploading to FTP:", localPath);
-          const remotePath = `temp/admin/${adminId}/holidaySessionExercise/${id}/${fileName}`;
+          const remotePath = `uploads/temp/admin/${adminId}/holidaySessionExercise/${id}/${fileName}`;
           const publicUrl = await uploadToFTP(localPath, remotePath);
 
           if (publicUrl) {

@@ -190,7 +190,7 @@ exports.createSessionExercise = async (req, res) => {
       await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
       await saveFile(file, localPath);
 
-      const remotePath = `temp/admin/${req.admin.id}/sessionExercise/${sessionExerciseId}/${fileName}`;
+      const remotePath = `uploads/temp/admin/${req.admin.id}/sessionExercise/${sessionExerciseId}/${fileName}`;
       const publicUrl = await uploadToFTP(localPath, remotePath);
 
       if (publicUrl) savedImagePaths.push(publicUrl);
@@ -367,7 +367,7 @@ exports.updateSessionExercise = async (req, res) => {
 
         try {
           console.log("⬆️ STEP 3b: Uploading to FTP:", localPath);
-          const remotePath = `temp/admin/${adminId}/sessionExercise/${id}/${fileName}`;
+          const remotePath = `uploads/temp/admin/${adminId}/sessionExercise/${id}/${fileName}`;
           const publicUrl = await uploadToFTP(localPath, remotePath);
 
           if (publicUrl) {
