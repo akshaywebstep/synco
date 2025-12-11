@@ -478,14 +478,24 @@ exports.updateHolidayBooking = async (req, res) => {
     if (Array.isArray(formData.students)) {
       for (const [index, student] of formData.students.entries()) {
 
-        // Validate NEW students (no ID)
+        const requiredFields = ["studentFirstName", "studentLastName", "dateOfBirth", "medicalInformation"];
+
+        for (const field of requiredFields) {
+          if (student[field] === "") {
+            return res.status(400).json({
+              success: false,
+              message: `Student ${index + 1} ${field} cannot be empty`
+            });
+          }
+        }
+
+        // Validate NEW students additional
         if (!student.id) {
-          const requiredFields = ["studentFirstName", "studentLastName", "dateOfBirth", "medicalInformation"];
           for (const field of requiredFields) {
             if (!student[field] || student[field].toString().trim() === "") {
               return res.status(400).json({
                 success: false,
-                message: `New Student ${index + 1} → ${field} is required`
+                message: `New Student ${index + 1} ${field} is required`
               });
             }
           }
@@ -499,21 +509,31 @@ exports.updateHolidayBooking = async (req, res) => {
     if (Array.isArray(formData.parents)) {
       for (const [index, parent] of formData.parents.entries()) {
 
-        if (!parent.id) { // NEW parent
-          const requiredFields = [
-            "parentFirstName",
-            "parentLastName",
-            "parentEmail",
-            "parentPhoneNumber",
-            "relationToChild",
-            "howDidYouHear"
-          ];
+        const requiredFields = [
+          "parentFirstName",
+          "parentLastName",
+          "parentEmail",
+          "parentPhoneNumber",
+          "relationToChild",
+          "howDidYouHear"
+        ];
 
+        for (const field of requiredFields) {
+          if (parent[field] === "") {
+            return res.status(400).json({
+              success: false,
+              message: `Parent ${index + 1} ${field} cannot be empty`
+            });
+          }
+        }
+
+        // New only
+        if (!parent.id) {
           for (const field of requiredFields) {
-            if (!parent[field] || parent[field].toString().trim() === "") {
+            if (!parent[field] || parent[field].trim() === "") {
               return res.status(400).json({
                 success: false,
-                message: `New Parent ${index + 1} → ${field} is required`
+                message: `New Parent ${index + 1} ${field} is required`
               });
             }
           }
@@ -527,19 +547,29 @@ exports.updateHolidayBooking = async (req, res) => {
     if (Array.isArray(formData.emergencyContacts)) {
       for (const [index, emergency] of formData.emergencyContacts.entries()) {
 
-        if (!emergency.id) { // NEW emergency contact
-          const requiredFields = [
-            "emergencyFirstName",
-            "emergencyLastName",
-            "emergencyPhoneNumber",
-            "emergencyRelation"
-          ];
+        const requiredFields = [
+          "emergencyFirstName",
+          "emergencyLastName",
+          "emergencyPhoneNumber",
+          "emergencyRelation"
+        ];
 
+        for (const field of requiredFields) {
+          if (emergency[field] === "") {
+            return res.status(400).json({
+              success: false,
+              message: `Emergency Contact ${index + 1} ${field} cannot be empty`
+            });
+          }
+        }
+
+        // New only
+        if (!emergency.id) {
           for (const field of requiredFields) {
-            if (!emergency[field] || emergency[field].toString().trim() === "") {
+            if (!emergency[field] || emergency[field].trim() === "") {
               return res.status(400).json({
                 success: false,
-                message: `New Emergency Contact ${index + 1} → ${field} is required`
+                message: `New Emergency Contact ${index + 1} ${field} is required`
               });
             }
           }
