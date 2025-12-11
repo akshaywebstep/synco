@@ -1,5 +1,9 @@
 const express = require("express");
 const router = express.Router();
+const multer = require("multer");
+
+const storage = multer.memoryStorage();
+const upload = multer(); // ✅ Handles multipart/form-data
 const authMiddleware = require("../../../middleware/admin/authenticate");
 const permissionMiddleware = require("../../../middleware/admin/permission");
 const {
@@ -13,6 +17,7 @@ const {
 router.post(
     "/create",
     authMiddleware,
+     upload.array("images", 20),
     permissionMiddleware("holiday-custom-template", "create"),
     createCustomTemplate
 );

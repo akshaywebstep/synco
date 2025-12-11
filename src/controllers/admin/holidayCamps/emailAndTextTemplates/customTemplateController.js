@@ -3,6 +3,10 @@
 const { validateFormData } = require("../../../../utils/validateFormData");
 const { logActivity } = require("../../../../utils/admin/activityLogger");
 const { createNotification } = require("../../../../utils/admin/notificationHelper");
+const path = require("path");
+const fs = require("fs");
+const { uploadToFTP } = require("../../../../utils/uploadToFTP");
+const { saveFile } = require("../../../../utils/fileHandler");
 // const TemplateCategory = require("../../../../../services/admin/holidayCamps/emailAndTextTemplates/templateCategory/templateCategory");
 const DEBUG = process.env.DEBUG === "true";
 const CustomTemplate = require("../../../../services/admin/holidayCamps/emailAndTextTemplates/customTemplate");
@@ -15,8 +19,10 @@ const MODULE = "custom-template";
 exports.createCustomTemplate = async (req, res) => {
   try {
     const formData = req.body || {};
+    const files = req.files || [];
+    const adminId = req.admin?.id;
 
-    const {
+    let {
       mode_of_communication,
       title,
       template_category_id,
@@ -27,46 +33,35 @@ exports.createCustomTemplate = async (req, res) => {
 
     console.log("📩 Incoming Body:", req.body);
 
-    /* -------------------------------------------------------
-     * 1) Validate Mode of Communication
-     * ------------------------------------------------------ */
+    // -------------------------
+    // 1) Validate Mode of Communication
+    // -------------------------
     if (!["email", "text"].includes(mode_of_communication)) {
-      await logActivity(req, PANEL, MODULE, "create", { message: "Invalid communication mode" }, false);
       return res.status(400).json({
         status: false,
         message: "mode_of_communication must be either 'email' or 'text'."
       });
     }
 
-    /* -------------------------------------------------------
-     * 2) Validate Required Fields
-     * ------------------------------------------------------ */
+    // -------------------------
+    // 2) Validate Required Fields
+    // -------------------------
     let required = ["mode_of_communication", "title"];
-
     if (mode_of_communication === "text") required.push("sender_name", "content");
     if (mode_of_communication === "email") required.push("content");
 
     const missing = required.filter(f => !formData[f]);
-
     if (missing.length) {
-      const msg = `Missing required fields: ${missing.join(", ")}`;
-      await logActivity(req, PANEL, MODULE, "create", { message: msg }, false);
-
       return res.status(400).json({
         status: false,
-        message: msg
+        message: `Missing required fields: ${missing.join(", ")}`
       });
     }
 
-    /* -------------------------------------------------------
-     * 3) Normalize category IDs (ALWAYS ARRAY)
-     * ------------------------------------------------------ */
-    let categoryIds = template_category_id;
-
-    if (!Array.isArray(categoryIds)) {
-      categoryIds = template_category_id ? [template_category_id] : [];
-    }
-
+    // -------------------------
+    // 3) Normalize category IDs
+    // -------------------------
+    let categoryIds = Array.isArray(template_category_id) ? template_category_id : [template_category_id];
     if (categoryIds.length === 0) {
       return res.status(400).json({
         status: false,
@@ -74,64 +69,96 @@ exports.createCustomTemplate = async (req, res) => {
       });
     }
 
-    /* -------------------------------------------------------
-     * 4) Parse content (JSON or plain string)
-     * ------------------------------------------------------ */
-    let parsedContent = content;
-    if (typeof content === "string") {
-      try {
-        parsedContent = JSON.parse(content);
-      } catch {
-        parsedContent = content;
+    // -------------------------
+    // 4) Parse content (JSON)
+    // -------------------------
+    let parsedContent;
+    try {
+      parsedContent = typeof content === "string" ? JSON.parse(content) : content;
+    } catch {
+      parsedContent = content;
+    }
+
+    // -------------------------
+    // 5) Upload images from req.files and add to content
+    // -------------------------
+    let uploadedUrls = [];
+
+    // Normalize files array
+    let filesArray = Array.isArray(files) ? files : Object.values(files).flat();
+
+    const allowedExtensions = ["jpg","jpeg","png","webp","gif","bmp","svg","tiff"];
+    for (const file of filesArray) {
+      const ext = path.extname(file.originalname).toLowerCase().slice(1);
+      if (!allowedExtensions.includes(ext)) {
+        return res.status(400).json({ status: false, message: `Invalid file type: ${file.originalname}` });
       }
     }
 
-    /* -------------------------------------------------------
-     * 5) Final Payload (Convert categoryIds to STRING)
-     * ------------------------------------------------------ */
-    const payload = {
-      title,
-      mode_of_communication,
-      template_category_id: JSON.stringify(categoryIds),   // IMPORTANT ✔
-      content: parsedContent,
-      tags,
-      createdBy: req.admin?.id
-    };
+    for (const file of filesArray) {
+      const uniqueId = Date.now() + "_" + Math.floor(Math.random() * 1e9);
+      const ext = path.extname(file.originalname).toLowerCase();
+      const fileName = `${uniqueId}${ext}`;
 
-    if (mode_of_communication === "text") {
-      payload.sender_name = sender_name;
+      const localPath = path.join(
+        process.cwd(),
+        "uploads",
+        "temp",
+        "admin",
+        `${adminId}`,
+        "templates",
+        fileName
+      );
+
+      await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
+      await saveFile(file, localPath);
+
+      try {
+        const remotePath = `uploads/temp/admin/${adminId}/templates/${fileName}`;
+        const publicUrl = await uploadToFTP(localPath, remotePath);
+        if (publicUrl) uploadedUrls.push(publicUrl);
+      } finally {
+        await fs.promises.unlink(localPath).catch(() => {});
+      }
     }
 
-    /* -------------------------------------------------------
-     * 6) Call Service Layer
-     * ------------------------------------------------------ */
-    const result = await CustomTemplate.createCustomTemplate(payload);
-
-    if (!result.status) {
-      await logActivity(req, PANEL, MODULE, "create", { message: result.message }, false);
-      return res.status(500).json({
-        status: false,
-        message: result.message
+    // Add uploaded image URLs to content.blocks
+    if (uploadedUrls.length > 0) {
+      if (!parsedContent?.blocks) parsedContent = { blocks: [] };
+      uploadedUrls.forEach(url => {
+        parsedContent.blocks.push({
+          id: `img_${Date.now()}_${Math.floor(Math.random() * 1e5)}`,
+          type: "image",
+          content: "",
+          url,
+          placeholder: ""
+        });
       });
     }
 
-    /* -------------------------------------------------------
-     * 7) Log Activity + Notification
-     * ------------------------------------------------------ */
-    const adminName =
-      req.admin?.name ||
-      `${req.admin?.firstName || ""} ${req.admin?.lastName || ""}`.trim() ||
-      "Unknown Admin";
+    // -------------------------
+    // 6) Prepare payload
+    // -------------------------
+    const payload = {
+      title,
+      mode_of_communication,
+      template_category_id: JSON.stringify(categoryIds),
+      content: parsedContent,
+      tags,
+      createdBy: adminId
+    };
 
-    const notifMsg = `Custom template created successfully by ${adminName}`;
+    if (mode_of_communication === "text") payload.sender_name = sender_name;
 
-    await createNotification(req, "Custom Template Created", notifMsg, "Support");
+    // -------------------------
+    // 7) Call service
+    // -------------------------
+    const result = await CustomTemplate.createCustomTemplate(payload);
 
-    await logActivity(req, PANEL, MODULE, "create", { message: "Template created successfully" }, true);
+    if (!result.status) {
+      return res.status(500).json({ status: false, message: result.message });
+    }
 
-    /* -------------------------------------------------------
-     * 8) SUCCESS RESPONSE
-     * ------------------------------------------------------ */
     return res.status(201).json({
       status: true,
       message: "Custom template created successfully.",
@@ -140,13 +167,7 @@ exports.createCustomTemplate = async (req, res) => {
 
   } catch (error) {
     console.error("❌ Controller Error:", error);
-
-    await logActivity(req, PANEL, MODULE, "create", { oneLineMessage: error.message }, false);
-
-    return res.status(500).json({
-      status: false,
-      message: "Internal server error."
-    });
+    return res.status(500).json({ status: false, message: "Internal server error." });
   }
 };
 
