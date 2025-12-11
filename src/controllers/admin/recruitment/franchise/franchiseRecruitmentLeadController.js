@@ -335,6 +335,8 @@ exports.sendOfferEmail = async (req, res) => {
 exports.getAllFranchiseRecruitmentLeadRport = async (req, res) => {
   try {
     const adminId = req.admin?.id;
+      // 👉 accept ?dateRange=thisMonth | lastMonth | last3Months | last6Months
+    const { dateRange = "thisMonth" } = req.query;
 
     if (!adminId) {
       return res.status(401).json({
@@ -356,7 +358,8 @@ exports.getAllFranchiseRecruitmentLeadRport = async (req, res) => {
 
     // 📌 Service call
     const result = await RecruitmentLeadService.getAllFranchiseRecruitmentLeadRport(
-      superAdminId
+      superAdminId,
+      dateRange
     );
 
     // 📝 Activity Log
@@ -365,7 +368,7 @@ exports.getAllFranchiseRecruitmentLeadRport = async (req, res) => {
       PANEL,
       MODULE,
       "list",
-      { superAdminId },
+      { superAdminId,dateRange },
       result.status
     );
 

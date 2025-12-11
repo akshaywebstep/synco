@@ -1,8 +1,10 @@
 const { RecruitmentLead, CandidateProfile, Venue, ClassSchedule, Admin } = require("../../../../models");
-const { Op } = require("sequelize");
+
 const { getEmailConfig } = require("../../../email");
 const sendEmail = require("../../../../utils/email/sendEmail");
 const emailModel = require("../../../email");
+const moment = require("moment");
+const { Op } = require("sequelize");
 
 exports.createRecruitmentFranchiseLead = async (data) => {
   try {
@@ -437,7 +439,7 @@ exports.sendOfferEmail = async ({ recruitmentLeadId, admin }) => {
   }
 };
 
-exports.getAllFranchiseRecruitmentLeadRport = async (adminId) => {
+exports.getAllFranchiseRecruitmentLeadRport = async (adminId,dateRange) => {
   try {
     if (!adminId || isNaN(Number(adminId))) {
       return {
@@ -446,14 +448,36 @@ exports.getAllFranchiseRecruitmentLeadRport = async (adminId) => {
         data: [],
       };
     }
-
+     // 🗓️ Define date ranges dynamically based on dateRange
+        let startDate, endDate;
+    
+        if (dateRange === "thisMonth") {
+          startDate = moment().startOf("month").toDate();
+          endDate = moment().endOf("month").toDate();
+        } else if (dateRange === "lastMonth") {
+          startDate = moment().subtract(1, "month").startOf("month").toDate();
+          endDate = moment().subtract(1, "month").endOf("month").toDate();
+        } else if (dateRange === "last3Months") {
+          startDate = moment().subtract(3, "months").startOf("month").toDate();
+          endDate = moment().endOf("month").toDate();
+        } else if (dateRange === "last6Months") {
+          startDate = moment().subtract(6, "months").startOf("month").toDate();
+          endDate = moment().endOf("month").toDate();
+        } else {
+          throw new Error(
+            "Invalid dateRange. Use thisMonth | lastMonth | last3Months | last6Months"
+          );
+        }
+    
     const recruitmentLead = await RecruitmentLead.findAll({
       where: {
         createdBy: Number(adminId),
+         createdAt: { [Op.between]: [startDate, endDate] }, 
         appliedFor: "franchise"
       },
       include: [
-        { model: CandidateProfile, as: "candidateProfile" }
+        { model: CandidateProfile, as: "candidateProfile" },
+        { model: Admin, as: "creator", attributes: ["id", "firstName", "lastName"] }
       ],
       order: [["createdAt", "DESC"]],
     });
@@ -667,18 +691,21 @@ exports.getAllFranchiseRecruitmentLeadRport = async (adminId) => {
         }
       }
 
+     // inside the for (const lead of recruitmentLead) { ... } loop:
       if (lead.status === "recruited") {
-        const agentId = lead.createdBy;
-        if (!topAgentCount[agentId]) {
-          topAgentCount[agentId] = {
-            totalHires: 0,
-            firstName: lead.firstName || "",
-            lastName: lead.lastName || ""
-          };
+        const agentId = lead.createdBy ?? (lead.creator && lead.creator.id);
+        if (agentId != null) {
+          const key = String(agentId);
+          if (!topAgentCount[key]) {
+            topAgentCount[key] = {
+              totalHires: 0,
+              firstName: lead.creator?.firstName || "",
+              lastName: lead.creator?.lastName || ""
+            };
+          }
+          topAgentCount[key].totalHires++;
         }
-        topAgentCount[agentId].totalHires++;
       }
-
     }
     const totalLeads = recruitmentLead.length;
     const averageCallGrade = totalCallMax > 0 ? Math.round((totalCallScore / totalCallMax) * 100) : 0;

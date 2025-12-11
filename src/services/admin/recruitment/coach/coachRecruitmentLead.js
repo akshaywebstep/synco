@@ -1,8 +1,11 @@
 const { RecruitmentLead, CandidateProfile, Venue, ClassSchedule, Admin } = require("../../../../models");
-const { Op } = require("sequelize");
+
 const { getEmailConfig } = require("../../../../services/email");
 const sendEmail = require("../../../../utils/email/sendEmail");
 const emailModel = require("../../../../services/email");
+const moment = require("moment");
+const { Op } = require("sequelize");
+
 exports.createRecruitmentLead = async (data) => {
   try {
     data.status = "pending";
@@ -326,7 +329,7 @@ exports.sendEmail = async ({ recruitmentLeadId, admin }) => {
     // 2️⃣ Choose template based on lead.status
     // ------------------------------------------
     let templateType = "candidate-profile-reject"; // default
-    
+
     if (lead.status === "venue manager") {
       templateType = "venue-manager-reject";   // <-- your new template
     } else if (lead.status === "coach") {
@@ -366,7 +369,7 @@ exports.sendEmail = async ({ recruitmentLeadId, admin }) => {
   }
 };
 
-exports.getAllRecruitmentLeadRport = async (adminId) => {
+exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
   try {
     if (!adminId || isNaN(Number(adminId))) {
       return {
@@ -375,14 +378,36 @@ exports.getAllRecruitmentLeadRport = async (adminId) => {
         data: [],
       };
     }
+    // 🗓️ Define date ranges dynamically based on dateRange
+    let startDate, endDate;
+
+    if (dateRange === "thisMonth") {
+      startDate = moment().startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+    } else if (dateRange === "lastMonth") {
+      startDate = moment().subtract(1, "month").startOf("month").toDate();
+      endDate = moment().subtract(1, "month").endOf("month").toDate();
+    } else if (dateRange === "last3Months") {
+      startDate = moment().subtract(3, "months").startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+    } else if (dateRange === "last6Months") {
+      startDate = moment().subtract(6, "months").startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+    } else {
+      throw new Error(
+        "Invalid dateRange. Use thisMonth | lastMonth | last3Months | last6Months"
+      );
+    }
 
     const recruitmentLead = await RecruitmentLead.findAll({
       where: {
         createdBy: Number(adminId),
+        createdAt: { [Op.between]: [startDate, endDate] },   // ✅ filter applied here
         appliedFor: "coach"
       },
       include: [
-        { model: CandidateProfile, as: "candidateProfile" }
+        { model: CandidateProfile, as: "candidateProfile" },
+        { model: Admin, as: "creator", attributes: ["id", "firstName", "lastName"] }
       ],
       order: [["createdAt", "DESC"]],
     });
@@ -571,16 +596,20 @@ exports.getAllRecruitmentLeadRport = async (adminId) => {
         }
       }
 
+      // inside the for (const lead of recruitmentLead) { ... } loop:
       if (lead.status === "recruited") {
-        const agentId = lead.createdBy;
-        if (!topAgentCount[agentId]) {
-          topAgentCount[agentId] = {
-            totalHires: 0,
-            firstName: lead.firstName || "",
-            lastName: lead.lastName || ""
-          };
+        const agentId = lead.createdBy ?? (lead.creator && lead.creator.id);
+        if (agentId != null) {
+          const key = String(agentId);
+          if (!topAgentCount[key]) {
+            topAgentCount[key] = {
+              totalHires: 0,
+              firstName: lead.creator?.firstName || "",
+              lastName: lead.creator?.lastName || ""
+            };
+          }
+          topAgentCount[key].totalHires++;
         }
-        topAgentCount[agentId].totalHires++;
       }
 
     }
@@ -644,7 +673,7 @@ exports.getAllRecruitmentLeadRport = async (adminId) => {
         lastName: topAgentCount[agentId].lastName,
         totalHires: topAgentCount[agentId].totalHires
       }))
-      .sort((a, b) => b.totalHires - a.totalHires); // highest hires first
+      .sort((a, b) => b.totalHires - a.totalHires);
 
     // ========= MAIN REPORT =========
     const calcRate = (value, total) =>

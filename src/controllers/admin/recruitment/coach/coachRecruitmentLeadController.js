@@ -14,106 +14,106 @@ const MODULE = "recruitment-lead";
 // ----------------------------------------
 
 exports.createRecruitmentLead = async (req, res) => {
-    if (DEBUG) console.log("▶️ Incoming Request Body:", req.body);
+  if (DEBUG) console.log("▶️ Incoming Request Body:", req.body);
 
-    const {
-        firstName,
-        lastName,
-        dob,
-        age,
-        gender,
-        email,
-        phoneNumber,
-        postcode,
-        managementExperience,
-        dbs,
-        level,
-    } = req.body;
+  const {
+    firstName,
+    lastName,
+    dob,
+    age,
+    gender,
+    email,
+    phoneNumber,
+    postcode,
+    managementExperience,
+    dbs,
+    level,
+  } = req.body;
 
-    const adminId = req.admin?.id;
-    if (DEBUG) console.log("▶️ Admin ID:", adminId);
+  const adminId = req.admin?.id;
+  if (DEBUG) console.log("▶️ Admin ID:", adminId);
 
+  // -------------------------------
+  // 🔍 Validate Input Fields
+  // -------------------------------
+  const validation = validateFormData(req.body, {
+    requiredFields: [
+      "firstName",
+      "lastName",
+      "dob",
+      "email",
+      "managementExperience",
+      "dbs",
+      "level",
+      "gender",
+    ],
+  });
+
+  if (DEBUG) console.log("🔍 Validation Result:", validation);
+
+  if (!validation.isValid) {
+    await logActivity(req, PANEL, MODULE, "create", validation.error, false);
+    return res.status(400).json({ status: false, ...validation });
+  }
+
+  try {
     // -------------------------------
-    // 🔍 Validate Input Fields
+    // 💾 Create Lead
     // -------------------------------
-    const validation = validateFormData(req.body, {
-        requiredFields: [
-            "firstName",
-            "lastName",
-            "dob",
-            "email",
-            "managementExperience",
-            "dbs",
-            "level",
-            "gender",
-        ],
+    if (DEBUG) console.log("💾 Creating Recruitment Lead…");
+
+    const result = await RecruitmentLeadService.createRecruitmentLead({
+      firstName,
+      lastName,
+      dob,
+      age,
+      email,
+      phoneNumber,
+      postcode,
+      managementExperience,
+      dbs,
+      gender,
+      status: "pending",
+      level,
+      createdBy: adminId,
+      appliedFor: "coach",
     });
 
-    if (DEBUG) console.log("🔍 Validation Result:", validation);
+    if (DEBUG) console.log("💾 Create Service Result:", result);
 
-    if (!validation.isValid) {
-        await logActivity(req, PANEL, MODULE, "create", validation.error, false);
-        return res.status(400).json({ status: false, ...validation });
-    }
+    // Log activity
+    await logActivity(req, PANEL, MODULE, "create", result, result.status);
 
-    try {
-        // -------------------------------
-        // 💾 Create Lead
-        // -------------------------------
-        if (DEBUG) console.log("💾 Creating Recruitment Lead…");
+    // -------------------------------
+    // 🔔 Create Notification
+    // -------------------------------
+    await createNotification(
+      req,
+      "Recruitment Lead Created",
+      `Recruitment Lead created by ${req?.admin?.firstName || "Admin"}.`,
+      "System"
+    );
 
-        const result = await RecruitmentLeadService.createRecruitmentLead({
-            firstName,
-            lastName,
-            dob,
-            age,
-            email,
-            phoneNumber,
-            postcode,
-            managementExperience,
-            dbs,
-            gender,
-            status: "pending",
-            level,
-            createdBy: adminId,
-            appliedFor: "coach",
-        });
+    return res.status(result.status ? 201 : 500).json(result);
 
-        if (DEBUG) console.log("💾 Create Service Result:", result);
+  } catch (error) {
+    console.error("❌ Error in createRecruitmentLead:", error);
 
-        // Log activity
-        await logActivity(req, PANEL, MODULE, "create", result, result.status);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "create",
+      { oneLineMessage: error.message },
+      false
+    );
 
-        // -------------------------------
-        // 🔔 Create Notification
-        // -------------------------------
-        await createNotification(
-            req,
-            "Recruitment Lead Created",
-            `Recruitment Lead created by ${req?.admin?.firstName || "Admin"}.`,
-            "System"
-        );
-
-        return res.status(result.status ? 201 : 500).json(result);
-
-    } catch (error) {
-        console.error("❌ Error in createRecruitmentLead:", error);
-
-        await logActivity(
-            req,
-            PANEL,
-            MODULE,
-            "create",
-            { oneLineMessage: error.message },
-            false
-        );
-
-        return res.status(500).json({
-            status: false,
-            message: "Server error.",
-            error: DEBUG ? error.message : undefined,
-        });
-    }
+    return res.status(500).json({
+      status: false,
+      message: "Server error.",
+      error: DEBUG ? error.message : undefined,
+    });
+  }
 };
 
 exports.getAllRecruitmentLead = async (req, res) => {
@@ -281,6 +281,9 @@ exports.getAllRecruitmentLeadRport = async (req, res) => {
   try {
     const adminId = req.admin?.id;
 
+    // 👉 accept ?dateRange=thisMonth | lastMonth | last3Months | last6Months
+    const { dateRange = "thisMonth" } = req.query;
+
     if (!adminId) {
       return res.status(401).json({
         status: false,
@@ -288,7 +291,7 @@ exports.getAllRecruitmentLeadRport = async (req, res) => {
       });
     }
 
-    // 🔍 Get parent super admin
+    // 🔍 Find parent super admin
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
     const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
 
@@ -299,18 +302,19 @@ exports.getAllRecruitmentLeadRport = async (req, res) => {
       });
     }
 
-    // 📌 Service call
+    // 📌 Call service with dateRange
     const result = await RecruitmentLeadService.getAllRecruitmentLeadRport(
-      superAdminId
+      superAdminId,
+      dateRange     // 👈 replaced filterType
     );
 
-    // 📝 Activity Log
+    // 📝 Activity log
     await logActivity(
       req,
       PANEL,
       MODULE,
       "list",
-      { superAdminId },
+      { superAdminId, dateRange },
       result.status
     );
 
