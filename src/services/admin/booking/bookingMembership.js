@@ -158,6 +158,10 @@ exports.createBooking = async (data, options) => {
 
       if (!email) throw new Error("Parent email is required for open booking");
 
+      if (!isValidEmail(email)) {
+        throw new Error("Parent Email must be a valid email.");
+      }
+
       // 🔍 Check duplicate email in Admin table
       const existingAdmin = await Admin.findOne({
         where: { email },
@@ -311,273 +315,6 @@ exports.createBooking = async (data, options) => {
       );
     }
 
-    // 🔹 Step 5: Process Payment if booking has a payment plan
-    // if (booking.paymentPlanId && data.payment?.paymentType) {
-    //   const paymentType = data.payment.paymentType; // "bank" or "card"
-    //   console.log("Step 5: Start payment process, paymentType:", paymentType);
-
-    //   let paymentStatusFromGateway = "pending";
-    //   const firstStudentId = studentRecords[0]?.id;
-
-    //   try {
-    //     // Fetch payment plan & pricing
-    //     const paymentPlan = await PaymentPlan.findByPk(booking.paymentPlanId, {
-    //       transaction: t,
-    //     });
-    //     if (!paymentPlan) throw new Error("Invalid payment plan selected.");
-    //     const price = paymentPlan.price || 0;
-
-    //     // Fetch venue & classSchedule info
-    //     const venue = await Venue.findByPk(data.venueId, { transaction: t });
-    //     const classSchedule = await ClassSchedule.findByPk(
-    //       data.classScheduleId,
-    //       {
-    //         transaction: t,
-    //       }
-    //     );
-
-    //     const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
-    //     let gatewayResponse = null;
-    //     const amountInPence = Math.round(price * 100);
-
-    //     let goCardlessCustomer;
-    //     let goCardlessBankAccount;
-    //     let goCardlessBillingRequest;
-
-    //     if (paymentType === "bank") {
-    //       // Step 1: Prepare payload for customer creation
-    //       // const customerPayload = {
-    //       //   email: data.payment.email || data.parents?.[0]?.parentEmail || "",
-    //       //   given_name: data.payment.firstName || "",
-    //       //   family_name: data.payment.lastName || "",
-    //       //   address_line1: data.payment.addressLine1 || "",
-    //       //   address_line2: data.payment.addressLine2 || "",
-    //       //   city: data.payment.city || "",
-    //       //   postal_code: data.payment.postalCode || "",
-    //       //   country_code: data.payment.countryCode || "",
-    //       //   region: data.payment.region || "",
-    //       //   crm_id: `CUSTID-${Date.now()}-${Math.floor(
-    //       //     1000 + Math.random() * 9000
-    //       //   )}`,
-    //       //   account_holder_name: data.payment.account_holder_name || "",
-    //       //   account_number: data.payment.account_number || "",
-    //       //   branch_code: data.payment.branch_code || "",
-    //       //   bank_code: data.payment.bank_code || "",
-    //       //   account_type: data.payment.account_type || "",
-    //       //   iban: data.payment.iban || "",
-    //       // };
-
-    //       const customerPayload = {
-    //         email: data.payment.email || data.parents?.[0]?.parentEmail || "",
-    //         given_name: data.payment.firstName || "",
-    //         family_name: data.payment.lastName || "",
-    //         address_line1: data.payment.addressLine1 || "",
-    //         city: data.payment.city || "",
-    //         postal_code: data.payment.postalCode || "",
-    //         country_code: data.payment.countryCode || "GB", // default to GB
-    //         currency: data.payment.currency || "GBP",
-    //         account_holder_name: data.payment.account_holder_name || "",
-    //         account_number: data.payment.account_number || "",
-    //         branch_code: data.payment.branch_code || "",
-    //       };
-
-    //       if (DEBUG) console.log("🛠 Generated payload:", customerPayload);
-
-    //       // Step 2: Create customer + bank account
-    //       const createCustomerRes = await createCustomer(customerPayload);
-    //       if (!createCustomerRes.status) {
-    //         throw new Error(
-    //           createCustomerRes.message ||
-    //           "Failed to create goCardless customer."
-    //         );
-    //       }
-
-    //       // Step 3: Prepare payload for billing request
-    //       const billingRequestPayload = {
-    //         customerId: createCustomerRes.customer.id,
-    //         description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-    //           }`,
-    //         amount: price,
-    //         scheme: "faster_payments",
-    //         currency: "GBP",
-    //         reference: `TRX-${Date.now()}-${Math.floor(
-    //           1000 + Math.random() * 9000
-    //         )}`,
-    //         mandateReference: `MD-${Date.now()}-${Math.floor(
-    //           1000 + Math.random() * 9000
-    //         )}`,
-    //         metadata: {
-    //           crm_id: customerPayload.crm_id,
-    //         },
-    //         fallbackEnabled: true,
-    //       };
-
-    //       if (DEBUG)
-    //         console.log(
-    //           "🛠 Generated billing request payload:",
-    //           billingRequestPayload
-    //         );
-
-    //       // Step 4: Create billing request
-    //       const createBillingRequestRes = await createBillingRequest(
-    //         billingRequestPayload
-    //       );
-    //       if (!createBillingRequestRes.status) {
-    //         await removeCustomer(createCustomerRes.customer.id);
-    //         throw new Error(
-    //           createBillingRequestRes.message ||
-    //           "Failed to create billing request."
-    //         );
-    //       }
-
-    //       goCardlessCustomer = createCustomerRes.customer;
-    //       goCardlessBankAccount = createCustomerRes.bankAccount;
-    //       goCardlessBillingRequest = createBillingRequestRes.billingRequest;
-    //     } else if (paymentType === "card") {
-    //       // 🔹 Card payment using Pay360
-    //       if (
-    //         !process.env.PAY360_INST_ID ||
-    //         !process.env.PAY360_API_USERNAME ||
-    //         !process.env.PAY360_API_PASSWORD
-    //       )
-    //         throw new Error("Pay360 credentials not set.");
-
-    //       const paymentPayload = {
-    //         transaction: {
-    //           currency: "GBP",
-    //           amount: price,
-    //           merchantRef,
-    //           description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-    //             }`,
-    //           commerceType: "ECOM",
-    //         },
-    //         paymentMethod: {
-    //           card: {
-    //             pan: data.payment.pan,
-    //             expiryDate: data.payment.expiryDate,
-    //             cardHolderName: data.payment.cardHolderName,
-    //             cv2: data.payment.cv2,
-    //           },
-    //         },
-    //       };
-
-    //       const url = `https://api.mite.pay360.com/acceptor/rest/transactions/${process.env.PAY360_INST_ID}/payment`;
-    //       const authHeader = Buffer.from(
-    //         `${process.env.PAY360_API_USERNAME}:${process.env.PAY360_API_PASSWORD}`
-    //       ).toString("base64");
-
-    //       const response = await axios.post(url, paymentPayload, {
-    //         headers: {
-    //           "Content-Type": "application/json",
-    //           Authorization: `Basic ${authHeader}`,
-    //         },
-    //       });
-
-    //       gatewayResponse = response.data;
-    //       // Map status dynamically
-    //       const txnStatus = gatewayResponse?.transaction?.status?.toLowerCase();
-    //       if (txnStatus === "success") {
-    //         paymentStatusFromGateway = "paid";
-    //       } else if (txnStatus === "pending") {
-    //         paymentStatusFromGateway = "pending";
-    //       } else if (txnStatus === "declined") {
-    //         paymentStatusFromGateway = "failed";
-    //       } else {
-    //         paymentStatusFromGateway = txnStatus || "unknown";
-    //       }
-    //     }
-
-    //     // 🔹 Save BookingPayment (always save, even if failed)
-    //     await BookingPayment.create(
-    //       {
-    //         bookingId: booking.id,
-    //         paymentPlanId: booking.paymentPlanId,
-    //         studentId: firstStudentId,
-    //         paymentType,
-    //         firstName:
-    //           data.payment.firstName ||
-    //           data.parents?.[0]?.parentFirstName ||
-    //           "",
-    //         lastName:
-    //           data.payment.lastName || data.parents?.[0]?.parentLastName || "",
-    //         email: data.payment.email || data.parents?.[0]?.parentEmail || "",
-    //         billingAddress: data.payment.billingAddress || "",
-    //         cardHolderName: data.payment.cardHolderName || "",
-    //         cv2: data.payment.cv2 || "",
-    //         expiryDate: data.payment.expiryDate || "",
-    //         pan: data.payment.pan || "",
-    //         // referenceId: data.payment.referenceId || "",
-    //         account_holder_name: data.payment.account_holder_name || "",
-    //         paymentStatus: paymentStatusFromGateway,
-    //         currency:
-    //           gatewayResponse?.transaction?.currency ||
-    //           gatewayResponse?.billing_requests?.currency ||
-    //           "GBP",
-    //         merchantRef:
-    //           gatewayResponse?.transaction?.merchantRef || merchantRef,
-    //         description:
-    //           gatewayResponse?.transaction?.description ||
-    //           `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-    //           }`,
-    //         commerceType: "ECOM",
-    //         gatewayResponse,
-    //         transactionMeta: {
-    //           status:
-    //             gatewayResponse?.transaction?.status ||
-    //             gatewayResponse?.billing_requests?.status ||
-    //             "pending",
-    //         },
-    //         goCardlessCustomer,
-    //         goCardlessBankAccount,
-    //         goCardlessBillingRequest,
-    //         createdAt: new Date(),
-    //         updatedAt: new Date(),
-    //       },
-    //       { transaction: t }
-    //     );
-
-    //     console.log(
-    //       `${paymentType.toUpperCase()} payment saved with status:`,
-    //       paymentStatusFromGateway
-    //     );
-
-    //     // 🔹 Fail booking creation only if payment explicitly failed
-    //     if (paymentStatusFromGateway === "failed") {
-    //       throw new Error("Payment failed. Booking not created.");
-    //     }
-    //   } catch (err) {
-    //     // 🔹 Proper error handling: only show readable message
-    //     let errorMessage = "Payment failed";
-
-    //     if (err.response?.data) {
-    //       // Gateway returned an error
-    //       if (typeof err.response.data === "string") {
-    //         errorMessage = err.response.data;
-    //       } else if (err.response.data.reasonMessage) {
-    //         // Use reasonMessage from gateway response if available
-    //         errorMessage = err.response.data.reasonMessage;
-    //       } else if (err.response.data.error?.message) {
-    //         // Use error.message if available
-    //         errorMessage = err.response.data.error.message;
-    //       } else {
-    //         // Fallback: convert object to string safely
-    //         errorMessage = Object.values(err.response.data).join(" | ");
-    //       }
-    //     } else if (err.message) {
-    //       // Standard JS error
-    //       errorMessage = err.message;
-    //     }
-
-    //     // Rollback transaction
-    //     await t.rollback();
-
-    //     // Return clean error message
-    //     return {
-    //       status: false,
-    //       message: errorMessage,
-    //     };
-    //   }
-    // }
     // Step 5: Process Payment if booking has a payment plan
     if (booking.paymentPlanId && data.payment?.paymentType) {
       const paymentType = data.payment.paymentType; // "bank" or "card"
@@ -3228,285 +2965,270 @@ exports.updateBookingWithStudents = async (
   }
 };
 
-// exports.updateBooking = async (data, options) => {
-//   console.log("🚀 Start updateBooking service");
-//   const transaction = await sequelize.transaction();
+// 🔹 Step 5: Process Payment if booking has a payment plan
+// if (booking.paymentPlanId && data.payment?.paymentType) {
+//   const paymentType = data.payment.paymentType; // "bank" or "card"
+//   console.log("Step 5: Start payment process, paymentType:", paymentType);
+
+//   let paymentStatusFromGateway = "pending";
+//   const firstStudentId = studentRecords[0]?.id;
 
 //   try {
-//     const adminId = options?.adminId || null;
+//     // Fetch payment plan & pricing
+//     const paymentPlan = await PaymentPlan.findByPk(booking.paymentPlanId, {
+//       transaction: t,
+//     });
+//     if (!paymentPlan) throw new Error("Invalid payment plan selected.");
+//     const price = paymentPlan.price || 0;
 
-//     // Step 1: Update Booking
-//     console.log("🚀 Step 1: Updating booking:", data.bookingId);
-//     const [affectedRows] = await Booking.update(
+//     // Fetch venue & classSchedule info
+//     const venue = await Venue.findByPk(data.venueId, { transaction: t });
+//     const classSchedule = await ClassSchedule.findByPk(
+//       data.classScheduleId,
 //       {
-//         venueId: data.venueId,
-//         bookingId: generateBookingId(12),
-//         totalStudents: data.totalStudents,
-//         classScheduleId: data.classScheduleId,
-//         bookingType: data.paymentPlanId ? "paid" : "free",
-//         paymentPlanId: data.paymentPlanId || null,
-//         status: data.status || "active",
-//         bookedBy: adminId,
-//         updatedAt: new Date(),
-//       },
-//       { where: { id: data.bookingId }, transaction }
+//         transaction: t,
+//       }
 //     );
 
-//     if (!affectedRows) throw new Error(`Booking with id ${data.bookingId} not found`);
+//     const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
+//     let gatewayResponse = null;
+//     const amountInPence = Math.round(price * 100);
 
-//     // Step 2: Update Students
-//     console.log("🚀 Step 2: Updating students");
-//     const studentRecords = [];
+//     let goCardlessCustomer;
+//     let goCardlessBankAccount;
+//     let goCardlessBillingRequest;
 
-//     for (const student of data.students) {
-//       console.log("🔹 Processing student:", student);
+//     if (paymentType === "bank") {
+//       // Step 1: Prepare payload for customer creation
+//       // const customerPayload = {
+//       //   email: data.payment.email || data.parents?.[0]?.parentEmail || "",
+//       //   given_name: data.payment.firstName || "",
+//       //   family_name: data.payment.lastName || "",
+//       //   address_line1: data.payment.addressLine1 || "",
+//       //   address_line2: data.payment.addressLine2 || "",
+//       //   city: data.payment.city || "",
+//       //   postal_code: data.payment.postalCode || "",
+//       //   country_code: data.payment.countryCode || "",
+//       //   region: data.payment.region || "",
+//       //   crm_id: `CUSTID-${Date.now()}-${Math.floor(
+//       //     1000 + Math.random() * 9000
+//       //   )}`,
+//       //   account_holder_name: data.payment.account_holder_name || "",
+//       //   account_number: data.payment.account_number || "",
+//       //   branch_code: data.payment.branch_code || "",
+//       //   bank_code: data.payment.bank_code || "",
+//       //   account_type: data.payment.account_type || "",
+//       //   iban: data.payment.iban || "",
+//       // };
 
-//       let studentRecord;
-//       if (student.id) {
-//         studentRecord = await BookingStudentMeta.findByPk(student.id, { transaction });
-//         if (!studentRecord) throw new Error(`Student with id ${student.id} not found`);
+//       const customerPayload = {
+//         email: data.payment.email || data.parents?.[0]?.parentEmail || "",
+//         given_name: data.payment.firstName || "",
+//         family_name: data.payment.lastName || "",
+//         address_line1: data.payment.addressLine1 || "",
+//         city: data.payment.city || "",
+//         postal_code: data.payment.postalCode || "",
+//         country_code: data.payment.countryCode || "GB", // default to GB
+//         currency: data.payment.currency || "GBP",
+//         account_holder_name: data.payment.account_holder_name || "",
+//         account_number: data.payment.account_number || "",
+//         branch_code: data.payment.branch_code || "",
+//       };
 
-//         Object.assign(studentRecord, {
-//           bookingTrialId: data.bookingId,
-//           studentFirstName: student.studentFirstName,
-//           studentLastName: student.studentLastName,
-//           dateOfBirth: student.dateOfBirth,
-//           age: student.age,
-//           gender: student.gender,
-//           medicalInformation: student.medicalInformation,
-//           updatedAt: new Date(),
-//         });
+//       if (DEBUG) console.log("🛠 Generated payload:", customerPayload);
 
-//         await studentRecord.save({ transaction });
-//       } else {
-//         studentRecord = await BookingStudentMeta.create(
-//           {
-//             bookingTrialId: data.bookingId,
-//             studentFirstName: student.studentFirstName,
-//             studentLastName: student.studentLastName,
-//             dateOfBirth: student.dateOfBirth,
-//             age: student.age,
-//             gender: student.gender,
-//             medicalInformation: student.medicalInformation,
-//             createdAt: new Date(),
-//             updatedAt: new Date(),
-//           },
-//           { transaction }
+//       // Step 2: Create customer + bank account
+//       const createCustomerRes = await createCustomer(customerPayload);
+//       if (!createCustomerRes.status) {
+//         throw new Error(
+//           createCustomerRes.message ||
+//           "Failed to create goCardless customer."
 //         );
 //       }
 
-//       studentRecords.push(studentRecord);
-//       console.log("✅ Student processed:", studentRecord.id);
-//     }
-
-//     // Step 3: Update Parents
-//     console.log("🚀 Step 3: Updating parents");
-//     if (data.parents?.length && studentRecords.length) {
-//       const firstStudentId = studentRecords[0].id;
-
-//       for (const parent of data.parents) {
-//         const email = parent.parentEmail?.trim()?.toLowerCase();
-//         if (!email) throw new Error("Parent email is required.");
-
-//         const existingParent = await BookingParentMeta.findOne({
-//           where: { studentId: firstStudentId, parentEmail: email },
-//           transaction,
-//         });
-//         const existingAdmin = await Admin.findOne({ where: { email }, transaction });
-
-//         if (existingParent || existingAdmin) {
-//           throw new Error(`Parent with email ${email} already exists.`);
-//         }
-
-//         await BookingParentMeta.update(
-//           {
-//             studentId: firstStudentId,
-//             parentFirstName: parent.parentFirstName,
-//             parentLastName: parent.parentLastName,
-//             parentEmail: email,
-//             parentPhoneNumber: parent.parentPhoneNumber,
-//             relationToChild: parent.relationToChild,
-//             howDidYouHear: parent.howDidYouHear,
-//             updatedAt: new Date(),
-//           },
-//           { where: { id: parent.id || 0 }, transaction }
-//         );
-
-//         console.log("✅ Parent and admin updated:", email);
-//       }
-//     }
-
-//     // Step 4: Update Emergency Contact
-//     console.log("🚀 Step 4: Updating emergency contact");
-//     if (data.emergency) {
-//       let emergencyRecord;
-//       if (data.emergency.id) {
-//         emergencyRecord = await BookingEmergencyMeta.findByPk(data.emergency.id, { transaction });
-//         if (!emergencyRecord) throw new Error(`Emergency contact with id ${data.emergency.id} not found`);
-
-//         Object.assign(emergencyRecord, {
-//           bookingTrialId: data.bookingId,
-//           emergencyFirstName: data.emergency.emergencyFirstName,
-//           emergencyLastName: data.emergency.emergencyLastName,
-//           emergencyPhoneNumber: data.emergency.emergencyPhoneNumber,
-//           emergencyRelation: data.emergency.emergencyRelation,
-//           updatedAt: new Date(),
-//         });
-
-//         await emergencyRecord.save({ transaction });
-//       } else {
-//         emergencyRecord = await BookingEmergencyMeta.create(
-//           {
-//             bookingTrialId: data.bookingId,
-//             emergencyFirstName: data.emergency.emergencyFirstName,
-//             emergencyLastName: data.emergency.emergencyLastName,
-//             emergencyPhoneNumber: data.emergency.emergencyPhoneNumber,
-//             emergencyRelation: data.emergency.emergencyRelation,
-//             createdAt: new Date(),
-//             updatedAt: new Date(),
-//           },
-//           { transaction }
-//         );
-//       }
-//       console.log("✅ Emergency contact processed:", emergencyRecord.id);
-//     }
-
-//     // Step 5: Update Class Capacity
-//     await transaction.commit();
-//     console.log("✅ Transaction committed successfully");
-
-//     return { status: true, data: { bookingId: data.bookingId, firstStudent: studentRecords[0] } };
-
-//   } catch (error) {
-//     await transaction.rollback();
-//     console.error("❌ Transaction rolled back:", error.message);
-//     return { status: false, message: error.message };
-//   }
-// };
-
-// exports.updateBookingWithStudents = async (bookingId, studentsPayload, transaction) => {
-//   // Fetch booking with associations
-//   const booking = await Booking.findOne({
-//     where: { id: bookingId },
-//     include: [
-//       {
-//         model: BookingStudentMeta,
-//         as: "students",
-//         include: [
-//           { model: BookingParentMeta, as: "parents" },
-//           { model: BookingEmergencyMeta, as: "emergencyContacts" },
-//         ],
-//       },
-//     ],
-//     transaction,
-//   });
-
-//   if (!booking) throw new Error("Booking not found.");
-
-//   for (const student of studentsPayload) {
-//     let studentRecord;
-
-//     if (student.id) {
-//       // 🔹 Update existing student
-//       studentRecord = booking.students.find((s) => s.id === student.id);
-//       if (!studentRecord) continue;
-
-//       const studentFields = [
-//         "studentFirstName",
-//         "studentLastName",
-//         "dateOfBirth",
-//         "age",
-//         "gender",
-//         "medicalInformation",
-//       ];
-//       studentFields.forEach((field) => {
-//         if (student[field] !== undefined) studentRecord[field] = student[field];
-//       });
-//       await studentRecord.save({ transaction });
-//     } else {
-//       // 🔹 Create new student
-//       studentRecord = await BookingStudentMeta.create(
-//         {
-//           bookingId,
-//           studentFirstName: student.studentFirstName,
-//           studentLastName: student.studentLastName,
-//           dateOfBirth: student.dateOfBirth,
-//           age: student.age,
-//           gender: student.gender,
-//           medicalInformation: student.medicalInformation,
+//       // Step 3: Prepare payload for billing request
+//       const billingRequestPayload = {
+//         customerId: createCustomerRes.customer.id,
+//         description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+//           }`,
+//         amount: price,
+//         scheme: "faster_payments",
+//         currency: "GBP",
+//         reference: `TRX-${Date.now()}-${Math.floor(
+//           1000 + Math.random() * 9000
+//         )}`,
+//         mandateReference: `MD-${Date.now()}-${Math.floor(
+//           1000 + Math.random() * 9000
+//         )}`,
+//         metadata: {
+//           crm_id: customerPayload.crm_id,
 //         },
-//         { transaction }
+//         fallbackEnabled: true,
+//       };
+
+//       if (DEBUG)
+//         console.log(
+//           "🛠 Generated billing request payload:",
+//           billingRequestPayload
+//         );
+
+//       // Step 4: Create billing request
+//       const createBillingRequestRes = await createBillingRequest(
+//         billingRequestPayload
 //       );
-//     }
+//       if (!createBillingRequestRes.status) {
+//         await removeCustomer(createCustomerRes.customer.id);
+//         throw new Error(
+//           createBillingRequestRes.message ||
+//           "Failed to create billing request."
+//         );
+//       }
 
-//     // 🔹 Parents
-//     if (Array.isArray(student.parents)) {
-//       for (const parent of student.parents) {
-//         if (parent.id) {
-//           const parentRecord = studentRecord.parents?.find((p) => p.id === parent.id);
-//           if (parentRecord) {
-//             const parentFields = [
-//               "parentFirstName",
-//               "parentLastName",
-//               "parentEmail",
-//               "parentPhoneNumber",
-//               "relationToChild",
-//               "howDidYouHear",
-//             ];
-//             parentFields.forEach((field) => {
-//               if (parent[field] !== undefined) parentRecord[field] = parent[field];
-//             });
-//             await parentRecord.save({ transaction });
-//           }
-//         } else {
-//           await BookingParentMeta.create(
-//             {
-//               bookingStudentMetaId: studentRecord.id,
-//               parentFirstName: parent.parentFirstName,
-//               parentLastName: parent.parentLastName,
-//               parentEmail: parent.parentEmail,
-//               parentPhoneNumber: parent.parentPhoneNumber,
-//               relationToChild: parent.relationToChild,
-//               howDidYouHear: parent.howDidYouHear,
-//             },
-//             { transaction }
-//           );
-//         }
+//       goCardlessCustomer = createCustomerRes.customer;
+//       goCardlessBankAccount = createCustomerRes.bankAccount;
+//       goCardlessBillingRequest = createBillingRequestRes.billingRequest;
+//     } else if (paymentType === "card") {
+//       // 🔹 Card payment using Pay360
+//       if (
+//         !process.env.PAY360_INST_ID ||
+//         !process.env.PAY360_API_USERNAME ||
+//         !process.env.PAY360_API_PASSWORD
+//       )
+//         throw new Error("Pay360 credentials not set.");
+
+//       const paymentPayload = {
+//         transaction: {
+//           currency: "GBP",
+//           amount: price,
+//           merchantRef,
+//           description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+//             }`,
+//           commerceType: "ECOM",
+//         },
+//         paymentMethod: {
+//           card: {
+//             pan: data.payment.pan,
+//             expiryDate: data.payment.expiryDate,
+//             cardHolderName: data.payment.cardHolderName,
+//             cv2: data.payment.cv2,
+//           },
+//         },
+//       };
+
+//       const url = `https://api.mite.pay360.com/acceptor/rest/transactions/${process.env.PAY360_INST_ID}/payment`;
+//       const authHeader = Buffer.from(
+//         `${process.env.PAY360_API_USERNAME}:${process.env.PAY360_API_PASSWORD}`
+//       ).toString("base64");
+
+//       const response = await axios.post(url, paymentPayload, {
+//         headers: {
+//           "Content-Type": "application/json",
+//           Authorization: `Basic ${authHeader}`,
+//         },
+//       });
+
+//       gatewayResponse = response.data;
+//       // Map status dynamically
+//       const txnStatus = gatewayResponse?.transaction?.status?.toLowerCase();
+//       if (txnStatus === "success") {
+//         paymentStatusFromGateway = "paid";
+//       } else if (txnStatus === "pending") {
+//         paymentStatusFromGateway = "pending";
+//       } else if (txnStatus === "declined") {
+//         paymentStatusFromGateway = "failed";
+//       } else {
+//         paymentStatusFromGateway = txnStatus || "unknown";
 //       }
 //     }
 
-//     // 🔹 Emergency Contacts
-//     if (Array.isArray(student.emergencyContacts)) {
-//       for (const emergency of student.emergencyContacts) {
-//         if (emergency.id) {
-//           const emergencyRecord = studentRecord.emergencyContacts?.find((e) => e.id === emergency.id);
-//           if (emergencyRecord) {
-//             const emergencyFields = [
-//               "emergencyFirstName",
-//               "emergencyLastName",
-//               "emergencyPhoneNumber",
-//               "emergencyRelation",
-//             ];
-//             emergencyFields.forEach((field) => {
-//               if (emergency[field] !== undefined) emergencyRecord[field] = emergency[field];
-//             });
-//             await emergencyRecord.save({ transaction });
-//           }
-//         } else {
-//           await BookingEmergencyMeta.create(
-//             {
-//               bookingStudentMetaId: studentRecord.id,
-//               emergencyFirstName: emergency.emergencyFirstName,
-//               emergencyLastName: emergency.emergencyLastName,
-//               emergencyPhoneNumber: emergency.emergencyPhoneNumber,
-//               emergencyRelation: emergency.emergencyRelation,
-//             },
-//             { transaction }
-//           );
-//         }
-//       }
+//     // 🔹 Save BookingPayment (always save, even if failed)
+//     await BookingPayment.create(
+//       {
+//         bookingId: booking.id,
+//         paymentPlanId: booking.paymentPlanId,
+//         studentId: firstStudentId,
+//         paymentType,
+//         firstName:
+//           data.payment.firstName ||
+//           data.parents?.[0]?.parentFirstName ||
+//           "",
+//         lastName:
+//           data.payment.lastName || data.parents?.[0]?.parentLastName || "",
+//         email: data.payment.email || data.parents?.[0]?.parentEmail || "",
+//         billingAddress: data.payment.billingAddress || "",
+//         cardHolderName: data.payment.cardHolderName || "",
+//         cv2: data.payment.cv2 || "",
+//         expiryDate: data.payment.expiryDate || "",
+//         pan: data.payment.pan || "",
+//         // referenceId: data.payment.referenceId || "",
+//         account_holder_name: data.payment.account_holder_name || "",
+//         paymentStatus: paymentStatusFromGateway,
+//         currency:
+//           gatewayResponse?.transaction?.currency ||
+//           gatewayResponse?.billing_requests?.currency ||
+//           "GBP",
+//         merchantRef:
+//           gatewayResponse?.transaction?.merchantRef || merchantRef,
+//         description:
+//           gatewayResponse?.transaction?.description ||
+//           `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+//           }`,
+//         commerceType: "ECOM",
+//         gatewayResponse,
+//         transactionMeta: {
+//           status:
+//             gatewayResponse?.transaction?.status ||
+//             gatewayResponse?.billing_requests?.status ||
+//             "pending",
+//         },
+//         goCardlessCustomer,
+//         goCardlessBankAccount,
+//         goCardlessBillingRequest,
+//         createdAt: new Date(),
+//         updatedAt: new Date(),
+//       },
+//       { transaction: t }
+//     );
+
+//     console.log(
+//       `${paymentType.toUpperCase()} payment saved with status:`,
+//       paymentStatusFromGateway
+//     );
+
+//     // 🔹 Fail booking creation only if payment explicitly failed
+//     if (paymentStatusFromGateway === "failed") {
+//       throw new Error("Payment failed. Booking not created.");
 //     }
+//   } catch (err) {
+//     // 🔹 Proper error handling: only show readable message
+//     let errorMessage = "Payment failed";
+
+//     if (err.response?.data) {
+//       // Gateway returned an error
+//       if (typeof err.response.data === "string") {
+//         errorMessage = err.response.data;
+//       } else if (err.response.data.reasonMessage) {
+//         // Use reasonMessage from gateway response if available
+//         errorMessage = err.response.data.reasonMessage;
+//       } else if (err.response.data.error?.message) {
+//         // Use error.message if available
+//         errorMessage = err.response.data.error.message;
+//       } else {
+//         // Fallback: convert object to string safely
+//         errorMessage = Object.values(err.response.data).join(" | ");
+//       }
+//     } else if (err.message) {
+//       // Standard JS error
+//       errorMessage = err.message;
+//     }
+
+//     // Rollback transaction
+//     await t.rollback();
+
+//     // Return clean error message
+//     return {
+//       status: false,
+//       message: errorMessage,
+//     };
 //   }
-
-//   return booking;
-// };
+// }
