@@ -812,9 +812,9 @@ exports.createBooking = async (data, options) => {
       } catch (err) {
         await t.rollback();
         return { status: false, message: err.message || "Payment failed" };
-        if (DEBUG) {
-          console.log("🔍 [DEBUG] Extracted message:", message);
-        }
+        // if (DEBUG) {
+        //   console.log("🔍 [DEBUG] Extracted message:", message);
+        // }
       }
     }
 
