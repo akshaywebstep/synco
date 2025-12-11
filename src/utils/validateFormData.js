@@ -285,4 +285,4 @@ function validateFormData(formData, options = {}) {
   };
 }
 
-module.exports = { validateFormData };
+module.exports = { validateFormData, isValidEmail };
