@@ -1,4 +1,4 @@
-const { ToDoList, Admin,sequelize, Comment } = require("../../../../models")
+const { ToDoList, Admin, sequelize, Comment } = require("../../../models")
 const debug = require("debug")("service:comments");
 const DEBUG = process.env.DEBUG === "true";
 // ✅ Create Task
@@ -12,18 +12,15 @@ exports.createTask = async (data) => {
     }
 };
 
-// ✅ List Tasks by Super Admin
+// =============================================
+// LIST TASKS (FULLY FIXED VERSION)
+// =============================================
 exports.listTasks = async (createdBy) => {
     if (!createdBy || isNaN(Number(createdBy))) {
-        return {
-            status: false,
-            message: "Invalid super admin ID",
-            data: {},
-        };
+        return { status: false, message: "Invalid super admin ID", data: {} };
     }
 
     try {
-        // Fetch tasks
         const tasks = await ToDoList.findAll({
             where: { created_by: Number(createdBy) },
             order: [
@@ -33,7 +30,6 @@ exports.listTasks = async (createdBy) => {
             raw: true,
         });
 
-        // Group tasks by status
         const grouped = {
             to_do: [],
             in_progress: [],
@@ -41,23 +37,17 @@ exports.listTasks = async (createdBy) => {
             completed: [],
         };
 
-        // Collect creator + assigned admin IDs
         const adminIdsSet = new Set();
 
+        // Collect admin IDs
         tasks.forEach(task => {
-            // Creator ID (handles created_by or createdBy)
             const creatorId = task.created_by ?? task.createdBy;
             if (creatorId) adminIdsSet.add(Number(creatorId));
 
-            // Assigned admins
-            let assigned = task.assignedAdmins || task.assigned_admins;
-            if (typeof assigned === "string") {
-                try { assigned = JSON.parse(assigned.replace(/'/g, '"')); }
-                catch { assigned = []; }
-            }
+            // Always use safeJson (never JSON.parse directly)
+            const assignedArray = safeJson(task.assignedAdmins || task.assigned_admins);
 
-            if (!Array.isArray(assigned)) assigned = [];
-            assigned.forEach(id => adminIdsSet.add(Number(id)));
+            assignedArray.forEach(id => adminIdsSet.add(Number(id)));
         });
 
         const adminIds = Array.from(adminIdsSet);
@@ -76,7 +66,7 @@ exports.listTasks = async (createdBy) => {
                 {
                     id: a.id,
                     name: `${a.firstName} ${a.lastName}`.trim(),
-                    profile: a.profile 
+                    profile: a.profile
                 }
             ])
         );
@@ -84,10 +74,13 @@ exports.listTasks = async (createdBy) => {
         // Process tasks
         for (let task of tasks) {
             task.sortOrder = task.sort_order ?? 0;
-            task.attachments = safeJson(task.attachments);
+
+            // FIXED ✔ attachments parse
+            task.attachments = parseAttachments(task.attachments);
 
             // Assigned admins → full objects
-            const assignedIds = safeJson(task.assignedAdmins || task.assigned_admins) || [];
+            let parsed = safeJson(task.assignedAdmins || task.assigned_admins);
+            const assignedIds = Array.isArray(parsed) ? parsed : [];
             task.assignedAdmins = assignedIds.map(id => {
                 const key = String(id);
                 return adminMap[key] || {
@@ -97,7 +90,7 @@ exports.listTasks = async (createdBy) => {
                 };
             });
 
-            // Creator ID
+            // FIXED ✔ creator details
             const creatorId = task.created_by ?? task.createdBy;
             const creatorKey = String(creatorId);
 
@@ -124,34 +117,68 @@ exports.listTasks = async (createdBy) => {
     }
 };
 
+// ========== Parsers ==========
+
+function parseAttachments(value) {
+    return parseJSON(value);
+}
+function parseAssignedAdmins(value) {
+    return parseJSON(value).map(v => Number(v));
+}
+
+function parseJSON(value) {
+    if (!value) return [];
+
+    if (Array.isArray(value)) return value;
+
+    if (typeof value !== "string") return [];
+
+    let cleaned = value.trim();   // FIXES leading/trailing spaces
+
+    // remove wrapping quotes
+    if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+        cleaned = cleaned.slice(1, -1).trim();
+    }
+
+    // remove double escaping
+    cleaned = cleaned.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+
+    try {
+        return JSON.parse(cleaned);
+    } catch (e) {
+        console.log("JSON Parse Failed:", cleaned);
+        return [];
+    }
+}
 // ----------------------------------------------------
 // Helper To Safely Parse JSON
 // ----------------------------------------------------
 function safeJson(value) {
     if (!value) return [];
 
-    // Already an array
     if (Array.isArray(value)) return value;
 
-    // Case: MySQL returns value like [1,5,8] (NOT a JSON string)
-    if (typeof value === "string" && value.startsWith("[") && value.endsWith("]")) {
+    if (typeof value === "string") {
+
+        let v = value.trim();
+
+        // Remove wrapping quotes around the WHOLE JSON string
+        if (v.startsWith('"') && v.endsWith('"')) {
+            v = v.slice(1, -1);
+        }
+
+        // Now parse JSON arrays like [136]
         try {
-            return JSON.parse(
-                value
-                    .replace(/'/g, '"')    // replace single quotes with double quotes
-                    .replace(/\s/g, "")    // remove spaces
+            const parsed = JSON.parse(
+                v.replace(/'/g, '"')   // fix single quotes
             );
-        } catch (e) {
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
             return [];
         }
     }
 
-    // Default fallback
-    try {
-        return JSON.parse(value);
-    } catch {
-        return [];
-    }
+    return [];
 }
 
 // ✅ Get One Task
