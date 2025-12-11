@@ -2899,6 +2899,7 @@ exports.sendEmailToFirstParentWithBooking = async (leadIds = []) => {
         const location = booking.location || "Not specified";
         const address = booking.address || "Not specified";
         const packageName = lead.packageInterest || "N/A";
+        const status = lead.status || "N/A";
         const paymentStatus = booking.payment?.paymentStatus || "unknown";
         const paymentAmount = booking.payment?.amount || "0.00";
 
@@ -2913,6 +2914,7 @@ exports.sendEmailToFirstParentWithBooking = async (leadIds = []) => {
           .replace(/{{location}}/g, location)
           .replace(/{{address}}/g, address)
           .replace(/{{date}}/g, bookingDate)
+          .replace(/{{status}}/g, status)
           .replace(/{{time}}/g, bookingTime)
           .replace(/{{paymentStatus}}/g, paymentStatus)
           .replace(/{{amount}}/g, paymentAmount)
@@ -2942,6 +2944,102 @@ exports.sendEmailToFirstParentWithBooking = async (leadIds = []) => {
     return { status: true, message: "Emails send successfully.", totalSent, sentTo, skipped, errors };
   } catch (error) {
     console.error("❌ sendEmailToFirstParentWithBooking Error:", error);
+    return { status: false, message: error.message };
+  }
+};
+
+exports.cancelOneToOneLeadAndBooking = async (leadId, superAdminId, adminId) => {
+  const t = await sequelize.transaction();
+
+  try {
+
+    // Find lead with booking
+    const lead = await oneToOneLeads.findOne({
+      where: {
+        id: leadId,
+        [Op.or]: [{ createdBy: adminId }, { createdBy: superAdminId }]
+      },
+      include: [
+        {
+          model: OneToOneBooking,
+          as: "booking"
+        }
+      ],
+      transaction: t,
+    });
+
+    if (!lead) {
+      await t.rollback();
+      return { status: false, message: "Lead not found or unauthorized." };
+    }
+
+    const booking = lead.booking;
+    if (!booking) {
+      await t.rollback();
+      return { status: false, message: "Booking not found for this lead." };
+    }
+
+    // ================================
+    // ❌ UPDATE STATUSES ONLY
+    // ================================
+    await lead.update(
+      { status: "cancelled" },
+      { transaction: t }
+    );
+
+    await booking.update(
+      {
+        status: "cancelled",
+        type: "cancel"
+      },
+      { transaction: t }
+    );
+
+    await t.commit();
+    return { status: true, message: "Lead and booking cancelled successfully." };
+
+  } catch (error) {
+    await t.rollback();
+    return { status: false, message: error.message };
+  }
+};
+
+exports.renewOneToOneLeadAndBooking = async (leadId, superAdminId, adminId) => {
+  const t = await sequelize.transaction();
+
+  try {
+    const lead = await oneToOneLeads.findOne({
+      where: {
+        id: leadId,
+        [Op.or]: [{ createdBy: adminId }, { createdBy: superAdminId }]
+      },
+      include: [{ model: OneToOneBooking, as: "booking" }],
+      transaction: t,
+    });
+
+    if (!lead) {
+      await t.rollback();
+      return { status: false, message: "Lead not found or unauthorized." };
+    }
+
+    const booking = lead.booking;
+    if (!booking) {
+      await t.rollback();
+      return { status: false, message: "Booking not found." };
+    }
+
+    // 🔄 Renew updates
+    await lead.update({ status: "active" }, { transaction: t });
+    await booking.update(
+      { status: "active", type: "paid" },
+      { transaction: t }
+    );
+
+    await t.commit();
+    return { status: true, message: "Lead & booking renewed successfully." };
+
+  } catch (error) {
+    await t.rollback();
     return { status: false, message: error.message };
   }
 };

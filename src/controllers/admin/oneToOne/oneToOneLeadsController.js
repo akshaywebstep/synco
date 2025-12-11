@@ -719,3 +719,309 @@ exports.sendEmailToFirstParentWithBooking = async (req, res) => {
     return res.status(500).json({ status: false, message: error.message || "Internal server error while sending emails." });
   }
 };
+
+exports.updateOnetoOneLeadById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminId = req.admin?.id;
+    const updateData = req.body;
+
+    if (!id) {
+      return res.status(400).json({
+        status: false,
+        message: "Lead ID is required.",
+      });
+    }
+
+    // ============================================================
+    // 🚫 Require at least one section
+    // ============================================================
+    if (
+      updateData.student === undefined &&
+      updateData.parentDetails === undefined &&
+      updateData.emergencyDetails === undefined
+    ) {
+      return res.status(400).json({
+        status: false,
+        message:
+          "At least one of student, parentDetails, or emergencyDetails is required.",
+      });
+    }
+
+    // ============================================================
+    // 🚫 FIELD VALIDATION (single field error)
+    // ============================================================
+
+    const validateObject = (obj) => {
+      if (!obj) return null;
+      for (const key in obj) {
+        if (
+          obj[key] === "" ||
+          obj[key] === null ||
+          obj[key] === undefined
+        ) {
+          return `${key} cannot be empty`;
+        }
+      }
+      return null;
+    };
+
+    // Validate student array
+    if (Array.isArray(updateData.student)) {
+      for (let i = 0; i < updateData.student.length; i++) {
+        const student = updateData.student[i];
+        const err = validateObject(student);
+        if (err) {
+          return res.status(400).json({
+            status: false,
+            message: err,
+          });
+        }
+      }
+    }
+
+    // Validate parent
+    const parentError = validateObject(updateData.parentDetails);
+    if (parentError) {
+      return res.status(400).json({
+        status: false,
+        message: parentError,
+      });
+    }
+
+    // Validate emergency
+    const emergencyError = validateObject(updateData.emergencyDetails);
+    if (emergencyError) {
+      return res.status(400).json({
+        status: false,
+        message: emergencyError,
+      });
+    }
+
+    // ============================================================
+    // 🧹 CLEAN EMPTY FIELDS SAFELY (forbidden values removed)
+    // ============================================================
+
+    const cleanData = JSON.parse(
+      JSON.stringify(updateData, (key, value) => {
+        if (value === "" || value === null || value === undefined) {
+          return undefined; // remove empty
+        }
+        return value;
+      })
+    );
+
+    // ============================================================
+    // 🧩 Fetch main super admin
+    // ============================================================
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    // ============================================================
+    // 🛠 Update lead using service
+    // ============================================================
+    const updateResult = await oneToOneLeadService.updateOnetoOneLeadById(
+      id,
+      superAdminId,
+      adminId,
+      cleanData
+    );
+
+    if (!updateResult.status) {
+      return res.status(400).json({
+        status: false,
+        message: updateResult.message || "Failed to update One-to-One Lead.",
+      });
+    }
+
+    // ============================================================
+    // 📝 Log activity
+    // ============================================================
+    await logActivity(req, PANEL, MODULE, "update", { id, updateData: cleanData }, true);
+
+    // ============================================================
+    // 🔔 Create notification
+    // ============================================================
+    const adminName = `${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""
+      }`.trim();
+
+    await createNotification(
+      req,
+      "One-to-One Lead Updated",
+      `Lead was updated by ${adminName}.`,
+      "Support"
+    );
+
+    // ============================================================
+    // ✅ Success response
+    // ============================================================
+    return res.status(200).json({
+      status: true,
+      message: "One-to-One Lead updated successfully.",
+      data: updateResult.data,
+    });
+
+  } catch (error) {
+    console.error("❌ Error updating One-to-One Lead:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Server error while updating One-to-One Lead.",
+    });
+  }
+};
+
+exports.cancelOneToOneLeadAndBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminId = req.admin?.id;
+
+    if (!id) {
+      return res.status(400).json({
+        status: false,
+        message: "Lead ID is required.",
+      });
+    }
+
+    // ============================================================
+    // 🧩 Fetch main super admin
+    // ============================================================
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    // ============================================================
+    // 🛠 Call service → ONLY STATUS UPDATE
+    // ============================================================
+    const updateResult =
+      await oneToOneLeadService.cancelOneToOneLeadAndBooking(
+        id,
+        superAdminId,
+        adminId
+      );
+
+    if (!updateResult.status) {
+      return res.status(400).json({
+        status: false,
+        message: updateResult.message || "Failed to cancel One-to-One Lead.",
+      });
+    }
+
+    // ============================================================
+    // 📝 Log activity
+    // ============================================================
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "cancel",
+      { id },
+      true
+    );
+
+    // ============================================================
+    // 🔔 Create notification
+    // ============================================================
+    const adminName = `${req?.admin?.firstName || "Admin"} ${
+      req?.admin?.lastName || ""
+    }`.trim();
+
+    await createNotification(
+      req,
+      "One-to-One Lead Cancelled",
+      `Lead was cancelled by ${adminName}.`,
+      "Support"
+    );
+
+    // ============================================================
+    // ✅ Success response
+    // ============================================================
+    return res.status(200).json({
+      status: true,
+      message: "Lead and booking cancelled successfully.",
+    });
+
+  } catch (error) {
+    console.error("❌ Error cancelling One-to-One Lead:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Server error while cancelling One-to-One Lead.",
+    });
+  }
+};
+
+exports.renewOneToOneLeadAndBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminId = req.admin?.id;
+
+    if (!id) {
+      return res.status(400).json({
+        status: false,
+        message: "Lead ID is required.",
+      });
+    }
+
+    // ============================================================
+    // 🧩 Fetch main super admin
+    // ============================================================
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    // ============================================================
+    // 🛠 Call service → ONLY STATUS UPDATE
+    // ============================================================
+    const updateResult =
+      await oneToOneLeadService.renewOneToOneLeadAndBooking(
+        id,
+        superAdminId,
+        adminId
+      );
+
+    if (!updateResult.status) {
+      return res.status(400).json({
+        status: false,
+        message: updateResult.message || "Failed to renew package One-to-One Lead.",
+      });
+    }
+
+    // ============================================================
+    // 📝 Log activity
+    // ============================================================
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "cancel",
+      { id },
+      true
+    );
+
+    // ============================================================
+    // 🔔 Create notification
+    // ============================================================
+    const adminName = `${req?.admin?.firstName || "Admin"} ${
+      req?.admin?.lastName || ""
+    }`.trim();
+
+    await createNotification(
+      req,
+      "One-to-One Lead Renew",
+      `Lead was renew by ${adminName}.`,
+      "Support"
+    );
+
+    // ============================================================
+    // ✅ Success response
+    // ============================================================
+    return res.status(200).json({
+      status: true,
+      message: "Lead and booking renew successfully.",
+    });
+
+  } catch (error) {
+    console.error("❌ Error renew One-to-One Lead:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Server error while renew One-to-One Lead.",
+    });
+  }
+};

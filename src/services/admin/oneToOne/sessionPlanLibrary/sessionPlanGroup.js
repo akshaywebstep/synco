@@ -43,32 +43,32 @@ exports.createSessionPlanGroup = async (data) => {
 
 exports.getSessionPlanConfigById = async (id, adminId, superAdminId) => {
   try {
-    console.log(
-      "🟢 Fetching SessionPlanGroup by ID:",
-      id,
-      "for adminId:",
-      adminId
-    );
+    console.log("🟢 Fetching Session Plan Group ID:", id);
 
-    // STEP 1 — Build where condition (support both admin + super admin)
+    // ============================================
+    // ⭐ STEP 1 — Build ACCESS RULES
+    // ============================================
     const whereCondition = {
       id,
       type: "one_to_one",
     };
 
-    // 🧠 Access rules
     if (superAdminId && superAdminId === adminId) {
-      // Super Admin → can see all
+      // SUPER ADMIN → full access
       console.log("🟢 Super Admin detected — full access");
     } else if (superAdminId && adminId) {
-      // Admin → can see own + super admin data
-      whereCondition.createdBy = [adminId, superAdminId];
+      // ADMIN → Access own + super admin data
+      whereCondition.createdBy = {
+        [Op.in]: [adminId, superAdminId],
+      };
     } else {
-      // Fallback → own only
+      // fallback → only own
       whereCondition.createdBy = adminId;
     }
 
-    // STEP 2 — Fetch group
+    // ============================================
+    // ⭐ STEP 2 — Fetch session plan group
+    // ============================================
     const group = await SessionPlanGroup.findOne({
       where: whereCondition,
       attributes: [
@@ -92,52 +92,59 @@ exports.getSessionPlanConfigById = async (id, adminId, superAdminId) => {
     });
 
     if (!group) {
-      console.warn(`⚠️ Session Plan Group not found for ID: ${id}`);
+      console.warn(`⚠️ Session Plan Group not found or unauthorized: ${id}`);
       return {
         status: false,
-        message: "Session Plan Group not found or not of type 'one_to_one'.",
+        message: "Session Plan Group not found or access denied.",
       };
     }
 
     console.log("🟢 Found group:", group.toJSON());
 
-    // STEP 3 — Parse levels JSON safely
-    let parsedLevels = {};
+    // ============================================
+    // ⭐ STEP 3 — Parse JSON "levels"
+    // ============================================
+    let parsedLevels;
     try {
       parsedLevels =
         typeof group.levels === "string"
           ? JSON.parse(group.levels)
           : group.levels || {};
     } catch (err) {
-      console.warn("⚠️ Failed to parse levels JSON:", err.message);
+      console.warn("⚠ Failed to parse levels JSON:", err.message);
       parsedLevels = {};
     }
 
-    // STEP 4 — Fetch exercises created by admin or super admin
+    // ============================================
+    // ⭐ STEP 4 — Load admin + super admin exercises
+    // ============================================
     const exerciseWhere =
       superAdminId && adminId
-        ? { createdBy: [adminId, superAdminId] }
+        ? { createdBy: { [Op.in]: [adminId, superAdminId] } }
         : { createdBy: adminId };
 
     const exercises = await SessionExercise.findAll({ where: exerciseWhere });
-    console.log(`🟢 Fetched ${exercises.length} exercises`);
+    console.log(`🟢 Loaded ${exercises.length} exercises`);
 
-    // STEP 5 — Create quick lookup map for exercises
-    const exerciseMap = exercises.reduce((acc, item) => {
-      acc[item.id] = item.toJSON();
+    // Create lookup map
+    const exerciseMap = exercises.reduce((acc, ex) => {
+      acc[ex.id] = ex.toJSON();
       return acc;
     }, {});
 
-    // STEP 6 — Enrich each level with exercise details
+    // ============================================
+    // ⭐ STEP 5 — Enrich levels with exercise data
+    // ============================================
     Object.keys(parsedLevels).forEach((levelKey) => {
-      let levelArray = parsedLevels[levelKey];
-      if (!Array.isArray(levelArray))
-        levelArray = levelArray ? [levelArray] : [];
+      const levelArray = Array.isArray(parsedLevels[levelKey])
+        ? parsedLevels[levelKey]
+        : [];
 
       parsedLevels[levelKey] = levelArray.map((entry) => {
         const ids = Array.isArray(entry.sessionExerciseId)
           ? entry.sessionExerciseId
           : [];
+
         const sessionExercises = ids
           .map((id) => exerciseMap[id])
           .filter(Boolean);
@@ -146,7 +153,9 @@ exports.getSessionPlanConfigById = async (id, adminId, superAdminId) => {
       });
     });
 
-    // ✅ STEP 7 — Return identical structure
+    // ============================================
+    // ⭐ STEP 6 — Final response
+    // ============================================
     return {
       status: true,
       data: {

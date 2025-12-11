@@ -10,9 +10,11 @@ const {
   getAllBirthdayPartyLeadsSales,
   getAllBirthdayPartyLeadsSalesAll,
   getBirthdayPartyLeadsById,
-    updateBirthdayPartyLeadById,
-    getAllBirthdayPartyAnalytics,
-    sendEmailToFirstParentWithBooking,
+  updateBirthdayPartyLeadById,
+  getAllBirthdayPartyAnalytics,
+  sendEmailToFirstParentWithBooking,
+  cancelBirthdayPartyLeadAndBooking,
+  renewBirthdayPartyLeadAndBooking,
 } = require("../../../controllers/admin/birthdayParty/birthdayPartyLeadsController");
 
 // ✅ Get All Session Plan Groups
@@ -72,5 +74,15 @@ router.get(
   permissionMiddleware("birthday-party-lead", "view-listing"),
   getAllBirthdayPartyAnalytics
 );
+
+router.put("/cancel/:id",
+  authMiddleware,
+  permissionMiddleware("birthday-party-lead", "cancel-package"),
+  cancelBirthdayPartyLeadAndBooking);
+
+router.put("/renew/:id",
+  authMiddleware,
+  permissionMiddleware("birthday-party-lead", "renew-package"),
+  renewBirthdayPartyLeadAndBooking);
 
 module.exports = router;

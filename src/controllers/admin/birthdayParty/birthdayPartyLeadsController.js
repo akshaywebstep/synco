@@ -712,3 +712,159 @@ exports.sendEmailToFirstParentWithBooking = async (req, res) => {
     });
   }
 };
+
+exports.cancelBirthdayPartyLeadAndBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminId = req.admin?.id;
+
+    if (!id) {
+      return res.status(400).json({
+        status: false,
+        message: "Lead ID is required.",
+      });
+    }
+
+    // ============================================================
+    // 🧩 Fetch main super admin
+    // ============================================================
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    // ============================================================
+    // 🛠 Call service → ONLY STATUS UPDATE
+    // ============================================================
+    const updateResult =
+      await birthdayPartyLeadService.cancelBirthdayPartyLeadAndBooking(
+        id,
+        superAdminId,
+        adminId
+      );
+
+    if (!updateResult.status) {
+      return res.status(400).json({
+        status: false,
+        message: updateResult.message || "Failed to cancel One-to-One Lead.",
+      });
+    }
+
+    // ============================================================
+    // 📝 Log activity
+    // ============================================================
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "cancel",
+      { id },
+      true
+    );
+
+    // ============================================================
+    // 🔔 Create notification
+    // ============================================================
+    const adminName = `${req?.admin?.firstName || "Admin"} ${
+      req?.admin?.lastName || ""
+    }`.trim();
+
+    await createNotification(
+      req,
+      "Birthday Party Lead Cancelled",
+      `Lead was cancelled by ${adminName}.`,
+      "Support"
+    );
+
+    // ============================================================
+    // ✅ Success response
+    // ============================================================
+    return res.status(200).json({
+      status: true,
+      message: "Lead and booking cancelled successfully.",
+    });
+
+  } catch (error) {
+    console.error("❌ Error cancelling Birthday Party Lead:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Server error while cancelling Birthday Party Lead.",
+    });
+  }
+};
+
+exports.renewBirthdayPartyLeadAndBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminId = req.admin?.id;
+
+    if (!id) {
+      return res.status(400).json({
+        status: false,
+        message: "Lead ID is required.",
+      });
+    }
+
+    // ============================================================
+    // 🧩 Fetch main super admin
+    // ============================================================
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    // ============================================================
+    // 🛠 Call service → ONLY STATUS UPDATE
+    // ============================================================
+    const updateResult =
+      await birthdayPartyLeadService.renewBirthdayPartyLeadAndBooking(
+        id,
+        superAdminId,
+        adminId
+      );
+
+    if (!updateResult.status) {
+      return res.status(400).json({
+        status: false,
+        message: updateResult.message || "Failed to renew package Birthday Party Lead.",
+      });
+    }
+
+    // ============================================================
+    // 📝 Log activity
+    // ============================================================
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "cancel",
+      { id },
+      true
+    );
+
+    // ============================================================
+    // 🔔 Create notification
+    // ============================================================
+    const adminName = `${req?.admin?.firstName || "Admin"} ${
+      req?.admin?.lastName || ""
+    }`.trim();
+
+    await createNotification(
+      req,
+      "Birthday Party Lead Renew",
+      `Lead was renew by ${adminName}.`,
+      "Support"
+    );
+
+    // ============================================================
+    // ✅ Success response
+    // ============================================================
+    return res.status(200).json({
+      status: true,
+      message: "Lead and booking renew successfully.",
+    });
+
+  } catch (error) {
+    console.error("❌ Error renew Birthday Party Lead:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Server error while renew Birthday Party Lead.",
+    });
+  }
+};

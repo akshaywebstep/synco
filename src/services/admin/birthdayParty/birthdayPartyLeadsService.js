@@ -466,7 +466,7 @@ exports.getAllBirthdayPartyLeadsSales = async (
 
     // 🧠 Optional Student Name Filter
     let filteredLeads = leads;
-     if (studentName) {
+    if (studentName) {
       const nameFilter = studentName.toLowerCase().trim();
 
       filteredLeads = leads.filter((lead) => {
@@ -810,25 +810,25 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
     }
 
     // ✅ Agent filter
-     if (agent) {
-          let agentIds = [];
-    
-          if (Array.isArray(agent)) {
-            // Handles ?agent=1&agent=6
-            agentIds = agent.map((id) => Number(id)).filter(Boolean);
-          } else if (typeof agent === "string") {
-            // Handles ?agent=1,6
-            agentIds = agent
-              .split(",")
-              .map((id) => Number(id.trim()))
-              .filter(Boolean);
-          }
-    
-          if (agentIds.length > 0) {
-            whereLead.createdBy = { [Op.in]: agentIds };
-            console.log("🧩 Agent filter applied:", agentIds);
-          }
-        }
+    if (agent) {
+      let agentIds = [];
+
+      if (Array.isArray(agent)) {
+        // Handles ?agent=1&agent=6
+        agentIds = agent.map((id) => Number(id)).filter(Boolean);
+      } else if (typeof agent === "string") {
+        // Handles ?agent=1,6
+        agentIds = agent
+          .split(",")
+          .map((id) => Number(id.trim()))
+          .filter(Boolean);
+      }
+
+      if (agentIds.length > 0) {
+        whereLead.createdBy = { [Op.in]: agentIds };
+        console.log("🧩 Agent filter applied:", agentIds);
+      }
+    }
 
     // ✅ Coach filter
     if (coach) {
@@ -910,7 +910,7 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
 
     // 🧠 Optional Student Name Filter
     let filteredLeads = leads;
-     if (studentName) {
+    if (studentName) {
       const nameFilter = studentName.toLowerCase().trim();
 
       filteredLeads = leads.filter((lead) => {
@@ -1509,7 +1509,7 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
     // ======================================================
     // 🧒 STUDENTS (STRICT VALIDATION)
     // ======================================================
-   if (Array.isArray(updateData?.student)) {
+    if (Array.isArray(updateData?.student)) {
       for (const s of updateData.student) {
 
         // ---------- UPDATE ----------
@@ -2624,6 +2624,7 @@ exports.sendEmailToFirstParentWithBooking = async (leadIds = []) => {
         const location = booking.location || "Not specified";
         const address = booking.address || "Not specified";
         const packageName = lead.packageInterest || "N/A";
+        const status = lead.status || "N/A";
         const paymentStatus = booking.payment?.paymentStatus || "unknown";
         const paymentAmount = booking.payment?.amount || "0.00";
 
@@ -2639,6 +2640,7 @@ exports.sendEmailToFirstParentWithBooking = async (leadIds = []) => {
           .replace(/{{address}}/g, address)
           .replace(/{{date}}/g, bookingDate)
           .replace(/{{time}}/g, bookingTime)
+          .replace(/{{status}}/g, status)
           .replace(/{{paymentStatus}}/g, paymentStatus)
           .replace(/{{amount}}/g, paymentAmount)
           .replace(/{{relationChild}}/g, firstParent.relationChild || "Parent")
@@ -2667,6 +2669,102 @@ exports.sendEmailToFirstParentWithBooking = async (leadIds = []) => {
     return { status: true, message: "Emails send successfully.", totalSent, sentTo, skipped, errors };
   } catch (error) {
     console.error("❌ sendEmailToFirstParentWithBooking Error:", error);
+    return { status: false, message: error.message };
+  }
+};
+
+exports.cancelBirthdayPartyLeadAndBooking = async (leadId, superAdminId, adminId) => {
+  const t = await sequelize.transaction();
+
+  try {
+
+    // Find lead with booking
+    const lead = await BirthdayPartyLead.findOne({
+      where: {
+        id: leadId,
+        [Op.or]: [{ createdBy: adminId }, { createdBy: superAdminId }]
+      },
+      include: [
+        {
+          model: BirthdayPartyBooking,
+          as: "booking"
+        }
+      ],
+      transaction: t,
+    });
+
+    if (!lead) {
+      await t.rollback();
+      return { status: false, message: "Lead not found or unauthorized." };
+    }
+
+    const booking = lead.booking;
+    if (!booking) {
+      await t.rollback();
+      return { status: false, message: "Booking not found for this lead." };
+    }
+
+    // ================================
+    // ❌ UPDATE STATUSES ONLY
+    // ================================
+    await lead.update(
+      { status: "cancelled" },
+      { transaction: t }
+    );
+
+    await booking.update(
+      {
+        status: "cancelled",
+        type: "cancel"
+      },
+      { transaction: t }
+    );
+
+    await t.commit();
+    return { status: true, message: "Lead and booking cancelled successfully." };
+
+  } catch (error) {
+    await t.rollback();
+    return { status: false, message: error.message };
+  }
+};
+
+exports.renewBirthdayPartyLeadAndBooking = async (leadId, superAdminId, adminId) => {
+  const t = await sequelize.transaction();
+
+  try {
+    const lead = await BirthdayPartyLead.findOne({
+      where: {
+        id: leadId,
+        [Op.or]: [{ createdBy: adminId }, { createdBy: superAdminId }]
+      },
+      include: [{ model: BirthdayPartyBooking, as: "booking" }],
+      transaction: t,
+    });
+
+    if (!lead) {
+      await t.rollback();
+      return { status: false, message: "Lead not found or unauthorized." };
+    }
+
+    const booking = lead.booking;
+    if (!booking) {
+      await t.rollback();
+      return { status: false, message: "Booking not found." };
+    }
+
+    // 🔄 Renew updates
+    await lead.update({ status: "active" }, { transaction: t });
+    await booking.update(
+      { status: "active", type: "paid" },
+      { transaction: t }
+    );
+
+    await t.commit();
+    return { status: true, message: "Lead & booking renewed successfully." };
+
+  } catch (error) {
+    await t.rollback();
     return { status: false, message: error.message };
   }
 };

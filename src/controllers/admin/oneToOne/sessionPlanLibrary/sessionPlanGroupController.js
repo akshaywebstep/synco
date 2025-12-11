@@ -848,11 +848,22 @@ exports.deleteSessionPlanConfig = async (req, res) => {
   const adminId = req.admin?.id; // ✅ track who deleted
 
   if (DEBUG) console.log(`🗑️ Deleting Session Plan Group ID: ${id}`);
+  if (!adminId) {
+    return res.status(400).json({
+      status: false,
+      message: "Unauthorized request: missing admin or user ID.",
+    });
+  }
 
+  console.log("🟢 adminId:", adminId);
+
+  // 🔹 Get top-level super admin (if exists)
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? adminId;
   try {
     // ✅ Check if group exists
     const existingResult =
-      await SessionPlanGroupService.getSessionPlanConfigById(id, adminId);
+      await SessionPlanGroupService.getSessionPlanConfigById(id, superAdminId, adminId);
 
     if (!existingResult.status || !existingResult.data) {
       await logActivity(

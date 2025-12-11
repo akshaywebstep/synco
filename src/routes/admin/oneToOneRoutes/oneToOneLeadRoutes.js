@@ -13,6 +13,8 @@ const {
   updateOnetoOneLeadById,
   getAllOneToOneAnalytics,
   sendEmailToFirstParentWithBooking,
+  cancelOneToOneLeadAndBooking,
+  renewOneToOneLeadAndBooking,
 } = require("../../../controllers/admin/oneToOne/oneToOneLeadsController");
 
 // ✅ Get All Session Plan Groups
@@ -72,5 +74,15 @@ router.get(
   permissionMiddleware("one-to-one-lead", "view-listing"),
   getAllOneToOneAnalytics
 );
+
+router.put("/cancel/:id",
+  authMiddleware,
+  permissionMiddleware("one-to-one-lead", "cancel-package"), 
+  cancelOneToOneLeadAndBooking);
+
+  router.put("/renew/:id",
+  authMiddleware,
+  permissionMiddleware("one-to-one-lead", "renew-package"), 
+  renewOneToOneLeadAndBooking);
 
 module.exports = router;
