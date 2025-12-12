@@ -517,6 +517,10 @@ CoachVenueAllocation.belongsTo(Admin, {
 RecruitmentLead.belongsTo(Admin, { foreignKey: "createdBy", as: "creator" });
 
 HolidayBooking.belongsTo(Admin, { foreignKey: 'bookedBy', as: 'bookedByAdmin' });
+// Discount.hasMany(DiscountUsage, {
+//   foreignKey: "discountId",
+//   as: "usages"
+// });
 
 // ====================== 📦 Module Exports ====================== //
 module.exports = {

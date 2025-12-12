@@ -351,6 +351,7 @@ exports.getAllPaidBookings = async (req, res) => {
       dateBooked: req.query.dateBooked,
       studentName: req.query.studentName,
       dateFrom: req.query.dateFrom || undefined,
+      fromDate: req.query.fromDate || undefined,
       dateTo: req.query.dateTo || undefined,
       duration: req.query.duration,
       interval: req.query.interval ? req.query.interval.trim() : undefined,

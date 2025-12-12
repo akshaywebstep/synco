@@ -615,6 +615,8 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
     const whereVenue = {};
 
     console.log(`filters - `, filters);
+    if (filters.fromDate) filters.dateFrom = filters.fromDate;
+    if (filters.toDate) filters.dateTo = filters.toDate;
     // 🔹 Filters
     // if (filters.status) whereBooking.status = filters.status;
     if (filters.status) {
@@ -655,360 +657,383 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
     }
 
     // ✅ Date filters
+    // Support new date format
+    if (filters.fromDate) filters.dateFrom = filters.fromDate;
+    if (filters.toDate) filters.dateTo = filters.toDate;
+
+    // Date filters
     if (filters.dateBooked) {
       const start = new Date(`${filters.dateBooked} 00:00:00`);
       const end = new Date(`${filters.dateBooked} 23:59:59`);
       whereBooking.createdAt = { [Op.between]: [start, end] };
+
     } else if (filters.dateFrom && filters.dateTo) {
       const start = new Date(`${filters.dateFrom} 00:00:00`);
       const end = new Date(`${filters.dateTo} 23:59:59`);
       whereBooking.createdAt = { [Op.between]: [start, end] };
+
     } else if (filters.dateFrom) {
       const start = new Date(`${filters.dateFrom} 00:00:00`);
       whereBooking.createdAt = { [Op.gte]: start };
+
     } else if (filters.dateTo) {
       const end = new Date(`${filters.dateTo} 23:59:59`);
       whereBooking.createdAt = { [Op.lte]: end };
     }
+    // if (filters.dateBooked) {
+    //   const start = new Date(`${filters.dateBooked} 00:00:00`);
+    //   const end = new Date(`${filters.dateBooked} 23:59:59`);
+    //   whereBooking.createdAt = { [Op.between]: [start, end] };
+    // } else if (filters.dateFrom && filters.dateTo) {
+    //   const start = new Date(`${filters.dateFrom} 00:00:00`);
+    //   const end = new Date(`${filters.dateTo} 23:59:59`);
+    //   whereBooking.createdAt = { [Op.between]: [start, end] };
+    // } else if (filters.dateFrom) {
+    //   const start = new Date(`${filters.dateFrom} 00:00:00`);
+    //   whereBooking.createdAt = { [Op.gte]: start };
+    // } else if (filters.dateTo) {
+    //   const end = new Date(`${filters.dateTo} 23:59:59`);
+    //   whereBooking.createdAt = { [Op.lte]: end };
+  // }
 
     const bookings = await Booking.findAll({
-      where: {
-        ...whereBooking, // spread the filters correctly
-        // serviceType: "weekly class membership",
-        serviceType: {
-          [Op.in]: ["weekly class membership", "weekly class trial"], // ✅ both types
-        },
+    where: {
+      ...whereBooking, // spread the filters correctly
+      // serviceType: "weekly class membership",
+      serviceType: {
+        [Op.in]: ["weekly class membership", "weekly class trial"], // ✅ both types
       },
-      order: [["id", "DESC"]],
-      include: [
-        {
-          model: BookingStudentMeta,
-          as: "students",
-          include: [
-            { model: BookingParentMeta, as: "parents", required: false },
-            {
-              model: BookingEmergencyMeta,
-              as: "emergencyContacts",
-              required: false,
-            },
-          ],
-          required: false,
-        },
-        {
-          model: ClassSchedule,
-          as: "classSchedule",
-          required: false,
-          include: [
-            {
-              model: Venue,
-              as: "venue",
-              where: whereVenue,
-              required: !!filters.venueName,
-            },
-          ],
-        },
-        { model: BookingPayment, as: "payments", required: false },
-        { model: PaymentPlan, as: "paymentPlan", required: false },
-        {
-          model: Admin,
-          as: "bookedByAdmin",
-          attributes: [
-            "id",
-            "firstName",
-            "lastName",
-            "email",
-            "roleId",
-            "status",
-            "profile",
-          ],
-          required: false,
-        },
-      ],
-    });
+    },
+    order: [["id", "DESC"]],
+    include: [
+      {
+        model: BookingStudentMeta,
+        as: "students",
+        include: [
+          { model: BookingParentMeta, as: "parents", required: false },
+          {
+            model: BookingEmergencyMeta,
+            as: "emergencyContacts",
+            required: false,
+          },
+        ],
+        required: false,
+      },
+      {
+        model: ClassSchedule,
+        as: "classSchedule",
+        required: false,
+        include: [
+          {
+            model: Venue,
+            as: "venue",
+            where: whereVenue,
+            required: !!filters.venueName,
+          },
+        ],
+      },
+      { model: BookingPayment, as: "payments", required: false },
+      { model: PaymentPlan, as: "paymentPlan", required: false },
+      {
+        model: Admin,
+        as: "bookedByAdmin",
+        attributes: [
+          "id",
+          "firstName",
+          "lastName",
+          "email",
+          "roleId",
+          "status",
+          "profile",
+        ],
+        required: false,
+      },
+    ],
+  });
 
-    const parsedBookings = await Promise.all(
-      bookings.map(async (booking) => {
-        // Students
-        const students =
-          booking.students?.map((s) => ({
-            studentFirstName: s.studentFirstName,
-            studentLastName: s.studentLastName,
-            dateOfBirth: s.dateOfBirth,
-            age: s.age,
-            gender: s.gender,
-            medicalInformation: s.medicalInformation,
-          })) || [];
+  const parsedBookings = await Promise.all(
+    bookings.map(async (booking) => {
+      // Students
+      const students =
+        booking.students?.map((s) => ({
+          studentFirstName: s.studentFirstName,
+          studentLastName: s.studentLastName,
+          dateOfBirth: s.dateOfBirth,
+          age: s.age,
+          gender: s.gender,
+          medicalInformation: s.medicalInformation,
+        })) || [];
 
-        // Parents (flatten all student parents)
-        const parents =
-          booking.students?.flatMap(
-            (s) =>
-              s.parents?.map((p) => ({
-                parentFirstName: p.parentFirstName,
-                parentLastName: p.parentLastName,
-                parentEmail: p.parentEmail,
-                parentPhoneNumber: p.parentPhoneNumber,
-                relationToChild: p.relationToChild,
-                howDidYouHear: p.howDidYouHear,
-              })) || []
-          ) || [];
+      // Parents (flatten all student parents)
+      const parents =
+        booking.students?.flatMap(
+          (s) =>
+            s.parents?.map((p) => ({
+              parentFirstName: p.parentFirstName,
+              parentLastName: p.parentLastName,
+              parentEmail: p.parentEmail,
+              parentPhoneNumber: p.parentPhoneNumber,
+              relationToChild: p.relationToChild,
+              howDidYouHear: p.howDidYouHear,
+            })) || []
+        ) || [];
 
-        // Emergency contacts (take first one per student)
-        // ✅ Pick only the first student's emergency contacts
-        const emergency =
-          booking.students?.[0]?.emergencyContacts?.map((e) => ({
-            emergencyFirstName: e.emergencyFirstName,
-            emergencyLastName: e.emergencyLastName,
-            emergencyPhoneNumber: e.emergencyPhoneNumber,
-            emergencyRelation: e.emergencyRelation,
-          })) || [];
+      // Emergency contacts (take first one per student)
+      // ✅ Pick only the first student's emergency contacts
+      const emergency =
+        booking.students?.[0]?.emergencyContacts?.map((e) => ({
+          emergencyFirstName: e.emergencyFirstName,
+          emergencyLastName: e.emergencyLastName,
+          emergencyPhoneNumber: e.emergencyPhoneNumber,
+          emergencyRelation: e.emergencyRelation,
+        })) || [];
 
-        // Venue & plan
-        const venue = booking.classSchedule?.venue || null;
-        const plan = booking.paymentPlan || null;
+      // Venue & plan
+      const venue = booking.classSchedule?.venue || null;
+      const plan = booking.paymentPlan || null;
 
-        const payment = booking.payments?.[0] || null;
-        const paymentPlans = plan ? [plan] : [];
+      const payment = booking.payments?.[0] || null;
+      const paymentPlans = plan ? [plan] : [];
 
-        // PaymentData with parsed gatewayResponse & transactionMeta
-        let parsedGatewayResponse = {};
-        let parsedTransactionMeta = {};
-        let parsedGoCardlessBillingRequest = {};
+      // PaymentData with parsed gatewayResponse & transactionMeta
+      let parsedGatewayResponse = {};
+      let parsedTransactionMeta = {};
+      let parsedGoCardlessBillingRequest = {};
 
-        try {
-          if (payment?.gatewayResponse) {
-            parsedGatewayResponse =
-              typeof payment.gatewayResponse === "string"
-                ? JSON.parse(payment.gatewayResponse)
-                : payment.gatewayResponse;
-          }
-        } catch (e) {
-          console.error("Invalid gatewayResponse JSON", e);
+      try {
+        if (payment?.gatewayResponse) {
+          parsedGatewayResponse =
+            typeof payment.gatewayResponse === "string"
+              ? JSON.parse(payment.gatewayResponse)
+              : payment.gatewayResponse;
         }
+      } catch (e) {
+        console.error("Invalid gatewayResponse JSON", e);
+      }
 
-        try {
-          if (payment?.goCardlessBillingRequest) {
-            parsedGoCardlessBillingRequest =
-              typeof payment.goCardlessBillingRequest === "string"
-                ? JSON.parse(payment.goCardlessBillingRequest)
-                : payment.goCardlessBillingRequest;
-          }
-        } catch (e) {
-          console.error("Invalid goCardlessBillingRequest JSON", e);
+      try {
+        if (payment?.goCardlessBillingRequest) {
+          parsedGoCardlessBillingRequest =
+            typeof payment.goCardlessBillingRequest === "string"
+              ? JSON.parse(payment.goCardlessBillingRequest)
+              : payment.goCardlessBillingRequest;
         }
-        try {
-          if (payment?.transactionMeta) {
-            parsedTransactionMeta =
-              typeof payment.transactionMeta === "string"
-                ? JSON.parse(payment.transactionMeta)
-                : payment.transactionMeta;
-          }
-        } catch (e) {
-          console.error("Invalid transactionMeta JSON", e);
+      } catch (e) {
+        console.error("Invalid goCardlessBillingRequest JSON", e);
+      }
+      try {
+        if (payment?.transactionMeta) {
+          parsedTransactionMeta =
+            typeof payment.transactionMeta === "string"
+              ? JSON.parse(payment.transactionMeta)
+              : payment.transactionMeta;
         }
+      } catch (e) {
+        console.error("Invalid transactionMeta JSON", e);
+      }
 
-        const paymentData = payment
-          ? {
-            id: payment.id,
-            bookingId: payment.bookingId,
-            firstName: payment.firstName,
-            lastName: payment.lastName,
-            email: payment.email,
-            billingAddress: payment.billingAddress,
-            cardHolderName: payment.cardHolderName,
-            cv2: payment.cv2,
-            expiryDate: payment.expiryDate,
-            paymentType: payment.paymentType,
-            pan: payment.pan,
-            paymentStatus: payment.paymentStatus,
-            referenceId: payment.referenceId,
-            currency: payment.currency,
-            merchantRef: payment.merchantRef,
-            description: payment.description,
-            commerceType: payment.commerceType,
-            createdAt: payment.createdAt,
-            updatedAt: payment.updatedAt,
-            goCardlessBillingRequest: parsedGoCardlessBillingRequest,
-            gatewayResponse: parsedGatewayResponse,
-            transactionMeta: parsedTransactionMeta,
-            totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
-          }
-          : null;
+      const paymentData = payment
+        ? {
+          id: payment.id,
+          bookingId: payment.bookingId,
+          firstName: payment.firstName,
+          lastName: payment.lastName,
+          email: payment.email,
+          billingAddress: payment.billingAddress,
+          cardHolderName: payment.cardHolderName,
+          cv2: payment.cv2,
+          expiryDate: payment.expiryDate,
+          paymentType: payment.paymentType,
+          pan: payment.pan,
+          paymentStatus: payment.paymentStatus,
+          referenceId: payment.referenceId,
+          currency: payment.currency,
+          merchantRef: payment.merchantRef,
+          description: payment.description,
+          commerceType: payment.commerceType,
+          createdAt: payment.createdAt,
+          updatedAt: payment.updatedAt,
+          goCardlessBillingRequest: parsedGoCardlessBillingRequest,
+          gatewayResponse: parsedGatewayResponse,
+          transactionMeta: parsedTransactionMeta,
+          totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
+        }
+        : null;
 
-        const { venue: _venue, ...bookingData } = booking.dataValues;
+      const { venue: _venue, ...bookingData } = booking.dataValues;
 
-        return {
-          ...bookingData,
-          students,
-          parents,
-          emergency,
-          classSchedule: booking.classSchedule || null,
-          // payments: booking.payments || [],
-          paymentPlan: booking.paymentPlan || null,
-          paymentPlans,
-          venue,
-          paymentData,
-          bookedByAdmin: booking.bookedByAdmin || null,
-        };
+      return {
+        ...bookingData,
+        students,
+        parents,
+        emergency,
+        classSchedule: booking.classSchedule || null,
+        // payments: booking.payments || [],
+        paymentPlan: booking.paymentPlan || null,
+        paymentPlans,
+        venue,
+        paymentData,
+        bookedByAdmin: booking.bookedByAdmin || null,
+      };
+    })
+  );
+
+  // Student filter
+  let finalBookings = parsedBookings;
+  if (filters.studentName) {
+    const keyword = filters.studentName.toLowerCase().trim();
+    finalBookings = finalBookings
+      .map((b) => {
+        const matchedStudents = b.students.filter((s) => {
+          const firstName = s.studentFirstName?.toLowerCase() || "";
+          const lastName = s.studentLastName?.toLowerCase() || "";
+          const fullName = `${firstName} ${lastName}`.trim();
+
+          return (
+            firstName.includes(keyword) ||
+            lastName.includes(keyword) ||
+            fullName.includes(keyword)
+          );
+        });
+
+        if (matchedStudents.length > 0) {
+          return {
+            ...b,
+            students: matchedStudents,
+          };
+        }
+        return null;
       })
-    );
+      .filter(Boolean);
 
-    // Student filter
-    let finalBookings = parsedBookings;
-    if (filters.studentName) {
-      const keyword = filters.studentName.toLowerCase().trim();
-      finalBookings = finalBookings
-        .map((b) => {
-          const matchedStudents = b.students.filter((s) => {
-            const firstName = s.studentFirstName?.toLowerCase() || "";
-            const lastName = s.studentLastName?.toLowerCase() || "";
-            const fullName = `${firstName} ${lastName}`.trim();
-
-            return (
-              firstName.includes(keyword) ||
-              lastName.includes(keyword) ||
-              fullName.includes(keyword)
-            );
-          });
-
-          if (matchedStudents.length > 0) {
-            return {
-              ...b,
-              students: matchedStudents,
-            };
-          }
-          return null;
-        })
-        .filter(Boolean);
-
-      if (finalBookings.length === 0) {
-        return {
-          status: true,
-          message: "No bookings found for the student.",
-          totalPaidBookings: 0,
-          data: { membership: [], venue: [], bookedByAdmins: [] },
-          stats: {
-            totalStudents: 0,
-            totalRevenue: 0,
-            avgMonthlyFee: 0,
-            avgLifeCycle: 0,
-          },
-        };
-      }
+    if (finalBookings.length === 0) {
+      return {
+        status: true,
+        message: "No bookings found for the student.",
+        totalPaidBookings: 0,
+        data: { membership: [], venue: [], bookedByAdmins: [] },
+        stats: {
+          totalStudents: 0,
+          totalRevenue: 0,
+          avgMonthlyFee: 0,
+          avgLifeCycle: 0,
+        },
+      };
     }
+  }
 
-    // Venue filter
-    if (filters.venueName) {
-      const keyword = filters.venueName.toLowerCase();
-      finalBookings = finalBookings.filter((b) =>
-        b.venue?.name?.toLowerCase().includes(keyword)
-      );
-      if (finalBookings.length === 0) {
-        return {
-          status: true,
-          message: "No bookings found for the venue.",
-          totalPaidBookings: 0,
-          data: { membership: [], venue: [], bookedByAdmins: [] },
-          stats: {
-            totalStudents: 0,
-            totalRevenue: 0,
-            avgMonthlyFee: 0,
-            avgLifeCycle: 0,
-          },
-        };
-      }
-    }
-
-    // Collect unique venues
-    const venueMap = {};
-    bookings.forEach((b) => {
-      if (b.classSchedule?.venue) {
-        venueMap[b.classSchedule.venue.id] = b.classSchedule.venue;
-      }
-    });
-    const allVenues = Object.values(venueMap);
-
-    // Collect unique bookedByAdmins
-    const adminMap = {};
-    bookings.forEach((b) => {
-      if (b.bookedByAdmin) {
-        adminMap[b.bookedByAdmin.id] = b.bookedByAdmin;
-      }
-    });
-    const allAdmins = Object.values(adminMap);
-
-    // Stats
-    const totalStudents = finalBookings.reduce(
-      (acc, b) => acc + (b.students?.length || 0),
-      0
+  // Venue filter
+  if (filters.venueName) {
+    const keyword = filters.venueName.toLowerCase();
+    finalBookings = finalBookings.filter((b) =>
+      b.venue?.name?.toLowerCase().includes(keyword)
     );
+    if (finalBookings.length === 0) {
+      return {
+        status: true,
+        message: "No bookings found for the venue.",
+        totalPaidBookings: 0,
+        data: { membership: [], venue: [], bookedByAdmins: [] },
+        stats: {
+          totalStudents: 0,
+          totalRevenue: 0,
+          avgMonthlyFee: 0,
+          avgLifeCycle: 0,
+        },
+      };
+    }
+  }
 
-    // ✅ Calculate revenue only from PaymentPlan (price + joiningFee) * student count
-    const totalRevenue = finalBookings.reduce((acc, b) => {
+  // Collect unique venues
+  const venueMap = {};
+  bookings.forEach((b) => {
+    if (b.classSchedule?.venue) {
+      venueMap[b.classSchedule.venue.id] = b.classSchedule.venue;
+    }
+  });
+  const allVenues = Object.values(venueMap);
+
+  // Collect unique bookedByAdmins
+  const adminMap = {};
+  bookings.forEach((b) => {
+    if (b.bookedByAdmin) {
+      adminMap[b.bookedByAdmin.id] = b.bookedByAdmin;
+    }
+  });
+  const allAdmins = Object.values(adminMap);
+
+  // Stats
+  const totalStudents = finalBookings.reduce(
+    (acc, b) => acc + (b.students?.length || 0),
+    0
+  );
+
+  // ✅ Calculate revenue only from PaymentPlan (price + joiningFee) * student count
+  const totalRevenue = finalBookings.reduce((acc, b) => {
+    const plan = b.paymentPlans?.[0];
+    if (plan?.price != null) {
+      const studentsCount = b.students?.length || 1;
+      return acc + (plan.price + (plan.joiningFee || 0)) * studentsCount;
+    }
+    return acc;
+  }, 0);
+
+  // ✅ Average monthly fee (spread over duration)
+  const avgMonthlyFeeRaw =
+    finalBookings.reduce((acc, b) => {
       const plan = b.paymentPlans?.[0];
-      if (plan?.price != null) {
+      if (plan?.duration && plan.price != null) {
         const studentsCount = b.students?.length || 1;
-        return acc + (plan.price + (plan.joiningFee || 0)) * studentsCount;
+        return (
+          acc +
+          ((plan.price + (plan.joiningFee || 0)) / plan.duration) *
+          studentsCount
+        );
       }
       return acc;
-    }, 0);
+    }, 0) / (totalStudents || 1);
 
-    // ✅ Average monthly fee (spread over duration)
-    const avgMonthlyFeeRaw =
-      finalBookings.reduce((acc, b) => {
-        const plan = b.paymentPlans?.[0];
-        if (plan?.duration && plan.price != null) {
-          const studentsCount = b.students?.length || 1;
-          return (
-            acc +
-            ((plan.price + (plan.joiningFee || 0)) / plan.duration) *
-            studentsCount
-          );
-        }
-        return acc;
-      }, 0) / (totalStudents || 1);
+  // Round to 2 decimals (returns Number)
+  const avgMonthlyFee = Math.round(avgMonthlyFeeRaw * 100) / 100;
 
-    // Round to 2 decimals (returns Number)
-    const avgMonthlyFee = Math.round(avgMonthlyFeeRaw * 100) / 100;
-
-    // ✅ Average lifecycle (duration * student count)
-    const avgLifeCycle =
-      finalBookings.reduce((acc, b) => {
-        const plan = b.paymentPlans?.[0];
-        if (plan?.duration != null) {
-          const studentsCount = b.students?.length || 1;
-          return acc + plan.duration * studentsCount;
-        }
-        return acc;
-      }, 0) / (totalStudents || 1);
-    // ✅ New: Fetch all venues from DB (including those with no bookings)
-    const allVenuesFromDB = await Venue.findAll({
-      order: [["name", "ASC"]],
-      include: [
-        {
-          model: ClassSchedule,
-          as: "classSchedules", // <-- make sure this matches your Sequelize association alias
-          required: false, // include venues even if they have no classes
-        },
-      ],
-    });
-
-    return {
-      status: true,
-      message: "Paid bookings retrieved successfully",
-      totalPaidBookings: finalBookings.length,
-      data: {
-        membership: finalBookings,
-        venue: allVenues,
-        bookedByAdmins: allAdmins, // ✅ unique list of admins like venues
-        allVenues: allVenuesFromDB,
+  // ✅ Average lifecycle (duration * student count)
+  const avgLifeCycle =
+    finalBookings.reduce((acc, b) => {
+      const plan = b.paymentPlans?.[0];
+      if (plan?.duration != null) {
+        const studentsCount = b.students?.length || 1;
+        return acc + plan.duration * studentsCount;
+      }
+      return acc;
+    }, 0) / (totalStudents || 1);
+  // ✅ New: Fetch all venues from DB (including those with no bookings)
+  const allVenuesFromDB = await Venue.findAll({
+    order: [["name", "ASC"]],
+    include: [
+      {
+        model: ClassSchedule,
+        as: "classSchedules", // <-- make sure this matches your Sequelize association alias
+        required: false, // include venues even if they have no classes
       },
-      stats: { totalStudents, totalRevenue, avgMonthlyFee, avgLifeCycle },
-    };
-  } catch (error) {
-    console.error("❌ getAllBookingsWithStats Error:", error.message);
-    return { status: false, message: error.message };
-  }
+    ],
+  });
+
+  return {
+    status: true,
+    message: "Paid bookings retrieved successfully",
+    totalPaidBookings: finalBookings.length,
+    data: {
+      membership: finalBookings,
+      venue: allVenues,
+      bookedByAdmins: allAdmins, // ✅ unique list of admins like venues
+      allVenues: allVenuesFromDB,
+    },
+    stats: { totalStudents, totalRevenue, avgMonthlyFee, avgLifeCycle },
+  };
+} catch (error) {
+  console.error("❌ getAllBookingsWithStats Error:", error.message);
+  return { status: false, message: error.message };
+}
 };
 
 exports.getActiveMembershipBookings = async (filters = {}) => {

@@ -484,7 +484,7 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
       },
       include: [
         { model: CandidateProfile, as: "candidateProfile" },
-         { model: Admin, as: "creator", attributes: ["id", "firstName", "lastName"] }
+         { model: Admin, as: "creator", attributes: ["id", "firstName", "lastName","profile"] }
       ],
       order: [["createdAt", "DESC"]],
     });
@@ -754,6 +754,7 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
         agentId,
         firstName: topAgentCount[agentId].firstName,
         lastName: topAgentCount[agentId].lastName,
+        profile: topAgentCount[agentId].profile,
         totalHires: topAgentCount[agentId].totalHires
       }))
       .sort((a, b) => b.totalHires - a.totalHires); // highest hires first

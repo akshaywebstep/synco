@@ -88,32 +88,6 @@ exports.createHolidayBooking = async (data, adminId) => {
         }
       }
 
-      // 4️⃣ Validate usage per customer
-      const firstStudent = data.students?.[0];
-      if (firstStudent && discount.limitPerCustomer !== null) {
-        const studentUses = await HolidayBooking.count({
-          include: [
-            {
-              model: HolidayBookingStudentMeta,
-              as: "students",
-              required: true,
-              where: {
-                studentFirstName: firstStudent.studentFirstName,
-                studentLastName: firstStudent.studentLastName,
-                dateOfBirth: firstStudent.dateOfBirth
-              }
-            }
-          ],
-          where: { discountId: discount.id }
-        });
-
-        if (studentUses >= discount.limitPerCustomer) {
-          throw new Error(
-            `Discount ${discount.code} exceeded maximum usage for this student.`
-          );
-        }
-      }
-
       // 5️⃣ Apply discount value
       if (discount.valueType === "percentage") {
         discount_amount = (base_amount * Number(discount.value)) / 100;

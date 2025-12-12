@@ -1,4 +1,4 @@
-const { Discount, DiscountAppliesTo } = require("../../models");
+const { Discount, DiscountAppliesTo, DiscountUsage, sequelize } = require("../../models");
 const { Op } = require("sequelize");
 
 // ✅ Get Discount By Code
@@ -116,17 +116,32 @@ const createDiscountAppliesTo = async ({ discountId, target }) => {
 };
 
 // ✅ Get All Discounts
+// ✅ Get All Discounts with Usage Count
 const getAllDiscounts = async () => {
   try {
     const discounts = await Discount.findAll({
-      order: [['createdAt', 'DESC']],
+      order: [["createdAt", "DESC"]],
       include: [
         {
           model: DiscountAppliesTo,
-          as: 'appliesTo',
-          attributes: ['id', 'target'], // include more fields if needed
+          as: "appliesTo",
+          attributes: ["id", "target"],
+        },
+        {
+          model: DiscountUsage,
+          as: "usages",
+          attributes: [], // we only need count, no full rows
         },
       ],
+      attributes: {
+        include: [
+          [
+            sequelize.fn("COUNT", sequelize.col("usages.id")),
+            "usageCount"
+          ]
+        ]
+      },
+      group: ["Discount.id", "appliesTo.id"], // required for COUNT()
     });
 
     if (!discounts || discounts.length === 0) {
@@ -137,10 +152,31 @@ const getAllDiscounts = async () => {
       };
     }
 
+    const now = new Date();
+
+    // 🔥 Add computed "status" field
+    const formatted = discounts.map((discount) => {
+      const json = discount.toJSON();
+      const usageCount = json.usageCount || 0;
+
+      const end = new Date(json.endDatetime);
+
+      const isExpired =
+        end < now ||
+        (json.limitTotalUses !== null &&
+          usageCount >= json.limitTotalUses);
+
+      return {
+        ...json,
+        usageCount,
+        status: isExpired ? "expired" : "active",
+      };
+    });
+
     return {
       status: true,
-      message: "Discounts fetched successfully with applied targets.",
-      data: discounts,
+      message: "Discounts fetched successfully with status and usage count.",
+      data: formatted,
     };
   } catch (error) {
     console.error("❌ Sequelize Error in getAllDiscounts:", error);

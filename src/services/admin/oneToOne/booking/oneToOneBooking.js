@@ -8,6 +8,7 @@ const {
   PaymentPlan,
   PaymentGroup,
   Discount,
+  DiscountUsage,
   DiscountAppliesTo,
   PaymentGroupHasPlan,
   Admin,
@@ -31,17 +32,13 @@ const PANEL = "admin";
 exports.createOnetoOneBooking = async (data) => {
   const transaction = await sequelize.transaction();
   try {
-    // ✅ 0️⃣ Check if lead already booked
+    // 0️⃣ Check if lead already booked
     if (data.leadId) {
       const existingBooking = await OneToOneBooking.findOne({
         where: { leadId: data.leadId },
       });
 
       if (existingBooking) {
-        console.warn(
-          `⚠️ Lead ID ${data.leadId} is already associated with Booking ID ${existingBooking.id}`
-        );
-
         return {
           success: false,
           message: "You have already booked this lead.",
@@ -61,79 +58,52 @@ exports.createOnetoOneBooking = async (data) => {
     }
 
     let discount = null;
-    let discountAmount = 0;
+    let discount_amount = 0;
     let finalAmount = baseAmount;
 
+    // ==================================================
+    //  DISCOUNT LOGIC (CLEANED & FIXED)
+    // ==================================================
     if (data.discountId) {
-      discount = await Discount.findByPk(data.discountId);
+      discount = await Discount.findByPk(data.discountId, {
+        include: [{ model: DiscountAppliesTo, as: "appliesTo" }]
+      });
       if (!discount) throw new Error("Invalid discount ID");
 
       const now = new Date();
 
-      // -----------------------------
-      // 1️⃣ VALIDATE DATE RANGE
-      // -----------------------------
-      if (discount.start_datetime && now < new Date(discount.start_datetime)) {
-        throw new Error(`Discount code ${discount.code} is not active yet.`);
+      // Validate date
+      if (discount.startDatetime && now < new Date(discount.startDatetime))
+        throw new Error(`Discount ${discount.code} is not active yet.`);
+
+      if (discount.endDatetime && now > new Date(discount.endDatetime))
+        throw new Error(`Discount ${discount.code} has expired.`);
+
+      // Validate applies-to
+      const targets = discount.appliesTo.map(a => a.target);
+      if (!targets.includes("one_to_one")) {
+        throw new Error(`Discount ${discount.code} is not valid for one-to-one bookings.`);
       }
 
-      if (discount.end_datetime && now > new Date(discount.end_datetime)) {
-        throw new Error(`Discount code ${discount.code} has expired.`);
-      }
-
-      // -----------------------------
-      // 2️⃣ CHECK TOTAL USE LIMIT
-      // -----------------------------
-      if (discount.limit_total_uses !== null) {
+      // Validate total uses
+      if (discount.limitTotalUses !== null) {
         const totalUsed = await OneToOneBooking.count({
-          where: { discountId: discount.id },
+          where: { discountId: discount.id }
         });
 
-        if (totalUsed >= discount.limit_total_uses) {
-          throw new Error(
-            `Discount code ${discount.code} has reached its total usage limit.`
-          );
+        if (totalUsed >= discount.limitTotalUses) {
+          throw new Error(`Discount ${discount.code} reached total usage limit.`);
         }
       }
 
-      // -----------------------------
-      // 3️⃣ LIMIT PER STUDENT
-      // -----------------------------
-      if (discount.limit_per_customer !== null) {
-        const firstStudent = data.students?.[0];
-
-        if (firstStudent) {
-          const studentUses = await OneToOneBooking.count({
-            include: [
-              {
-                model: OneToOneStudent,
-                as: "students",
-                required: true,
-                where: {
-                  studentFirstName: firstStudent.studentFirstName,
-                  studentLastName: firstStudent.studentLastName,
-                  dateOfBirth: firstStudent.dateOfBirth,
-                },
-              },
-            ],
-            where: { discountId: discount.id },
-          });
-
-          if (studentUses >= discount.limit_per_customer) {
-            throw new Error(
-              `Discount code ${discount.code} already used maximum times by this student.`
-            );
-          }
-        }
+      // Apply discount
+      if (discount.valueType === "percentage") {
+        discount_amount = (baseAmount * Number(discount.value)) / 100;
+      } else {
+        discount_amount = Number(discount.value);
       }
 
-      // -----------------------------
-      // 4️⃣ USE DISCOUNT VALUE AS FINAL PRICE
-      // -----------------------------
-      finalAmount = Number(discount.value);   // 🔥 final price = discount.value
-
-      // also store discountAmount for record (optional)
-      discountAmount = baseAmount - finalAmount;
+      finalAmount = Math.max(baseAmount - discount_amount, 0);
     }
 
     // 2️⃣ Create booking
@@ -218,7 +188,6 @@ exports.createOnetoOneBooking = async (data) => {
       let customerId = data.payment?.customer_id;
       let cardId = data.payment?.card_id;
 
-      // 🧩 Step 1: Create Customer if not exists
       if (!customerId) {
         const customerRes = await createCustomer({
           body: {
@@ -229,7 +198,6 @@ exports.createOnetoOneBooking = async (data) => {
         customerId = customerRes.customer_id;
       }
 
-      // 🧩 Step 2: Create Card Token and attach to Customer
       if (!cardId) {
         const cardTokenRes = await createCardToken({
           body: {
@@ -250,7 +218,6 @@ exports.createOnetoOneBooking = async (data) => {
         cardId = addCardRes.card_id;
       }
 
-      // 🧩 Step 3: Create Charge
       const chargeRes = await createCharges({
         body: {
           amount: finalAmount,
@@ -264,7 +231,6 @@ exports.createOnetoOneBooking = async (data) => {
         stripeChargeId = chargeRes.charge_id;
       }
     } catch (err) {
-      console.error("❌ Stripe Payment Error:", err.message);
       errorMessage = err.message;
     }
 
@@ -273,9 +239,9 @@ exports.createOnetoOneBooking = async (data) => {
       {
         oneToOneBookingId: booking.id,
         amount: finalAmount,
-        discountAmount,
+        discountAmount: discount_amount,
         baseAmount,
-        paymentStatus, // ✅ comes directly from gateway
+        paymentStatus,
         stripePaymentIntentId: stripeChargeId,
         paymentDate: new Date(),
         failureReason: errorMessage,
@@ -283,122 +249,32 @@ exports.createOnetoOneBooking = async (data) => {
       { transaction }
     );
 
-    booking.status = "pending";
-    (booking.type = "paid"), await booking.save({ transaction });
-    console.log("🟡 Before save:", booking.status);
-    await booking.save({ transaction });
-    console.log("🟢 After save, re-fetching...");
-
-    // ✅ 7️⃣ Optionally fetch charge details from Stripe (if charge succeeded)
-    let stripeChargeDetails = null;
-
-    if (stripeChargeId) {
-      try {
-        // ✅ Wait for Stripe to be ready
-        const stripe = await stripePromise;
-        stripeChargeDetails = await stripe.charges.retrieve(stripeChargeId);
-      } catch (err) {
-        console.error("⚠️ Failed to fetch charge details:", err.message);
-      }
+    // ⭐ RECORD DISCOUNT USAGE (before commit)
+    if (discount && paymentStatus === "paid" && data.adminId) {
+      await DiscountUsage.create(
+        {
+          discountId: discount.id,
+          adminId: data.adminId,
+          usedAt: new Date()
+        },
+        { transaction }
+      );
     }
+
     await transaction.commit();
 
-    try {
-      if (paymentStatus === "paid") {
-        const { status: configStatus, emailConfig, htmlTemplate, subject } =
-          await emailModel.getEmailConfig(PANEL, "one-to-one-booking");
-
-        if (configStatus && htmlTemplate) {
-          const firstParent = data.parents?.[0];
-
-          if (firstParent && firstParent.parentEmail) {
-            // Build HTML for all students
-            let studentsHtml = students.map(student => `
-          <tr>
-            <td style="padding:5px; vertical-align:top;">
-              <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Student Name:</p>
-              <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.studentFirstName || ""} ${student.studentLastName || ""}</p>
-            </td>
-            <td style="padding:5px; vertical-align:top;">
-              <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Age:</p>
-              <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.age || ""}</p>
-            </td>
-            <td style="padding:5px; vertical-align:top;">
-              <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Gender:</p>
-              <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.gender || ""}</p>
-            </td>
-          </tr>
-        `).join("");
-
-            // Replace placeholders in template
-            let htmlBody = htmlTemplate
-              .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`)
-              .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
-              .replace(/{{phoneNumber}}/g, firstParent.phoneNumber || "")
-              .replace(/{{relationChild}}/g, firstParent.relationChild || "")
-              .replace(/{{className}}/g, "One to One Coaching")
-              .replace(/{{classTime}}/g, data.time || "")
-              .replace(/{{location}}/g, data.location || "")
-              .replace(/{{startDate}}/g, data.date || "")
-              .replace(/{{year}}/g, new Date().getFullYear().toString())
-              .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
-              .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png")
-              .replace("{{studentsTable}}", studentsHtml);
-
-            // ✅ Correct way: pass recipients as 'recipient' (not 'to')
-            await sendEmail(emailConfig, {
-              recipient: [
-                {
-                  name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
-                  email: firstParent.parentEmail
-                }
-              ],
-              cc: emailConfig.cc || [],
-              bcc: emailConfig.bcc || [],
-              subject,
-              htmlBody
-            });
-
-            console.log(`📧 Confirmation email sent to ${firstParent.parentEmail}`);
-          } else {
-            console.warn("⚠️ No parent email found for sending booking confirmation");
-          }
-        } else {
-          console.warn("⚠️ Email template config not found for 'one-to-one-booking'");
-        }
-      } else {
-        console.log("ℹ️ Payment not successful — skipping email send.");
-      }
-    } catch (emailErr) {
-      console.error("❌ Error sending email to parent:", emailErr.message);
-    }
-
-    // ✅ Return response including Stripe details
     return {
       success: true,
       bookingId: booking.id,
-      paymentStatus, // "paid" or "failed"
-      stripePaymentIntentId: stripeChargeId, // ✅ charge id like ch_xxx
+      paymentStatus,
+      stripePaymentIntentId: stripeChargeId,
       baseAmount,
-      discountAmount,
-      finalAmount,
-      stripeChargeDetails: stripeChargeDetails
-        ? {
-          id: stripeChargeDetails.id,
-          amount: stripeChargeDetails.amount / 100,
-          currency: stripeChargeDetails.currency,
-          status: stripeChargeDetails.status,
-          paymentMethod:
-            stripeChargeDetails.payment_method_details?.card?.brand,
-          last4: stripeChargeDetails.payment_method_details?.card?.last4,
-          receiptUrl: stripeChargeDetails.receipt_url,
-          fullResponse: stripeChargeDetails,
-        }
-        : null,
+      discountAmount: discount_amount,
+      finalAmount
     };
+
   } catch (error) {
     await transaction.rollback();
-    console.error("❌ Error creating One-to-One booking:", error);
     throw error;
   }
 };
