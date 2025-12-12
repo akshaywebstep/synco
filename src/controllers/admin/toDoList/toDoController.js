@@ -26,17 +26,79 @@ exports.createTask = async (req, res) => {
     // 1️⃣ VALIDATIONS
     // ============================
     if (!title || !description) {
-      return res.status(400).json({ status: false, message: "Title & description are required" });
+      return res.status(400).json({
+        status: false,
+        message: "Title & description are required",
+      });
     }
 
+    // ----------------------------
+    // Validate assignedAdmins
+    // ----------------------------
+
+    let assignedAdminsArray = [];
+
+    if (assignedAdmins !== undefined && assignedAdmins !== null && assignedAdmins !== "") {
+      try {
+        // Convert string → array if needed
+        assignedAdminsArray =
+          typeof assignedAdmins === "string"
+            ? JSON.parse(assignedAdmins)
+            : assignedAdmins;
+
+        if (!Array.isArray(assignedAdminsArray)) {
+          return res.status(400).json({
+            status: false,
+            message: "assignedAdmins must be an array",
+          });
+        }
+
+        // Must contain only numeric IDs
+        const invalid = assignedAdminsArray.some(id => isNaN(Number(id)));
+        if (invalid) {
+          return res.status(400).json({
+            status: false,
+            message: "assignedAdmins must contain only numeric admin IDs",
+          });
+        }
+      } catch (err) {
+        return res.status(400).json({
+          status: false,
+          message: "assignedAdmins must be a valid JSON array",
+        });
+      }
+    }
+
+    if (
+      assignedAdmins === undefined ||
+      assignedAdmins === null ||
+      assignedAdmins === "[]"
+    ) {
+      return res.status(400).json({
+        status: false,
+        message: "Assign members are required",
+      });
+    }
+    // ----------------------------
     // Normalize Multer files → array
+    // ----------------------------
     let filesArray = [];
+
     if (Array.isArray(files)) {
       filesArray = files;
-    } else {
+    } else if (typeof files === "object") {
       filesArray = Object.values(files).flat();
     }
 
+    // ----------------------------
+    // Validate attachments exist
+    // ----------------------------
+    if (filesArray.length === 0) {
+      return res.status(400).json({
+        status: false,
+        message: "At least one attachment is required",
+      });
+    }
     // Validate file types
     const allowedExtensions = [ // Images
       "jpg", "jpeg", "png", "webp", "gif", "bmp", "svg", "tiff",

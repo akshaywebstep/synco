@@ -3,6 +3,7 @@ const fs = require("fs");
 const { validateFormData } = require("../../../../utils/validateFormData");
 const FilesService = require("../../../../services/admin/holidayCamps/folder/files");
 const FolderService = require("../../../../services/admin/holidayCamps/folder/folder");
+const { Files } = require("../../../../models");
 
 const { logActivity } = require("../../../../utils/admin/activityLogger");
 const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
@@ -39,75 +40,30 @@ async function getFileSizeFromUrl(url) {
 // ✅ MULTIPLE FILE UPLOAD CONTROLLER
 // ------------------------------------------------------
 exports.createFiles = async (req, res) => {
-
     const formData = req.body || {};
     const files = req.files || [];
-
     const { folder_id } = formData;
 
     if (!folder_id) {
         return res.status(400).json({ status: false, message: "folder_id is required" });
     }
 
-    if (DEBUG) {
-        console.log("📥 Incoming file upload request");
-        console.log("📝 Form Data:", formData);
-        console.log("📦 Files Received:", files.length);
-    }
-
-    // Step 1: Validate required fields
-    const validation = validateFormData(formData, {
-        requiredFields: ["folder_id"],
-    });
-
-    if (!validation.isValid) {
-        await logActivity(req, PANEL, MODULE, "create", validation.error, false);
-        return res.status(400).json({
-            status: false,
-            error: validation.error,
-            message: validation.message,
-        });
-    }
-
-    // Step 2: Validate file extensions
-    const allowedExtensions = {
-        images: ["jpg", "jpeg", "png", "webp", "svg", "gif", "bmp", "tiff"],
-        documents: ["pdf", "doc", "docx", "txt", "rtf", "odt"],
-        spreadsheets: ["xls", "xlsx", "csv", "ods"],
-        presentations: ["ppt", "pptx", "odp"],
-        archives: ["zip", "rar", "7z", "tar", "gz"],
-        audio: ["mp3", "wav", "aac", "m4a", "ogg"],
-        video: ["mp4", "mov", "avi", "mkv", "wmv"],
-        code: ["json", "xml", "yaml", "yml"],
-        design: ["psd", "ai", "eps"]
-    };
-
-    const allAllowedExtensions = Object.values(allowedExtensions).flat();
-
-    for (const file of files) {
-        const ext = path.extname(file.originalname).toLowerCase().slice(1);
-        if (!allAllowedExtensions.includes(ext)) {
-            return res.status(400).json({
-                status: false,
-                message: `Invalid file type: ${file.originalname}`,
-            });
-        }
-    }
-
     try {
         // ------------------------------------------------------
-        // STEP 3: Upload files & collect URLs
+        // STEP 1: Create the DB row FIRST (empty)
         // ------------------------------------------------------
-        const fileRecord = await FilesService.createFile({
-            uploadFiles: [],
+        const fileRecord = await Files.create({
             folder_id,
+            uploadFiles: [],
             createdBy: req.admin.id,
         });
 
-        const fileId = fileRecord.data.id; // use this in paths
-
+        const fileId = fileRecord.id;
         let uploadedURLs = [];
 
+        // ------------------------------------------------------
+        // STEP 2: Upload each file once
+        // ------------------------------------------------------
         for (const file of files) {
             const uniqueId = Math.floor(Math.random() * 1e9);
             const ext = path.extname(file.originalname).toLowerCase();
@@ -120,12 +76,11 @@ exports.createFiles = async (req, res) => {
                 "admin",
                 `${req.admin.id}`,
                 "folderFiles",
-                `${fileId}`, // Use the same DB record ID
+                `${fileId}`,
                 fileName
             );
 
             await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
-
             await saveFile(file, localPath);
 
             const remotePath = `admin/${req.admin.id}/folderFiles/${fileId}/${fileName}`;
@@ -133,40 +88,22 @@ exports.createFiles = async (req, res) => {
 
             if (publicUrl) uploadedURLs.push(publicUrl);
 
-            await fs.promises.unlink(localPath).catch(() => { });
+            await fs.promises.unlink(localPath).catch(() => {});
         }
 
-        // Step 2: Update the same record with URLs
-        await fileRecord.data.update({ uploadFiles: uploadedURLs });
-
         // ------------------------------------------------------
-        // STEP 4: Save in DB (JSON array)
+        // STEP 3: Update the SAME RECORD only once
         // ------------------------------------------------------
-        const result = await FilesService.createFile({
-            uploadFiles: uploadedURLs, // Array of URLs
-            folder_id,
-            createdBy: req.admin.id,
-        });
-
-        if (!result.status) {
-            await logActivity(req, PANEL, MODULE, "create", result, false);
-            return res.status(500).json({
-                status: false,
-                message: result.message || "Failed to upload files.",
-            });
-        }
-
-        await logActivity(req, PANEL, MODULE, "create", result, true);
+        await fileRecord.update({ uploadFiles: uploadedURLs });
 
         return res.status(201).json({
             status: true,
             message: "Files uploaded successfully.",
-            data: result.data,
+            data: fileRecord,
         });
 
     } catch (error) {
         console.error("❌ File Upload Error:", error);
-        await logActivity(req, PANEL, MODULE, "create", error, false);
         return res.status(500).json({
             status: false,
             message: "Server error while uploading files.",

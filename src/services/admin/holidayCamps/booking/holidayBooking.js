@@ -12,6 +12,8 @@ const {
   HolidayCamp,
   HolidayCampDates,
   Discount,
+  DiscountUsage,
+  DiscountAppliesTo,
   Comment,
   Admin,
 } = require("../../../../models");
@@ -55,63 +57,64 @@ exports.createHolidayBooking = async (data, adminId) => {
     //  DISCOUNT LOGIC (FULLY UPDATED)
     // ==================================================
     if (data.discountId) {
-      discount = await Discount.findByPk(data.discountId);
+      discount = await Discount.findByPk(data.discountId, {
+        include: [{ model: DiscountAppliesTo, as: "appliesTo" }]
+      });
       if (!discount) throw new Error("Invalid discount ID");
 
       const now = new Date();
 
-      // 1️⃣ Validate active date range ------------------
-      if (discount.startDatetime && now < new Date(discount.startDatetime)) {
-        throw new Error(`Discount code ${discount.code} is not active yet.`);
+      // 1️⃣ Validate active date
+      if (discount.startDatetime && now < new Date(discount.startDatetime))
+        throw new Error(`Discount ${discount.code} is not active yet.`);
+
+      if (discount.endDatetime && now > new Date(discount.endDatetime))
+        throw new Error(`Discount ${discount.code} has expired.`);
+
+      // 2️⃣ Validate applies-to
+      const appliesToTargets = discount.appliesTo.map(a => a.target);
+      if (!appliesToTargets.includes("holiday_camp")) {
+        throw new Error(`Discount ${discount.code} is not valid for holiday camp bookings.`);
       }
 
-      if (discount.endDatetime && now > new Date(discount.endDatetime)) {
-        throw new Error(`Discount code ${discount.code} has expired.`);
-      }
-
-      // 2️⃣ Check total usage limit ---------------------
+      // 3️⃣ Validate total uses
       if (discount.limitTotalUses !== null) {
         const totalUsed = await HolidayBooking.count({
-          where: { discountId: discount.id },
+          where: { discountId: discount.id }
         });
 
         if (totalUsed >= discount.limitTotalUses) {
+          throw new Error(`Discount ${discount.code} reached total usage limit.`);
+        }
+      }
+
+      // 4️⃣ Validate usage per customer
+      const firstStudent = data.students?.[0];
+      if (firstStudent && discount.limitPerCustomer !== null) {
+        const studentUses = await HolidayBooking.count({
+          include: [
+            {
+              model: HolidayBookingStudentMeta,
+              as: "students",
+              required: true,
+              where: {
+                studentFirstName: firstStudent.studentFirstName,
+                studentLastName: firstStudent.studentLastName,
+                dateOfBirth: firstStudent.dateOfBirth
+              }
+            }
+          ],
+          where: { discountId: discount.id }
+        });
+
+        if (studentUses >= discount.limitPerCustomer) {
           throw new Error(
-            `Discount code ${discount.code} has reached its total usage limit.`
+            `Discount ${discount.code} exceeded maximum usage for this student.`
           );
         }
       }
 
-      // 3️⃣ Check per-customer limit ---------------------
-      if (discount.limitPerCustomer !== null) {
-        const firstStudent = data.students?.[0];
-
-        if (firstStudent) {
-          const studentUses = await HolidayBooking.count({
-            include: [
-              {
-                model: HolidayBookingStudentMeta,
-                as: "students",
-                required: true,
-                where: {
-                  studentFirstName: firstStudent.studentFirstName,
-                  studentLastName: firstStudent.studentLastName,
-                  dateOfBirth: firstStudent.dateOfBirth,
-                },
-              },
-            ],
-            where: { discountId: discount.id },
-          });
-
-          if (studentUses >= discount.limitPerCustomer) {
-            throw new Error(
-              `Discount code ${discount.code} already used maximum times by this student.`
-            );
-          }
-        }
-      }
-
-      // 4️⃣ APPLY DISCOUNT VALUE CORRECTLY -------------
+      // 5️⃣ Apply discount value
       if (discount.valueType === "percentage") {
         discount_amount = (base_amount * Number(discount.value)) / 100;
       } else {
@@ -272,6 +275,17 @@ exports.createHolidayBooking = async (data, adminId) => {
     } catch (err) {
       errorMessage = err.message;
       console.error("Stripe Payment Error:", err.message);
+    }
+    // ⭐ RECORD DISCOUNT USAGE
+    if (discount && payment_status === "paid") {
+      await DiscountUsage.create(
+        {
+          discountId: discount.id,
+          adminId,
+          usedAt: new Date()
+        },
+        { transaction }
+      );
     }
 
     // ✅ Send confirmation email to first parent (only if payment succeeded)

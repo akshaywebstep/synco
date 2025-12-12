@@ -47,7 +47,7 @@ const ToDoList = sequelize.define(
     },
     assignedAdmins: {
       type: DataTypes.JSON,
-      allowNull: true,
+      allowNull: false,
       field: "assigned_admins",
     },
     status: {
