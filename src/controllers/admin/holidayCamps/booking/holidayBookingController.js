@@ -177,6 +177,66 @@ exports.createHolidayBooking = async (req, res) => {
   }
 };
 
+exports.getAllHolidayBooking = async (req, res) => {
+  const adminId = req.admin?.id;
+
+  try {
+    // Validate admin
+    if (!adminId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized: Admin ID not found.",
+      });
+    }
+
+    // 🔹 Identify super admin
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    // 🔹 Fetch data from service
+    const result = await holidayBookingService.getHolidayBooking(
+      superAdminId,
+      adminId
+    );
+
+    // Handle errors from service
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message || "Failed to fetch holiday bookings",
+      });
+    }
+
+    // 🔹 Log activity
+    await logActivity(req, PANEL, MODULE, "fetch-all", null, true);
+
+    // 🔹 Extract summary
+    const summary = result.summary || {
+      totalStudents: 0,
+      revenue: 0,
+      averagePrice: 0,
+      topSource: null
+    };
+
+    // 🔹 Respond with all metrics
+    return res.status(200).json({
+      success: true,
+      message: "Holiday bookings fetched successfully",
+      summary: summary,
+      data: result.data,
+    });
+
+  } catch (error) {
+    if (DEBUG)
+      console.error("❌ Error in getAllHolidayBooking:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: DEBUG ? error.message : "Internal server error",
+    });
+  }
+};
+
 exports.cancelHolidayBookingById = async (req, res) => {
   try {
     const adminId = req.admin?.id || null;
@@ -264,66 +324,6 @@ exports.cancelHolidayBookingById = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error in cancelHolidayBookingById:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: DEBUG ? error.message : "Internal server error",
-    });
-  }
-};
-
-exports.getAllHolidayBooking = async (req, res) => {
-  const adminId = req.admin?.id;
-
-  try {
-    // Validate admin
-    if (!adminId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized: Admin ID not found.",
-      });
-    }
-
-    // 🔹 Identify super admin
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
-    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
-
-    // 🔹 Fetch data from service
-    const result = await holidayBookingService.getHolidayBooking(
-      superAdminId,
-      adminId
-    );
-
-    // Handle errors from service
-    if (!result.success) {
-      return res.status(400).json({
-        success: false,
-        message: result.message || "Failed to fetch holiday bookings",
-      });
-    }
-
-    // 🔹 Log activity
-    await logActivity(req, PANEL, MODULE, "fetch-all", null, true);
-
-    // 🔹 Extract summary
-    const summary = result.summary || {
-      totalStudents: 0,
-      revenue: 0,
-      averagePrice: 0,
-      topSource: null
-    };
-
-    // 🔹 Respond with all metrics
-    return res.status(200).json({
-      success: true,
-      message: "Holiday bookings fetched successfully",
-      summary: summary,
-      data: result.data,
-    });
-
-  } catch (error) {
-    if (DEBUG)
-      console.error("❌ Error in getAllHolidayBooking:", error);
 
     return res.status(500).json({
       success: false,

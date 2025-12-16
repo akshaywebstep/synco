@@ -154,7 +154,7 @@ router.use("/holiday/class-schedule", require("./holidayCampsRoutes/holidayClass
 router.use("/holiday/find-class", require("./holidayCampsRoutes/holidayFindClassRoutes"));
 
 router.use("/holiday/booking", require("./holidayCampsRoutes/holidayBookingRoutes"));
-router.use("/holiday/booking/comment", require("./holidayCampsRoutes/holidayBookingComment"));
+router.use("/holiday/comment", require("./holidayCampsRoutes/holidayBookingComment"));
 
 router.use("/holiday/template-category", require("./templates/templateCategoryRoutes"));
 router.use("/holiday/custom-template", require("./templates/customTemplateRoute"));

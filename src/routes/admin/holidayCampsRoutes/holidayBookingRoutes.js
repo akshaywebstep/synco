@@ -6,57 +6,17 @@ const permissionMiddleware = require("../../../middleware/admin/permission");
 const {
   createHolidayBooking,
   getAllHolidayBooking,
+  getHolidayCampsReports,
   sendEmail,
   getHolidayBookingById,
   updateHolidayBooking,
-  // addCommentForHolidayCamp,
-  // listCommentsForHolidayCamp,
   waitingListCreate,
-  getHolidayCampsReports,
   cancelHolidayBookingById,
   getAllDiscounts,
 } = require("../../../controllers/admin/holidayCamps/booking/holidayBookingController");
 
-// ================= COMMENTS =================
-// router.post(
-//   "/comment/create",
-//   authMiddleware,
-//   permissionMiddleware("holiday-comment", "create"),
-//   addCommentForHolidayCamp
-// );
+// ➕ Create Camp
 
-// router.get(
-//   "/comment/list",
-//   authMiddleware,
-//   permissionMiddleware("holiday-comment", "view-listing"),
-//   listCommentsForHolidayCamp
-// );
-
-// ================= DISCOUNTS =================
-router.get(
-  "/discount/holiday-camp",
-  authMiddleware,
-  permissionMiddleware("holiday-booking", "view-listing"),
-  getAllDiscounts
-);
-
-// ================= REPORTS =================
-router.get(
-  "/reports",
-  authMiddleware,
-  permissionMiddleware("holiday-booking", "view-listing"),
-  getHolidayCampsReports
-);
-
-// ================= WAITING LIST =================
-router.post(
-  "/waiting-list/create",
-  authMiddleware,
-  permissionMiddleware("holiday-booking-waiting", "create"),
-  waitingListCreate
-);
-
-// ================= BOOKINGS =================
 router.post(
   "/create",
   authMiddleware,
@@ -70,6 +30,12 @@ router.get(
   permissionMiddleware("holiday-booking", "view-listing"),
   getAllHolidayBooking
 );
+router.get(
+  "/discount/holiday-camp",
+  authMiddleware,
+  permissionMiddleware("holiday-booking", "view-listing"),
+  getAllDiscounts
+);
 
 router.post(
   "/send-email",
@@ -78,7 +44,12 @@ router.post(
   sendEmail
 );
 
-// ================= DYNAMIC ROUTES (LAST) =================
+router.put(
+  "/update/:bookingId",
+  authMiddleware,
+  permissionMiddleware("holiday-booking", "update"),
+  updateHolidayBooking
+);
 router.get(
   "/listBy/:bookingId",
   authMiddleware,
@@ -86,11 +57,17 @@ router.get(
   getHolidayBookingById
 );
 
-router.put(
-  "/update/:bookingId",
+router.post(
+  "/waiting-list/create",
   authMiddleware,
-  permissionMiddleware("holiday-booking", "update"),
-  updateHolidayBooking
+  permissionMiddleware("holiday-booking-waiting", "create"),
+  waitingListCreate
+);
+router.get(
+  "/reports",
+  authMiddleware,
+  permissionMiddleware("holiday-booking", "view-listing"),
+  getHolidayCampsReports
 );
 
 router.put(
