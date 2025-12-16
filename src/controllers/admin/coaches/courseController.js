@@ -17,154 +17,154 @@ const MODULE = "course";
  * Helper: Upload file and get FTP URL
  */
 const uploadFileAndGetUrl = async (file, adminId, category, prefix) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const fileName = `${prefix}_${Date.now()}${ext}`;
+  const ext = path.extname(file.originalname).toLowerCase();
+  const fileName = `${prefix}_${Date.now()}${ext}`;
 
-    const localPath = path.join(process.cwd(), "uploads", "temp", category, `${adminId}`, fileName);
-    await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
+  const localPath = path.join(process.cwd(), "uploads", "temp", category, `${adminId}`, fileName);
+  await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
 
-    // Save temp file locally
-    await fs.promises.writeFile(localPath, file.buffer);
+  // Save temp file locally
+  await fs.promises.writeFile(localPath, file.buffer);
 
-    try {
-        // Remote FTP path
-        const remotePath = `/${category}/${adminId}/${fileName}`;
-        const publicUrl = await uploadToFTP(localPath, remotePath);
+  try {
+    // Remote FTP path
+    const remotePath = `/${category}/${adminId}/${fileName}`;
+    const publicUrl = await uploadToFTP(localPath, remotePath);
 
-        if (!publicUrl) throw new Error("FTP upload failed");
+    if (!publicUrl) throw new Error("FTP upload failed");
 
-        return publicUrl;
-    } finally {
-        // Cleanup temp file
-        await fs.promises.unlink(localPath).catch(() => { });
-    }
+    return publicUrl;
+  } finally {
+    // Cleanup temp file
+    await fs.promises.unlink(localPath).catch(() => { });
+  }
 };
 
 exports.createCourse = async (req, res) => {
-    const formData = req.body;
-    const files = req.files;
+  const formData = req.body;
+  const files = req.files;
 
-    if (DEBUG) console.log("📥 Received formData:", formData);
-    if (DEBUG) console.log("📥 Received files:", files);
+  if (DEBUG) console.log("📥 Received formData:", formData);
+  if (DEBUG) console.log("📥 Received files:", files);
 
-    // Step 1: Validation
-    const validation = validateFormData(formData, {
-        requiredFields: [
-            "title",
-            "description",
+  // Step 1: Validation
+  const validation = validateFormData(formData, {
+    requiredFields: [
+      "title",
+      "description",
+      "modules",
+      "questions",
+      "duration",
+      "reTakeCourse",
+      "passingConditionValue",
+      "isCompulsory",
+      "setReminderEvery",
+      "certificateTitle"
+    ]
+  });
+
+  if (!validation.isValid) {
+    if (DEBUG) console.log("❌ Validation failed:", validation.error);
+    await logActivity(req, PANEL, MODULE, "create", validation.error, false);
+    return res.status(400).json({
+      status: false,
+      message: validation.message,
+      error: validation.error,
+    });
+  }
+
+  try {
+    // Step 2: Assign createdBy
+    formData.createdBy = req.admin?.id;
+    if (DEBUG) console.log("👤 CreatedBy:", formData.createdBy);
+    const rawFiles = req.files || [];
+
+    // Convert array → object { fieldname: [files] }
+    const groupedFiles = rawFiles.reduce((acc, file) => {
+      if (!acc[file.fieldname]) acc[file.fieldname] = [];
+      acc[file.fieldname].push(file);
+      return acc;
+    }, {});
+    // Step 3: Upload certificate
+    if (groupedFiles.uploadCertificate?.[0]) {
+      formData.uploadCertificate = await uploadFileAndGetUrl(
+        groupedFiles.uploadCertificate[0],
+        req.admin?.id,
+        "certificates",
+        "certificate"
+      );
+    }
+
+    // Step 4: Upload module files (MODULE-WISE)
+    if (formData.modules) {
+      if (DEBUG) console.log("📂 Processing modules...");
+
+      const modules = JSON.parse(formData.modules);
+
+      for (let i = 0; i < modules.length; i++) {
+        const moduleIndex = i + 1;
+        const moduleKey = `uploadFilesModule_${moduleIndex}`;
+
+        modules[i].uploadFiles = [];
+
+        const moduleFiles = groupedFiles[moduleKey] || [];
+
+        for (const file of moduleFiles) {
+          const url = await uploadFileAndGetUrl(
+            file,
+            req.admin?.id,
             "modules",
-            "questions",
-            "duration",
-            "reTakeCourse",
-            "passingConditionValue",
-            "isCompulsory",
-            "setReminderEvery",
-            "certificateTitle"
-        ]
+            `module_${moduleIndex}`
+          );
+
+          modules[i].uploadFiles.push({
+            originalName: file.originalname,
+            mimeType: file.mimetype,
+            size: file.size,
+            url
+          });
+        }
+
+        if (DEBUG) {
+          console.log(`✅ Files for Module ${moduleIndex}:`, modules[i].uploadFiles);
+        }
+      }
+
+      formData.modules = modules;
+    }
+
+    // Step 5: Save course
+    if (DEBUG) console.log("💾 Saving course to DB...");
+    const result = await courseService.createCourse(formData);
+    if (DEBUG) console.log("✅ Course creation result:", result);
+
+    // Step 6: Log activity
+    await logActivity(req, PANEL, MODULE, "create", result, result.status);
+    if (DEBUG) console.log("📝 Activity logged");
+
+    // Step 7: Create notification
+    await createNotification(req, "Course Created", `Course Created Successfully ${formData.title}`, "System");
+    if (DEBUG) console.log("🔔 Notification sent");
+
+    if (!result.status) {
+      if (DEBUG) console.log("❌ Course creation failed:", result.message);
+      return res.status(500).json({ status: false, message: result.message });
+    }
+
+    if (DEBUG) console.log("🎉 Course created successfully");
+    return res.status(201).json({
+      status: true,
+      message: "Course created successfully.",
+      data: result.data,
     });
 
-    if (!validation.isValid) {
-        if (DEBUG) console.log("❌ Validation failed:", validation.error);
-        await logActivity(req, PANEL, MODULE, "create", validation.error, false);
-        return res.status(400).json({
-            status: false,
-            message: validation.message,
-            error: validation.error,
-        });
-    }
-
-    try {
-        // Step 2: Assign createdBy
-        formData.createdBy = req.admin?.id;
-        if (DEBUG) console.log("👤 CreatedBy:", formData.createdBy);
-        const rawFiles = req.files || [];
-
-        // Convert array → object { fieldname: [files] }
-        const groupedFiles = rawFiles.reduce((acc, file) => {
-            if (!acc[file.fieldname]) acc[file.fieldname] = [];
-            acc[file.fieldname].push(file);
-            return acc;
-        }, {});
-        // Step 3: Upload certificate
-        if (groupedFiles.uploadCertificate?.[0]) {
-            formData.uploadCertificate = await uploadFileAndGetUrl(
-                groupedFiles.uploadCertificate[0],
-                req.admin?.id,
-                "certificates",
-                "certificate"
-            );
-        }
-
-        // Step 4: Upload module files (MODULE-WISE)
-        if (formData.modules) {
-            if (DEBUG) console.log("📂 Processing modules...");
-
-            const modules = JSON.parse(formData.modules);
-
-            for (let i = 0; i < modules.length; i++) {
-                const moduleIndex = i + 1;
-                const moduleKey = `uploadFilesModule_${moduleIndex}`;
-
-                modules[i].uploadFiles = [];
-
-                const moduleFiles = groupedFiles[moduleKey] || [];
-
-                for (const file of moduleFiles) {
-                    const url = await uploadFileAndGetUrl(
-                        file,
-                        req.admin?.id,
-                        "modules",
-                        `module_${moduleIndex}`
-                    );
-
-                    modules[i].uploadFiles.push({
-                        originalName: file.originalname,
-                        mimeType: file.mimetype,
-                        size: file.size,
-                        url
-                    });
-                }
-
-                if (DEBUG) {
-                    console.log(`✅ Files for Module ${moduleIndex}:`, modules[i].uploadFiles);
-                }
-            }
-
-            formData.modules = modules;
-        }
-
-        // Step 5: Save course
-        if (DEBUG) console.log("💾 Saving course to DB...");
-        const result = await courseService.createCourse(formData);
-        if (DEBUG) console.log("✅ Course creation result:", result);
-
-        // Step 6: Log activity
-        await logActivity(req, PANEL, MODULE, "create", result, result.status);
-        if (DEBUG) console.log("📝 Activity logged");
-
-        // Step 7: Create notification
-        await createNotification(req, "Course Created", `Course Created Successfully ${formData.title}`, "System");
-        if (DEBUG) console.log("🔔 Notification sent");
-
-        if (!result.status) {
-            if (DEBUG) console.log("❌ Course creation failed:", result.message);
-            return res.status(500).json({ status: false, message: result.message });
-        }
-
-        if (DEBUG) console.log("🎉 Course created successfully");
-        return res.status(201).json({
-            status: true,
-            message: "Course created successfully.",
-            data: result.data,
-        });
-
-    } catch (error) {
-        console.error("❌ createCourse Error:", error);
-        return res.status(500).json({
-            status: false,
-            message: "Server error while creating course.",
-        });
-    }
+  } catch (error) {
+    console.error("❌ createCourse Error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Server error while creating course.",
+    });
+  }
 };
 
 exports.getCourses = async (req, res) => {
@@ -174,7 +174,7 @@ exports.getCourses = async (req, res) => {
     const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
     if (DEBUG) console.log(`🧩 SuperAdminId resolved as: ${superAdminId}`);
 
-    const result = await courseService.getCourses();
+    const result = await courseService.getCourses(superAdminId, req.admin.id);
 
     if (!result.status) {
       return res.status(500).json({
@@ -215,7 +215,7 @@ exports.getCourseById = async (req, res) => {
     if (DEBUG) console.log(`🧩 SuperAdminId resolved as: ${superAdminId}`);
 
     // Fetch course by ID
-    const result = await courseService.getCourseById(id, superAdminId);
+    const result = await courseService.getCourseById(id, superAdminId,req.admin.id);
 
     if (!result.status) {
       return res.status(404).json({

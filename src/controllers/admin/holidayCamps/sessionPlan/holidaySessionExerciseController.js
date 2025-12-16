@@ -521,7 +521,14 @@ exports.updateHolidaySessionExercise = async (req, res) => {
         }
       }
     }
-
+    // ✅ Parse removedImages if sent as string (form-data)
+    if (typeof updates.removedImages === "string") {
+      try {
+        updates.removedImages = JSON.parse(updates.removedImages);
+      } catch (err) {
+        updates.removedImages = [];
+      }
+    }
     // ✅ STEP 4: Decide which images to keep
     const existingImages = Array.isArray(existing.data.imageUrl)
       ? existing.data.imageUrl

@@ -8,6 +8,7 @@ const permissionMiddleware = require("../../../middleware/admin/permission");
 
 const {
     createContract,
+    getAllContracts,
 } = require("../../../controllers/admin/coaches/contractController");
 
 // Route: 
@@ -17,6 +18,13 @@ router.post(
     upload.single("pdfFile"),
     permissionMiddleware("contract", "create"),
     createContract
+);
+
+router.get(
+    "/list",
+    authMiddleware,
+    permissionMiddleware("contract", "view-listing"),
+    getAllContracts
 );
 
 module.exports = router;

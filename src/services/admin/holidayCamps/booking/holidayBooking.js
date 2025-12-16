@@ -16,7 +16,7 @@ const {
   DiscountAppliesTo,
   Comment,
   Admin,
-//  sequelize
+  //  sequelize
 } = require("../../../../models");
 const { sequelize } = require("../../../../models");
 const { getEmailConfig } = require("../../../email");
@@ -504,10 +504,12 @@ exports.getHolidayBooking = async (superAdminId, adminId) => {
       }
 
       // Revenue
-      if (b.payment && b.payment.amount) {
+      if (b.payment?.amount) {
         revenue += Number(b.payment.amount);
       }
 
+      // After loop (IMPORTANT)
+      revenue = Number(revenue.toFixed(2));
       // Count sources (admin name)
       if (b.bookedByAdmin) {
         const fullName =

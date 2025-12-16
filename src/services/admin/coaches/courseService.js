@@ -1,11 +1,12 @@
 const {
   Course,
+  Admin,
 } = require("../../../models");
 const DEBUG = process.env.DEBUG === "true";
 const mm = require('music-metadata');
 const path = require('path');
 const { Op } = require("sequelize");
-const {deleteFromFTP  } = require("../../../utils/uploadToFTP");
+const { deleteFromFTP } = require("../../../utils/uploadToFTP");
 const fs = require("fs");
 
 // Create course
@@ -52,9 +53,53 @@ const parseJSONSafe = (value, fallback = []) => {
   }
 };
 
-exports.getCourses = async () => {
+exports.getCourses = async (adminId, superAdminId) => {
   try {
-    const rows = await Course.findAll({ order: [["createdAt", "DESC"]] });
+    // -----------------------------
+    // 1️⃣ Validate adminId
+    // -----------------------------
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid admin ID found for this request.",
+        data: [],
+      };
+    }
+
+    // -----------------------------
+    // 2️⃣ Build WHERE condition
+    // -----------------------------
+    const whereCondition = {};
+    let allowedAdminIds = [];
+
+    if (superAdminId && superAdminId === adminId) {
+      // 🟢 Super Admin → fetch all admins under them + self
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id"],
+      });
+
+      const adminIds = managedAdmins.map((a) => a.id);
+      adminIds.push(superAdminId);
+
+      allowedAdminIds = adminIds;
+      whereCondition.createdBy = { [Op.in]: adminIds };
+
+    } else if (superAdminId && adminId) {
+      // 🟢 Admin → own + super admin contracts
+      allowedAdminIds = [adminId, superAdminId];
+      whereCondition.createdBy = { [Op.in]: allowedAdminIds };
+
+    } else {
+      // 🟢 Fallback → only own contracts
+      allowedAdminIds = [adminId];
+      whereCondition.createdBy = adminId;
+    }
+
+    const rows = await Course.findAll({
+      where: whereCondition,
+      order: [["createdAt", "DESC"]],
+    });
 
     const parsedRows = rows.map((course) => {
       const data = course.toJSON();
@@ -78,16 +123,57 @@ exports.getCourses = async () => {
   }
 };
 
-exports.getCourseById = async (courseId) => {
+exports.getCourseById = async (courseId, adminId, superAdminId) => {
   try {
+    // 1️⃣ Validate adminId
+    // -----------------------------
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid admin ID found for this request.",
+        data: [],
+      };
+    }
+
+    // -----------------------------
+    // 2️⃣ Build WHERE condition
+    // -----------------------------
+    const whereCondition = {};
+    let allowedAdminIds = [];
+
+    if (superAdminId && superAdminId === adminId) {
+      // 🟢 Super Admin → fetch all admins under them + self
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id"],
+      });
+
+      const adminIds = managedAdmins.map((a) => a.id);
+      adminIds.push(superAdminId);
+
+      allowedAdminIds = adminIds;
+      whereCondition.createdBy = { [Op.in]: adminIds };
+
+    } else if (superAdminId && adminId) {
+      // 🟢 Admin → own + super admin contracts
+      allowedAdminIds = [adminId, superAdminId];
+      whereCondition.createdBy = { [Op.in]: allowedAdminIds };
+
+    } else {
+      // 🟢 Fallback → only own contracts
+      allowedAdminIds = [adminId];
+      whereCondition.createdBy = adminId;
+    }
     if (!courseId) {
       return { status: false, message: "Course ID is required." };
     }
 
     const course = await Course.findOne({
-      where: { id: courseId },
+      where: {
+        id: courseId,
+        ...whereCondition,
+      },
     });
-
     if (!course) {
       return { status: false, message: "Course not found." };
     }

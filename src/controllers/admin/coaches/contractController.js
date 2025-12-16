@@ -7,7 +7,7 @@ const contractService = require("../../../services/admin/coaches/contractService
 const { logActivity } = require("../../../utils/admin/activityLogger");
 const { createNotification } = require("../../../utils/admin/notificationHelper");
 const { uploadToFTP } = require("../../../utils/uploadToFTP");
-
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 // Config
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -40,7 +40,7 @@ const uploadFileAndGetUrl = async (file, adminId, category, prefix) => {
 
         return publicUrl;
     } finally {
-        await fs.promises.unlink(localPath).catch(() => {});
+        await fs.promises.unlink(localPath).catch(() => { });
     }
 };
 
@@ -159,6 +159,67 @@ exports.createContract = async (req, res) => {
         return res.status(500).json({
             status: false,
             message: error.message || "Server error while creating contract",
+        });
+    }
+};
+
+/**
+ * Get All Contracts
+ */
+exports.getAllContracts = async (req, res) => {
+    try {
+        // Resolve super admin for access control
+        const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin?.id);
+        const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+        if (DEBUG) console.log(`🧩 SuperAdminId resolved as: ${superAdminId}`);
+        // -----------------------------
+        // 1️⃣ Fetch from DB
+        // -----------------------------
+        const result = await contractService.getAllContracts(superAdminId, req.admin.id,);
+
+        // -----------------------------
+        // 2️⃣ Log Activity
+        // -----------------------------
+        await logActivity(req, PANEL, MODULE, "view", result, result.status);
+
+        if (!result.status) {
+            return res.status(500).json(result);
+        }
+
+        // -----------------------------
+        // 3️⃣ Parse tags properly
+        // -----------------------------
+        const contracts = result.data.map((contract) => ({
+            ...contract.toJSON(),
+            tags:
+                typeof contract.tags === "string"
+                    ? JSON.parse(contract.tags)
+                    : contract.tags,
+        }));
+
+        if (DEBUG) console.log("📤 Contracts:", contracts);
+
+        return res.status(200).json({
+            status: true,
+            message: "Contracts fetched successfully",
+            data: contracts,
+        });
+
+    } catch (error) {
+        console.error("❌ getAllContracts Error:", error);
+
+        await logActivity(
+            req,
+            PANEL,
+            MODULE,
+            "view",
+            error.message,
+            false
+        );
+
+        return res.status(500).json({
+            status: false,
+            message: error.message || "Server error while fetching contracts",
         });
     }
 };

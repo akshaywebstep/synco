@@ -7,7 +7,7 @@ const mm = require('music-metadata');
 const path = require('path');
 const { getVideoDurationInSeconds, formatDuration } = require("../../../utils/videoHelper"); // adjust path
 const { Op } = require("sequelize");
-const { renameOnFTP,deleteFromFTP  } = require("../../../utils/uploadToFTP");
+const { renameOnFTP, deleteFromFTP } = require("../../../utils/uploadToFTP");
 const fs = require("fs");
 // Create admin
 exports.createUploadMusic = async (data) => {
@@ -34,9 +34,49 @@ exports.createUploadMusic = async (data) => {
 
 // Fetch all music records
 
-exports.getUploadMusic = async () => {
+exports.getUploadMusic = async (adminId, superAdminId) => {
   try {
+    // 1️⃣ Validate adminId
+    // -----------------------------
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid admin ID found for this request.",
+        data: [],
+      };
+    }
+
+    // -----------------------------
+    // 2️⃣ Build WHERE condition
+    // -----------------------------
+    const whereCondition = {};
+    let allowedAdminIds = [];
+
+    if (superAdminId && superAdminId === adminId) {
+      // 🟢 Super Admin → fetch all admins under them + self
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id"],
+      });
+
+      const adminIds = managedAdmins.map((a) => a.id);
+      adminIds.push(superAdminId);
+
+      allowedAdminIds = adminIds;
+      whereCondition.createdBy = { [Op.in]: adminIds };
+
+    } else if (superAdminId && adminId) {
+      // 🟢 Admin → own + super admin contracts
+      allowedAdminIds = [adminId, superAdminId];
+      whereCondition.createdBy = { [Op.in]: allowedAdminIds };
+
+    } else {
+      // 🟢 Fallback → only own contracts
+      allowedAdminIds = [adminId];
+      whereCondition.createdBy = adminId;
+    }
     const musicRecords = await MusicPlayer.findAll({
+      where: whereCondition,
       order: [["createdAt", "DESC"]],
     });
 
@@ -73,10 +113,55 @@ exports.getUploadMusic = async () => {
   }
 };
 
-exports.getUploadMusicById = async (id) => {
+exports.getUploadMusicById = async (id, adminId, superAdminId) => {
   try {
+    // 1️⃣ Validate adminId
+    // -----------------------------
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid admin ID found for this request.",
+        data: [],
+      };
+    }
+
+    // -----------------------------
+    // 2️⃣ Build WHERE condition
+    // -----------------------------
+    const whereCondition = {};
+    let allowedAdminIds = [];
+
+    if (superAdminId && superAdminId === adminId) {
+      // 🟢 Super Admin → fetch all admins under them + self
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id"],
+      });
+
+      const adminIds = managedAdmins.map((a) => a.id);
+      adminIds.push(superAdminId);
+
+      allowedAdminIds = adminIds;
+      whereCondition.createdBy = { [Op.in]: adminIds };
+
+    } else if (superAdminId && adminId) {
+      // 🟢 Admin → own + super admin contracts
+      allowedAdminIds = [adminId, superAdminId];
+      whereCondition.createdBy = { [Op.in]: allowedAdminIds };
+
+    } else {
+      // 🟢 Fallback → only own contracts
+      allowedAdminIds = [adminId];
+      whereCondition.createdBy = adminId;
+    }
+
     // Fetch single music record by ID
-    const record = await MusicPlayer.findByPk(id);
+    const record = await MusicPlayer.findOne({
+      where: {
+        id,
+        ...whereCondition,
+      },
+    });
 
     if (!record) {
       return {

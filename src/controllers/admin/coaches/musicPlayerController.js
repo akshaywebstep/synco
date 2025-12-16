@@ -129,7 +129,7 @@ exports.getUploadMusic = async (req, res) => {
     if (DEBUG) console.log(`🧩 SuperAdminId resolved as: ${superAdminId}`);
 
     // Fetch music records from service
-    const result = await musicPlayerService.getUploadMusic(superAdminId);
+    const result = await musicPlayerService.getUploadMusic(superAdminId,req.admin.id);
 
     if (!result.status) {
       if (DEBUG) console.error(`[${MODULE}] Failed to fetch music list`);
@@ -185,7 +185,7 @@ exports.getUploadMusicById = async (req, res) => {
     if (DEBUG) console.log(`🧩 SuperAdminId resolved as: ${superAdminId}`);
 
     // Fetch single music record from service
-    const result = await musicPlayerService.getUploadMusicById(id);
+    const result = await musicPlayerService.getUploadMusicById(id,req.admin.id,superAdminId);
 
     if (!result.status) {
       if (DEBUG) console.error(`[${MODULE}] Failed to fetch music record`);
