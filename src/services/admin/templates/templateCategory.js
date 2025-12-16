@@ -1,6 +1,6 @@
 const {
   CustomTemplate, TemplateCategory
-} = require("../../../../models");
+} = require("../../../models");
 const { Op } = require("sequelize");
 
 // ✅ Create a new class

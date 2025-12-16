@@ -58,6 +58,12 @@ const Admin = sequelize.define(
       type: DataTypes.ENUM("active", "inactive", "suspend"),
       defaultValue: "active",
     },
+    qualifications: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      defaultValue: null,
+    },
+
     // ✅ Soft delete column
     deletedAt: {
       type: DataTypes.DATE,

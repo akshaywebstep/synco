@@ -15,7 +15,7 @@ const {
     deleteSingleFileUrl,
     getFolderWithFilesById,
     downloadFile,
-} = require("../../../controllers/admin/holidayCamps/folder/filesController");
+} = require("../../../controllers/admin/administration/folder/filesController");
 
 // ➕ Upload Files
 router.post(

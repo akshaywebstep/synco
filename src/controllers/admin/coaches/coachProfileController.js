@@ -21,7 +21,7 @@ exports.getAllCoaches = async (req, res) => {
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin?.id);
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
   try {
-    const loggedInAdminId = req.admin?.id; // Get the current admin's ID
+    // const loggedInAdminId = req.admin?.id; // Get the current admin's ID
 
     const result = await coachService.getAllCoaches(superAdminId); // Pass it to the service
 
@@ -298,6 +298,92 @@ exports.deleteAllocateVenue = async (req, res) => {
     return res.status(500).json({
       status: false,
       message: "Server error while deleteAllocateVenue.",
+    });
+  }
+};
+
+// ✅ Download Coach Qualification
+exports.downloadCoachQualification = async (req, res) => {
+  if (DEBUG)
+    console.log("📥 Request received to download coach qualification");
+
+  try {
+    const coachId = req.params.coachId;
+    const qualificationType = req.params.type;
+
+    if (DEBUG)
+      console.log(
+        `🔍 CoachId: ${coachId}, Qualification: ${qualificationType}`
+      );
+
+    // Get Super Admin
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(
+      req.admin?.id
+    );
+    const superAdminId =
+      mainSuperAdminResult?.superAdmin.id ?? null;
+
+    if (DEBUG)
+      console.log(
+        `🧩 SuperAdminId resolved as: ${superAdminId}`
+      );
+
+    const result =
+      await coachService.getCoachQualificationFile(
+        coachId,
+        superAdminId,
+        qualificationType
+      );
+
+    if (!result.status) {
+      if (DEBUG)
+        console.log(
+          "❌ Failed to download qualification:",
+          result.message
+        );
+
+      await logActivity(
+        req,
+        PANEL,
+        MODULE,
+        "download",
+        result,
+        false
+      );
+
+      return res.status(404).json({
+        status: false,
+        message: result.message,
+      });
+    }
+
+    const { fileUrl } = result.data;
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "download",
+      {
+        oneLineMessage: `Downloaded qualification '${qualificationType}' for coach ID ${coachId}`,
+      },
+      true
+    );
+
+    /**
+     * ✅ Redirect to file URL (browser handles download)
+     */
+    return res.redirect(fileUrl);
+  } catch (error) {
+    console.error(
+      "❌ Controller downloadCoachQualification Error:",
+      error
+    );
+
+    return res.status(500).json({
+      status: false,
+      message:
+        "Failed to download qualification file. Please try again later.",
     });
   }
 };

@@ -12,7 +12,7 @@ const {
     deleteCustomTemplate,
     updateCustomTemplate,
     getCustomTemplate
-} = require("../../../controllers/admin/holidayCamps/emailAndTextTemplates/customTemplateController");
+} = require("../../../controllers/admin/templates/customTemplateController");
 
 router.post(
     "/create",

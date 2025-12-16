@@ -1,17 +1,17 @@
 
 
-const { validateFormData } = require("../../../../utils/validateFormData");
-const { logActivity } = require("../../../../utils/admin/activityLogger");
-const { createNotification } = require("../../../../utils/admin/notificationHelper");
+const { validateFormData } = require("../../../utils/validateFormData");
+const { logActivity } = require("../../../utils/admin/activityLogger");
+const { createNotification } = require("../../../utils/admin/notificationHelper");
 const path = require("path");
 const fs = require("fs");
-const { uploadToFTP } = require("../../../../utils/uploadToFTP");
-const { saveFile } = require("../../../../utils/fileHandler");
+const { uploadToFTP } = require("../../../utils/uploadToFTP");
+const { saveFile } = require("../../../utils/fileHandler");
 // const TemplateCategory = require("../../../../../services/admin/holidayCamps/emailAndTextTemplates/templateCategory/templateCategory");
 const DEBUG = process.env.DEBUG === "true";
-const CustomTemplate = require("../../../../services/admin/holidayCamps/emailAndTextTemplates/customTemplate");
-const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
-const { getCustomTemplateById } = require("../../../../services/admin/holidayCamps/emailAndTextTemplates/customTemplate");
+const CustomTemplate = require("../../../services/admin/templates/customTemplate");
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
+const { getCustomTemplateById } = require("../../../services/admin/templates/customTemplate");
 const PANEL = "admin";
 const MODULE = "custom-template";
 

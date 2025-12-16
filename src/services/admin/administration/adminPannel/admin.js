@@ -18,7 +18,7 @@ const {
   Lead,
   CancelSession,
   ClassScheduleTermMap
-} = require("../../models");
+} = require("../../../../models");
 const DEBUG = process.env.DEBUG === "true";
 
 const { Op } = require("sequelize");

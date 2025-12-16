@@ -1,4 +1,4 @@
-const { ToDoList, Admin, sequelize, Comment } = require("../../../models")
+const { ToDoList, Admin, sequelize, Comment } = require("../../../../models")
 const debug = require("debug")("service:comments");
 const DEBUG = process.env.DEBUG === "true";
 // ✅ Create Task

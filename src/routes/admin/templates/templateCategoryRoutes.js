@@ -6,7 +6,7 @@ const {
   createTemplateCategory, listTemplateCategories
   //   getAllHolidayVenues,
 
-} = require("../../../controllers/admin/holidayCamps/emailAndTextTemplates/templateCategoryController");
+} = require("../../../controllers/admin/templates/templateCategoryController");
 
 router.post(
   "/create",

@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
-const authMiddleware = require("../../middleware/admin/authenticate");
-const permissionMiddleware = require("../../middleware/admin/permission");
+const authMiddleware = require("../../../middleware/admin/authenticate");
+const permissionMiddleware = require("../../../middleware/admin/permission");
 const multer = require("multer");
 
 const storage = multer.memoryStorage();
@@ -9,7 +9,7 @@ const upload = multer(); // ✅ Handles multipart/form-data
 
 const {
   createTask, listTasks, getTaskById, updateTaskStatus, deleteTask, updateSortOrder, addCommentForToDo, listCommentsForToDo,
-} = require("../../controllers/admin/toDoList/toDoController");
+} = require("../../../controllers/admin/administration/toDoList/toDoController");
 
 router.post(
   "/create",

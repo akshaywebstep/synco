@@ -1,6 +1,6 @@
 const {
   CustomTemplate, TemplateCategory
-} = require("../../../../models");
+} = require("../../../models");
 TemplateCategoryService = require("./templateCategory");
 const { Op } = require("sequelize");
 

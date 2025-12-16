@@ -3,7 +3,7 @@ const crypto = require("crypto");
 const { createToken } = require("../../utils/jwt");
 const sendEmail = require("../../utils/email/sendEmail");
 
-const adminModel = require("../../services/admin/admin");
+const adminModel = require("../../services/admin/administration/adminPannel/admin");
 const emailModel = require("../../services/email");
 
 const DEBUG = process.env.DEBUG === "true";

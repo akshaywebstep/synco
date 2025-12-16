@@ -26,31 +26,45 @@ function calcStats(records) {
   // Total Requests
   const totalRequests = records.length;
 
-  // Avg Tenure
+  // avg tenure
   const tenures = records
     .map((b) => {
       if (!b.startDate || !b.cancelDate) return null;
+
       const start = new Date(b.startDate);
       const end = new Date(b.cancelDate);
-      const months =
+
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) return null;
+
+      // Calculate difference in months + fraction based on days
+      let months =
         (end.getFullYear() - start.getFullYear()) * 12 +
         (end.getMonth() - start.getMonth());
+
+      // Add fractional month based on day difference
+      months += (end.getDate() - start.getDate()) / 30;
+
       return months > 0 ? months : 0;
     })
-    .filter(Boolean);
+    .filter((m) => m !== null && m >= 0);
+
   const avgTenure = tenures.length
     ? tenures.reduce((a, b) => a + b, 0) / tenures.length
     : 0;
 
   // Most Requested Venue
+  // Most Requested Venue
   const byVenue = records.reduce((acc, b) => {
-    const v = b.venue?.name || "";
-    acc[v] = (acc[v] || 0) + 1;
+    const v = b.venue?.name?.trim();
+    if (v) {
+      acc[v] = (acc[v] || 0) + 1;
+    }
     return acc;
   }, {});
-  const mostRequestedVenue = Object.entries(byVenue).sort(
-    (a, b) => b[1] - a[1]
-  )[0] || ["", 0];
+
+  const mostRequestedVenue = Object.entries(byVenue).length
+    ? Object.entries(byVenue).sort((a, b) => b[1] - a[1])[0]
+    : ["N/A", 0];
 
   // Common Reason
   const byReason = records.reduce((acc, b) => {

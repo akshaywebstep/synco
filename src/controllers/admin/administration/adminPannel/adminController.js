@@ -2,20 +2,20 @@ const bcrypt = require("bcrypt");
 const path = require("path");
 const fs = require("fs");
 
-const { createToken } = require("../../utils/jwt");
-const { uploadToFTP } = require("../../utils/uploadToFTP");
-const { generatePasswordHint, getMainSuperAdminOfAdmin } = require("../../utils/auth");
-const sendEmail = require("../../utils/email/sendEmail");
+const { createToken } = require("../../../../utils/jwt");
+const { uploadToFTP } = require("../../../../utils/uploadToFTP");
+const { generatePasswordHint, getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
+const sendEmail = require("../../../../utils/email/sendEmail");
 
-const adminModel = require("../../services/admin/admin");
-const { getAdminRoleById } = require("../../services/admin/adminRole");
-const emailModel = require("../../services/email");
-const countryModel = require("../../services/location/country");
-const { validateFormData } = require("../../utils/validateFormData");
-const { saveFile, deleteFile } = require("../../utils/fileHandler");
+const adminModel = require("../../../../services/admin/administration/adminPannel/admin");
+const { getAdminRoleById } = require("../../../../services/admin/adminRole");
+const emailModel = require("../../../../services/email");
+const countryModel = require("../../../../services/location/country");
+const { validateFormData } = require("../../../../utils/validateFormData");
+const { saveFile, deleteFile } = require("../../../../utils/fileHandler");
 
-const { logActivity } = require("../../utils/admin/activityLogger");
-const { createNotification } = require("../../utils/admin/notificationHelper");
+const { logActivity } = require("../../../../utils/admin/activityLogger");
+const { createNotification } = require("../../../../utils/admin/notificationHelper");
 
 // Set DEBUG flag
 const DEBUG = process.env.DEBUG === "true";
@@ -35,102 +35,112 @@ const allowedExtensions = [
   "jfif",
 ];
 
+const uploadFileAndGetUrl = async (
+  file,
+  adminId,
+  category, // "profile" | "qualifications"
+  prefix
+) => {
+  const ext = path.extname(file.originalname).toLowerCase();
+  const fileName = `${prefix}_${Date.now()}${ext}`;
+
+  // TEMP LOCAL PATH
+  const localPath = path.join(
+    process.cwd(),
+    "uploads",
+    "temp",
+    category,
+    `${adminId}`,
+    fileName
+  );
+
+  await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
+  await saveFile(file, localPath);
+
+  try {
+    // FTP REMOTE PATH (IMPORTANT)
+    const remotePath = `/${category}/${adminId}/${fileName}`;
+
+    const publicUrl = await uploadToFTP(localPath, remotePath);
+
+    if (!publicUrl) {
+      throw new Error("FTP upload failed");
+    }
+
+    return publicUrl;
+  } finally {
+    // CLEAN TEMP FILE
+    await fs.promises.unlink(localPath).catch(() => { });
+  }
+};
+
 const ADMIN_RESET_URL =
   process.env.ADMIN_RESET_URL ||
   "https://webstepdev.com/demo/synco/reset-password";
 
+/* =======================
+   CREATE ADMIN
+======================= */
 exports.createAdmin = async (req, res) => {
   try {
     const formData = req.body;
-    const file = req.file;
+    const files = req.files || {};
+const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
-    if (DEBUG) console.log("📥 Received FormData:", formData);
+    const {
+      email,
+      firstName,
+      lastName = "",
+      position,
+      phoneNumber,
+      role: roleId,
+      password,
+      postalCode,
+    } = formData;
 
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+    /* =======================
+       ROLE CHECK
+    ======================= */
+    const roleResult = await getAdminRoleById(roleId);
+    const isCoach =
+      roleResult?.status &&
+      roleResult.data?.role?.toLowerCase() === "coach";
 
-    const email = formData.email;
-    // const name = formData.name;
-    // Keep the raw input so validations / messages can still use it
-    const firstName = formData.firstName || null;
-    const lastName = formData.lastName || "";
-    const position = formData.position || null;
-    const phoneNumber = formData.phoneNumber || null;
-    const roleId = formData.role || null;
-    const plainPassword = formData.password || null; // ✅ Optional
-    const postalCode = formData.postalCode || null;
-
-    // ✅ Check if email already exists
-    const { status: exists, data: existingAdmin } =
+    /* =======================
+       EMAIL EXISTS CHECK
+    ======================= */
+    const { status: exists } =
       await adminModel.findAdminByEmail(email);
 
-    if (exists && existingAdmin) {
-      if (DEBUG) console.log("❌ Email already registered:", email);
-
-      await logActivity(
-        req,
-        PANEL,
-        MODULE,
-        "create",
-        { oneLineMessage: "Email already exists" },
-        false
-      );
-
+    if (exists) {
       return res.status(409).json({
         status: false,
-        message: "This email is already registered. Please use another email.",
+        message: "Email already exists",
       });
     }
 
-    // ✅ Validate required fields
-    const validation = validateFormData(formData, {
-      requiredFields: ["firstName", "email", "role"],
-      patternValidations: { email: "email" },
-      fileExtensionValidations: {
-        profile: [
-          "jpg",
-          "jpeg",
-          "png",
-          "webp",
-          "gif",
-          "bmp",
-          "tiff",
-          "heic",
-          "svg",
-        ],
-      },
-    });
-
-    if (!validation.isValid) {
-      await logActivity(req, PANEL, MODULE, "create", validation.error, false);
-      return res.status(400).json({
-        status: false,
-        error: validation.error,
-        message: validation.message,
-      });
-    }
-
-    if (DEBUG) console.log("✅ Form validation passed");
-
-    const statusRaw = (formData.status || "").toString().toLowerCase();
-    const status = ["true", "1", "yes", "active"].includes(statusRaw);
-
-    // ✅ Hash password only if provided
+    /* =======================
+       PASSWORD HANDLING
+    ======================= */
     let hashedPassword = null;
     let passwordHint = null;
 
-    if (plainPassword) {
-      hashedPassword = await bcrypt.hash(plainPassword, 10);
-      passwordHint = generatePasswordHint(plainPassword);
+    if (password) {
+      hashedPassword = await bcrypt.hash(password, 10);
+      passwordHint = generatePasswordHint(password);
     }
 
-    // ✅ Generate RESET OTP token (valid 24 hours)
+    /* =======================
+       RESET OTP
+    ======================= */
     const resetOtp = Math.random().toString(36).substring(2, 12);
-    const resetOtpExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const resetOtpExpiry = new Date(Date.now() + 86400000); // 24 hrs
 
-    // ✅ Create admin in DB
+    /* =======================
+       CREATE ADMIN
+    ======================= */
     const createResult = await adminModel.createAdmin({
-      // firstName: name,
       firstName,
       lastName,
       email,
@@ -139,88 +149,99 @@ exports.createAdmin = async (req, res) => {
       position,
       phoneNumber,
       roleId,
+      postalCode,
       resetOtp,
       resetOtpExpiry,
-      status,
-      postalCode,
-      createdByAdmin: req.admin.id ?? null,
+      status: true,
+      qualifications: null,
+      createdByAdmin: req.admin?.id ?? null,
       superAdminId,
     });
 
     if (!createResult.status) {
-      await logActivity(req, PANEL, MODULE, "create", createResult, false);
       return res.status(500).json({
         status: false,
-        message: createResult.message || "Failed to create admin.",
+        message: "Failed to create admin",
       });
     }
 
     const admin = createResult.data;
 
-    // Save profile image if uploaded
-    if (file) {
-      const uniqueId = Math.floor(Math.random() * 1e9);
-      const ext = path.extname(file.originalname).toLowerCase();
-      const fileName = `${Date.now()}_${uniqueId}${ext}`;
-      const localPath = path.join(
-        process.cwd(),
-        "uploads",
-        "temp",
-        "admin",
-        `${admin.id}`,
+    /* =======================
+       PROFILE UPLOAD
+    ======================= */
+    if (files.profile?.[0]) {
+      const profileUrl = await uploadFileAndGetUrl(
+        files.profile[0],
+        admin.id,
         "profile",
-        fileName
+        "profile"
       );
-
-      await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
-      await saveFile(file, localPath);
-
-      console.log(`localPath - `, localPath);
-      console.log(`fileName - `, fileName);
-
-      // ✅ Upload file
-      try {
-        const savedProfilePath = await uploadToFTP(localPath, fileName);
-        console.log(`savedProfilePath - `, savedProfilePath);
-        await adminModel.updateAdmin(admin.id, { profile: savedProfilePath });
-        console.log("✅ Profile image saved at", savedProfilePath);
-      } catch (err) {
-        console.error("❌ Failed to upload profile image:", err.message);
-      } finally {
-        await fs.promises.unlink(localPath).catch(() => { });
-      }
+      await adminModel.updateAdmin(admin.id, {
+        profile: profileUrl,
+      });
     }
 
-    let roleName = "User"; // default fallback
+    /* =======================
+       QUALIFICATIONS (COACH)
+    ======================= */
+    if (isCoach) {
+      const qualifications = {
+        fa_level_1: files.fa_level_1?.[0]
+          ? await uploadFileAndGetUrl(
+              files.fa_level_1[0],
+              admin.id,
+              "qualifications",
+              "fa_level_1"
+            )
+          : null,
 
-    if (roleId) {
-      const roleResult = await getAdminRoleById(roleId);
-      if (roleResult?.status && roleResult.data?.role) {
-        roleName = roleResult.data.role; // e.g. "Member", "Admin"
-      }
+        futsal_level_1_qualification:
+          files.futsal_level_1_qualification?.[0]
+            ? await uploadFileAndGetUrl(
+                files.futsal_level_1_qualification[0],
+                admin.id,
+                "qualifications",
+                "futsal_level_1_qualification"
+              )
+            : null,
+
+        first_aid: files.first_aid?.[0]
+          ? await uploadFileAndGetUrl(
+              files.first_aid[0],
+              admin.id,
+              "qualifications",
+              "first_aid"
+            )
+          : null,
+
+        futsal_level_1: files.futsal_level_1?.[0]
+          ? await uploadFileAndGetUrl(
+              files.futsal_level_1[0],
+              admin.id,
+              "qualifications",
+              "futsal_level_1"
+            )
+          : null,
+      };
+
+      await adminModel.updateAdmin(admin.id, { qualifications });
     }
-    // ✅ Log activity & notification
-    const successMessage = `${roleName} '${firstName}' created successfully by Super Admin: ${req.admin?.firstName || "System"
-      }`;
-    await logActivity(req, PANEL, MODULE, "create", createResult, true);
-    await createNotification(
-      req,
-      `New ${roleName} Added`,
-      successMessage,
-      "System"
-    );
 
-    // ✅ Email notification (reset link)
-    let emailSentFlag = 0; // Default → not sent
+    /* =======================
+       EMAIL: RESET LINK
+    ======================= */
+    let emailSentFlag = 0;
 
     const emailConfigResult = await emailModel.getEmailConfig(
       "admin",
       "create admin"
     );
 
-    const { emailConfig, htmlTemplate, subject } = emailConfigResult;
+    const { emailConfig, htmlTemplate, subject } =
+      emailConfigResult || {};
 
-    if (!emailConfigResult.status || !emailConfig) {
+    if (!emailConfigResult?.status || !emailConfig) {
       console.warn("⚠️ No email config found for create admin");
     } else {
       const resetLink = `${ADMIN_RESET_URL}?email=${encodeURIComponent(
@@ -228,22 +249,23 @@ exports.createAdmin = async (req, res) => {
       )}&token=${resetOtp}`;
 
       const replacements = {
-        // "{{name}}": name,
-        "{{firstName}}": firstName,
-        "{{lastName}}": lastName,
+        "{{firstName}}": firstName || "",
+        "{{lastName}}": lastName || "",
         "{{email}}": email,
         "{{resetLink}}": resetLink,
         "{{year}}": new Date().getFullYear().toString(),
         "{{appName}}": "Synco",
-        "{{logoUrl}}": "https://webstepdev.com/demo/syncoUploads/syncoLogo.png",
+        "{{logoUrl}}":
+          "https://webstepdev.com/demo/syncoUploads/syncoLogo.png",
       };
 
       const replacePlaceholders = (text) =>
         typeof text === "string"
           ? Object.entries(replacements).reduce(
-            (result, [key, val]) => result.replace(new RegExp(key, "g"), val),
-            text
-          )
+              (result, [key, val]) =>
+                result.replace(new RegExp(key, "g"), val),
+              text
+            )
           : text;
 
       const emailSubject = replacePlaceholders(
@@ -252,9 +274,9 @@ exports.createAdmin = async (req, res) => {
 
       const htmlBody = replacePlaceholders(
         htmlTemplate?.trim() ||
-        `<p>Hello {{firstName}},</p>
-           <p>Your admin account for <strong>{{appName}}</strong> has been created successfully.</p>
-           <p>If you’d like to reset your password, use the secure link below:</p>
+          `<p>Hello {{firstName}},</p>
+           <p>Your admin account for <strong>{{appName}}</strong> has been created.</p>
+           <p>Set your password using the link below:</p>
            <p><a href="{{resetLink}}" target="_blank">{{resetLink}}</a></p>
            <p>This link will expire in <strong>24 hours</strong>.</p>
            <p>Regards,<br>{{appName}} Team<br>&copy; {{year}}</p>`
@@ -263,16 +285,16 @@ exports.createAdmin = async (req, res) => {
       const mapRecipients = (list) =>
         Array.isArray(list)
           ? list.map(({ name, email }) => ({
-            name: replacePlaceholders(name),
-            email: replacePlaceholders(email),
-          }))
+              name: replacePlaceholders(name),
+              email: replacePlaceholders(email),
+            }))
           : [];
 
       const mailData = {
         recipient: [
           {
-            name: `${firstName || ""} ${lastName || ""}`.trim(), // full name
-            email: email, // actual email
+            name: `${firstName} ${lastName}`.trim(),
+            email,
           },
         ],
         cc: mapRecipients(emailConfig.cc),
@@ -282,43 +304,328 @@ exports.createAdmin = async (req, res) => {
         attachments: [],
       };
 
-      const emailResult = await sendEmail(emailConfig, mailData);
+      const emailResult = await sendEmail(
+        emailConfig,
+        mailData
+      );
 
-      if (!emailResult.status) {
-        console.error(
-          "❌ Failed to send admin reset link email:",
-          emailResult.error
-        );
-        emailSentFlag = 0;
-      } else {
+      if (emailResult?.status) {
+        emailSentFlag = 1;
         if (DEBUG)
-          console.log("✅ Reset link email sent:", emailResult.messageId);
-        emailSentFlag = 1; // ✅ Successfully sent
+          console.log(
+            "✅ Create admin email sent:",
+            emailResult.messageId
+          );
+      } else {
+        console.error(
+          "❌ Failed to send create admin email:",
+          emailResult?.error
+        );
       }
     }
 
-    // ✅ Final response with emailSent flag
+    /* =======================
+       RESPONSE
+    ======================= */
     return res.status(201).json({
       status: true,
       message: "Admin created successfully",
       data: {
-        firstName: admin.firstName,
+        id: admin.id,
         email: admin.email,
-        profile: admin.profile,
-        emailSent: emailSentFlag, // ✅ 1 if sent, 0 if failed
+        emailSent: emailSentFlag,
       },
     });
   } catch (error) {
     console.error("❌ Create Admin Error:", error);
     return res.status(500).json({
       status: false,
-      message:
-        "Server error occurred while creating the admin. Please try again later.",
+      message: "Server error occurred",
     });
   }
 };
 
+// exports.createAdmin = async (req, res) => {
+//   try {
+//     const formData = req.body;
+//     const file = req.file;
+
+//     if (DEBUG) console.log("📥 Received FormData:", formData);
+
+//     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+//     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+
+//     const email = formData.email;
+//     // const name = formData.name;
+//     // Keep the raw input so validations / messages can still use it
+//     const firstName = formData.firstName || null;
+//     const lastName = formData.lastName || "";
+//     const position = formData.position || null;
+//     const phoneNumber = formData.phoneNumber || null;
+//     const roleId = formData.role || null;
+//     const plainPassword = formData.password || null; // ✅ Optional
+//     const postalCode = formData.postalCode || null;
+
+//     // ✅ Check if email already exists
+//     const { status: exists, data: existingAdmin } =
+//       await adminModel.findAdminByEmail(email);
+
+//     if (exists && existingAdmin) {
+//       if (DEBUG) console.log("❌ Email already registered:", email);
+
+//       await logActivity(
+//         req,
+//         PANEL,
+//         MODULE,
+//         "create",
+//         { oneLineMessage: "Email already exists" },
+//         false
+//       );
+
+//       return res.status(409).json({
+//         status: false,
+//         message: "This email is already registered. Please use another email.",
+//       });
+//     }
+
+//     // ✅ Validate required fields
+//     const validation = validateFormData(formData, {
+//       requiredFields: ["firstName", "email", "role"],
+//       patternValidations: { email: "email" },
+//       fileExtensionValidations: {
+//         profile: [
+//           "jpg",
+//           "jpeg",
+//           "png",
+//           "webp",
+//           "gif",
+//           "bmp",
+//           "tiff",
+//           "heic",
+//           "svg",
+//         ],
+//       },
+//     });
+
+//     if (!validation.isValid) {
+//       await logActivity(req, PANEL, MODULE, "create", validation.error, false);
+//       return res.status(400).json({
+//         status: false,
+//         error: validation.error,
+//         message: validation.message,
+//       });
+//     }
+
+//     if (DEBUG) console.log("✅ Form validation passed");
+
+//     const statusRaw = (formData.status || "").toString().toLowerCase();
+//     const status = ["true", "1", "yes", "active"].includes(statusRaw);
+
+//     // ✅ Hash password only if provided
+//     let hashedPassword = null;
+//     let passwordHint = null;
+
+//     if (plainPassword) {
+//       hashedPassword = await bcrypt.hash(plainPassword, 10);
+//       passwordHint = generatePasswordHint(plainPassword);
+//     }
+
+//     // ✅ Generate RESET OTP token (valid 24 hours)
+//     const resetOtp = Math.random().toString(36).substring(2, 12);
+//     const resetOtpExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+//     // ✅ Create admin in DB
+//     const createResult = await adminModel.createAdmin({
+//       // firstName: name,
+//       firstName,
+//       lastName,
+//       email,
+//       password: hashedPassword,
+//       passwordHint,
+//       position,
+//       phoneNumber,
+//       roleId,
+//       resetOtp,
+//       resetOtpExpiry,
+//       status,
+//       postalCode,
+//       createdByAdmin: req.admin.id ?? null,
+//       superAdminId,
+//     });
+
+//     if (!createResult.status) {
+//       await logActivity(req, PANEL, MODULE, "create", createResult, false);
+//       return res.status(500).json({
+//         status: false,
+//         message: createResult.message || "Failed to create admin.",
+//       });
+//     }
+
+//     const admin = createResult.data;
+
+//     // Save profile image if uploaded
+//     if (file) {
+//       const uniqueId = Math.floor(Math.random() * 1e9);
+//       const ext = path.extname(file.originalname).toLowerCase();
+//       const fileName = `${Date.now()}_${uniqueId}${ext}`;
+//       const localPath = path.join(
+//         process.cwd(),
+//         "uploads",
+//         "temp",
+//         "admin",
+//         `${admin.id}`,
+//         "profile",
+//         fileName
+//       );
+
+//       await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
+//       await saveFile(file, localPath);
+
+//       console.log(`localPath - `, localPath);
+//       console.log(`fileName - `, fileName);
+
+//       // ✅ Upload file
+//       try {
+//         const savedProfilePath = await uploadToFTP(localPath, fileName);
+//         console.log(`savedProfilePath - `, savedProfilePath);
+//         await adminModel.updateAdmin(admin.id, { profile: savedProfilePath });
+//         console.log("✅ Profile image saved at", savedProfilePath);
+//       } catch (err) {
+//         console.error("❌ Failed to upload profile image:", err.message);
+//       } finally {
+//         await fs.promises.unlink(localPath).catch(() => { });
+//       }
+//     }
+
+//     let roleName = "User"; // default fallback
+
+//     if (roleId) {
+//       const roleResult = await getAdminRoleById(roleId);
+//       if (roleResult?.status && roleResult.data?.role) {
+//         roleName = roleResult.data.role; // e.g. "Member", "Admin"
+//       }
+//     }
+//     // ✅ Log activity & notification
+//     const successMessage = `${roleName} '${firstName}' created successfully by Super Admin: ${req.admin?.firstName || "System"
+//       }`;
+//     await logActivity(req, PANEL, MODULE, "create", createResult, true);
+//     await createNotification(
+//       req,
+//       `New ${roleName} Added`,
+//       successMessage,
+//       "System"
+//     );
+
+//     // ✅ Email notification (reset link)
+//     let emailSentFlag = 0; // Default → not sent
+
+//     const emailConfigResult = await emailModel.getEmailConfig(
+//       "admin",
+//       "create admin"
+//     );
+
+//     const { emailConfig, htmlTemplate, subject } = emailConfigResult;
+
+//     if (!emailConfigResult.status || !emailConfig) {
+//       console.warn("⚠️ No email config found for create admin");
+//     } else {
+//       const resetLink = `${ADMIN_RESET_URL}?email=${encodeURIComponent(
+//         email
+//       )}&token=${resetOtp}`;
+
+//       const replacements = {
+//         // "{{name}}": name,
+//         "{{firstName}}": firstName,
+//         "{{lastName}}": lastName,
+//         "{{email}}": email,
+//         "{{resetLink}}": resetLink,
+//         "{{year}}": new Date().getFullYear().toString(),
+//         "{{appName}}": "Synco",
+//         "{{logoUrl}}": "https://webstepdev.com/demo/syncoUploads/syncoLogo.png",
+//       };
+
+//       const replacePlaceholders = (text) =>
+//         typeof text === "string"
+//           ? Object.entries(replacements).reduce(
+//             (result, [key, val]) => result.replace(new RegExp(key, "g"), val),
+//             text
+//           )
+//           : text;
+
+//       const emailSubject = replacePlaceholders(
+//         subject || "Set your Admin Panel password"
+//       );
+
+//       const htmlBody = replacePlaceholders(
+//         htmlTemplate?.trim() ||
+//         `<p>Hello {{firstName}},</p>
+//            <p>Your admin account for <strong>{{appName}}</strong> has been created successfully.</p>
+//            <p>If you’d like to reset your password, use the secure link below:</p>
+//            <p><a href="{{resetLink}}" target="_blank">{{resetLink}}</a></p>
+//            <p>This link will expire in <strong>24 hours</strong>.</p>
+//            <p>Regards,<br>{{appName}} Team<br>&copy; {{year}}</p>`
+//       );
+
+//       const mapRecipients = (list) =>
+//         Array.isArray(list)
+//           ? list.map(({ name, email }) => ({
+//             name: replacePlaceholders(name),
+//             email: replacePlaceholders(email),
+//           }))
+//           : [];
+
+//       const mailData = {
+//         recipient: [
+//           {
+//             name: `${firstName || ""} ${lastName || ""}`.trim(), // full name
+//             email: email, // actual email
+//           },
+//         ],
+//         cc: mapRecipients(emailConfig.cc),
+//         bcc: mapRecipients(emailConfig.bcc),
+//         subject: emailSubject,
+//         htmlBody,
+//         attachments: [],
+//       };
+
+//       const emailResult = await sendEmail(emailConfig, mailData);
+
+//       if (!emailResult.status) {
+//         console.error(
+//           "❌ Failed to send admin reset link email:",
+//           emailResult.error
+//         );
+//         emailSentFlag = 0;
+//       } else {
+//         if (DEBUG)
+//           console.log("✅ Reset link email sent:", emailResult.messageId);
+//         emailSentFlag = 1; // ✅ Successfully sent
+//       }
+//     }
+
+//     // ✅ Final response with emailSent flag
+//     return res.status(201).json({
+//       status: true,
+//       message: "Admin created successfully",
+//       data: {
+//         firstName: admin.firstName,
+//         email: admin.email,
+//         profile: admin.profile,
+//         emailSent: emailSentFlag, // ✅ 1 if sent, 0 if failed
+//       },
+//     });
+//   } catch (error) {
+//     console.error("❌ Create Admin Error:", error);
+//     return res.status(500).json({
+//       status: false,
+//       message:
+//         "Server error occurred while creating the admin. Please try again later.",
+//     });
+//   }
+// };
+
 // ✅ Get all admins
+
 exports.getAllAdmins = async (req, res) => {
   if (DEBUG) console.log("📋 Request received to list all admins");
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin?.id);

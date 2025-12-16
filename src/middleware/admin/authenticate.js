@@ -1,4 +1,4 @@
-const { getAdminById } = require("../../services/admin/admin");
+const { getAdminById } = require("../../services/admin/administration/adminPannel/admin");
 const { verifyToken } = require("../../utils/jwt");
 
 const DEBUG = process.env.DEBUG === "true";

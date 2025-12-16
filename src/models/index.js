@@ -129,6 +129,10 @@ const models = {
   CandidateProfile: require("./admin/recruitment/CandidateProfile"),
 
   CoachVenueAllocation: require("./admin/coaches/CoachVenueAllocation"),
+
+  MusicPlayer: require("./admin/coaches/MusicPlayer"),
+  Course: require("./admin/coaches/Course"),
+  Contracts: require("./admin/coaches/Contracts"),
 };
 
 // =================== Apply Model-Level Associations =================== //
@@ -233,6 +237,10 @@ const {
   CandidateProfile,
 
   CoachVenueAllocation,
+  MusicPlayer,
+  Course,
+
+  Contracts,
 } = models;
 
 // Many-to-Many
@@ -625,4 +633,8 @@ module.exports = {
   CandidateProfile,
 
   CoachVenueAllocation,
+  MusicPlayer,
+
+  Course,
+  Contracts,
 };

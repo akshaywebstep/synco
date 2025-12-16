@@ -94,14 +94,14 @@ exports.getCoachById = async (coachId, superAdminId) => {
         },
         {
           model: CoachVenueAllocation,
-          as: "coachAllocations",   // 🔥 WILL APPEAR IN RESPONSE
+          as: "coachAllocations",
           attributes: [
             "id",
             "venueId",
             "rate",
             "createdBy",
             "createdAt",
-            "updatedAt"
+            "updatedAt",
           ],
         },
       ],
@@ -110,17 +110,40 @@ exports.getCoachById = async (coachId, superAdminId) => {
     if (!coach) {
       return {
         status: false,
-        message: "Coach not found or does not belong to this Super Admin.",
+        message:
+          "Coach not found or does not belong to this Super Admin.",
         data: null,
       };
     }
 
+    /* ==========================
+       ✅ PARSE QUALIFICATIONS
+    ========================== */
+    let parsedQualifications = null;
+
+    if (coach.qualifications) {
+      try {
+        parsedQualifications =
+          typeof coach.qualifications === "string"
+            ? JSON.parse(coach.qualifications)
+            : coach.qualifications;
+      } catch (err) {
+        console.warn(
+          "⚠️ Failed to parse coach qualifications:",
+          err
+        );
+      }
+    }
+
+    // Sequelize → plain object
+    const coachData = coach.toJSON();
+    coachData.qualifications = parsedQualifications;
+
     return {
       status: true,
       message: "Coach fetched successfully.",
-      data: coach,
+      data: coachData, // ✅ FIXED
     };
-
   } catch (error) {
     console.error("❌ Sequelize Error in getCoachById:", error);
 
@@ -219,4 +242,80 @@ exports.deleteAllocateVenue = async (id, adminId) => {
       message: error?.message || "Failed to delete venue allocation.",
     };
   }
+};
+
+/**
+ * Get qualification file URL for a coach
+ */
+exports.getCoachQualificationFile = async (
+  coachId,
+  superAdminId,
+  qualificationType
+) => {
+  if (!coachId || isNaN(Number(coachId))) {
+    return {
+      status: false,
+      message: "Invalid coach ID.",
+    };
+  }
+
+  if (!superAdminId || isNaN(Number(superAdminId))) {
+    return {
+      status: false,
+      message: "Invalid super admin ID.",
+    };
+  }
+
+  if (!qualificationType) {
+    return {
+      status: false,
+      message: "Qualification type is required.",
+    };
+  }
+
+  const coach = await Admin.findOne({
+    where: {
+      id: Number(coachId),
+      superAdminId: Number(superAdminId),
+    },
+    attributes: ["id", "qualifications"],
+  });
+
+  if (!coach) {
+    return {
+      status: false,
+      message: "Coach not found.",
+    };
+  }
+
+  let qualifications = null;
+
+  try {
+    qualifications =
+      typeof coach.qualifications === "string"
+        ? JSON.parse(coach.qualifications)
+        : coach.qualifications;
+  } catch (err) {
+    return {
+      status: false,
+      message: "Invalid qualification data.",
+    };
+  }
+
+  const fileUrl = qualifications?.[qualificationType];
+
+  if (!fileUrl) {
+    return {
+      status: false,
+      message: "Qualification file not found.",
+    };
+  }
+
+  return {
+    status: true,
+    message: "Qualification file fetched successfully.",
+    data: {
+      fileUrl,
+    },
+  };
 };

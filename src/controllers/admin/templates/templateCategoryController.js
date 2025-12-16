@@ -1,12 +1,12 @@
 
 
-const { validateFormData } = require("../../../../utils/validateFormData");
-const { logActivity } = require("../../../../utils/admin/activityLogger");
+const { validateFormData } = require("../../../utils/validateFormData");
+const { logActivity } = require("../../../utils/admin/activityLogger");
 // const TemplateCategory = require("../../../../holidayCamps/emailAndTextTemplates/templateCategory/templateCategory");
-const { createNotification } = require("../../../../utils/admin/notificationHelper");
-const TemplateCategory = require("../../../../services/admin/holidayCamps/emailAndTextTemplates/templateCategory");
+const { createNotification } = require("../../../utils/admin/notificationHelper");
+const TemplateCategory = require("../../../services/admin/templates/templateCategory");
 const DEBUG = process.env.DEBUG === "true";
-const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 
 const PANEL = "admin";
 const MODULE = "template-category";

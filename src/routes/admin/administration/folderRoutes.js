@@ -6,7 +6,7 @@ const permissionMiddleware = require("../../../middleware/admin/permission");
 const {
     createFolder,
     getAllFolders,
-} = require("../../../controllers/admin/holidayCamps/folder/folderController");
+} = require("../../../controllers/admin/administration/folder/folderController");
 
 // ➕ Create  Camp
 router.post(

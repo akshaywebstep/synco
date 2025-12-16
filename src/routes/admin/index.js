@@ -12,7 +12,7 @@ const {
   getAdminProfile,
   resetPassword,
   getAllAdminsForReassign,
-} = require("../../controllers/admin/adminController");
+} = require("../../controllers/admin/administration/adminPannel/adminController");
 
 const multer = require("multer");
 const upload = multer();
@@ -154,12 +154,12 @@ router.use("/holiday/class-schedule", require("./holidayCampsRoutes/holidayClass
 router.use("/holiday/find-class", require("./holidayCampsRoutes/holidayFindClassRoutes"));
 
 router.use("/holiday/booking", require("./holidayCampsRoutes/holidayBookingRoutes"));
-router.use("/holiday/template-category", require("./holidayCampsRoutes/holidayTemplateCategoryRoutes"));
-router.use("/holiday/custom-template", require("./holidayCampsRoutes/holidayCustomTemplateRoute"));
-router.use("/holiday/to-do-list", require("./toDoRoutes"));
+router.use("/holiday/template-category", require("./templates/templateCategoryRoutes"));
+router.use("/holiday/custom-template", require("./templates/customTemplateRoute"));
+router.use("/holiday/to-do-list", require("./administration/toDoRoutes"));
 
-router.use("/folder", require("./holidayCampsRoutes/folderRoutes"));
-router.use("/folder", require("./holidayCampsRoutes/filesRoutes"));
+router.use("/folder", require("./administration/folderRoutes"));
+router.use("/folder", require("./administration/filesRoutes"));
 
 router.use("/coach/recruitment", require("./recruitmentRoutes/coachRecruitmentRoutes"));
 router.use("/coach/candidate-profile", require("./recruitmentRoutes/coachCandidateProfileRoutes"));
@@ -170,12 +170,23 @@ router.use("/venue-manager/candidate-profile", require("./recruitmentRoutes/vmCa
 router.use("/franchise/recruitment/", require("./recruitmentRoutes/franchiseRecruitmentRoutes"));
 router.use("/franchise/candidate-profile", require("./recruitmentRoutes/franchiseCandidateProfileRoutes"));
 
-router.use("/coach-profile/venue-allocate/", require("./coachProfileRoutes/coachProfileRoutes"));
+router.use("/coach-profile/venue-allocate/", require("./coach/coachProfileRoutes"));
+router.use("/music-player/", require("./coach/musicPlayerRoutes"));
+router.use("/course/", require("./coach/courseRoutes"));
+
+router.use("/contract/", require("./coach/contractRoutes"));
 
 // Base: /api/admin/admin
 router.post(
   "/",
-  upload.single("profile"),
+  // upload.single("profile")
+  upload.fields([
+    { name: "profile", maxCount: 1 },
+    { name: "fa_level_1", maxCount: 1 },
+    { name: "futsal_level_1_qualification", maxCount: 1 },
+    { name: "first_aid", maxCount: 1 },
+    { name: "futsal_level_1", maxCount: 1 },
+  ]),
   authMiddleware,
   permissionMiddleware("member", "create"),
   createAdmin

@@ -1,5 +1,5 @@
 const { validateFormData } = require("../../../../utils/validateFormData");
-const FolderService = require("../../../../services/admin/holidayCamps/folder/folder");
+const FolderService = require("../../../../services/admin/administration/folder/folder");
 const { logActivity } = require("../../../../utils/admin/activityLogger");
 const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
 const {

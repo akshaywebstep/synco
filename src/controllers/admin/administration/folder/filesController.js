@@ -1,8 +1,8 @@
 const path = require("path");
 const fs = require("fs");
 const { validateFormData } = require("../../../../utils/validateFormData");
-const FilesService = require("../../../../services/admin/holidayCamps/folder/files");
-const FolderService = require("../../../../services/admin/holidayCamps/folder/folder");
+const FilesService = require("../../../../services/admin/administration/folder/files");
+const FolderService = require("../../../../services/admin/administration/folder/folder");
 const { Files } = require("../../../../models");
 
 const { logActivity } = require("../../../../utils/admin/activityLogger");

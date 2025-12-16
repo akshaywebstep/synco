@@ -144,4 +144,50 @@ async function deleteFromFTP(fileUrl) {
     }
 }
 
-module.exports = { uploadToFTP, downloadFromFTP, deleteFromFTP };
+// -------------------- Rename (NO local file) --------------------
+// -------------------- Rename (FIXED) --------------------
+async function renameOnFTP(fileUrl, newFileName) {
+    const client = new ftp.Client();
+    client.ftp.verbose = DEBUG;
+
+    try {
+        const ftpConfig = await getFTPConfig();
+
+        await client.access({
+            host: ftpConfig.host,
+            user: ftpConfig.user,
+            password: ftpConfig.password,
+            secure: false,
+        });
+
+        // OLD FILE PATH
+        let oldPath = fileUrl
+            .replace(ftpConfig.publicUrlBase, "")
+            .replace(/^\/+/, "");
+
+        oldPath = `/${oldPath}`;
+
+        // 🔒 FORCE filename only (THIS FIXES EVERYTHING)
+        const cleanFileName = path.posix.basename(newFileName);
+
+        const folderPath = path.posix.dirname(oldPath);
+        const newPath = `${folderPath}/${cleanFileName}`;
+
+        if (DEBUG) {
+            console.log(`✏️ Renaming on FTP:`);
+            console.log(`OLD: ${oldPath}`);
+            console.log(`NEW: ${newPath}`);
+        }
+
+        await client.rename(oldPath, newPath);
+        await client.close();
+
+        return `${ftpConfig.publicUrlBase}${newPath}`.replace(/\\/g, "/");
+    } catch (err) {
+        console.error("❌ FTP rename failed:", err);
+        try { await client.close(); } catch {}
+        throw err;
+    }
+}
+
+module.exports = { uploadToFTP, downloadFromFTP, deleteFromFTP,renameOnFTP };

@@ -10,6 +10,7 @@ const {
     createAllocateVenue,
     updateAllocateVenue,
     deleteAllocateVenue,
+    downloadCoachQualification,
 } = require("../../../controllers/admin/coaches/coachProfileController");
 
 // 📄 Get All Files
@@ -46,5 +47,12 @@ router.delete(
     authMiddleware,
     permissionMiddleware("coach", "allocate-venue-update"),
     deleteAllocateVenue
+);
+
+router.get(
+    "/download/:coachId/:type/",
+    authMiddleware,
+    permissionMiddleware("coach", "view-listing"),
+    downloadCoachQualification
 );
 module.exports = router;

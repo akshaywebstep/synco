@@ -1,4 +1,4 @@
-const adminModel = require("../services/admin/admin");
+const adminModel = require("../services/admin/administration/adminPannel/admin");
 /**
  * Generate a masked password hint for display (e.g., Ro****ia)
  * @param {string} password - The raw password string
