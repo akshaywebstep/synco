@@ -115,7 +115,6 @@ const createDiscountAppliesTo = async ({ discountId, target }) => {
   }
 };
 
-// ✅ Get All Discounts
 // ✅ Get All Discounts with Usage Count
 const getAllDiscounts = async () => {
   try {

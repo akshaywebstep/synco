@@ -1,4 +1,4 @@
-const { Op } = require("sequelize");
+const { Op, fn, col, literal } = require("sequelize");
 const {
   HolidayBooking,
   HolidayBookingStudentMeta,
@@ -16,6 +16,7 @@ const {
   DiscountAppliesTo,
   Comment,
   Admin,
+//  sequelize
 } = require("../../../../models");
 const { sequelize } = require("../../../../models");
 const { getEmailConfig } = require("../../../email");
@@ -2026,4 +2027,81 @@ SUM(
     console.error("❌ holidayCampsReports error:", error);
     return { success: false, message: error.message };
   }
+};
+
+// ✅ Get All Discounts with Usage Count
+
+const getAllDiscounts = async () => {
+  try {
+    const now = new Date();
+
+    const discounts = await Discount.findAll({
+      where: {
+        startDatetime: { [Op.lte]: now },
+
+        // ⛔ exclude expired by date
+        [Op.or]: [
+          { endDatetime: { [Op.gte]: now } },
+          { endDatetime: null },
+        ],
+      },
+
+      order: [["createdAt", "DESC"]],
+
+      include: [
+        {
+          model: DiscountAppliesTo,
+          as: "appliesTo",
+          attributes: ["id", "target"],
+          where: {
+            target: "holiday_camp", // ✅ FILTER
+          },
+          required: true, // INNER JOIN
+        },
+        {
+          model: DiscountUsage,
+          as: "usages",
+          attributes: [],
+          required: false,
+        },
+      ],
+
+      attributes: {
+        include: [
+          [
+            fn("COUNT", col("usages.id")),
+            "usageCount",
+          ],
+        ],
+      },
+
+      // ⛔ exclude discounts that exceeded usage limit
+      having: literal(`
+        limitTotalUses IS NULL 
+        OR COUNT(usages.id) < limitTotalUses
+      `),
+
+      group: ["Discount.id", "appliesTo.id"],
+    });
+
+    return {
+      status: true,
+      message: "Active holiday camp discounts fetched successfully.",
+      data: discounts,
+    };
+
+  } catch (error) {
+    console.error("❌ Sequelize Error in getAllDiscounts:", error);
+    return {
+      status: false,
+      message:
+        error?.parent?.sqlMessage ||
+        error?.message ||
+        "Error occurred while fetching discounts.",
+    };
+  }
+};
+
+module.exports = {
+  getAllDiscounts
 };

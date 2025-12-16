@@ -923,3 +923,72 @@ exports.getHolidayCampsReports = async (req, res) => {
     });
   }
 };
+
+// ✅ Get All Discounts
+exports.getAllDiscounts = async (req, res) => {
+  if (DEBUG) console.log("📋 [Step 1] Request received to fetch all discounts");
+
+  try {
+    const result = await holidayBookingService.getAllDiscounts();
+
+    if (!result.status) {
+      const errorMsg = result.message || "Failed to fetch discounts.";
+      if (DEBUG) console.log("❌ Failed to fetch discounts:", errorMsg);
+
+      await logActivity(
+        req,
+        PANEL,
+        MODULE,
+        "list",
+        { oneLineMessage: errorMsg },
+        false
+      );
+
+      return res.status(500).json({
+        status: false,
+        message: errorMsg,
+      });
+    }
+
+    const count = result.data.length;
+    const message = `Fetched ${count} discount${
+      count === 1 ? "" : "s"
+    } successfully.`;
+
+    if (DEBUG) {
+      console.log(`✅ ${message}`);
+      console.table(
+        result.data.map((d) => ({
+          ID: d.id,
+          Code: d.code,
+          Type: d.type,
+          Value: d.value,
+          ActiveFrom: d.startDatetime,
+          ActiveTo: d.endDatetime,
+        }))
+      );
+    }
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { oneLineMessage: message },
+      true
+    );
+
+    return res.status(200).json({
+      status: true,
+      message,
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ Get All Discounts Error:", error);
+    return res.status(500).json({
+      status: false,
+      message:
+        "Server error occurred while fetching discounts. Please try again later.",
+    });
+  }
+};

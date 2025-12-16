@@ -14,7 +14,15 @@ const {
   waitingListCreate,
   getHolidayCampsReports,
   cancelHolidayBookingById,
+  getAllDiscounts,
 } = require("../../../controllers/admin/holidayCamps/booking/holidayBookingController");
+
+router.get(
+  "/discount/holiday-camp",
+  authMiddleware,
+  permissionMiddleware("holiday-booking", "view-listing"),
+  getAllDiscounts
+);
 
 // ➕ Create Camp
 

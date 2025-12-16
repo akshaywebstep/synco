@@ -916,15 +916,29 @@ exports.getAdminsPaymentPlanDiscount = async ({
                 paymentPlans: group.paymentPlans || [],
             };
         });
-
+        
         // ✅ 7️⃣ Get all discounts + appliesTo (unchanged)
+        const now = new Date();
+       
         const discounts = await Discount.findAll({
+            where: {
+                startDatetime: {
+                    [Op.lte]: now, // started already
+                },
+                [Op.or]: [
+                    { endDatetime: { [Op.gte]: now } }, // not expired
+                    { endDatetime: null },               // no expiry
+                ],
+            },
             include: [
                 {
                     model: DiscountAppliesTo,
                     as: "appliesTo",
                     attributes: ["id", "target"],
-                    required: false,
+                    where: {
+                        target: "birthday_party",
+                    },
+                    required: true, // INNER JOIN
                 },
             ],
             attributes: [
