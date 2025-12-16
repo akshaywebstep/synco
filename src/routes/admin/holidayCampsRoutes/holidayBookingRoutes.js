@@ -9,14 +9,30 @@ const {
   sendEmail,
   getHolidayBookingById,
   updateHolidayBooking,
-  addCommentForHolidayCamp,
-  listCommentsForHolidayCamp,
+  // addCommentForHolidayCamp,
+  // listCommentsForHolidayCamp,
   waitingListCreate,
   getHolidayCampsReports,
   cancelHolidayBookingById,
   getAllDiscounts,
 } = require("../../../controllers/admin/holidayCamps/booking/holidayBookingController");
 
+// ================= COMMENTS =================
+// router.post(
+//   "/comment/create",
+//   authMiddleware,
+//   permissionMiddleware("holiday-comment", "create"),
+//   addCommentForHolidayCamp
+// );
+
+// router.get(
+//   "/comment/list",
+//   authMiddleware,
+//   permissionMiddleware("holiday-comment", "view-listing"),
+//   listCommentsForHolidayCamp
+// );
+
+// ================= DISCOUNTS =================
 router.get(
   "/discount/holiday-camp",
   authMiddleware,
@@ -24,8 +40,23 @@ router.get(
   getAllDiscounts
 );
 
-// ➕ Create Camp
+// ================= REPORTS =================
+router.get(
+  "/reports",
+  authMiddleware,
+  permissionMiddleware("holiday-booking", "view-listing"),
+  getHolidayCampsReports
+);
 
+// ================= WAITING LIST =================
+router.post(
+  "/waiting-list/create",
+  authMiddleware,
+  permissionMiddleware("holiday-booking-waiting", "create"),
+  waitingListCreate
+);
+
+// ================= BOOKINGS =================
 router.post(
   "/create",
   authMiddleware,
@@ -47,12 +78,7 @@ router.post(
   sendEmail
 );
 
-router.put(
-  "/update/:bookingId",
-  authMiddleware,
-  permissionMiddleware("holiday-booking", "update"),
-  updateHolidayBooking
-);
+// ================= DYNAMIC ROUTES (LAST) =================
 router.get(
   "/listBy/:bookingId",
   authMiddleware,
@@ -60,31 +86,11 @@ router.get(
   getHolidayBookingById
 );
 
-router.post(
-  "/comment/create",
+router.put(
+  "/update/:bookingId",
   authMiddleware,
-  permissionMiddleware("holiday-comment", "create"),
-  addCommentForHolidayCamp
-);
-
-router.get(
-  "/comment/list",
-  authMiddleware,
-  permissionMiddleware("holiday-comment", "view-listing"),
-  listCommentsForHolidayCamp
-);
-
-router.post(
-  "/waiting-list/create",
-  authMiddleware,
-  permissionMiddleware("holiday-booking-waiting", "create"),
-  waitingListCreate
-);
-router.get(
-  "/reports",
-  authMiddleware,
-  permissionMiddleware("holiday-booking", "view-listing"),
-  getHolidayCampsReports
+  permissionMiddleware("holiday-booking", "update"),
+  updateHolidayBooking
 );
 
 router.put(
@@ -93,4 +99,5 @@ router.put(
   permissionMiddleware("holiday-booking", "update"),
   cancelHolidayBookingById
 );
+
 module.exports = router;
