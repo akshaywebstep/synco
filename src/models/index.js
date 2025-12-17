@@ -109,7 +109,7 @@ const models = {
   HolidayVenue: require("./admin/holidayCamps/venue/HolidayVenue"),
   HolidayClassSchedule: require("./admin/holidayCamps/classSchedule/HolidayClassSchedule"),
 
-  HolidayClassScheduleTermMap: require("./admin/holidayCamps/classSchedule/HolidayClassScheduleTermMap"),
+  HolidayClassScheduleCampDateMap: require("./admin/holidayCamps/classSchedule/HolidayClassScheduleCampDateMap.js"),
   HolidayCancelSession: require("./admin/holidayCamps/classSchedule/HolidayCancelSession"),
 
   HolidayBooking: require("./admin/holidayCamps/booking/HolidayBooking"),
@@ -217,7 +217,7 @@ const {
   HolidayVenue,
   HolidayClassSchedule,
 
-  HolidayClassScheduleTermMap,
+  HolidayClassScheduleCampDateMap,
   HolidayCancelSession,
 
   HolidayBooking,
@@ -613,7 +613,7 @@ module.exports = {
   HolidayVenue,
   HolidayClassSchedule,
 
-  HolidayClassScheduleTermMap,
+  HolidayClassScheduleCampDateMap,
   HolidayCancelSession,
 
   HolidayBooking,

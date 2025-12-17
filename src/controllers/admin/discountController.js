@@ -155,7 +155,7 @@ exports.createDiscount = async (req, res) => {
       }
     }
 
-    const successMessage = `Discount '${code}' created successfully by Admin: ${req.admin?.name}`;
+    const successMessage = `Discount '${code}' created successfully by Admin: ${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""}`;
     if (DEBUG) console.log("✅", successMessage);
 
     await logActivity(
@@ -215,9 +215,8 @@ exports.getAllDiscounts = async (req, res) => {
     }
 
     const count = result.data.length;
-    const message = `Fetched ${count} discount${
-      count === 1 ? "" : "s"
-    } successfully.`;
+    const message = `Fetched ${count} discount${count === 1 ? "" : "s"
+      } successfully.`;
 
     if (DEBUG) {
       console.log(`✅ ${message}`);

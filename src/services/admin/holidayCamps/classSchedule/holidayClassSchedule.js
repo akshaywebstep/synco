@@ -7,7 +7,7 @@ const {
     HolidaySessionPlanGroup,
     HolidaySessionExercise,
     HolidayPaymentPlan,
-    HolidayClassScheduleTermMap,
+    HolidayClassScheduleCampDateMap,
     HolidayPaymentGroup,
 } = require("../../../../models");
 
@@ -159,7 +159,7 @@ exports.getAllHolidayClasses = async (adminId) => {
         });
 
         // Fetch all mappings once
-        const mappings = await HolidayClassScheduleTermMap.findAll();
+        const mappings = await HolidayClassScheduleCampDateMap.findAll();
 
         for (const cls of classes) {
             const venue = cls.venue;
@@ -440,7 +440,7 @@ exports.getHolidayClassByIdWithFullDetails = async (classId, createdBy) => {
                 // =====================
                 // Fetch all mappings for this class
                 // =====================
-                const mappings = await HolidayClassScheduleTermMap.findAll({
+                const mappings = await HolidayClassScheduleCampDateMap.findAll({
                     where: { classScheduleId: cls.id },
                 });
 
@@ -630,25 +630,25 @@ exports.deleteHolidayClass = async (id, deletedBy) => {
     }
 };
 
-exports.getClassScheduleTermMapById = async (id) => {
+exports.getClassScheduleCampDateMapById = async (id) => {
     try {
-        console.log("🔹 Fetching ClassScheduleTermMap with ID:", id);
+        console.log("🔹 Fetching HolidayClassScheduleCampDateMap with ID:", id);
 
-        const mapEntry = await HolidayClassScheduleTermMap.findByPk(id);
+        const mapEntry = await HolidayClassScheduleCampDateMap.findByPk(id);
 
         if (!mapEntry) {
-            console.log("⚠️ No ClassScheduleTermMap found for ID:", id);
-            return { status: false, message: "ClassScheduleTermMap not found." };
+            console.log("⚠️ No HolidayClassScheduleCampDateMap found for ID:", id);
+            return { status: false, message: "HolidayClassScheduleCampDateMap not found." };
         }
 
-        console.log("✔️ Found ClassScheduleTermMap:", mapEntry.id);
+        console.log("✔️ Found HolidayClassScheduleCampDateMap:", mapEntry.id);
         return {
             status: true,
-            message: "ClassScheduleTermMap fetched successfully.",
+            message: "HolidayClassScheduleCampDateMap fetched successfully.",
             mapEntry,
         };
     } catch (error) {
-        console.error("❌ Error fetching ClassScheduleTermMap:", error);
+        console.error("❌ Error fetching HolidayClassScheduleCampDateMap:", error);
         return {
             status: false,
             message: "Something went wrong.",

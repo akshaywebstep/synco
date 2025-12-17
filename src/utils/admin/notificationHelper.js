@@ -32,7 +32,8 @@ exports.createNotification = async (
 
   if (DEBUG) {
     console.log(
-      `🟢 [createNotification] Initiated by Admin: ${req?.admin?.name}`
+      `🟢 [createNotification] Initiated by Admin: ${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""
+      }`
     );
     console.log(`📩 Details →`, { title, description, category, scope });
   }

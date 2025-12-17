@@ -81,7 +81,12 @@ const Course = sequelize.define(
             allowNull: true,
             comment: "List of user IDs to notify upon course completion",
         },
-
+        status: {
+            type: DataTypes.ENUM("draft", "publish"),
+            allowNull: false,
+            defaultValue: "publish",
+            comment: "Course status (draft or publish)",
+        },
         createdBy: {
             type: DataTypes.BIGINT.UNSIGNED,
             allowNull: false,

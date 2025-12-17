@@ -1,8 +1,8 @@
 const { DataTypes } = require("sequelize");
 const { sequelize } = require("../../../../config/db");
 
-const HolidayClassScheduleTermMap = sequelize.define(
-  "HolidayClassScheduleTermMap",
+const HolidayClassScheduleCampDateMap = sequelize.define(
+  "HolidayClassScheduleCampDateMap",
   {
     id: {
       type: DataTypes.BIGINT.UNSIGNED,
@@ -14,12 +14,12 @@ const HolidayClassScheduleTermMap = sequelize.define(
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       references: {
-        model: "holiday_class_schedules", 
+        model: "holiday_class_schedules",
         key: "id",
       },
       onUpdate: "CASCADE",
       onDelete: "CASCADE",
-      comment: "Class schedule associated with Term Map",
+      comment: "Class schedule associated with Camp Date Map",
     },
 
     holidayCampId: {
@@ -54,13 +54,13 @@ const HolidayClassScheduleTermMap = sequelize.define(
       onUpdate: "CASCADE",
       onDelete: "CASCADE",
     },
-    // ✅ New status field with default "pending"
+
     status: {
       type: DataTypes.ENUM("pending", "active", "completed", "cancelled"),
       allowNull: false,
       defaultValue: "pending",
     },
-     // ✅ Foreign key to admins table for creation
+
     createdBy: {
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
@@ -72,13 +72,11 @@ const HolidayClassScheduleTermMap = sequelize.define(
       onDelete: "RESTRICT",
     },
 
-    // ✅ Soft delete column
     deletedAt: {
       type: DataTypes.DATE,
       allowNull: true,
     },
 
-    // ✅ Foreign key to admins table for deletion
     deletedBy: {
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
@@ -91,41 +89,40 @@ const HolidayClassScheduleTermMap = sequelize.define(
     },
   },
   {
-    tableName: "holiday_class_schedule_term_maps",
+    tableName: "holiday_class_schedule_campDate_maps",
     timestamps: true,
-    paranoid: true, // ✅ Enable soft deletes
+    paranoid: true, // Enable soft deletes
   }
 );
 
 // ✅ Associations
-// HolidayClassScheduleTermMap.associate = function (models) {
-//   HolidayClassScheduleTermMap.belongsTo(models.HolidayClassSchedule, {
-//     foreignKey: "classScheduleId",
-//     as: "holidayClassSchedule",
-//   });
+HolidayClassScheduleCampDateMap.associate = function (models) {
+  HolidayClassScheduleCampDateMap.belongsTo(models.HolidayClassSchedule, {
+    foreignKey: "classScheduleId",
+    as: "holidayClassSchedule",
+  });
 
-//   HolidayClassScheduleTermMap.belongsTo(models.HolidayTermGroup, {
-//     foreignKey: "holidayCampId",
-//     as: "holidayCamp",
-//   });
+  HolidayClassScheduleCampDateMap.belongsTo(models.HolidayCamp, {
+    foreignKey: "holidayCampId",
+    as: "holidayCamp",
+  });
 
-//   HolidayClassScheduleTermMap.belongsTo(models.HolidayTerm, {
-//     foreignKey: "holidayCampDateId",
-//     as: "holidayCampDate",
-//   });
+  HolidayClassScheduleCampDateMap.belongsTo(models.HolidayCampDates, {
+    foreignKey: "holidayCampDateId",
+    as: "holidayCampDate",
+  });
 
-//   HolidayClassScheduleTermMap.belongsTo(models.HolidaySessionPlanGroup, {
-//     // matches model name
-//     foreignKey: "sessionPlanId",
-//     as: "holiday_sessionPlan",
-//   });
+  HolidayClassScheduleCampDateMap.belongsTo(models.HolidaySessionPlanGroup, {
+    foreignKey: "sessionPlanId",
+    as: "holiday_sessionPlan",
+  });
 
-//   // HolidayClassScheduleTermMap.hasMany(models.HolidayCancelSession, {
-//   //   foreignKey: "mapId",      // must match CancelSession.mapId
-//   //   as: "HolidayCancelSessions",     // alias to use in include queries
-//   //   onDelete: "CASCADE",
-//   //   onUpdate: "CASCADE",
-//   // });
-// };
+  HolidayClassScheduleCampDateMap.hasMany(models.HolidayCancelSession, {
+    foreignKey: "mapId",
+    as: "HolidayCancelSessions",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
+};
 
-module.exports = HolidayClassScheduleTermMap;
+module.exports = HolidayClassScheduleCampDateMap;

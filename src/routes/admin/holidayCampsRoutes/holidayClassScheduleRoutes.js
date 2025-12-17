@@ -42,22 +42,22 @@ router.delete(
   deleteHolidayClassSchedule
 );
 
-// const {
-//   getAttendanceRegister,
-//   updateAttendanceStatus,
-// } = require("../../controllers/admin/classSchedule/viewClassRegisterController");
+const {
+  getAttendanceRegister,
+  updateAttendanceStatus,
+} = require("../../../controllers/admin/holidayCamps/classSchedule/holidayViewClassRegisterController");
 
-// router.get(
-//   "/view-class-register/:classScheduleId",
-//   authMiddleware,
-//   permissionMiddleware("class-schedule", "view-listing"),
-//   getAttendanceRegister
-// )
+router.get(
+  "/view-class-register/:classScheduleId",
+  authMiddleware,
+  permissionMiddleware("holiday-class-schedule", "view-listing"),
+  getAttendanceRegister
+)
 
-// router.patch(
-//   "/attendance/:studentId",
-//   authMiddleware,
-//   permissionMiddleware("class-schedule", "update"),
-//   updateAttendanceStatus);
+router.patch(
+  "/attendance/:studentId",
+  authMiddleware,
+  permissionMiddleware("holiday-class-schedule", "update"),
+  updateAttendanceStatus);
 
 module.exports = router;

@@ -143,7 +143,8 @@ exports.createCourse = async (req, res) => {
     if (DEBUG) console.log("📝 Activity logged");
 
     // Step 7: Create notification
-    await createNotification(req, "Course Created", `Course Created Successfully ${formData.title}`, "System");
+    await createNotification(req, "Course Created", `Course Created Successfully ${formData.title} by ${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""
+      }`, "System");
     if (DEBUG) console.log("🔔 Notification sent");
 
     if (!result.status) {
@@ -215,7 +216,7 @@ exports.getCourseById = async (req, res) => {
     if (DEBUG) console.log(`🧩 SuperAdminId resolved as: ${superAdminId}`);
 
     // Fetch course by ID
-    const result = await courseService.getCourseById(id, superAdminId,req.admin.id);
+    const result = await courseService.getCourseById(id, superAdminId, req.admin.id);
 
     if (!result.status) {
       return res.status(404).json({
@@ -424,7 +425,8 @@ exports.updateCourse = async (req, res) => {
     await createNotification(
       req,
       "Course Updated",
-      `Course updated successfully`,
+      `Course updated successfully by ${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""
+      }`,
       "System"
     );
 
@@ -474,7 +476,8 @@ exports.deleteCourse = async (req, res) => {
     await createNotification(
       req,
       "Course Deleted",
-      `Course deleted successfully`,
+      `Course deleted successfully by ${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""
+      }`,
       "System"
     );
 

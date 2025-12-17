@@ -9,6 +9,9 @@ const permissionMiddleware = require("../../../middleware/admin/permission");
 const {
     createContract,
     getAllContracts,
+    getContractById,
+    updateContractById,
+    downloadContractPdf,
 } = require("../../../controllers/admin/coaches/contractController");
 
 // Route: 
@@ -25,6 +28,28 @@ router.get(
     authMiddleware,
     permissionMiddleware("contract", "view-listing"),
     getAllContracts
+);
+
+router.get(
+    "/listBy/:id",
+    authMiddleware,
+    permissionMiddleware("contract", "view-listing"),
+    getContractById
+);
+
+router.put(
+    "/update/:id",
+    authMiddleware,
+    upload.single("pdfFile"),
+    permissionMiddleware("contract", "update"),
+    updateContractById
+);
+
+router.get(
+    "/:contractId/download",
+    authMiddleware,
+   permissionMiddleware("contract", "view-listing"),
+   downloadContractPdf
 );
 
 module.exports = router;
