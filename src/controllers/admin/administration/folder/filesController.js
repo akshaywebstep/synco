@@ -403,42 +403,42 @@ exports.deleteSingleFileUrl = async (req, res) => {
 };
 
 exports.downloadFile = async (req, res) => {
-    const { fileId } = req.params;
-    const { url } = req.query;
+  const { fileId } = req.params;
+  const { url } = req.query;
 
-    if (!fileId || !url) {
-        return res.status(400).json({
-            status: false,
-            message: "fileId and file URL are required.",
-        });
+  if (!fileId || !url) {
+    return res.status(400).json({
+      status: false,
+      message: "fileId and file URL are required.",
+    });
+  }
+
+  try {
+    const result = await FilesService.downloadFileById(fileId, url);
+
+    // log activity
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "downloadFile",
+      { fileId, url },
+      result.status
+    );
+
+    if (!result.status) {
+      return res.status(400).json(result);
     }
 
-    try {
-        const result = await FilesService.downloadFileById(fileId, url);
+    // ✅ FORCE DOWNLOAD
+    return res.redirect(result.data.fileUrl);
 
-        // log activity (unchanged)
-        await logActivity(
-            req,
-            PANEL,
-            MODULE,
-            "downloadFile",
-            { fileId, url },
-            result.status
-        );
+  } catch (error) {
+    await logActivity(req, PANEL, MODULE, "downloadFile", error, false);
 
-        if (!result.status) {
-            return res.status(400).json(result);
-        }
-
-        // ✅ Redirect ONLY to the validated URL
-        return res.redirect(result.data.fileUrl);
-
-    } catch (error) {
-        await logActivity(req, PANEL, MODULE, "downloadFile", error, false);
-
-        return res.status(500).json({
-            status: false,
-            message: "Server error while downloading file.",
-        });
-    }
+    return res.status(500).json({
+      status: false,
+      message: "Server error while downloading file.",
+    });
+  }
 };

@@ -155,7 +155,6 @@ exports.downloadFileById = async (fileId, fileUrl) => {
       return {
         status: false,
         message: "No valid file ID found for this request.",
-        data: null,
       };
     }
 
@@ -163,26 +162,24 @@ exports.downloadFileById = async (fileId, fileUrl) => {
       return {
         status: false,
         message: "File URL is required.",
-        data: null,
       };
     }
 
     const file = await Files.findOne({
       where: { id: Number(fileId) },
-      attributes: ["id", "uploadFiles", "createdAt"],
+      attributes: ["id", "uploadFiles"],
     });
 
     if (!file) {
       return {
         status: false,
         message: "File not found.",
-        data: null,
       };
     }
 
     let uploadFiles = file.uploadFiles;
 
-    // parse string → array
+    // Parse JSON string if needed
     if (typeof uploadFiles === "string") {
       uploadFiles = JSON.parse(uploadFiles);
     }
@@ -191,26 +188,21 @@ exports.downloadFileById = async (fileId, fileUrl) => {
       return {
         status: false,
         message: "No uploaded files found.",
-        data: null,
       };
     }
 
-    // ✅ STRICT CHECK: allow only requested URL
+    // ✅ SECURITY: check ownership
     if (!uploadFiles.includes(fileUrl)) {
       return {
         status: false,
         message: "Requested file does not belong to this record.",
-        data: null,
       };
     }
 
     return {
       status: true,
-      message: "File fetched successfully.",
       data: {
-        id: file.id,
-        fileUrl, // ONLY this URL
-        createdAt: file.createdAt,
+        fileUrl, // ONLY validated URL
       },
     };
 
