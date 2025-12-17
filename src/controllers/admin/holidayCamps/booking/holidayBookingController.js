@@ -28,7 +28,7 @@ exports.createHolidayBooking = async (req, res) => {
 
     // ✅ Step 1: Validate required main fields (stop at first missing)
     const requiredFields = [
-      "discountId",
+      // "discountId",
       "venueId",
       "paymentPlanId",
       "totalStudents",

@@ -107,7 +107,9 @@ exports.createHolidayBooking = async (data, adminId) => {
         venueId: data.venueId,
         classScheduleId: data.classScheduleId,
         holidayCampId: data.holidayCampId,
-        discountId: data.discountId,
+        // discountId: data.discountId,
+        // ✅ make discount optional
+        discountId: data.discountId ?? null,
         totalStudents: data.totalStudents,
         paymentPlanId: data.paymentPlanId,
         status: "active",

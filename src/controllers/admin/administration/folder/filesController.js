@@ -88,7 +88,7 @@ exports.createFiles = async (req, res) => {
 
             if (publicUrl) uploadedURLs.push(publicUrl);
 
-            await fs.promises.unlink(localPath).catch(() => {});
+            await fs.promises.unlink(localPath).catch(() => { });
         }
 
         // ------------------------------------------------------
@@ -404,34 +404,25 @@ exports.deleteSingleFileUrl = async (req, res) => {
 
 exports.downloadFile = async (req, res) => {
     const { fileId } = req.params;
+    const { url } = req.query;
 
-    if (DEBUG) {
-        console.log("\n================ DOWNLOAD FILE ================");
-        console.log("📥 Incoming Download Request");
-        console.log("🆔 fileId:", fileId);
-    }
-
-    if (!fileId) {
+    if (!fileId || !url) {
         return res.status(400).json({
             status: false,
-            message: "fileId is required.",
+            message: "fileId and file URL are required.",
         });
     }
 
     try {
-        const result = await FilesService.downloadFileById(fileId);
+        const result = await FilesService.downloadFileById(fileId, url);
 
-        if (DEBUG) {
-            console.log("📤 Service Response:", result);
-        }
-
-        // Log action
+        // log activity (unchanged)
         await logActivity(
             req,
             PANEL,
             MODULE,
             "downloadFile",
-            { fileId },
+            { fileId, url },
             result.status
         );
 
@@ -439,26 +430,10 @@ exports.downloadFile = async (req, res) => {
             return res.status(400).json(result);
         }
 
-        const { fileUrl } = result.data;
-
-        if (DEBUG) {
-            console.log("🌐 Redirecting To File URL:", fileUrl);
-        }
-
-        if (!fileUrl) {
-            return res.status(400).json({
-                status: false,
-                message: "File URL missing.",
-            });
-        }
-
-        // ✅ BEST PRACTICE FOR EXTERNAL FILES:
-        // Redirect user to file for direct download
-        return res.redirect(fileUrl);
+        // ✅ Redirect ONLY to the validated URL
+        return res.redirect(result.data.fileUrl);
 
     } catch (error) {
-        console.error("❌ Download File Error:", error);
-
         await logActivity(req, PANEL, MODULE, "downloadFile", error, false);
 
         return res.status(500).json({
