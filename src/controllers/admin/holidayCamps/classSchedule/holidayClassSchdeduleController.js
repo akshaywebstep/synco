@@ -11,7 +11,7 @@ const { HolidayVenue,
     HolidayCamp,
     HolidayCampDates,
     HolidayClassSchedule,
-    HolidayClassScheduleTermMap, } = require("../../../../models");
+    HolidayClassScheduleCampDateMap, } = require("../../../../models");
 const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
 
 const {
@@ -107,7 +107,7 @@ exports.createHolidayClassSchedule = async (req, res) => {
         return res.status(500).json({ status: false, message: err.message });
     }
 
-    // 7️⃣ Insert into HolidayClassScheduleTermMap
+    // 7️⃣ Insert into HolidayClassScheduleCampDateMap
     try {
         const holidayCamps = await HolidayCamp.findAll({
             where: { id: holidayCampIds },
@@ -133,7 +133,7 @@ exports.createHolidayClassSchedule = async (req, res) => {
 
                 for (const session of sessionsMap) {
                     if (session.sessionPlanId) {
-                        await HolidayClassScheduleTermMap.create({
+                        await HolidayClassScheduleCampDateMap.create({
                             classScheduleId: newClass.id,
                             holidayCampId: camp.id,
                             holidayCampDateId: date.id,

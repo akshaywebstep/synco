@@ -69,7 +69,14 @@ exports.cancelClassSession = async (req, res) => {
       });
     }
 
-    const cancelSessionPlanResult = await CancelClassService.getCancelledSessionByMapIdSessionPlanId(holidayClassScheduleCampDateMapResult.mapEntry.sessionPlanId);
+    const mapEntry = holidayClassScheduleCampDateMapResult.mapEntry;
+
+    const cancelSessionPlanResult =
+      await CancelClassService.getCancelledSessionByMapIdSessionPlanId(
+        mapEntry.id,            // ✅ mapId
+        mapEntry.sessionPlanId  // ✅ sessionPlanGroupId
+      );
+
     console.log(`cancelSessionPlanResult - `, cancelSessionPlanResult);
 
     if (cancelSessionPlanResult.status) {
@@ -152,13 +159,24 @@ exports.cancelClassSession = async (req, res) => {
       );
     }
 
+    let successMessage = "Class session cancelled successfully.";
+
+    if (hasSuccess) {
+      if (cancelResult.emailsSent === false) {
+        successMessage =
+          "Class cancelled successfully. No bookings found, so no notification emails were sent.";
+      } else if (cancelResult.emailsSent === true) {
+        successMessage =
+          "Class cancelled successfully and notification emails have been sent.";
+      }
+    }
+
     return res.status(hasSuccess ? 201 : 400).json({
       status: hasSuccess,
-      message: hasSuccess
-        ? "Class session cancelled successfully."
-        : "Cancellation failed.",
+      message: successMessage,
       data: cancelResult.data,
     });
+
   } catch (error) {
     console.error("❌ Error cancelling class session:", error);
     await logActivity(
