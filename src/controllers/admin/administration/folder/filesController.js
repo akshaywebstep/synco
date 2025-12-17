@@ -5,13 +5,12 @@ const FilesService = require("../../../../services/admin/administration/folder/f
 const FolderService = require("../../../../services/admin/administration/folder/folder");
 const { Files } = require("../../../../models");
 
+const axios = require("axios");
 const { logActivity } = require("../../../../utils/admin/activityLogger");
 const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
 const { createNotification } = require("../../../../utils/admin/notificationHelper");
 const { saveFile } = require("../../../../utils/fileHandler");
 const { uploadToFTP } = require("../../../../utils/uploadToFTP");
-
-const axios = require("axios");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -416,26 +415,29 @@ exports.downloadFile = async (req, res) => {
   try {
     const result = await FilesService.downloadFileById(fileId, url);
 
-    // log activity
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "downloadFile",
-      { fileId, url },
-      result.status
-    );
-
     if (!result.status) {
       return res.status(400).json(result);
     }
 
-    // ✅ FORCE DOWNLOAD
-    return res.redirect(result.data.fileUrl);
+    const fileUrl = result.data.fileUrl;
+    const fileName = path.basename(fileUrl);
+
+    // ✅ Fetch file as stream
+    const response = await axios.get(fileUrl, {
+      responseType: "stream",
+    });
+
+    // ✅ Force download
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${fileName}"`
+    );
+    res.setHeader("Content-Type", response.headers["content-type"]);
+
+    response.data.pipe(res);
 
   } catch (error) {
-    await logActivity(req, PANEL, MODULE, "downloadFile", error, false);
-
+    console.error(error);
     return res.status(500).json({
       status: false,
       message: "Server error while downloading file.",
