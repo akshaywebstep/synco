@@ -72,7 +72,30 @@ exports.getAllVmRecruitmentLead = async (adminId) => {
     for (const lead of recruitmentLead) {
       const leadJson = lead.toJSON();
       const profile = leadJson.candidateProfile;
+      if (profile?.availableVenueWork) {
+        try {
+          const venueIds = Array.isArray(profile.availableVenueWork)
+            ? profile.availableVenueWork
+            : JSON.parse(profile.availableVenueWork);
 
+          const venues = await Venue.findAll({
+            where: {
+              id: venueIds
+            }
+          });
+
+          profile.availableVenueWork = {
+            ids: venueIds,
+            venues: venues.map(v => v.toJSON())
+          };
+
+        } catch (err) {
+          profile.availableVenueWork = {
+            ids: [],
+            venues: []
+          };
+        }
+      }
       if (profile?.bookPracticalAssessment) {
         try {
           profile.bookPracticalAssessment = JSON.parse(profile.bookPracticalAssessment);
@@ -456,35 +479,35 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
       };
     }
     // 🗓️ Define date ranges dynamically based on dateRange
-        let startDate, endDate;
-    
-        if (dateRange === "thisMonth") {
-          startDate = moment().startOf("month").toDate();
-          endDate = moment().endOf("month").toDate();
-        } else if (dateRange === "lastMonth") {
-          startDate = moment().subtract(1, "month").startOf("month").toDate();
-          endDate = moment().subtract(1, "month").endOf("month").toDate();
-        } else if (dateRange === "last3Months") {
-          startDate = moment().subtract(3, "months").startOf("month").toDate();
-          endDate = moment().endOf("month").toDate();
-        } else if (dateRange === "last6Months") {
-          startDate = moment().subtract(6, "months").startOf("month").toDate();
-          endDate = moment().endOf("month").toDate();
-        } else {
-          throw new Error(
-            "Invalid dateRange. Use thisMonth | lastMonth | last3Months | last6Months"
-          );
-        }
+    let startDate, endDate;
+
+    if (dateRange === "thisMonth") {
+      startDate = moment().startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+    } else if (dateRange === "lastMonth") {
+      startDate = moment().subtract(1, "month").startOf("month").toDate();
+      endDate = moment().subtract(1, "month").endOf("month").toDate();
+    } else if (dateRange === "last3Months") {
+      startDate = moment().subtract(3, "months").startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+    } else if (dateRange === "last6Months") {
+      startDate = moment().subtract(6, "months").startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+    } else {
+      throw new Error(
+        "Invalid dateRange. Use thisMonth | lastMonth | last3Months | last6Months"
+      );
+    }
 
     const recruitmentLead = await RecruitmentLead.findAll({
       where: {
         createdBy: Number(adminId),
-        createdAt: { [Op.between]: [startDate, endDate] }, 
+        createdAt: { [Op.between]: [startDate, endDate] },
         appliedFor: "venue manager"
       },
       include: [
         { model: CandidateProfile, as: "candidateProfile" },
-         { model: Admin, as: "creator", attributes: ["id", "firstName", "lastName","profile"] }
+        { model: Admin, as: "creator", attributes: ["id", "firstName", "lastName", "profile"] }
       ],
       order: [["createdAt", "DESC"]],
     });
@@ -680,7 +703,7 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
         }
       }
 
-     // inside the for (const lead of recruitmentLead) { ... } loop:
+      // inside the for (const lead of recruitmentLead) { ... } loop:
       if (lead.status === "recruited") {
         const agentId = lead.createdBy ?? (lead.creator && lead.creator.id);
         if (agentId != null) {
@@ -816,7 +839,7 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
         },
         sourceOfLeads: byLeadSource,
         // highDemandVenues,
-        topAgentsMostHires:topAgents,
+        topAgentsMostHires: topAgents,
       }
     };
 

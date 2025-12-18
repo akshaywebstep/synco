@@ -1,4 +1,4 @@
-const { RecruitmentLead, CandidateProfile, Venue, ClassSchedule, Admin } = require("../../../../models");
+const { RecruitmentLead, CandidateProfile, Venue, ClassSchedule, Admin, AdminRole } = require("../../../../models");
 
 const { getEmailConfig } = require("../../../../services/email");
 const sendEmail = require("../../../../utils/email/sendEmail");
@@ -799,7 +799,30 @@ exports.getAllCoachAndVmRecruitmentLead = async (adminId) => {
     for (const lead of recruitmentLead) {
       const leadJson = lead.toJSON();
       const profile = leadJson.candidateProfile;
+      if (profile?.availableVenueWork) {
+        try {
+          const venueIds = Array.isArray(profile.availableVenueWork)
+            ? profile.availableVenueWork
+            : JSON.parse(profile.availableVenueWork);
 
+          const venues = await Venue.findAll({
+            where: {
+              id: venueIds
+            }
+          });
+
+          profile.availableVenueWork = {
+            ids: venueIds,
+            venues: venues.map(v => v.toJSON())
+          };
+
+        } catch (err) {
+          profile.availableVenueWork = {
+            ids: [],
+            venues: []
+          };
+        }
+      }
       if (profile?.bookPracticalAssessment) {
         try {
           profile.bookPracticalAssessment = JSON.parse(profile.bookPracticalAssessment);
@@ -907,7 +930,6 @@ exports.getAllCoachAndVmRecruitmentLead = async (adminId) => {
   }
 };
 
-// venue list
 // venue list with class schedules
 exports.getAllVenues = async (createdBy) => {
   try {
@@ -969,6 +991,58 @@ exports.getAllVenues = async (createdBy) => {
     return {
       status: false,
       message: "Failed to fetch venues.",
+    };
+  }
+};
+
+// Get all admins
+exports.getAllVenueManager = async (superAdminId, includeSuperAdmin = false) => {
+  if (!superAdminId || isNaN(Number(superAdminId))) {
+    return {
+      status: false,
+      message: "No valid coach found for this request.",
+      data: [],
+    };
+  }
+
+  try {
+    const whereCondition = includeSuperAdmin
+      ? {
+        [Op.or]: [
+          { superAdminId: Number(superAdminId) },
+          { id: Number(superAdminId) },
+        ],
+      }
+      : { superAdminId: Number(superAdminId) };
+
+    const admins = await Admin.findAll({
+      where: whereCondition,
+      attributes: { exclude: ["password", "resetOtp", "resetOtpExpiry"] },
+      include: [
+        {
+          model: AdminRole,
+          as: "role",
+          attributes: ["id", "role"],
+          where: { role: "admin" },  // 🔥 Filter only COACH role
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+    });
+
+    return {
+      status: true,
+      message: `Fetched ${admins.length} admin(s) successfully.`,
+      data: admins,
+    };
+  } catch (error) {
+    console.error("❌ Sequelize Error in getAllVenueManager:", error);
+
+    return {
+      status: false,
+      message:
+        error?.parent?.sqlMessage ||
+        error?.message ||
+        "Failed to fetch venue manager.",
     };
   }
 };

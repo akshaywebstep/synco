@@ -12,6 +12,7 @@ const {
   sendEmail,
   getAllRecruitmentLeadRport,
   getAllVenues,
+  getAllVenueManager,
 } = require("../../../controllers/admin/recruitment/coach/coachRecruitmentLeadController");
 
 router.post(
@@ -69,5 +70,12 @@ router.get(
   permissionMiddleware("recruitment-lead", "view-listing"),
   getAllRecruitmentLeadRport
 );
+
+router.get(
+  "/venue-manager/",
+  authMiddleware,
+  permissionMiddleware("recruitment-lead", "view-listing"),
+  getAllVenueManager,
+)
 
 module.exports = router;

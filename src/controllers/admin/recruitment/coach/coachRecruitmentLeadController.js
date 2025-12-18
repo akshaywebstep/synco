@@ -401,3 +401,60 @@ exports.getAllVenues = async (req, res) => {
     });
   }
 };
+
+// ✅ Get all admins
+exports.getAllVenueManager = async (req, res) => {
+  if (DEBUG) console.log("📋 Request received to list all admins");
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin?.id);
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+  try {
+    // const loggedInAdminId = req.admin?.id; // Get the current admin's ID
+
+    const result = await RecruitmentLeadService.getAllVenueManager(superAdminId); // Pass it to the service
+
+    if (!result.status) {
+      if (DEBUG) console.log("❌ Failed to retrieve venue manager:", result.message);
+
+      await logActivity(req, PANEL, MODULE, "list", result, false);
+      return res.status(500).json({
+        status: false,
+        message: result.message || "Failed to fetch venue manager.",
+      });
+    }
+
+    if (DEBUG) {
+      console.log(`✅ Retrieved ${result.data.length} admin(s)`);
+      console.table(
+        result.data.map((m) => ({
+          ID: m.id,
+          Name: m.name,
+          Email: m.email,
+          Created: m.createdAt,
+        }))
+      );
+    }
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      {
+        oneLineMessage: `Fetched ${result.data.length} admin(s) successfully.`,
+      },
+      true
+    );
+
+    return res.status(200).json({
+      status: true,
+      message: `Fetched ${result.data.length} admin(s) successfully.`,
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ List Admins Error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Failed to fetch coaches. Please try again later.",
+    });
+  }
+};
