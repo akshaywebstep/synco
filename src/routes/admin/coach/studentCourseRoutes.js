@@ -12,7 +12,7 @@ const {
     getAllStudentCourses,
     getStudentCourseById,
     updateStudentCourse,
-    // deleteCourse,
+    deleteStudentCourse,
 } = require("../../../controllers/admin/coaches/studentCourseController");
 
 // Route: Upload music (unlimited files)
@@ -52,11 +52,11 @@ router.put(
     updateStudentCourse
 );
 
-// router.delete(
-//     "/delete/:id",
-//     authMiddleware,
-//     upload.any(),
-//     permissionMiddleware("student-course", "delete"),
-//     deleteCourse
-// );
+router.delete(
+    "/delete/:id",
+    authMiddleware,
+    upload.any(),
+    permissionMiddleware("student-course", "delete"),
+    deleteStudentCourse
+);
 module.exports = router;

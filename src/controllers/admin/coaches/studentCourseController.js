@@ -598,3 +598,112 @@ exports.updateStudentCourse = async (req, res) => {
         });
     }
 };
+
+/**
+ * Delete Student Course (Soft Delete)
+ */
+exports.deleteStudentCourse = async (req, res) => {
+    try {
+        const adminId = req.admin.id;
+        const courseId = req.params.id;
+
+        if (DEBUG) {
+            console.log("🗑️ Delete Course ID:", courseId);
+            console.log("👤 Admin ID:", adminId);
+        }
+
+        // =========================
+        // 0️⃣ Validate courseId
+        // =========================
+        if (!courseId || isNaN(Number(courseId))) {
+            return res.status(422).json({
+                status: false,
+                message: "Invalid student course ID",
+            });
+        }
+
+        // =========================
+        // 1️⃣ Resolve super admin
+        // =========================
+        const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+        const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+        if (DEBUG) {
+            console.log(`🧩 SuperAdminId resolved as: ${superAdminId}`);
+        }
+
+        // =========================
+        // 2️⃣ Call delete service
+        // =========================
+        const result = await studentCourseService.deleteStudentCourseById(
+            adminId,
+            superAdminId,
+            courseId
+        );
+
+        if (!result.status) {
+            await logActivity(
+                req,
+                PANEL,
+                MODULE,
+                "delete",
+                result.message,
+                false
+            );
+
+            return res.status(404).json(result);
+        }
+
+        // =========================
+        // 3️⃣ Activity Log
+        // =========================
+        await logActivity(
+            req,
+            PANEL,
+            MODULE,
+            "delete",
+            {
+                oneLineMessage: `Deleted student course ID: ${courseId}`,
+            },
+            true
+        );
+
+        // =========================
+        // 4️⃣ Notification (optional)
+        // =========================
+        const adminName =
+            `${req.admin.firstName || ""} ${req.admin.lastName || ""}`.trim();
+
+        await createNotification(
+            req,
+            "Student Course Deleted",
+            `${adminName} deleted a student course`,
+            "Support"
+        );
+
+        // =========================
+        // 5️⃣ Response
+        // =========================
+        return res.status(200).json({
+            status: true,
+            message: "Student course deleted successfully",
+        });
+
+    } catch (error) {
+        if (DEBUG) console.error("❌ Delete Student Course Error:", error);
+
+        await logActivity(
+            req,
+            PANEL,
+            MODULE,
+            "delete",
+            error.message,
+            false
+        );
+
+        return res.status(500).json({
+            status: false,
+            message: "Server error while deleting student course",
+        });
+    }
+};

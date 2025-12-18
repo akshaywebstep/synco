@@ -76,7 +76,7 @@ const uploadFileAndGetUrl = async (
 
 const ADMIN_RESET_URL =
   process.env.ADMIN_RESET_URL ||
-  "https://webstepdev.com/demo/synco/reset-password";
+  "https://grabbite.com/reset-password";
 
 /* =======================
    CREATE ADMIN

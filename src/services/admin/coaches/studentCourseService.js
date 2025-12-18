@@ -294,3 +294,104 @@ exports.updateStudentCourseById = async (adminId, superAdminId, courseId, update
         };
     }
 };
+
+/**
+ * Soft Delete Student Course by ID (save deletedBy & deletedAt + delete FTP files)
+ */
+exports.deleteStudentCourseById = async (adminId, superAdminId, courseId) => {
+    try {
+        // -----------------------------
+        // 1️⃣ Validate inputs
+        // -----------------------------
+        if (!adminId || isNaN(Number(adminId))) {
+            return {
+                status: false,
+                message: "No valid admin ID found.",
+            };
+        }
+
+        if (!courseId || isNaN(Number(courseId))) {
+            return {
+                status: false,
+                message: "Invalid student course ID.",
+            };
+        }
+
+        // -----------------------------
+        // 2️⃣ Resolve allowed admin IDs
+        // -----------------------------
+        let allowedAdminIds = [];
+
+        if (superAdminId && superAdminId === adminId) {
+            const managedAdmins = await Admin.findAll({
+                where: { superAdminId },
+                attributes: ["id"],
+            });
+
+            allowedAdminIds = managedAdmins.map(a => a.id);
+            allowedAdminIds.push(superAdminId);
+
+        } else if (superAdminId) {
+            allowedAdminIds = [adminId, superAdminId];
+        } else {
+            allowedAdminIds = [adminId];
+        }
+
+        // -----------------------------
+        // 3️⃣ Find course (NOT deleted)
+        // -----------------------------
+        const studentCourse = await StudentCourse.findOne({
+            where: {
+                id: courseId,
+                createdBy: { [Op.in]: allowedAdminIds },
+                deletedAt: null, // ⛔ already deleted protection
+            },
+        });
+
+        if (!studentCourse) {
+            return {
+                status: false,
+                message: "Student course not found or already deleted.",
+            };
+        }
+
+        // -----------------------------
+        // 4️⃣ Delete files from FTP
+        // -----------------------------
+        if (studentCourse.coverImage) {
+            await deleteFromFTP(studentCourse.coverImage);
+        }
+
+        if (Array.isArray(studentCourse.videos)) {
+            for (const video of studentCourse.videos) {
+                if (video?.videoUrl) {
+                    await deleteFromFTP(video.videoUrl);
+                }
+            }
+        }
+
+        // -----------------------------
+        // 5️⃣ Soft delete (save deletedBy & deletedAt)
+        // -----------------------------
+        await studentCourse.update({
+            deletedBy: adminId,
+            deletedAt: new Date(),
+        });
+
+        return {
+            status: true,
+            message: "Student course deleted successfully.",
+        };
+
+    } catch (error) {
+        console.error("❌ Sequelize Error in deleteStudentCourseById:", error);
+
+        return {
+            status: false,
+            message:
+                error?.parent?.sqlMessage ||
+                error?.message ||
+                "Failed to delete student course.",
+        };
+    }
+};

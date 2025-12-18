@@ -72,6 +72,30 @@ exports.getAllRecruitmentLead = async (adminId) => {
     for (const lead of recruitmentLead) {
       const leadJson = lead.toJSON();
       const profile = leadJson.candidateProfile;
+      if (profile?.availableVenueWork) {
+        try {
+          const venueIds = Array.isArray(profile.availableVenueWork)
+            ? profile.availableVenueWork
+            : JSON.parse(profile.availableVenueWork);
+
+          const venues = await Venue.findAll({
+            where: {
+              id: venueIds
+            }
+          });
+
+          profile.availableVenueWork = {
+            ids: venueIds,
+            venues: venues.map(v => v.toJSON())
+          };
+
+        } catch (err) {
+          profile.availableVenueWork = {
+            ids: [],
+            venues: []
+          };
+        }
+      }
 
       if (profile?.bookPracticalAssessment) {
         try {
@@ -407,7 +431,7 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
       },
       include: [
         { model: CandidateProfile, as: "candidateProfile" },
-        { model: Admin, as: "creator", attributes: ["id", "firstName", "lastName","profile"] }
+        { model: Admin, as: "creator", attributes: ["id", "firstName", "lastName", "profile"] }
       ],
       order: [["createdAt", "DESC"]],
     });
