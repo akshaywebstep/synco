@@ -633,7 +633,7 @@ exports.getAllAdmins = async (req, res) => {
   try {
     const loggedInAdminId = req.admin?.id; // Get the current admin's ID
 
-    const result = await adminModel.getAllAdmins(superAdminId); // Pass it to the service
+    const result = await adminModel.getAllAdmins(superAdminId,loggedInAdminId); // Pass it to the service
 
     if (!result.status) {
       if (DEBUG) console.log("❌ Failed to retrieve admins:", result.message);

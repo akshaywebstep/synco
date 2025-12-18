@@ -184,7 +184,63 @@ exports.updateAdmin = async (adminId, updateData) => {
 };
 
 // Get all admins
-exports.getAllAdmins = async (superAdminId, includeSuperAdmin = false) => {
+// exports.getAllAdmins = async (superAdminId, includeSuperAdmin = false) => {
+//   if (!superAdminId || isNaN(Number(superAdminId))) {
+//     return {
+//       status: false,
+//       message: "No valid parent or super admin found for this request.",
+//       data: [],
+//     };
+//   }
+
+//   try {
+
+//     const whereCondition = includeSuperAdmin
+//       ? {
+//         [Op.or]: [
+//           { superAdminId: Number(superAdminId) },
+//           { id: Number(superAdminId) }, // include the super admin themselves
+//         ],
+//       }
+//       : { superAdminId: Number(superAdminId) };
+
+//     const admins = await Admin.findAll({
+//       where: whereCondition,
+//       attributes: { exclude: ["password", "resetOtp", "resetOtpExpiry"] },
+//       include: [
+//         {
+//           model: AdminRole,
+//           as: "role",
+//           attributes: ["id", "role"],
+//         },
+//       ],
+//       order: [["createdAt", "DESC"]],
+//     });
+
+//     return {
+//       status: true,
+//       message: `Fetched ${admins.length} admin(s) successfully.`,
+//       data: admins,
+//     };
+//   } catch (error) {
+//     console.error("❌ Sequelize Error in getAllAdmins:", error);
+
+//     return {
+//       status: false,
+//       message:
+//         error?.parent?.sqlMessage ||
+//         error?.message ||
+//         "Failed to fetch admins.",
+//     };
+//   }
+// };
+
+// Get all admins (also include the logged-in admin)
+exports.getAllAdmins = async (
+  superAdminId,
+  loggedInAdminId,
+  includeSuperAdmin = false
+) => {
   if (!superAdminId || isNaN(Number(superAdminId))) {
     return {
       status: false,
@@ -194,19 +250,27 @@ exports.getAllAdmins = async (superAdminId, includeSuperAdmin = false) => {
   }
 
   try {
+    const orConditions = [
+      { superAdminId: Number(superAdminId) },
+    ];
 
-    const whereCondition = includeSuperAdmin
-      ? {
-        [Op.or]: [
-          { superAdminId: Number(superAdminId) },
-          { id: Number(superAdminId) }, // include the super admin themselves
-        ],
-      }
-      : { superAdminId: Number(superAdminId) };
+    // include super admin themselves
+    if (includeSuperAdmin) {
+      orConditions.push({ id: Number(superAdminId) });
+    }
+
+    // include currently logged-in admin
+    if (loggedInAdminId) {
+      orConditions.push({ id: Number(loggedInAdminId) });
+    }
 
     const admins = await Admin.findAll({
-      where: whereCondition,
-      attributes: { exclude: ["password", "resetOtp", "resetOtpExpiry"] },
+      where: {
+        [Op.or]: orConditions,
+      },
+      attributes: {
+        exclude: ["password", "resetOtp", "resetOtpExpiry"],
+      },
       include: [
         {
           model: AdminRole,
