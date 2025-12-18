@@ -3,6 +3,8 @@ const fs = require("fs");
 const axios = require("axios");
 
 const { validateFormData } = require("../../../utils/validateFormData");
+ 
+const urlToBase64 = require("../../../utils/urlToBase64");
 const contractService = require("../../../services/admin/coaches/contractService");
 
 const { logActivity } = require("../../../utils/admin/activityLogger");
@@ -547,11 +549,17 @@ exports.deleteContractById = async (req, res) => {
  */
 exports.downloadContractPdf = async (req, res) => {
     const { contractId } = req.params;
+    const { pdfFile } = req.query;
     const adminId = req.admin?.id;
     const superAdminId = req.admin?.superAdminId;
 
     try {
-        const result = await contractService.downloadContractPdf(contractId, adminId, superAdminId);
+        const result = await contractService.downloadContractPdf(
+            contractId,
+            adminId,
+            superAdminId,
+            pdfFile // 👈 pass query param to service
+        );
 
         if (!result.status) {
             return res.status(404).json(result);
@@ -559,21 +567,27 @@ exports.downloadContractPdf = async (req, res) => {
 
         const { filePath, fileUrl, fileName } = result;
 
+        // ✅ Local file
         if (filePath) {
-            // Local file → send with res.download
             return res.download(filePath, fileName);
         }
 
+        // ✅ Remote file
         if (fileUrl) {
-            // Remote URL → stream the file to client
             const response = await axios({
                 method: "GET",
                 url: fileUrl,
                 responseType: "stream",
             });
 
-            res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
-            res.setHeader("Content-Type", response.headers["content-type"] || "application/pdf");
+            res.setHeader(
+                "Content-Disposition",
+                `attachment; filename="${fileName}"`
+            );
+            res.setHeader(
+                "Content-Type",
+                response.headers["content-type"] || "application/pdf"
+            );
 
             return response.data.pipe(res);
         }
@@ -588,6 +602,67 @@ exports.downloadContractPdf = async (req, res) => {
         return res.status(500).json({
             status: false,
             message: error.message || "Failed to download contract PDF",
+        });
+    }
+};
+
+exports.convertUrlToBase = async (req, res) => {
+    console.log("🟢 STEP 1: API HIT /api/utils/url-to-base");
+
+    try {
+        console.log("🟢 STEP 2: req.body =>", req.body);
+
+        const { urls } = req.body;
+
+        if (!Array.isArray(urls) || urls.length === 0) {
+            console.log("🔴 STEP 3: urls missing or invalid");
+            return res.status(400).json({
+                status: false,
+                message: "urls array is required"
+            });
+        }
+
+        console.log("🟢 STEP 4: urls validated =>", urls.length);
+
+        const result = [];
+
+        for (let i = 0; i < urls.length; i++) {
+            const url = urls[i];
+            console.log(`🟡 STEP 5.${i + 1}: Processing URL =>`, url);
+
+            try {
+                console.log(`🟡 STEP 6.${i + 1}: Calling urlToBase64`);
+
+                const base = await urlToBase64(url);
+
+                console.log(`🟢 STEP 7.${i + 1}: Conversion SUCCESS`);
+
+                result.push({ url, base });
+            } catch (err) {
+                console.error(`🔴 STEP 7.${i + 1}: Conversion FAILED`);
+                console.error("🔴 Error Message:", err.message);
+
+                result.push({
+                    url,
+                    base: null,
+                    error: err.message || "Failed to convert"
+                });
+            }
+        }
+
+        console.log("🟢 STEP 8: All URLs processed");
+
+        return res.json({
+            status: true,
+            data: result
+        });
+    } catch (error) {
+        console.error("🔴 STEP 9: Controller CRASHED");
+        console.error(error);
+
+        return res.status(500).json({
+            status: false,
+            message: "Internal server error"
         });
     }
 };

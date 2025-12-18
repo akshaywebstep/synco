@@ -271,63 +271,69 @@ exports.deleteContractById = async (id, adminId) => {
 /**
  * Download Contract PDF (local file or remote URL)
  */
-exports.downloadContractPdf = async (contractId, adminId, superAdminId) => {
+exports.downloadContractPdf = async (
+    contractId,
+    adminId,
+    superAdminId,
+    pdfFileFromQuery
+) => {
     try {
-        // 1️⃣ Get contract
-        const result = await exports.getContractById(contractId, adminId, superAdminId);
+        let pdfFile = pdfFileFromQuery;
 
-        if (!result.status) {
-            return result; // Contract not found or no permission
+        // 🔁 If pdfFile not provided in query → fetch from DB
+        if (!pdfFile) {
+            const result = await exports.getContractById(
+                contractId,
+                adminId,
+                superAdminId
+            );
+
+            if (!result.status) {
+                return result;
+            }
+
+            pdfFile = result.data?.pdfFile;
         }
 
-        const contract = result.data;
-
-        // 2️⃣ Validate PDF file existence
-        if (!contract.pdfFile) {
+        if (!pdfFile) {
             return {
                 status: false,
-                message: "PDF file not found for this contract.",
-                data: contract,
+                message: "PDF file not found.",
             };
         }
 
-        // 3️⃣ Handle remote URL
-        if (contract.pdfFile.startsWith("http")) {
+        // 🌐 Remote URL
+        if (pdfFile.startsWith("http")) {
             return {
                 status: true,
                 message: "PDF ready for download.",
-                data: contract,
-                fileUrl: contract.pdfFile, // Client can directly download
-                fileName: `contract_${contract.id}.pdf`,
+                fileUrl: pdfFile,
+                fileName: `contract_${contractId}.pdf`,
             };
         }
 
-        // 4️⃣ Handle local file
-        const filePath = path.resolve(contract.pdfFile);
+        // 📁 Local file
+        const filePath = path.resolve(pdfFile);
+
         if (!fs.existsSync(filePath)) {
             return {
                 status: false,
                 message: "PDF file does not exist on server.",
-                data: contract,
             };
         }
 
-        // ✅ Return success info for local file
         return {
             status: true,
             message: "PDF ready for download.",
-            data: contract,
             filePath,
-            fileName: `contract_${contract.id}.pdf`,
+            fileName: `contract_${contractId}.pdf`,
         };
 
     } catch (error) {
         console.error("❌ Error in downloadContractPdf:", error);
-
         return {
             status: false,
-            message: error?.message || "Failed to download contract PDF.",
-            data: [],
+            message: error.message || "Failed to download contract PDF.",
         };
     }
 };

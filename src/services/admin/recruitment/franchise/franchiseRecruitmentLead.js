@@ -700,7 +700,8 @@ exports.getAllFranchiseRecruitmentLeadRport = async (adminId,dateRange) => {
             topAgentCount[key] = {
               totalHires: 0,
               firstName: lead.creator?.firstName || "",
-              lastName: lead.creator?.lastName || ""
+              lastName: lead.creator?.lastName || "",
+              profile: lead.creator?.profile || "",
             };
           }
           topAgentCount[key].totalHires++;

@@ -12,6 +12,8 @@ const {
     getContractById,
     updateContractById,
     downloadContractPdf,
+    deleteContractById,
+    convertUrlToBase,
 } = require("../../../controllers/admin/coaches/contractController");
 
 // Route: 
@@ -23,6 +25,10 @@ router.post(
     createContract
 );
 
+router.post(
+    "/utils/url-to-base/",
+    convertUrlToBase
+)
 router.get(
     "/list",
     authMiddleware,
@@ -43,6 +49,14 @@ router.put(
     upload.single("pdfFile"),
     permissionMiddleware("contract", "update"),
     updateContractById
+);
+
+router.delete(
+    "/delete/:id",
+    authMiddleware,
+    upload.single("pdfFile"),
+    permissionMiddleware("contract", "delete"),
+    deleteContractById
 );
 
 router.get(

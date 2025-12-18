@@ -605,7 +605,8 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
             topAgentCount[key] = {
               totalHires: 0,
               firstName: lead.creator?.firstName || "",
-              lastName: lead.creator?.lastName || ""
+              lastName: lead.creator?.lastName || "",
+              profile: lead.creator?.profile || "",
             };
           }
           topAgentCount[key].totalHires++;
@@ -883,6 +884,7 @@ exports.getAllCoachAndVmRecruitmentLead = async (adminId) => {
 };
 
 // venue list
+// venue list with class schedules
 exports.getAllVenues = async (createdBy) => {
   try {
     if (!createdBy || isNaN(Number(createdBy))) {
@@ -915,10 +917,27 @@ exports.getAllVenues = async (createdBy) => {
         "createdAt",
         "updatedAt",
       ],
+      include: [
+        {
+          model: ClassSchedule,
+          as: "classSchedules",
+          attributes: [
+            "id",
+            "className",
+            "startTime",
+            "endTime",
+            "day",
+            "capacity",
+            "createdAt",
+            "updatedAt",
+          ],
+        },
+      ],
     });
+
     return {
       status: true,
-      message: "Venues fetched successfully.",
+      message: "Venues with class schedules fetched successfully.",
       data: venues,
     };
   } catch (error) {
