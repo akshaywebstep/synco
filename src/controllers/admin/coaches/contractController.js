@@ -545,104 +545,40 @@ exports.deleteContractById = async (req, res) => {
  * Download Pdf Contract By Id
  */
 exports.downloadContractPdf = async (req, res) => {
+    const { contractId } = req.params;
     const adminId = req.admin?.id;
     const superAdminId = req.admin?.superAdminId;
-    const { contractId } = req.params;
-
-    if (DEBUG) {
-        console.log("📥 Download request:", {
-            contractId,
-            adminId,
-            superAdminId,
-        });
-    }
 
     try {
-        // -----------------------------
-        // 1️⃣ Get contract with permission check
-        // -----------------------------
-        const result = await contractService.getContractById(
-            contractId,
-            adminId,
-            superAdminId
-        );
+        const result = await contractService.downloadContractPdf(contractId, adminId, superAdminId);
 
         if (!result.status) {
-            await logActivity(
-                req,
-                PANEL,
-                MODULE,
-                "download",
-                result.message,
-                false
-            );
-
             return res.status(404).json(result);
         }
 
-        const contract = result.data;
+        const { filePath, fileUrl, fileName } = result;
 
-        // -----------------------------
-        // 2️⃣ Validate PDF file
-        // -----------------------------
-        if (!contract.pdfFile) {
-            const message = "No PDF file associated with this contract.";
-
-            await logActivity(req, PANEL, MODULE, "download", message, false);
-
-            return res.status(404).json({
-                status: false,
-                message,
-            });
+        if (fileUrl) {
+            // Remote URL → redirect the client
+            return res.redirect(fileUrl);
         }
 
-        const filePath = path.resolve(contract.pdfFile);
-
-        if (DEBUG) console.log("📄 Resolved PDF path:", filePath);
-
-        if (!fs.existsSync(filePath)) {
-            const message = "Contract PDF file not found on server.";
-
-            await logActivity(req, PANEL, MODULE, "download", message, false);
-
-            return res.status(404).json({
-                status: false,
-                message,
-            });
+        if (filePath) {
+            // Local file → send with res.download
+            return res.download(filePath, fileName);
         }
 
-        // -----------------------------
-        // 3️⃣ Log success & download
-        // -----------------------------
-        await logActivity(
-            req,
-            PANEL,
-            MODULE,
-            "download",
-            `Contract PDF downloaded (ID: ${contractId})`,
-            true
-        );
-
-        return res.download(
-            filePath,
-            `contract_${contract.id}.pdf`
-        );
+        return res.status(500).json({
+            status: false,
+            message: "File path or URL not found.",
+        });
 
     } catch (error) {
         console.error("❌ downloadContractPdf Error:", error);
-
-        await logActivity(
-            req,
-            PANEL,
-            MODULE,
-            "download",
-            error.message,
-            false
-        );
-
         return res.status(500).json({
             status: false,
             message: error.message || "Failed to download contract PDF",
         });
     }
 };
+

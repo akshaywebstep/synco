@@ -53,7 +53,7 @@ exports.createCourse = async (req, res) => {
       "title",
       "description",
       "modules",
-      "questions",
+      // "questions",
       "duration",
       "reTakeCourse",
       "passingConditionValue",
@@ -369,9 +369,9 @@ exports.updateCourse = async (req, res) => {
     if (formData.isCompulsory !== undefined)
       formData.isCompulsory = formData.isCompulsory === "true";
 
-    if (formData.questions && typeof formData.questions === "string") {
-      formData.questions = JSON.parse(formData.questions);
-    }
+    // if (formData.questions && typeof formData.questions === "string") {
+    //   formData.questions = JSON.parse(formData.questions);
+    // }
 
     if (DEBUG_MODE) console.log("🧹 Normalized Data:", formData);
 
@@ -385,8 +385,8 @@ exports.updateCourse = async (req, res) => {
       "isCompulsory",
       "setReminderEvery",
       "modules",
-      "questions",
-      "uploadCertificate",
+      // "questions",
+      // "uploadCertificate",
       "certificateTitle",
     ];
 

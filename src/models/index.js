@@ -133,6 +133,7 @@ const models = {
   MusicPlayer: require("./admin/coaches/MusicPlayer"),
   Course: require("./admin/coaches/Course"),
   Contracts: require("./admin/coaches/Contracts"),
+  StudentCourse: require("./admin/coaches/StudentCourse"),
 };
 
 // =================== Apply Model-Level Associations =================== //
@@ -241,6 +242,7 @@ const {
   Course,
 
   Contracts,
+  StudentCourse,
 } = models;
 
 // Many-to-Many
@@ -637,4 +639,5 @@ module.exports = {
 
   Course,
   Contracts,
+  StudentCourse,
 };

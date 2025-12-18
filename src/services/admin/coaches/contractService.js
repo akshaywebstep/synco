@@ -268,40 +268,55 @@ exports.deleteContractById = async (id, adminId) => {
     }
 };
 
+/**
+ * Download Contract PDF (local file or remote URL)
+ */
 exports.downloadContractPdf = async (contractId, adminId, superAdminId) => {
     try {
-        // Reuse existing service
-        const result = await exports.getContractById(
-            contractId,
-            adminId,
-            superAdminId
-        );
+        // 1️⃣ Get contract
+        const result = await exports.getContractById(contractId, adminId, superAdminId);
 
         if (!result.status) {
-            return result;
+            return result; // Contract not found or no permission
         }
 
         const contract = result.data;
 
+        // 2️⃣ Validate PDF file existence
         if (!contract.pdfFile) {
             return {
                 status: false,
                 message: "PDF file not found for this contract.",
+                data: contract,
             };
         }
 
-        const filePath = path.resolve(contract.pdfFile);
+        // 3️⃣ Handle remote URL
+        if (contract.pdfFile.startsWith("http")) {
+            return {
+                status: true,
+                message: "PDF ready for download.",
+                data: contract,
+                fileUrl: contract.pdfFile, // Client can directly download
+                fileName: `contract_${contract.id}.pdf`,
+            };
+        }
 
+        // 4️⃣ Handle local file
+        const filePath = path.resolve(contract.pdfFile);
         if (!fs.existsSync(filePath)) {
             return {
                 status: false,
                 message: "PDF file does not exist on server.",
+                data: contract,
             };
         }
 
+        // ✅ Return success info for local file
         return {
             status: true,
             message: "PDF ready for download.",
+            data: contract,
             filePath,
             fileName: `contract_${contract.id}.pdf`,
         };
@@ -311,7 +326,8 @@ exports.downloadContractPdf = async (contractId, adminId, superAdminId) => {
 
         return {
             status: false,
-            message: error.message || "Failed to download contract PDF.",
+            message: error?.message || "Failed to download contract PDF.",
+            data: [],
         };
     }
 };

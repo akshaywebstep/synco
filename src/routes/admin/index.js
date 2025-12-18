@@ -178,6 +178,7 @@ router.use("/music-player/", require("./coach/musicPlayerRoutes"));
 router.use("/course/", require("./coach/courseRoutes"));
 
 router.use("/contract/", require("./coach/contractRoutes"));
+router.use("/student-course/", require("./coach/studentCourseRoutes"));
 
 // Base: /api/admin/admin
 router.post(
