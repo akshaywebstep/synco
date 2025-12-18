@@ -1,5 +1,6 @@
 const path = require("path");
 const fs = require("fs");
+const axios = require("axios");
 
 const { validateFormData } = require("../../../utils/validateFormData");
 const contractService = require("../../../services/admin/coaches/contractService");
@@ -558,14 +559,23 @@ exports.downloadContractPdf = async (req, res) => {
 
         const { filePath, fileUrl, fileName } = result;
 
-        if (fileUrl) {
-            // Remote URL → redirect the client
-            return res.redirect(fileUrl);
-        }
-
         if (filePath) {
             // Local file → send with res.download
             return res.download(filePath, fileName);
+        }
+
+        if (fileUrl) {
+            // Remote URL → stream the file to client
+            const response = await axios({
+                method: "GET",
+                url: fileUrl,
+                responseType: "stream",
+            });
+
+            res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+            res.setHeader("Content-Type", response.headers["content-type"] || "application/pdf");
+
+            return response.data.pipe(res);
         }
 
         return res.status(500).json({
@@ -581,4 +591,3 @@ exports.downloadContractPdf = async (req, res) => {
         });
     }
 };
-
