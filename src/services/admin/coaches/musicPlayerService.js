@@ -83,12 +83,14 @@ exports.getUploadMusic = async (adminId, superAdminId) => {
     const recordsWithDuration = await Promise.all(
       musicRecords.map(async (record) => {
         const fileUrl = record.uploadMusic; // single file
+        const musicImage = record.musicImage;
         const durationSeconds = await getVideoDurationInSeconds(fileUrl);
 
         return {
           id: record.id,
           createdBy: record.createdBy,
           uploadMusic: fileUrl,
+          musicImage:musicImage,
           durationSeconds,
           durationFormatted: formatDuration(durationSeconds),
           createdAt: record.createdAt,
@@ -171,12 +173,14 @@ exports.getUploadMusicById = async (id, adminId, superAdminId) => {
     }
 
     const fileUrl = record.uploadMusic; // single file
+    const musicImage = record.musicImage;
     const durationSeconds = await getVideoDurationInSeconds(fileUrl);
 
     const parsedRecord = {
       id: record.id,
       createdBy: record.createdBy,
       uploadMusic: fileUrl,
+      musicImage: musicImage,
       durationSeconds,
       durationFormatted: formatDuration(durationSeconds),
       createdAt: record.createdAt,

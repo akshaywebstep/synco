@@ -260,8 +260,12 @@ exports.getAllStudentCourses = async (req, res) => {
             }
         }
 
-        if (DEBUG) console.log("📤 groupedCourses:", groupedCourses);
-
+        // =========================
+        // 3️⃣➕ Sort by sortOrder
+        // =========================
+        Object.keys(groupedCourses).forEach((level) => {
+            groupedCourses[level].sort((a, b) => a.sortOrder - b.sortOrder);
+        });
         // =========================
         // 4️⃣ Log Activity
         // =========================
@@ -704,6 +708,58 @@ exports.deleteStudentCourse = async (req, res) => {
         return res.status(500).json({
             status: false,
             message: "Server error while deleting student course",
+        });
+    }
+};
+
+/**
+ * Reorder Student Course
+ */
+exports.reorderStudentCourse = async (req, res) => {
+    const { orderedIds } = req.body;
+    const adminId = req.admin?.id;
+
+    if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+        return res.status(400).json({
+            status: false,
+            message: "orderedIds must be a non-empty array",
+        });
+    }
+
+    try {
+        const result = await studentCourseService.reorderStudentCourse(
+            orderedIds,
+            adminId
+        );
+
+        if (!result.status) {
+            return res.status(500).json({
+                status: false,
+                message: result.message || "Failed to reorder student course",
+            });
+        }
+
+        await logActivity(
+            req,
+            PANEL,
+            MODULE,
+            "reorder",
+            {
+                oneLineMessage: `Reordered ${orderedIds.length} student course`,
+            },
+            true
+        );
+
+        return res.status(200).json({
+            status: true,
+            message: "Student Course reordered successfully",
+            data: result.data,
+        });
+    } catch (error) {
+        console.error("❌ reorderStudentCourse controller error:", error);
+        return res.status(500).json({
+            status: false,
+            message: "Failed to reorder student course",
         });
     }
 };

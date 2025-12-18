@@ -395,3 +395,34 @@ exports.deleteStudentCourseById = async (adminId, superAdminId, courseId) => {
         };
     }
 };
+
+/**
+ * Reorder Student Course
+ */
+
+exports.reorderStudentCourse = async (orderedIds = [], createdBy) => {
+    try {
+        for (let index = 0; index < orderedIds.length; index++) {
+            const id = orderedIds[index];
+            await StudentCourse.update(
+                { sortOrder: index + 1 },
+                { where: { id, createdBy } }
+            );
+        }
+
+        const updatedGroups = await StudentCourse.findAll({
+            where: { createdBy },
+            order: [["sortOrder", "ASC"]],
+            attributes: ["id", "sortOrder"],
+        });
+
+        return {
+            status: true,
+            message: "Student Course reordered successfully",
+            data: updatedGroups,
+        };
+    } catch (error) {
+        console.error("❌ reorderStudentCourse service error:", error);
+        return { status: false, message: "Internal server error" };
+    }
+};

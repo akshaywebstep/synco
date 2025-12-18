@@ -15,104 +15,123 @@ const MODULE = "music player";
 // Controller to create/upload music
 exports.createUploadMusic = async (req, res) => {
   try {
-    const files = req.files || [];
+    const musicFiles = req.files?.uploadMusic || [];
+    const imageFile = req.files?.musicImage?.[0] || null;
 
-    if (files.length === 0) {
+    if (musicFiles.length === 0) {
       return res.status(400).json({
         status: false,
         message: "No music files uploaded",
       });
     }
 
-    if (DEBUG) console.log(`[${MODULE}] Received files:`, files.length);
+    // =========================
+    // 1️⃣ Validate music files
+    // =========================
+    const allowedMusicExtensions = ["mp3"];
 
-    // 1️⃣ Validate files (only mp3 allowed)
-    const allowedExtensions = ["mp3"];
-    for (const file of files) {
+    for (const file of musicFiles) {
       const ext = path.extname(file.originalname).toLowerCase().slice(1);
-      if (!allowedExtensions.includes(ext)) {
-        if (DEBUG) console.warn(`[${MODULE}] Invalid file type: ${file.originalname}`);
+      if (!allowedMusicExtensions.includes(ext)) {
         return res.status(400).json({
           status: false,
-          message: `Invalid file type: ${file.originalname}`,
+          message: `Invalid music file: ${file.originalname}`,
         });
       }
     }
 
-    if (DEBUG) console.log(`[${MODULE}] All files validated successfully`);
+    // =========================
+    // 2️⃣ Validate image (optional)
+    // =========================
+    let imagePublicUrl = null;
 
-    const createdRecords = [];
+    if (imageFile) {
+      const allowedImageExtensions = ["jpg", "jpeg", "png", "webp"];
+      const imgExt = path.extname(imageFile.originalname).toLowerCase().slice(1);
 
-    // 2️⃣ Upload each file and save as separate record
-    for (const file of files) {
-      const uniqueId = Date.now() + "_" + Math.floor(Math.random() * 1e9);
-      const ext = path.extname(file.originalname).toLowerCase();
-      const fileName = `${uniqueId}${ext}`;
+      if (!allowedImageExtensions.includes(imgExt)) {
+        return res.status(400).json({
+          status: false,
+          message: "Invalid image format",
+        });
+      }
 
-      const localPath = path.join(
+      const imageFileName = imageFile.originalname; // 🔥 keep original name
+
+      const imageLocalPath = path.join(
         process.cwd(),
         "uploads",
         "temp",
         PANEL,
         "musicPlayer",
-        fileName
+        "images",
+        imageFileName
       );
-      await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
-      await saveFile(file, localPath);
 
-      const remotePath = `uploads/temp/${PANEL}/${req.admin.id}/musicPlayer/${fileName}`;
-      const publicUrl = await uploadToFTP(localPath, remotePath);
+      await fs.promises.mkdir(path.dirname(imageLocalPath), { recursive: true });
+      await saveFile(imageFile, imageLocalPath);
 
-      // Cleanup local temp file
-      await fs.promises.unlink(localPath).catch(() => { });
+      const imageRemotePath = `uploads/temp/${PANEL}/${req.admin.id}/musicPlayer/images/${imageFileName}`;
+      imagePublicUrl = await uploadToFTP(imageLocalPath, imageRemotePath);
 
-      if (!publicUrl) continue;
+      await fs.promises.unlink(imageLocalPath).catch(() => { });
+    }
 
-      if (DEBUG) console.log(`[${MODULE}] Uploaded file:`, publicUrl);
+    // =========================
+    // 3️⃣ Upload music files
+    // =========================
+    const createdRecords = [];
 
-      // Save each file as a separate record
+    for (const file of musicFiles) {
+      const musicFileName = file.originalname; // 🔥 ORIGINAL FILE NAME
+
+      const musicLocalPath = path.join(
+        process.cwd(),
+        "uploads",
+        "temp",
+        PANEL,
+        "musicPlayer",
+        "music",
+        musicFileName
+      );
+
+      await fs.promises.mkdir(path.dirname(musicLocalPath), { recursive: true });
+      await saveFile(file, musicLocalPath);
+
+      const musicRemotePath = `uploads/temp/${PANEL}/${req.admin.id}/musicPlayer/music/${musicFileName}`;
+      const musicPublicUrl = await uploadToFTP(musicLocalPath, musicRemotePath);
+
+      await fs.promises.unlink(musicLocalPath).catch(() => { });
+
+      if (!musicPublicUrl) continue;
+
       const createResult = await musicPlayerService.createUploadMusic({
-        uploadMusic: publicUrl,
+        uploadMusic: musicPublicUrl,
+        musicImage: imagePublicUrl, // 🔥 SAME image for all tracks
         createdBy: req.admin.id,
       });
 
       if (createResult.status) createdRecords.push(createResult.data);
     }
 
-    if (createdRecords.length === 0) {
+    if (!createdRecords.length) {
       return res.status(500).json({
         status: false,
-        message: "Failed to upload any music files",
+        message: "Failed to upload music",
       });
     }
 
-    if (DEBUG) console.log(`[${MODULE}] All files saved in DB, total: ${createdRecords.length}`);
-
-    // 3️⃣ Log activity
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "create",
-      {
-        oneLineMessage: `Uploaded ${createdRecords.length} music file(s).`,
-      },
-      true
-    );
-
-    // 4️⃣ Create notification
-    const adminFullName = `${req.admin?.firstName || ""} ${req.admin?.lastName || ""}`.trim();
-    const notificationMessage = `Uploaded ${createdRecords.length} new music file(s) by ${adminFullName || "Unknown Admin"}`;
-    await createNotification(req, "New Music Uploaded", notificationMessage, "Support");
-
-    // 5️⃣ Return response
+    // =========================
+    // 4️⃣ Response
+    // =========================
     return res.status(201).json({
       status: true,
-      message: "Music uploaded successfully",
+      message: "Music & image uploaded successfully",
       data: createdRecords,
     });
+
   } catch (error) {
-    if (DEBUG) console.error(`[${MODULE}] Server error:`, error);
+    console.error(`[${MODULE}] Error:`, error);
     return res.status(500).json({
       status: false,
       message: "Server error while uploading music",
@@ -129,7 +148,7 @@ exports.getUploadMusic = async (req, res) => {
     if (DEBUG) console.log(`🧩 SuperAdminId resolved as: ${superAdminId}`);
 
     // Fetch music records from service
-    const result = await musicPlayerService.getUploadMusic(superAdminId,req.admin.id);
+    const result = await musicPlayerService.getUploadMusic(superAdminId, req.admin.id);
 
     if (!result.status) {
       if (DEBUG) console.error(`[${MODULE}] Failed to fetch music list`);
@@ -185,7 +204,7 @@ exports.getUploadMusicById = async (req, res) => {
     if (DEBUG) console.log(`🧩 SuperAdminId resolved as: ${superAdminId}`);
 
     // Fetch single music record from service
-    const result = await musicPlayerService.getUploadMusicById(id,req.admin.id,superAdminId);
+    const result = await musicPlayerService.getUploadMusicById(id, req.admin.id, superAdminId);
 
     if (!result.status) {
       if (DEBUG) console.error(`[${MODULE}] Failed to fetch music record`);

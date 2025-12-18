@@ -13,6 +13,7 @@ const {
     getStudentCourseById,
     updateStudentCourse,
     deleteStudentCourse,
+    reorderStudentCourse,
 } = require("../../../controllers/admin/coaches/studentCourseController");
 
 // Route: Upload music (unlimited files)
@@ -59,4 +60,8 @@ router.delete(
     permissionMiddleware("student-course", "delete"),
     deleteStudentCourse
 );
+
+// ✅ Reorder Session Plan Groups
+router.patch("/reorder", authMiddleware, reorderStudentCourse);
+
 module.exports = router;

@@ -18,7 +18,10 @@ const {
 router.post(
   "/upload",
   authMiddleware,
-  upload.array("uploadMusic"), // multiple files allowed
+  upload.fields([
+    { name: "uploadMusic", maxCount: 20 },
+    { name: "musicImage", maxCount: 1 }
+  ]),
   permissionMiddleware("music-player", "upload"),
   createUploadMusic
 );
@@ -40,7 +43,10 @@ router.get(
 router.put(
   "/update/:id",
   authMiddleware,
-  upload.single("uploadMusic"), // ONE file only
+  upload.fields([
+    { name: "uploadMusic", maxCount: 20 },
+    { name: "musicImage", maxCount: 1 }
+  ]),
   permissionMiddleware("music-player", "update"),
   renameMusicTrack
 );

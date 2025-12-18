@@ -9,7 +9,11 @@ const MusicPlayer = sequelize.define(
       primaryKey: true,
       autoIncrement: true,
     },
-
+    musicImage: {
+      type: DataTypes.STRING, // single file path
+      allowNull: false,
+      comment: "Uploaded music file path",
+    },
     // ✅ Multiple music files
     uploadMusic: {
       type: DataTypes.STRING, // single file path

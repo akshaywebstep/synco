@@ -42,6 +42,11 @@ const StudentCourse = sequelize.define(
             allowNull: false,
             comment: "Course cover image path",
         },
+        sortOrder: {
+            type: DataTypes.BIGINT.UNSIGNED,
+            allowNull: false,
+            defaultValue: 0,
+        },
 
         // =========================
         // Course Videos (Multiple)
@@ -101,7 +106,7 @@ const StudentCourse = sequelize.define(
         tableName: "student_courses",
         timestamps: true,
         paranoid: true,
-        
+
     }
 );
 
