@@ -38,12 +38,18 @@ exports.getRequestToCancel = async (req, res) => {
     };
 
     // ✅ Apply bookedBy filter
-    if (req.admin?.role?.toLowerCase() === 'super admin') {
-      const admins = mainSuperAdminResult?.admins || [];
-      filters.bookedBy = admins.length > 0 ? admins.map(a => a.id) : [];
+    if (req.admin?.role?.toLowerCase() === "super admin") {
+
+      const childAdminIds = (mainSuperAdminResult?.admins || [])
+        .map(a => a.id);
+
+      filters.bookedBy = [
+        req.admin.id,        // ✅ Super Admin data
+        ...childAdminIds,    // ✅ Child admins data
+      ];
+
     } else {
-      // Always assign bookedBy even if not in query
-      filters.bookedBy = bookedBy || null;
+      filters.bookedBy = req.admin.id;
     }
 
     const result = await CancellationService.getRequestToCancel(filters);

@@ -33,11 +33,19 @@ exports.getAllStudentsListing = async (req, res) => {
     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
     // ✅ Apply bookedBy filter
+    // ✅ Apply bookedBy filter
     if (req.admin?.role?.toLowerCase() === "super admin") {
-      const admins = mainSuperAdminResult?.admins || [];
-      filters.bookedBy = admins.length > 0 ? admins.map((a) => a.id) : [];
+
+      const childAdminIds = (mainSuperAdminResult?.admins || [])
+        .map(a => a.id);
+
+      filters.bookedBy = [
+        req.admin.id,        // ✅ Super Admin data
+        ...childAdminIds,    // ✅ Child admins data
+      ];
+
     } else {
-      filters.bookedBy = adminId || null;
+      filters.bookedBy = req.admin.id;
     }
 
     // 🧠 Run all three service calls in parallel for performance
@@ -489,4 +497,3 @@ exports.getVenuesWithClassesFromBookings = async (req, res) => {
     });
   }
 };
-
