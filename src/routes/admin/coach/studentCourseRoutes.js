@@ -45,13 +45,7 @@ router.get(
 router.put(
     "/update/:id",
     authMiddleware,
-    upload.fields([
-        { name: "coverImage", maxCount: 1 },
-        { name: "videos", maxCount: 20 }, // multiple course videos
-        { name: "video_1", maxCount: 20 }, // multiple course videos
-        { name: "video_2", maxCount: 20 }, // multiple course videos
-        { name: "video_3", maxCount: 20 }, // multiple course videos
-    ]),
+    upload.any(),
     permissionMiddleware("student-course", "update"),
     updateStudentCourse
 );
