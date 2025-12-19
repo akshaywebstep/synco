@@ -1,3 +1,4 @@
+
 // function toReadableFieldName(field) {
 //   return field
 //     .replace(/[-_]/g, " ")
@@ -128,20 +129,20 @@
 
 //   const errorCount = Object.keys(error).length;
 
+//   // Combine all field-specific messages into one string
+//   const message =
+//     errorCount === 0
+//       ? "Form submitted successfully."
+//       : Object.values(error).join(" "); // <-- here we join all errors
+
 //   return {
 //     isValid: errorCount === 0,
 //     ...(errorCount > 0 && { error }),
-//     message:
-//       errorCount === 0
-//         ? "Form submitted successfully."
-//         : `Form contains ${errorCount} validation error${
-//             errorCount > 1 ? "s" : ""
-//           }.`,
+//     message,
 //   };
 // }
 
-// module.exports = { validateFormData };
-
+// module.exports = { validateFormData, isValidEmail };
 function toReadableFieldName(field) {
   return field
     .replace(/[-_]/g, " ")
@@ -169,11 +170,15 @@ function isValidPhone(value) {
 function validateFormData(formData, options = {}) {
   const requiredFields = options.requiredFields || [];
   const patternValidations = options.patternValidations || {};
-  const fileExtensionValidations = options.fileExtensionValidations || {};
+  const fileExtensionValidations = options.fileExtensionValidations || [];
+
+  // ✅ NEW
+  const forbiddenFields = options.forbiddenFields || [];
+  const nestedForbidden = options.nestedForbidden || {};
 
   const error = {};
 
-  // 1. Required field validation
+  // 1️⃣ Required field validation
   for (const field of requiredFields) {
     const value = formData[field];
     if (
@@ -185,7 +190,14 @@ function validateFormData(formData, options = {}) {
     }
   }
 
-  // 2. Pattern validations
+  // 1️⃣.5 Forbidden top-level fields
+  for (const field of forbiddenFields) {
+    if (formData[field] !== undefined) {
+      error[field] = `${toReadableFieldName(field)} is not allowed while creating.`;
+    }
+  }
+
+  // 2️⃣ Pattern validations
   for (const field in patternValidations) {
     const rule = patternValidations[field];
     const value = formData[field];
@@ -204,16 +216,7 @@ function validateFormData(formData, options = {}) {
           isValid = !isNaN(Number(val));
           break;
         case "boolean":
-          isValid = [
-            "true",
-            "false",
-            "1",
-            "0",
-            "yes",
-            "no",
-            "active",
-            "inactive",
-          ].includes(valStr.toLowerCase());
+          isValid = ["true", "false", "1", "0", "yes", "no"].includes(valStr);
           break;
         case "url":
           isValid = isValidURL(val);
@@ -239,7 +242,6 @@ function validateFormData(formData, options = {}) {
           break;
         default:
           isValid = true;
-          break;
       }
 
       if (!isValid) {
@@ -248,40 +250,51 @@ function validateFormData(formData, options = {}) {
     }
   }
 
-  // 3. File extension validations
+  // 2️⃣.5 Forbidden nested fields (IMPORTANT)
+  for (const [path, fields] of Object.entries(nestedForbidden)) {
+    const value = formData[path];
+
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => {
+        fields.forEach((field) => {
+          if (item?.[field] !== undefined) {
+            error[`${path}[${index}].${field}`] =
+              `${toReadableFieldName(field)} is not allowed in ${toReadableFieldName(path)}.`;
+          }
+        });
+      });
+    } else if (value && typeof value === "object") {
+      fields.forEach((field) => {
+        if (value[field] !== undefined) {
+          error[`${path}.${field}`] =
+            `${toReadableFieldName(field)} is not allowed in ${toReadableFieldName(path)}.`;
+        }
+      });
+    }
+  }
+
+  // 3️⃣ File extension validations
   for (const field in fileExtensionValidations) {
     const allowedExtensions = fileExtensionValidations[field];
     const file = formData[field];
 
     if (file && file.originalname) {
-      const fileName = file.originalname.toLowerCase();
-      const fileExtension = fileName.split(".").pop() || "";
-      const isAllowed = allowedExtensions
-        .map((ext) => ext.toLowerCase())
-        .includes(fileExtension);
-
-      if (!isAllowed) {
-        error[field] = `${toReadableFieldName(
-          field
-        )} must be one of: ${allowedExtensions.join(", ")}.`;
+      const fileExtension = file.originalname.split(".").pop().toLowerCase();
+      if (!allowedExtensions.map((e) => e.toLowerCase()).includes(fileExtension)) {
+        error[field] = `${toReadableFieldName(field)} must be one of: ${allowedExtensions.join(", ")}.`;
       }
-    } else if (file !== undefined) {
-      error[field] = `${toReadableFieldName(field)} must be a valid file.`;
     }
   }
 
   const errorCount = Object.keys(error).length;
 
-  // Combine all field-specific messages into one string
-  const message =
-    errorCount === 0
-      ? "Form submitted successfully."
-      : Object.values(error).join(" "); // <-- here we join all errors
-
   return {
     isValid: errorCount === 0,
     ...(errorCount > 0 && { error }),
-    message,
+    message:
+      errorCount === 0
+        ? "Form submitted successfully."
+        : Object.values(error).join(" "),
   };
 }
 

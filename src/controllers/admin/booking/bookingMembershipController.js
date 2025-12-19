@@ -13,9 +13,6 @@ const {
 } = require("../../../models");
 const bookingService = require("../../../services/admin/booking/bookingMembership");
 
-// const { sequelize, Booking, BookingStudentMeta,
-//   BookingParentMeta,
-//   BookingEmergencyMeta, } = require("../../../models");
 const emailModel = require("../../../services/email");
 const sendEmail = require("../../../utils/email/sendEmail");
 const {
@@ -49,9 +46,23 @@ exports.createBooking = async (req, res) => {
     }
 
     // ✅ Validate form
-    const { isValid, error } = validateFormData(formData, {
+    const { isValid, error, message } = validateFormData(req.body, {
       requiredFields: ["startDate", "totalStudents", "classScheduleId"],
+
+      forbiddenFields: ["venueId"],
+
+      nestedForbidden: {
+        students: ["id"],
+        parents: ["id"],
+        emergency: ["id"],
+        payment: ["id"],
+      },
     });
+
+    // if (!isValid) {
+    //   return res.status(400).json({ status: false, message, error });
+    // }
+
     if (!isValid) {
       await logActivity(req, PANEL, MODULE, "create", error, false);
       return res.status(400).json({ status: false, ...error });

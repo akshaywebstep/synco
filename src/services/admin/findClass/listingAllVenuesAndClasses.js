@@ -138,8 +138,9 @@ exports.getAllVenuesWithClasses = async ({
       venues = await Venue.findAll({
         where: {
           createdBy: Number(createdBy), // ✅ filter only super admin data
-          ...whereCondition
+          ...whereCondition,
         },
+
         attributes: {
           include: [[distanceFormula, "distanceMiles"]],
         },
@@ -150,7 +151,10 @@ exports.getAllVenuesWithClasses = async ({
             required: true, // ✅ Only include venues that HAVE classes
           },
         ],
-        order: [[Sequelize.col("distanceMiles"), "DESC"]],
+        order: [
+          ["createdAt", "DESC"],          // newest venues first
+          [Sequelize.col("distanceMiles"), "ASC"], // optional: closest first
+        ],
       });
     } else {
       venues = await Venue.findAll({
@@ -162,7 +166,7 @@ exports.getAllVenuesWithClasses = async ({
             required: true, // ✅ Only include venues that HAVE classes
           },
         ],
-        order: [["id", "ASC"]],
+        order: [["id", "DESC"]],
       });
     }
 
