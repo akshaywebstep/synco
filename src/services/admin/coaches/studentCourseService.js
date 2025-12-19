@@ -205,93 +205,75 @@ exports.getStudentCourseById = async (adminId, superAdminId, courseId) => {
 };
 
 /**
- * Update Student Course by ID
+ * Update Student Course (Controller)
  */
-exports.updateStudentCourseById = async (adminId, superAdminId, courseId, updateData) => {
+exports.updateStudentCourse = async (req, res) => {
     try {
-        // -----------------------------
-        // 1️⃣ Validate inputs
-        // -----------------------------
-        if (!adminId || isNaN(Number(adminId))) {
-            return {
-                status: false,
-                message: "No valid admin ID found.",
-                data: null,
-            };
-        }
+        const adminId = req.admin.id;
+        const superAdminId = req.admin.superAdminId || null;
+        const courseId = req.params.id;
 
-        if (!courseId || isNaN(Number(courseId))) {
-            return {
-                status: false,
-                message: "Invalid student course ID.",
-                data: null,
-            };
-        }
+        const body = req.body;
+        const files = req.files || {};
 
         // -----------------------------
-        // 2️⃣ Resolve allowed admin IDs
+        // 1️⃣ Parse videos JSON safely
         // -----------------------------
-        let allowedAdminIds = [];
+        let videos = [];
 
-        if (superAdminId && superAdminId === adminId) {
-            // Super Admin → all managed admins + self
-            const managedAdmins = await Admin.findAll({
-                where: { superAdminId },
-                attributes: ["id"],
-            });
-
-            allowedAdminIds = managedAdmins.map((a) => a.id);
-            allowedAdminIds.push(superAdminId);
-
-        } else if (superAdminId) {
-            // Admin → own + super admin
-            allowedAdminIds = [adminId, superAdminId];
-
-        } else {
-            // Fallback → own only
-            allowedAdminIds = [adminId];
+        if (body.videos) {
+            videos =
+                typeof body.videos === "string"
+                    ? JSON.parse(body.videos)
+                    : body.videos;
         }
 
         // -----------------------------
-        // 3️⃣ Find the course first
+        // 2️⃣ Replace video URLs if binary uploaded
         // -----------------------------
-        const studentCourse = await StudentCourse.findOne({
-            where: {
-                id: courseId,
-                createdBy: { [Op.in]: allowedAdminIds },
-            },
+        videos = videos.map((video, index) => {
+            const fileKey = `video_${index}`;
+
+            if (files[fileKey]?.[0]) {
+                return {
+                    ...video,
+                    video: files[fileKey][0].path, // OR .location for S3
+                };
+            }
+
+            return video; // keep existing URL
         });
 
-        if (!studentCourse) {
-            return {
-                status: false,
-                message: "Student course not found or access denied.",
-                data: null,
-            };
-        }
-
         // -----------------------------
-        // 4️⃣ Update the course
+        // 3️⃣ Build update payload
         // -----------------------------
-        await studentCourse.update(updateData);
-
-        return {
-            status: true,
-            message: "Student course updated successfully.",
-            data: studentCourse,
+        const updateData = {
+            courseName: body.courseName,
+            level: body.level,
+            duration: body.duration,
+            durationType: body.durationType,
+            videos,
         };
+
+        // -----------------------------
+        // 4️⃣ Call service
+        // -----------------------------
+        const result = await updateStudentCourseById(
+            adminId,
+            superAdminId,
+            courseId,
+            updateData
+        );
+
+        return res.status(result.status ? 200 : 400).json(result);
 
     } catch (error) {
-        console.error("❌ Sequelize Error in updateStudentCourseById:", error);
-
-        return {
+        console.error("❌ updateStudentCourse Error:", error);
+        return res.status(500).json({
             status: false,
-            message:
-                error?.parent?.sqlMessage ||
-                error?.message ||
-                "Failed to update student course.",
+            message: error.message,
             data: null,
-        };
+        });
     }
 };
 
@@ -364,19 +346,22 @@ exports.deleteStudentCourseById = async (adminId, superAdminId, courseId) => {
 
         if (Array.isArray(studentCourse.videos)) {
             for (const video of studentCourse.videos) {
-                if (video?.videoUrl) {
-                    await deleteFromFTP(video.videoUrl);
+                if (video?.video) {
+                    await deleteFromFTP(video.video);
                 }
+
             }
         }
 
-        // -----------------------------
-        // 5️⃣ Soft delete (save deletedBy & deletedAt)
-        // -----------------------------
-        await studentCourse.update({
-            deletedBy: adminId,
-            deletedAt: new Date(),
-        });
+        await studentCourse.destroy(); // ✅ sets deletedAt automatically
+
+        await StudentCourse.update(
+            { deletedBy: adminId },
+            {
+                where: { id: courseId },
+                paranoid: false, // ✅ allow update after soft delete
+            }
+        );
 
         return {
             status: true,

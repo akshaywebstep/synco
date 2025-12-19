@@ -347,6 +347,8 @@ exports.getFullCancelBooking = async ({
         )
       );
     }
+    // ✅ Ensure newest cancellations appear on top
+    parsed.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 
     // Fetch previous cancellations if date filter applied
     let prevParsed = [];
