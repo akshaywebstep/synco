@@ -372,10 +372,16 @@ exports.getAllPaidBookings = async (req, res) => {
 
     } else if (req.admin?.role?.toLowerCase() === "super admin") {
 
-      filters.bookedBy = (mainSuperAdminResult?.admins || [])
+      const childAdminIds = (mainSuperAdminResult?.admins || [])
         .map((a) => a.id);
 
-    } else {
+      filters.bookedBy = [
+        req.admin.id,        // ✅ include Super Admin
+        ...childAdminIds,    // ✅ include child admins
+      ];
+
+    }
+    else {
 
       filters.bookedBy = [req.admin.id];
 
@@ -508,10 +514,16 @@ exports.getAllPaidActiveBookings = async (req, res) => {
 
     } else if (req.admin?.role?.toLowerCase() === "super admin") {
 
-      filters.bookedBy = (mainSuperAdminResult?.admins || [])
+      const childAdminIds = (mainSuperAdminResult?.admins || [])
         .map((a) => a.id);
 
-    } else {
+      filters.bookedBy = [
+        req.admin.id,        // ✅ include Super Admin
+        ...childAdminIds,    // ✅ include child admins
+      ];
+
+    }
+    else {
 
       filters.bookedBy = [req.admin.id];
 
