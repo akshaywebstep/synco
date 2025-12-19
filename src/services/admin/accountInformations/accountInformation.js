@@ -219,10 +219,9 @@ exports.getAllStudentsListing = async (filters = {}) => {
 
     // Apply filters if they exist
     if (bookedBy) {
-      // Ensure bookedBy is always an array
       const bookedByArray = Array.isArray(bookedBy)
         ? bookedBy
-        : [filters.bookedBy];
+        : [bookedBy];
 
       studentsWhere.bookedBy = { [Op.in]: bookedByArray };
     }
@@ -261,9 +260,7 @@ exports.getAllStudentsListing = async (filters = {}) => {
             "createdAt",
             "updatedAt",
           ],
-          where: {
-            ...studentsWhere,
-          },
+          where: studentsWhere,
           include: [
             {
               model: Admin,
@@ -296,7 +293,6 @@ exports.getAllStudentsListing = async (filters = {}) => {
               as: "venue",
               required: false,
             },
-
             {
               model: PaymentPlan,
               as: "paymentPlan",
@@ -317,6 +313,9 @@ exports.getAllStudentsListing = async (filters = {}) => {
       ],
     });
 
+    // =========================
+    // Grouping Logic
+    // =========================
     const grouped = {};
 
     students.forEach((student) => {
@@ -398,11 +397,18 @@ exports.getAllStudentsListing = async (filters = {}) => {
       });
     });
 
+    // =========================
+    // ✅ SORT NEWEST BOOKINGS ON TOP (FIX)
+    // =========================
+    const accountInformation = Object.values(grouped).sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+    );
+
     return {
       status: true,
       message: "Bookings retrieved successfully",
       data: {
-        accountInformation: Object.values(grouped),
+        accountInformation,
       },
     };
   } catch (error) {
