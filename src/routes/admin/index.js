@@ -179,6 +179,7 @@ router.use("/course/", require("./coach/courseRoutes"));
 
 router.use("/contract/", require("./coach/contractRoutes"));
 router.use("/student-course/", require("./coach/studentCourseRoutes"));
+router.use("/feedback/", require("./feedbackRoutes"));
 
 // Base: /api/admin/admin
 router.post(

@@ -529,7 +529,7 @@ exports.getAllForFacebookLeads = async (adminId, superAdminId, filters = {}) => 
 
     // ✅ Fetch all leads
     const allLeads = await Lead.findAll({
-      order: [["createdAt", "ASC"]],
+      order: [["createdAt", "DESC"]],
       where: whereLead,
       include: [
         {
@@ -864,7 +864,7 @@ exports.getAllReferallLeads = async (adminId, superAdminId, filters = {}) => {
 
     // ✅ Fetch all leads
     const allLeads = await Lead.findAll({
-      order: [["createdAt", "ASC"]],
+      order: [["createdAt", "DESC"]],
       where: whereLead,
       include: [
         {
@@ -1199,7 +1199,7 @@ exports.getAllOthersLeads = async (adminId, superAdminId, filters = {}) => {
     // ✅ Fetch all leads created by allowed admins
     const allLeads = await Lead.findAll({
       where: whereLead,
-      order: [["createdAt", "ASC"]],
+      order: [["createdAt", "DESC"]],
       include: [
         {
           model: Admin,
@@ -1932,7 +1932,7 @@ exports.getAllLeads = async (adminId, superAdminId, filters = {}) => {
     // ✅ Fetch leads with related models
     const allLeads = await Lead.findAll({
       where: whereLead,
-      order: [["createdAt", "ASC"]],
+      order: [["createdAt", "DESC"]],
       include: [
         {
           model: Admin,

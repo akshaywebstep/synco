@@ -162,7 +162,7 @@ exports.getAllVenuesWithClasses = async ({
             required: true, // ✅ Only include venues that HAVE classes
           },
         ],
-        order: [["id", "DESC"]],
+        order: [["id", "ASC"]],
       });
     }
 

@@ -71,7 +71,7 @@ const models = {
   BookingPayment: require("./admin/booking/BookingPayment"),
   Credits: require("./admin/booking/Credits"),
 
-  Feedback: require("./admin/accountInformations/Feedback"),
+  Feedback: require("./admin/Feedback"),
   AdminDashboardWidget: require("./admin/adminDashboard/adminDashboardWidget"),
   Lead: require("./admin/lead/Leads"),
 
@@ -301,9 +301,6 @@ Booking.hasMany(BookingStudentMeta, {
   onDelete: "CASCADE",
 });
 
-Booking.hasMany(Feedback, { as: "feedbacks", foreignKey: "bookingId" });
-Feedback.belongsTo(Booking, { as: "booking", foreignKey: "bookingId" });
-
 // 🧩 Booking -> ClassSchedule -> Venue
 Booking.belongsTo(ClassSchedule, {
   as: "classSchedule",
@@ -378,16 +375,6 @@ CancelBooking.belongsTo(Booking, {
 ClassSchedule.hasMany(models.Booking, {
   foreignKey: "classScheduleId",
   as: "booking", // ⚡ must match service include
-});
-
-ClassSchedule.hasMany(Feedback, {
-  as: "feedbacks",
-  foreignKey: "classScheduleId",
-});
-
-Feedback.belongsTo(ClassSchedule, {
-  as: "classSchedule",
-  foreignKey: "classScheduleId",
 });
 
 Lead.belongsTo(Admin, {
@@ -527,10 +514,36 @@ CoachVenueAllocation.belongsTo(Admin, {
 RecruitmentLead.belongsTo(Admin, { foreignKey: "createdBy", as: "creator" });
 
 HolidayBooking.belongsTo(Admin, { foreignKey: 'bookedBy', as: 'bookedByAdmin' });
-// Discount.hasMany(DiscountUsage, {
-//   foreignKey: "discountId",
-//   as: "usages"
+
+// Feedback associations
+
+Feedback.belongsTo(ClassSchedule, { foreignKey: "classScheduleId", as: "classSchedule" });
+Feedback.belongsTo(Venue, { foreignKey: "venueId", as: "venue" });
+
+// Feedback → Admin
+Feedback.belongsTo(Admin, {
+  foreignKey: "createdBy",
+  as: "creator",
+});
+
+Feedback.belongsTo(Admin, {
+  foreignKey: "agentAssigned",
+  as: "assignedAgent",
+});
+
+// Feedback → Booking
+Feedback.belongsTo(Booking, {
+  foreignKey: "bookingId",
+  as: "booking",
+});
+
+// Booking.belongsTo(Admin, {
+//   foreignKey: "updatedBy",
+//   as: "updatedByAdmin",
 // });
+
+// Booking associations
+Booking.hasMany(Feedback, { foreignKey: "bookingId", as: "feedbacks" });
 
 // ====================== 📦 Module Exports ====================== //
 module.exports = {

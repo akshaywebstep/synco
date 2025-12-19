@@ -285,12 +285,20 @@ exports.getBookingById = async (id, adminId, superAdminId) => {
 exports.getWaitingList = async (filters = {}) => {
   await updateBookingStats();
   try {
-    const trialWhere = {
-      bookingType: {
-        [Op.in]: ["waiting list", "paid"],
-      },
-    };
-    if (filters.status) trialWhere.status = filters.status;
+    // const trialWhere = {
+    //   bookingType: {
+    //     [Op.in]: ["waiting list", "paid"],
+    //   },
+    // };
+    const trialWhere = {};
+
+    const statusFilter = filters.status
+      ? Array.isArray(filters.status)
+        ? filters.status
+        : [filters.status]
+      : ["waiting list", "expired"];
+    console.log(statusFilter);
+
     if (filters.interest) trialWhere.interest = filters.interest;
 
     const adminWhere = {};
@@ -357,14 +365,16 @@ exports.getWaitingList = async (filters = {}) => {
         ),
       ];
     }
+    const whereClause = {
+      status: Sequelize.where(
+        Sequelize.fn("LOWER", Sequelize.col("Booking.status")),
+        { [Op.in]: statusFilter.map(s => s.toLowerCase()) }
+      ),
+    };
 
     const bookings = await Booking.findAll({
-      order: [["id", "DESC"]],
-      where: {
-        serviceType: "weekly class trial",
-        ...trialWhere,
-        status: { [Op.in]: ["waiting list", "expired"] },
-      },
+      order: [["id", "ASC"]],
+      where: whereClause,
       // where: trialWhere,
       include: [
         {
