@@ -17,7 +17,7 @@ exports.createStudentCourse = async (req, res) => {
     try {
         if (DEBUG) {
             console.log("BODY:", req.body);
-            console.log("FILES:", Object.keys(req.files || {}));
+            console.log("FILES:", req.files.map(f => f.fieldname));
         }
 
         const adminId = req.admin.id;
@@ -25,12 +25,16 @@ exports.createStudentCourse = async (req, res) => {
         // =========================
         // 1️⃣ Basic validation
         // =========================
+        const coverImageFile = req.files.find(
+            f => f.fieldname === "coverImage"
+        );
+
         const formData = {
             courseName: req.body.courseName,
             duration: req.body.duration,
             durationType: req.body.durationType,
             level: req.body.level,
-            coverImage: req.files?.coverImage?.[0],
+            coverImage: coverImageFile,
         };
 
         const validation = validateFormData(formData, {
@@ -65,10 +69,11 @@ exports.createStudentCourse = async (req, res) => {
         let videos = [];
         try {
             videos = JSON.parse(req.body.videos || "[]");
+
         } catch {
             return res.status(422).json({
                 status: false,
-                message: "Invalid videos JSON format",
+                message: "Invalid videos metadata JSON format",
             });
         }
 
@@ -79,19 +84,10 @@ exports.createStudentCourse = async (req, res) => {
             });
         }
 
-        if (!req.files?.videos || req.files.videos.length !== videos.length) {
-            return res.status(422).json({
-                status: false,
-                message: "Videos metadata count and uploaded files count must match",
-            });
-        }
-
         // =========================
-        // 3️⃣ Upload Cover Image
+        // 3️⃣ Upload Cover Image (FIXED)
         // =========================
-        const coverImageFile = req.files.coverImage[0];
         const coverImageName = `${Date.now()}_${coverImageFile.originalname}`;
-
         const coverImageLocalPath = path.join(
             process.cwd(),
             "uploads/temp/studentCourses",
@@ -112,14 +108,26 @@ exports.createStudentCourse = async (req, res) => {
         await fs.promises.unlink(coverImageLocalPath).catch(() => { });
 
         // =========================
-        // 4️⃣ Upload Course Videos (index-based mapping)
+        // 4️⃣ Upload Videos (FIXED)
         // =========================
         const uploadedVideos = [];
 
-        for (let i = 0; i < videos.length; i++) {
-            const videoFile = req.files.videos[i];
+        const videoFiles = req.files.filter(f =>
+            f.fieldname.startsWith("video_")
+        );
 
-            const videoName = `${Date.now()}_${videoFile.originalname}`;
+        if (videoFiles.length !== videos.length) {
+            return res.status(422).json({
+                status: false,
+                message: "Number of videos and video files do not match"
+            });
+        }
+
+        for (let i = 0; i < videos.length; i++) {
+            const videoMeta = videos[i];
+            const file = videoFiles[i];
+
+            const videoName = `${Date.now()}_${file.originalname}`;
             const videoLocalPath = path.join(
                 process.cwd(),
                 "uploads/temp/studentCourses",
@@ -127,7 +135,7 @@ exports.createStudentCourse = async (req, res) => {
             );
 
             await fs.promises.mkdir(path.dirname(videoLocalPath), { recursive: true });
-            await saveFile(videoFile, videoLocalPath);
+            await saveFile(file, videoLocalPath);
 
             const videoRemotePath =
                 `uploads/studentCourses/${adminId}/videos/${videoName}`;
@@ -136,9 +144,9 @@ exports.createStudentCourse = async (req, res) => {
             await fs.promises.unlink(videoLocalPath).catch(() => { });
 
             uploadedVideos.push({
-                name: videos[i].name,
+                name: videoMeta.name,
                 videoUrl,
-                childFeatures: videos[i].childFeatures || [],
+                childFeatures: videoMeta.childFeatures || []
             });
         }
 
@@ -415,7 +423,7 @@ exports.getStudentCourseById = async (req, res) => {
 };
 
 /**
- * Update Student Course
+ * Update Student Course (ALIGNED WITH CREATE)
  */
 exports.updateStudentCourse = async (req, res) => {
     try {
@@ -423,13 +431,14 @@ exports.updateStudentCourse = async (req, res) => {
         const courseId = req.params.id;
 
         if (DEBUG) {
-            console.log("BODY:", req.body);
-            console.log("FILES:", Object.keys(req.files || {}));
+            console.log("📥 UPDATE STUDENT COURSE");
             console.log("Course ID:", courseId);
+            console.log("BODY:", req.body);
+            console.log("FILES:", req.files?.map(f => f.fieldname));
         }
 
         // =========================
-        // 0️⃣ Validate courseId
+        // 0️⃣ Validate course ID
         // =========================
         if (!courseId || isNaN(Number(courseId))) {
             return res.status(422).json({
@@ -439,69 +448,30 @@ exports.updateStudentCourse = async (req, res) => {
         }
 
         // =========================
-        // 1️⃣ Basic form validation
+        // 1️⃣ Partial basic fields
         // =========================
-        const formData = {
-            courseName: req.body.courseName,
-            duration: req.body.duration,
-            durationType: req.body.durationType,
-            level: req.body.level,
-            coverImage: req.files?.coverImage?.[0],
-        };
+        const updateData = {};
 
-        const validation = validateFormData(formData, {
-            requiredFields: ["courseName", "duration", "durationType", "level"],
-            patternValidations: {
-                courseName: "string",
-                duration: "number",
-                durationType: "string",
-                level: "string",
-            },
-            fileExtensionValidations: {
-                coverImage: ["jpg", "jpeg", "png", "webp"],
-            },
-        });
+        if (req.body.courseName !== undefined)
+            updateData.courseName = req.body.courseName;
 
-        if (!validation.isValid) {
-            return res.status(422).json({
-                status: false,
-                message: validation.message,
-            });
-        }
+        if (req.body.duration !== undefined)
+            updateData.duration = Number(req.body.duration);
+
+        if (req.body.durationType !== undefined)
+            updateData.durationType = req.body.durationType;
+
+        if (req.body.level !== undefined)
+            updateData.level = req.body.level;
 
         // =========================
-        // 2️⃣ Parse & validate videos JSON
+        // 2️⃣ Cover image (same as create)
         // =========================
-        let videos = [];
-        try {
-            videos = JSON.parse(req.body.videos || "[]");
-        } catch {
-            return res.status(422).json({
-                status: false,
-                message: "Invalid videos JSON format",
-            });
-        }
+        const coverImageFile = req.files?.find(
+            f => f.fieldname === "coverImage"
+        );
 
-        if (!Array.isArray(videos)) {
-            return res.status(422).json({
-                status: false,
-                message: "Videos must be an array",
-            });
-        }
-
-        if (req.files?.videos && req.files.videos.length !== videos.length) {
-            return res.status(422).json({
-                status: false,
-                message: "Videos metadata count and uploaded files count must match",
-            });
-        }
-
-        // =========================
-        // 3️⃣ Handle cover image upload (if new)
-        // =========================
-        let coverImageUrl = req.body.existingCoverImage || null;
-        if (req.files?.coverImage?.[0]) {
-            const coverImageFile = req.files.coverImage[0];
+        if (coverImageFile) {
             const coverImageName = `${Date.now()}_${coverImageFile.originalname}`;
             const coverImageLocalPath = path.join(
                 process.cwd(),
@@ -512,80 +482,111 @@ exports.updateStudentCourse = async (req, res) => {
             await fs.promises.mkdir(path.dirname(coverImageLocalPath), { recursive: true });
             await saveFile(coverImageFile, coverImageLocalPath);
 
-            const coverImageRemotePath = `uploads/studentCourses/${adminId}/cover/${coverImageName}`;
-            coverImageUrl = await uploadToFTP(coverImageLocalPath, coverImageRemotePath);
+            const coverImageRemotePath =
+                `uploads/studentCourses/${adminId}/cover/${coverImageName}`;
+
+            updateData.coverImage = await uploadToFTP(
+                coverImageLocalPath,
+                coverImageRemotePath
+            );
+
             await fs.promises.unlink(coverImageLocalPath).catch(() => { });
         }
 
         // =========================
-        // 4️⃣ Handle course videos upload
+        // 3️⃣ Videos (EXACT SAME LOGIC AS CREATE)
         // =========================
-        const uploadedVideos = [];
-        for (let i = 0; i < videos.length; i++) {
-            const videoFile = req.files?.videos?.[i];
-            let videoUrl = videos[i].videoUrl || null;
+        if (req.body.videos !== undefined) {
+            let videos = [];
 
-            if (videoFile) {
-                const videoName = `${Date.now()}_${videoFile.originalname}`;
-                const videoLocalPath = path.join(
-                    process.cwd(),
-                    "uploads/temp/studentCourses",
-                    videoName
-                );
-
-                await fs.promises.mkdir(path.dirname(videoLocalPath), { recursive: true });
-                await saveFile(videoFile, videoLocalPath);
-
-                const videoRemotePath = `uploads/studentCourses/${adminId}/videos/${videoName}`;
-                videoUrl = await uploadToFTP(videoLocalPath, videoRemotePath);
-                await fs.promises.unlink(videoLocalPath).catch(() => { });
+            try {
+                videos = JSON.parse(req.body.videos || "[]");
+            } catch {
+                return res.status(422).json({
+                    status: false,
+                    message: "Invalid videos metadata JSON format",
+                });
             }
 
-            uploadedVideos.push({
-                name: videos[i].name,
-                videoUrl,
-                childFeatures: videos[i].childFeatures || [],
-            });
+            if (!Array.isArray(videos)) {
+                return res.status(422).json({
+                    status: false,
+                    message: "videos must be an array",
+                });
+            }
+
+            const uploadedVideos = [];
+
+            const videoFiles = (req.files || []).filter(f =>
+                f.fieldname.startsWith("video_")
+            );
+
+            // ⚠️ Only validate count if files are sent
+            if (videoFiles.length && videoFiles.length !== videos.length) {
+                return res.status(422).json({
+                    status: false,
+                    message: "Number of videos and video files do not match",
+                });
+            }
+
+            for (let i = 0; i < videos.length; i++) {
+                const meta = videos[i];
+                const file = videoFiles[i];
+
+                let videoUrl = meta.videoUrl || null;
+
+                if (file) {
+                    const videoName = `${Date.now()}_${file.originalname}`;
+                    const videoLocalPath = path.join(
+                        process.cwd(),
+                        "uploads/temp/studentCourses",
+                        videoName
+                    );
+
+                    await fs.promises.mkdir(path.dirname(videoLocalPath), { recursive: true });
+                    await saveFile(file, videoLocalPath);
+
+                    const videoRemotePath =
+                        `uploads/studentCourses/${adminId}/videos/${videoName}`;
+
+                    videoUrl = await uploadToFTP(
+                        videoLocalPath,
+                        videoRemotePath
+                    );
+
+                    await fs.promises.unlink(videoLocalPath).catch(() => { });
+                }
+
+                uploadedVideos.push({
+                    name: meta.name,
+                    videoUrl,
+                    childFeatures: meta.childFeatures || [],
+                });
+            }
+
+            updateData.videos = uploadedVideos;
+        }
+
+        if (DEBUG) {
+            console.log("📦 FINAL UPDATE PAYLOAD:", updateData);
         }
 
         // =========================
-        // 5️⃣ Resolve super admin
+        // 4️⃣ Update DB
         // =========================
         const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
         const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
 
-        // =========================
-        // 6️⃣ Call service to update
-        // =========================
         const result = await studentCourseService.updateStudentCourseById(
             adminId,
             superAdminId,
             courseId,
-            {
-                courseName: req.body.courseName,
-                duration: Number(req.body.duration),
-                durationType: req.body.durationType,
-                level: req.body.level,
-                coverImage: coverImageUrl,
-                videos: uploadedVideos,
-            }
+            updateData
         );
 
         if (!result.status) {
-            return res.status(500).json(result);
+            return res.status(404).json(result);
         }
-
-        // =========================
-        // 7️⃣ Activity Log
-        // =========================
-        await logActivity(
-            req,
-            PANEL,
-            MODULE,
-            "update",
-            { oneLineMessage: `Updated student course: ${req.body.courseName}` },
-            true
-        );
 
         return res.status(200).json({
             status: true,
@@ -594,8 +595,7 @@ exports.updateStudentCourse = async (req, res) => {
         });
 
     } catch (error) {
-        if (DEBUG) console.error("❌ Update Student Course Error:", error);
-
+        console.error("❌ Update Student Course Error:", error);
         return res.status(500).json({
             status: false,
             message: "Server error while updating student course",

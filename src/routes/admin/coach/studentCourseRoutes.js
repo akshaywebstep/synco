@@ -20,10 +20,10 @@ const {
 router.post(
     "/create",
     authMiddleware,
-    upload.fields([
-        { name: "coverImage", maxCount: 1 },
-        { name: "videos", maxCount: 20 }, // multiple course videos
-    ]),
+    // upload.fields([
+    //     { name: "coverImage", maxCount: 1 }, 
+    // ]),
+    upload.any(),
     permissionMiddleware("student-course", "create"),
     createStudentCourse
 );
@@ -48,6 +48,9 @@ router.put(
     upload.fields([
         { name: "coverImage", maxCount: 1 },
         { name: "videos", maxCount: 20 }, // multiple course videos
+        { name: "video_1", maxCount: 20 }, // multiple course videos
+        { name: "video_2", maxCount: 20 }, // multiple course videos
+        { name: "video_3", maxCount: 20 }, // multiple course videos
     ]),
     permissionMiddleware("student-course", "update"),
     updateStudentCourse
