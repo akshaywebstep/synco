@@ -294,7 +294,7 @@ exports.createBooking = async (data, options) => {
         );
       }
     }
-
+    
     // 🔹 Step 4: Emergency Contact
     if (
       data.emergency?.emergencyFirstName &&
