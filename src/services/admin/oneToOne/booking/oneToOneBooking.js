@@ -27,6 +27,7 @@ const {
 const sendEmail = require("../../../../utils/email/sendEmail");
 const { getEmailConfig } = require("../../../email");
 const emailModel = require("../../../../services/email");
+const OneToOneLead = require("../../../../models/admin/oneToOne/oneToOneLeads");
 const PANEL = "admin";
 
 exports.createOnetoOneBooking = async (data) => {
@@ -119,12 +120,21 @@ exports.createOnetoOneBooking = async (data) => {
         areaWorkOn: data.areaWorkOn,
         paymentPlanId: data.paymentPlanId || null,
         discountId: data.discountId || null,
-        status: "pending",
+        status: "active",
         type: "paid",
         serviceType: "one to one",
       },
       { transaction }
     );
+    // -----------------------------------------------------
+    // 2.1️⃣ Update Lead Status
+    // -----------------------------------------------------
+    if (data.leadId) {
+      await OneToOneLead.update(
+        { status: "active" },
+        { where: { id: data.leadId }, transaction }
+      );
+    }
 
     // 3️⃣ Create students, parents, emergency
     const students = await Promise.all(

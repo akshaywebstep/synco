@@ -5,12 +5,14 @@ const {
     BirthdayPartyParent,
     BirthdayPartyEmergency,
     BirthdayPartyPayment,
+    BirthdayPartyLead,
     PaymentPlan,
     PaymentGroup,
     Discount,
     DiscountUsage,
     DiscountAppliesTo,
     PaymentGroupHasPlan,
+
     Admin,
     AdminRole,
 } = require("../../../../models");
@@ -128,12 +130,21 @@ exports.createBirthdayPartyBooking = async (data) => {
                 time: data.time,
                 paymentPlanId: data.paymentPlanId || null,
                 discountId: data.discountId || null,
-                status: "pending",
+                status: "active",
                 type: "paid",
                 serviceType: "birthday party",
             },
             { transaction }
         );
+        // -----------------------------------------------------
+        // 2.1️⃣ Update Lead Status
+        // -----------------------------------------------------
+        if (data.leadId) {
+            await BirthdayPartyLead.update(
+                { status: "active" },
+                { where: { id: data.leadId }, transaction }
+            );
+        }
 
         // -----------------------------------------------------
         // 3️⃣ Create Students, Parents, Emergency Contact
@@ -916,10 +927,10 @@ exports.getAdminsPaymentPlanDiscount = async ({
                 paymentPlans: group.paymentPlans || [],
             };
         });
-        
+
         // ✅ 7️⃣ Get all discounts + appliesTo (unchanged)
         const now = new Date();
-       
+
         const discounts = await Discount.findAll({
             where: {
                 startDatetime: {
