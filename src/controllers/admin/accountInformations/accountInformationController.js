@@ -10,15 +10,174 @@ const {
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 
 const {
-  sequelize,
+  sequelize, BirthdayPartyBooking, OneToOneBooking
 } = require("../../../models");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "account_information";
 
-//  Listing
+exports.getBookingById = async (req, res) => {
+  try {
+    if (DEBUG) console.log("🔎 [STEP 0] getBookingById called");
 
+    const bookingId = req.params.id;
+    const adminId = req.admin.id;
+    const requestedServiceType = req.body?.serviceType?.toLowerCase();
+
+    if (DEBUG) {
+      console.log("📥 [STEP 0] bookingId:", bookingId);
+      console.log("👤 [STEP 0] adminId:", adminId);
+      console.log("🧪 [STEP 0] requestedServiceType:", requestedServiceType);
+    }
+
+    if (!bookingId) {
+      return res.status(400).json({
+        status: false,
+        message: "bookingId is required",
+      });
+    }
+
+    // 🔐 Resolve super admin
+    if (DEBUG) console.log("🔐 [STEP 1] Resolving super admin");
+
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId, true);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? adminId;
+
+    if (DEBUG) {
+      console.log("👑 [STEP 1] superAdminId:", superAdminId);
+    }
+
+    // 🎂 STEP 2 — BIRTHDAY PARTY (BY BOOKING ID)
+    if (requestedServiceType === "birthday party") {
+      if (DEBUG)
+        console.log("🎂 [STEP 2] Fetching Birthday Party booking via bookingId");
+
+      // 1️⃣ Find booking → get leadId
+      const booking = await BirthdayPartyBooking.findOne({
+        where: { leadId: bookingId }, // ✅ FIX
+        attributes: ["id", "leadId"],
+      });
+
+      if (!booking || !booking.leadId) {
+        return res.status(404).json({
+          status: false,
+          message: "Birthday Party booking not found.",
+        });
+      }
+
+      // 2️⃣ Fetch lead using leadId
+      const birthdayResult =
+        await birthdayPartyLeadService.getBirthdayPartyLeadsById(
+          booking.leadId,     // ✅ leadId
+          adminId,
+          superAdminId
+        );
+
+      if (!birthdayResult.status) {
+        return res.status(404).json({
+          status: false,
+          message: birthdayResult.message,
+        });
+      }
+
+      return res.status(200).json({
+        status: true,
+        message: "Birthday Party booking fetched successfully",
+        data: birthdayResult.data,
+      });
+    }
+
+    // 🟢 STEP 3 — ONE-TO-ONE
+    if (requestedServiceType === "one to one") {
+      if (DEBUG)
+        console.log("🟢 [STEP 3] One-to-One flow started");
+
+      const oneToOneResult =
+        await oneToOneLeadService.getOnetoOneLeadsById(
+          bookingId,       // ✅ leadId
+          superAdminId,
+          adminId
+        );
+
+      if (DEBUG)
+        console.log("📦 [STEP 3] One-to-One result:", oneToOneResult);
+
+      if (!oneToOneResult.status) {
+        return res.status(404).json({
+          status: false,
+          message: oneToOneResult.message,
+        });
+      }
+
+      return res.status(200).json({
+        status: true,
+        message: "One-to-One booking fetched successfully",
+        data: oneToOneResult.data,
+      });
+    }
+       // 🟣 STEP 4 — HOLIDAY CAMP (BOOKING-BASED ✅)
+    if (requestedServiceType === "holiday camp") {
+      if (DEBUG) console.log("🟣 [STEP 4] Holiday Camp flow");
+
+      const holidayResult =
+        await holidayBookingService.getBookingById(
+          bookingId,     // ✅ bookingId
+          superAdminId,
+          adminId
+        );
+
+      if (DEBUG)
+        console.log("📦 [STEP 4] Holiday Camp result:", holidayResult);
+
+      if (!holidayResult.success) {
+        return res.status(404).json({
+          status: false,
+          message: holidayResult.message,
+        });
+      }
+
+      return res.status(200).json({
+        status: true,
+        message: "Holiday Camp booking fetched successfully",
+        data: holidayResult.data,
+        summary: holidayResult.summary,
+      });
+    }
+
+    // 🧾 STEP 4 — DEFAULT MEMBERSHIP FLOW
+    if (DEBUG)
+      console.log("📦 [STEP 3] Fetching AccountInformation for membership");
+
+    const result =
+      await AccountInformationService.getStudentByBookingId(bookingId);
+
+    if (DEBUG)
+      console.log("📦 [STEP 3] AccountInformation result:", result);
+
+    if (!result.status) {
+      return res.status(404).json({
+        status: false,
+        message: result.message,
+      });
+    }
+
+    return res.status(200).json({
+      status: true,
+      message: "Membership data fetched successfully",
+      data: result.data.accountInformation,
+    });
+
+  } catch (error) {
+    console.error("❌ [FATAL] getBookingById Error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Server error",
+    });
+  }
+};
+
+//  Listing
 exports.getAllStudentsListing = async (req, res) => {
   try {
     // 🧾 Extract filters from query params
@@ -163,142 +322,6 @@ exports.getAllStudentsListing = async (req, res) => {
   }
 };
 
-// exports.getAllStudentsListing = async (req, res) => {
-//   try {
-//     // 🧾 Extract filters from query params
-//     const filters = {
-//       studentName: req.query.studentName || null,
-//       dateFrom: req.query.dateFrom || null,
-//       dateTo: req.query.dateTo || null,
-//       status: req.query.status || null,
-//       venueId: req.query.venueId || null,
-//     };
-
-//     const bookedBy = req.admin?.id;
-//     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id, true);
-//     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
-
-//     // ✅ Apply bookedBy filter
-//     if (req.admin?.role?.toLowerCase() === 'super admin') {
-//       const admins = mainSuperAdminResult?.admins || [];
-//       filters.bookedBy = admins.length > 0 ? admins.map(a => a.id) : [];
-//     } else {
-//       // Always assign bookedBy even if not in query
-//       filters.bookedBy = bookedBy || null;
-//     }
-
-//     // 🧠 Call the service layer
-//     const result = await AccountInformationService.getAllStudentsListing(filters);
-
-//     // ❌ Handle service-level failure
-//     if (!result.status) {
-//       await logActivity(
-//         req,
-//         PANEL,
-//         MODULE,
-//         "read",
-//         { filters, error: result.message },
-//         false
-//       );
-//       return res.status(500).json({
-//         status: false,
-//         message: result.message || "Failed to retrieve student listings",
-//       });
-//     }
-
-//     // 🧩 Optional: Debug logging
-//     if (DEBUG) {
-//       console.log(
-//         "DEBUG: Retrieved student listing:",
-//         JSON.stringify(result.data, null, 2)
-//       );
-//     }
-
-//     // ✅ Log successful read
-//     await logActivity(
-//       req,
-//       PANEL,
-//       MODULE,
-//       "read",
-//       { filters, count: result.data.accountInformation.length },
-//       true
-//     );
-
-//     // ✅ Return formatted response
-//     return res.status(200).json({
-//       status: true,
-//       message: "Bookings retrieved successfully",
-//       data: result.data,
-//     });
-//   } catch (error) {
-//     console.error("❌ getAllStudentsListing Controller Error:", error.message);
-
-//     // 🧾 Log and respond with server error
-//     await logActivity(
-//       req,
-//       PANEL,
-//       MODULE,
-//       "read",
-//       { error: error.message },
-//       false
-//     );
-
-//     return res.status(500).json({
-//       status: false,
-//       message: "Server error. Please try again later.",
-//     });
-//   }
-// };
-
-exports.getStudentById = async (req, res) => {
-  try {
-    const bookingId = req.params.id;
-    console.log(`bookingId - `, bookingId);
-    const result = await AccountInformationService.getStudentByBookingId(bookingId);
-
-    if (!result.status) {
-      await logActivity(
-        req,
-        PANEL,
-        MODULE,
-        "read",
-        { bookingId, error: result.message },
-        false
-      );
-      return res.status(404).json({ status: false, message: result.message });
-    }
-
-    if (DEBUG) {
-      console.log(
-        "DEBUG: Retrieved student by ID:",
-        JSON.stringify(result.data, null, 2)
-      );
-    }
-
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "read",
-      { bookingId, count: result.data.accountInformation.students.length },
-      true
-    );
-
-    return res.status(200).json(result);
-  } catch (error) {
-    console.error("❌ getStudentById Error:", error.message);
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "read",
-      { error: error.message },
-      false
-    );
-    return res.status(500).json({ status: false, message: "Server error" });
-  }
-};
-
 exports.updateBooking = async (req, res) => {
   if (DEBUG) console.log("🔹 Step 0: Controller entered");
 
@@ -374,86 +397,6 @@ exports.updateBooking = async (req, res) => {
     });
   }
 };
-
-// exports.getBookingsById = async (req, res) => {
-//   try {
-//     const { bookingId } = req.params;
-//     const { type, fromDate, toDate } = req.query;
-
-//     // 🧾 Validate input
-//     if (!bookingId) {
-//       return res.status(400).json({
-//         status: false,
-//         message: "Booking ID is required",
-//       });
-//     }
-
-//     // 🔎 Call service with filters
-//     const result = await AccountInformationService.getBookingsById(bookingId, {
-//       type,
-//       fromDate,
-//       toDate,
-//     });
-
-//     // ❌ Handle service failure
-//     if (!result.status) {
-//       await logActivity(
-//         req,
-//         PANEL,
-//         MODULE,
-//         "read",
-//         { bookingId, error: result.message },
-//         false
-//       );
-
-//       return res.status(404).json({
-//         status: false,
-//         message: result.message || "Booking not found",
-//       });
-//     }
-
-//     // 🧩 Optional Debug Logging
-//     if (DEBUG) {
-//       console.log(
-//         "DEBUG: Retrieved booking info:",
-//         JSON.stringify(result.data, null, 2)
-//       );
-//     }
-
-//     // ✅ Log successful retrieval
-//     await logActivity(
-//       req,
-//       PANEL,
-//       MODULE,
-//       "read",
-//       { bookingId },
-//       true
-//     );
-
-//     // ✅ Send successful response
-//     return res.status(200).json({
-//       status: true,
-//       message: "Booking retrieved successfully",
-//       data: result.data,
-//     });
-//   } catch (error) {
-//     console.error("❌ getBookingsById Controller Error:", error.message);
-
-//     await logActivity(
-//       req,
-//       PANEL,
-//       MODULE,
-//       "read",
-//       { error: error.message },
-//       false
-//     );
-
-//     return res.status(500).json({
-//       status: false,
-//       message: "Server error. Please try again later.",
-//     });
-//   }
-// };
 
 exports.getVenuesWithClassesFromBookings = async (req, res) => {
   try {

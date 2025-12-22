@@ -5,9 +5,8 @@ const permissionMiddleware = require("../../middleware/admin/permission");
 
 const {
   getAllStudentsListing,
-  getStudentById,
   updateBooking,
-  getBookingsById,
+  getBookingById,
   getVenuesWithClassesFromBookings,
 } = require("../../controllers/admin/accountInformations/accountInformationController");
 
@@ -18,13 +17,6 @@ router.get(
   getAllStudentsListing
 );
 
-router.get(
-  "/:id",
-  authMiddleware,
-  permissionMiddleware("account-information", "view-listing"),
-  getStudentById
-);
-
 router.put(
   "/:bookingId",
   authMiddleware,
@@ -32,12 +24,12 @@ router.put(
   updateBooking
 );
 
-// router.get(
-//   "/service-history/:bookingId",
-//   authMiddleware,
-//   permissionMiddleware("account-information", "view-listing"),
-//   getBookingsById
-// );
+router.post(
+  "/:id",
+  authMiddleware,
+  permissionMiddleware("account-information", "view-listing"),
+  getBookingById
+);
 
 router.get(
   "/venues/classes/:bookingId",

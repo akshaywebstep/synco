@@ -1248,23 +1248,30 @@ exports.getBirthdayPartyLeadsById = async (id, adminId, superAdminId) => {
       return { status: false, message: "Invalid admin ID.", data: [] };
     }
 
-    // ✅ Declare whereLead
-    const whereLead = {};
+    // ✅ Declare whereLead with lead id
+    const whereLead = { id };
 
-    // ✅ Super Admin logic
+    // 🔐 Visibility rules
     if (superAdminId === adminId) {
+      // 🔵 SUPER ADMIN → see all managed admins + self
       const managedAdmins = await Admin.findAll({
         where: { superAdminId },
         attributes: ["id"],
       });
-      const adminIds = managedAdmins.map((a) => a.id);
+
+      const adminIds = managedAdmins.map(a => a.id);
       adminIds.push(superAdminId);
+
       whereLead.createdBy = { [Op.in]: adminIds };
+
     } else if (superAdminId && adminId) {
-      // 🟢 Admin → fetch own + super admin’s leads
-      whereLead.createdBy = { [Op.in]: [adminId, superAdminId] };
+      // 🟢 ADMIN → see ONLY self + super admin
+      whereLead.createdBy = {
+        [Op.in]: [adminId, superAdminId],
+      };
+
     } else {
-      // 🟢 Fallback (in case no superAdminId found)
+      // 🟡 Safety fallback
       whereLead.createdBy = adminId;
     }
 
@@ -2768,3 +2775,46 @@ exports.renewBirthdayPartyLeadAndBooking = async (leadId, superAdminId, adminId)
     return { status: false, message: error.message };
   }
 };
+
+// exports.getBirthdayPartyBookingById = async (bookingId, superAdminId, adminId) => {
+//   try {
+//     if (!bookingId) {
+//       return { status: false, message: "Booking ID is required." };
+//     }
+
+//     if (!adminId || isNaN(Number(adminId))) {
+//       return { status: false, message: "Invalid admin ID." };
+//     }
+
+//     // 1️⃣ Find booking using bookingId
+//     const booking = await BirthdayPartyBooking.findOne({
+//       where: { id: bookingId },
+//       attributes: ["id", "leadId"],
+//     });
+
+//     if (!booking) {
+//       return {
+//         status: false,
+//         message: "Birthday Party booking not found.",
+//       };
+//     }
+
+//     if (!booking.leadId) {
+//       return {
+//         status: false,
+//         message: "Lead ID not found for this Birthday Party booking.",
+//       };
+//     }
+
+//     // 2️⃣ Reuse existing lead service (single source of truth)
+//     return await exports.getBirthdayPartyLeadsById(
+//       booking.leadId,
+//       adminId,
+//       superAdminId
+//     );
+
+//   } catch (error) {
+//     console.error("❌ Error fetching birthday party booking by ID:", error);
+//     return { status: false, message: error.message };
+//   }
+// };

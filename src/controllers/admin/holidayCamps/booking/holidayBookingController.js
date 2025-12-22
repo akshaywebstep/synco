@@ -37,7 +37,7 @@ exports.createHolidayBooking = async (req, res) => {
     for (const field of requiredFields) {
       if (!formData[field] || formData[field] === "") {
         return res.status(400).json({
-          success: false,
+          status: false,
           message: `${field} is required`,
         });
       }
@@ -46,21 +46,21 @@ exports.createHolidayBooking = async (req, res) => {
     // ✅ Step 2: Validate nested arrays
     if (!Array.isArray(formData.students) || formData.students.length === 0) {
       return res.status(400).json({
-        success: false,
+        status: false,
         message: "At least one student is required",
       });
     }
 
     if (!Array.isArray(formData.parents) || formData.parents.length === 0) {
       return res.status(400).json({
-        success: false,
+        status: false,
         message: "At least one parent is required",
       });
     }
 
     if (!formData.emergency) {
       return res.status(400).json({
-        success: false,
+        status: false,
         message: "Emergency contact details are required",
       });
     }
@@ -72,7 +72,7 @@ exports.createHolidayBooking = async (req, res) => {
       for (const field of requiredStudentFields) {
         if (!student[field] || student[field].toString().trim() === "") {
           return res.status(400).json({
-            success: false,
+            status: false,
             message: `Student ${index + 1} ${field} is required`,
           });
         }
@@ -93,7 +93,7 @@ exports.createHolidayBooking = async (req, res) => {
       for (const field of requiredParentFields) {
         if (!parent[field] || parent[field].toString().trim() === "") {
           return res.status(400).json({
-            success: false,
+            status: false,
             message: `Parent ${index + 1} ${field} is required`,
           });
         }
@@ -114,7 +114,7 @@ exports.createHolidayBooking = async (req, res) => {
         formData.emergency[field].toString().trim() === ""
       ) {
         return res.status(400).json({
-          success: false,
+          status: false,
           message: `Emergency ${field} is required`,
         });
       }
@@ -132,7 +132,7 @@ exports.createHolidayBooking = async (req, res) => {
       for (const field of requiredPaymentFields) {
         if (!formData.payment[field] || formData.payment[field].toString().trim() === "") {
           return res.status(400).json({
-            success: false,
+            status: false,
             message: `Payment ${field} is required`,
           });
         }
@@ -144,7 +144,7 @@ exports.createHolidayBooking = async (req, res) => {
 
     if (!result.success) {
       return res.status(400).json({
-        success: false,
+        status: false,
         message: result.message || "Failed to create booking",
       });
     }
@@ -163,7 +163,7 @@ exports.createHolidayBooking = async (req, res) => {
 
     // ✅ Step 7: Response
     return res.status(201).json({
-      success: true,
+      status: true,
       message: "Holiday Booking created successfully",
       data: result,
     });
@@ -171,7 +171,7 @@ exports.createHolidayBooking = async (req, res) => {
     if (DEBUG) console.error("❌ Error in createHolidayBooking Booking:", error);
 
     return res.status(500).json({
-      success: false,
+      status: false,
       message: DEBUG ? error.message : "Internal server error",
     });
   }
@@ -184,7 +184,7 @@ exports.getAllHolidayBooking = async (req, res) => {
     // Validate admin
     if (!adminId) {
       return res.status(401).json({
-        success: false,
+        status: false,
         message: "Unauthorized: Admin ID not found.",
       });
     }
@@ -200,9 +200,9 @@ exports.getAllHolidayBooking = async (req, res) => {
     );
 
     // Handle errors from service
-    if (!result.success) {
+    if (!result.status) {
       return res.status(400).json({
-        success: false,
+        status: false,
         message: result.message || "Failed to fetch holiday bookings",
       });
     }
@@ -220,7 +220,7 @@ exports.getAllHolidayBooking = async (req, res) => {
 
     // 🔹 Respond with all metrics
     return res.status(200).json({
-      success: true,
+      status: true,
       message: "Holiday bookings fetched successfully",
       summary: summary,
       data: result.data,
@@ -231,7 +231,7 @@ exports.getAllHolidayBooking = async (req, res) => {
       console.error("❌ Error in getAllHolidayBooking:", error);
 
     return res.status(500).json({
-      success: false,
+      status: false,
       message: DEBUG ? error.message : "Internal server error",
     });
   }
@@ -253,7 +253,7 @@ exports.cancelHolidayBookingById = async (req, res) => {
     // -------------------------------------------
     if (!bookingId) {
       return res.status(400).json({
-        success: false,
+        status: false,
         message: "Booking ID is required",
       });
     }
@@ -263,7 +263,7 @@ exports.cancelHolidayBookingById = async (req, res) => {
     // -------------------------------------------
     if (!formData.cancelReason || formData.cancelReason.trim() === "") {
       return res.status(400).json({
-        success: false,
+        status: false,
         message: "cancelReason is required",
       });
     }
@@ -282,7 +282,7 @@ exports.cancelHolidayBookingById = async (req, res) => {
 
     if (!result.success) {
       return res.status(400).json({
-        success: false,
+        status: false,
         message: result.message || "Failed to cancel booking",
       });
     }
@@ -318,7 +318,7 @@ exports.cancelHolidayBookingById = async (req, res) => {
     // ✅ Send response
     // -------------------------------------------
     return res.status(200).json({
-      success: true,
+      status: true,
       message: "Holiday Booking cancelled successfully",
       data: result,
     });
@@ -326,7 +326,7 @@ exports.cancelHolidayBookingById = async (req, res) => {
     console.error("❌ Error in cancelHolidayBookingById:", error);
 
     return res.status(500).json({
-      success: false,
+      status: false,
       message: DEBUG ? error.message : "Internal server error",
     });
   }
@@ -397,7 +397,7 @@ exports.getHolidayBookingById = async (req, res) => {
     // -----------------------------
     if (!adminId) {
       return res.status(401).json({
-        success: false,
+        status: false,
         message: "Unauthorized: Admin ID not found.",
       });
     }
@@ -407,7 +407,7 @@ exports.getHolidayBookingById = async (req, res) => {
     // -----------------------------
     if (!bookingId || isNaN(Number(bookingId))) {
       return res.status(400).json({
-        success: false,
+        status: false,
         message: "Invalid bookingId.",
       });
     }
@@ -429,7 +429,7 @@ exports.getHolidayBookingById = async (req, res) => {
 
     if (!result.success) {
       return res.status(404).json({
-        success: false,
+        status: false,
         message: result.message || "Booking not found",
       });
     }
@@ -443,7 +443,7 @@ exports.getHolidayBookingById = async (req, res) => {
     // Success response
     // -----------------------------
     return res.status(200).json({
-      success: true,
+      status: true,
       message: "Holiday booking fetched successfully",
       data: result.data,
       summary: result.summary,
@@ -453,7 +453,7 @@ exports.getHolidayBookingById = async (req, res) => {
     if (DEBUG) console.error("❌ Error in getHolidayBookingById:", error);
 
     return res.status(500).json({
-      success: false,
+      status: false,
       message: DEBUG ? error.message : "Internal server error",
     });
   }
@@ -466,11 +466,11 @@ exports.updateHolidayBooking = async (req, res) => {
     const formData = req.body;
 
     if (!bookingId) {
-      return res.status(400).json({ success: false, message: "bookingId parameter is required" });
+      return res.status(400).json({ status: false, message: "bookingId parameter is required" });
     }
 
     if (!adminId) {
-      return res.status(401).json({ success: false, message: "Unauthorized: Admin ID missing" });
+      return res.status(401).json({ status: false, message: "Unauthorized: Admin ID missing" });
     }
 
     // ------------------------------------------------------------
@@ -484,7 +484,7 @@ exports.updateHolidayBooking = async (req, res) => {
         for (const field of requiredFields) {
           if (student[field] === "") {
             return res.status(400).json({
-              success: false,
+              status: false,
               message: `Student ${index + 1} ${field} cannot be empty`
             });
           }
@@ -495,7 +495,7 @@ exports.updateHolidayBooking = async (req, res) => {
           for (const field of requiredFields) {
             if (!student[field] || student[field].toString().trim() === "") {
               return res.status(400).json({
-                success: false,
+                status: false,
                 message: `New Student ${index + 1} ${field} is required`
               });
             }
@@ -522,7 +522,7 @@ exports.updateHolidayBooking = async (req, res) => {
         for (const field of requiredFields) {
           if (parent[field] === "") {
             return res.status(400).json({
-              success: false,
+              status: false,
               message: `Parent ${index + 1} ${field} cannot be empty`
             });
           }
@@ -533,7 +533,7 @@ exports.updateHolidayBooking = async (req, res) => {
           for (const field of requiredFields) {
             if (!parent[field] || parent[field].trim() === "") {
               return res.status(400).json({
-                success: false,
+                status: false,
                 message: `New Parent ${index + 1} ${field} is required`
               });
             }
@@ -558,7 +558,7 @@ exports.updateHolidayBooking = async (req, res) => {
         for (const field of requiredFields) {
           if (emergency[field] === "") {
             return res.status(400).json({
-              success: false,
+              status: false,
               message: `Emergency Contact ${index + 1} ${field} cannot be empty`
             });
           }
@@ -569,7 +569,7 @@ exports.updateHolidayBooking = async (req, res) => {
           for (const field of requiredFields) {
             if (!emergency[field] || emergency[field].trim() === "") {
               return res.status(400).json({
-                success: false,
+                status: false,
                 message: `New Emergency Contact ${index + 1} ${field} is required`
               });
             }
@@ -603,7 +603,7 @@ exports.updateHolidayBooking = async (req, res) => {
     // 📤 Step 6: Response
     // ------------------------------------------------------------
     return res.status(200).json({
-      success: true,
+      status: true,
       message: "Holiday Booking updated successfully",
       data: result.details
     });
@@ -611,7 +611,7 @@ exports.updateHolidayBooking = async (req, res) => {
   } catch (error) {
     console.error("❌ updateHolidayBooking Error:", error);
     return res.status(500).json({
-      success: false,
+      status: false,
       message: DEBUG ? error.message : "Internal server error"
     });
   }
@@ -638,7 +638,7 @@ exports.waitingListCreate = async (req, res) => {
     for (const field of requiredFields) {
       if (!formData[field] || formData[field] === "") {
         return res.status(400).json({
-          success: false,
+          status: false,
           message: `${field} is required`,
         });
       }
@@ -647,21 +647,21 @@ exports.waitingListCreate = async (req, res) => {
     // ✅ Step 2: Validate nested arrays
     if (!Array.isArray(formData.students) || formData.students.length === 0) {
       return res.status(400).json({
-        success: false,
+        status: false,
         message: "At least one student is required",
       });
     }
 
     if (!Array.isArray(formData.parents) || formData.parents.length === 0) {
       return res.status(400).json({
-        success: false,
+        status: false,
         message: "At least one parent is required",
       });
     }
 
     if (!formData.emergency) {
       return res.status(400).json({
-        success: false,
+        status: false,
         message: "Emergency contact details are required",
       });
     }
@@ -673,7 +673,7 @@ exports.waitingListCreate = async (req, res) => {
       for (const field of requiredStudentFields) {
         if (!student[field] || student[field].toString().trim() === "") {
           return res.status(400).json({
-            success: false,
+            status: false,
             message: `Student ${index + 1} ${field} is required`,
           });
         }
@@ -694,7 +694,7 @@ exports.waitingListCreate = async (req, res) => {
       for (const field of requiredParentFields) {
         if (!parent[field] || parent[field].toString().trim() === "") {
           return res.status(400).json({
-            success: false,
+            status: false,
             message: `Parent ${index + 1} ${field} is required`,
           });
         }
@@ -715,7 +715,7 @@ exports.waitingListCreate = async (req, res) => {
         formData.emergency[field].toString().trim() === ""
       ) {
         return res.status(400).json({
-          success: false,
+          status: false,
           message: `Emergency ${field} is required`,
         });
       }
@@ -726,7 +726,7 @@ exports.waitingListCreate = async (req, res) => {
 
     if (!result.success) {
       return res.status(400).json({
-        success: false,
+        status: false,
         message: result.message || "Failed to create booking",
       });
     }
@@ -745,7 +745,7 @@ exports.waitingListCreate = async (req, res) => {
 
     // ✅ Step 7: Response
     return res.status(201).json({
-      success: true,
+      status: true,
       message: "Holiday Waiting List Booking created successfully",
       data: result,
     });
@@ -753,7 +753,7 @@ exports.waitingListCreate = async (req, res) => {
     if (DEBUG) console.error("❌ Error in waitingListCreate Booking:", error);
 
     return res.status(500).json({
-      success: false,
+      status: false,
       message: DEBUG ? error.message : "Internal server error",
     });
   }
@@ -767,7 +767,7 @@ exports.getHolidayCampsReports = async (req, res) => {
     // Validate admin
     if (!adminId) {
       return res.status(401).json({
-        success: false,
+        status: false,
         message: "Unauthorized: Admin ID not found.",
       });
     }
@@ -785,13 +785,13 @@ exports.getHolidayCampsReports = async (req, res) => {
 
     if (!report.success) {
       return res.status(400).json({
-        success: false,
+        status: false,
         message: report.message,
       });
     }
 
     return res.status(200).json({
-      success: true,
+      status: true,
       message: "Holiday camp reports fetched successfully.",
       data: report.data,
     });
@@ -800,7 +800,7 @@ exports.getHolidayCampsReports = async (req, res) => {
     console.error("❌ Error fetching holiday camps report:", error);
 
     return res.status(500).json({
-      success: false,
+      status: false,
       message: "Internal server error.",
       error: error.message,
     });

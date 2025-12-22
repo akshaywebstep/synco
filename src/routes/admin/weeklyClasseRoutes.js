@@ -13,7 +13,7 @@ const cancellationsController = require("../../controllers/admin/weeklyClass/ana
 router.get(
   "/analytics/member",
   authMiddleware,
-  // permissionMiddleware("weekly-class", "view-report"),
+  permissionMiddleware("reports", "member-report"),
   memberController.getMonthlyReport
 );
 
@@ -21,7 +21,7 @@ router.get(
 router.get(
   "/analytics/free-trial",
   authMiddleware,
-  // permissionMiddleware("weekly-class", "view-report"),
+  permissionMiddleware("reports", "trial-conversion-report"),
   freeTrialController.getMonthlyReport
 );
 
@@ -29,28 +29,28 @@ router.get(
 router.get(
   "/analytics/sales",
   authMiddleware,
-  // permissionMiddleware("weekly-class", "view-report"),
+  permissionMiddleware("reports", "sales-report"),
   saleController.getMonthlyReport
 );
 
 router.get(
   "/analytics/capacity",
   authMiddleware,
-  // permissionMiddleware("weekly-class", "view-report"),
+  permissionMiddleware("reports", "capacity-report"),
   capacityController.getMonthlyReport
 );
 
 router.get(
   "/analytics/attendance",
   authMiddleware,
-  // permissionMiddleware("weekly-class", "view-report"),
+  permissionMiddleware("reports", "attendance-report"),
   attendanceController.getMonthlyReport
 );
 
 router.get(
   "/analytics/cancellation",
   authMiddleware,
-  // permissionMiddleware("weekly-class", "view-report"),
+  permissionMiddleware("reports", "cancellation-report"),
   cancellationsController.getCancellationsReport
 );
 module.exports = router;
