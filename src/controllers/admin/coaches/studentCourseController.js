@@ -427,9 +427,15 @@ exports.getStudentCourseById = async (req, res) => {
  */
 exports.updateStudentCourse = async (req, res) => {
     try {
-        const adminId = req.admin.id;
-        const courseId = req.params.id;
+        const adminId = req.admin?.id;
+        if (!adminId) {
+            return res.status(401).json({ status: false, message: "Unauthorized: admin info missing" });
+        }
 
+        const courseId = req.params.id;
+        if (!courseId || isNaN(Number(courseId))) {
+            return res.status(422).json({ status: false, message: "Invalid student course ID" });
+        }
         if (DEBUG) {
             console.log("📥 UPDATE STUDENT COURSE");
             console.log("Course ID:", courseId);
@@ -574,15 +580,10 @@ exports.updateStudentCourse = async (req, res) => {
         // =========================
         // 4️⃣ Update DB
         // =========================
-        const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
-        const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+        const superAdminId = (await getMainSuperAdminOfAdmin(adminId))?.superAdmin?.id || null;
+        const result = await studentCourseService.updateStudentCourseById(adminId, superAdminId, courseId, updateData);
 
-        const result = await studentCourseService.updateStudentCourseById(
-            adminId,
-            superAdminId,
-            courseId,
-            updateData
-        );
+        if (!result.status) return res.status(404).json(result);
 
         if (!result.status) {
             return res.status(404).json(result);

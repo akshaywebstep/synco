@@ -207,73 +207,52 @@ exports.getStudentCourseById = async (adminId, superAdminId, courseId) => {
 /**
  * Update Student Course (Controller)
  */
-exports.updateStudentCourse = async (req, res) => {
+exports.updateStudentCourseById = async (adminId, superAdminId, courseId, updateData) => {
+    if (!courseId) throw new Error("Course ID is required");
+
     try {
-        const adminId = req.admin.id;
-        const superAdminId = req.admin.superAdminId || null;
-        const courseId = req.params.id;
-
-        const body = req.body;
-        const files = req.files || {};
-
         // -----------------------------
-        // 1️⃣ Parse videos JSON safely
+        // 1️⃣ Validate inputs
         // -----------------------------
-        let videos = [];
-
-        if (body.videos) {
-            videos =
-                typeof body.videos === "string"
-                    ? JSON.parse(body.videos)
-                    : body.videos;
+        if (!adminId || isNaN(Number(adminId))) {
+            return {
+                status: false,
+                message: "No valid admin ID found.",
+            };
         }
 
+        if (!courseId || isNaN(Number(courseId))) {
+            return {
+                status: false,
+                message: "Invalid student course ID.",
+            };
+        }
         // -----------------------------
-        // 2️⃣ Replace video URLs if binary uploaded
+        // 2️⃣ Resolve allowed admin IDs
         // -----------------------------
-        videos = videos.map((video, index) => {
-            const fileKey = `video_${index}`;
+        let allowedAdminIds = [];
 
-            if (files[fileKey]?.[0]) {
-                return {
-                    ...video,
-                    video: files[fileKey][0].path, // OR .location for S3
-                };
-            }
+        if (superAdminId && superAdminId === adminId) {
+            const managedAdmins = await Admin.findAll({
+                where: { superAdminId },
+                attributes: ["id"],
+            });
 
-            return video; // keep existing URL
-        });
+            allowedAdminIds = managedAdmins.map(a => a.id);
+            allowedAdminIds.push(superAdminId);
 
-        // -----------------------------
-        // 3️⃣ Build update payload
-        // -----------------------------
-        const updateData = {
-            courseName: body.courseName,
-            level: body.level,
-            duration: body.duration,
-            durationType: body.durationType,
-            videos,
-        };
+        } else if (superAdminId) {
+            allowedAdminIds = [adminId, superAdminId];
+        } else {
+            allowedAdminIds = [adminId];
+        }
+        // Replace this with your DB update logic
+        const updatedCourse = await StudentCourse.update(updateData, { where: { id: courseId } });
 
-        // -----------------------------
-        // 4️⃣ Call service
-        // -----------------------------
-        const result = await updateStudentCourseById(
-            adminId,
-            superAdminId,
-            courseId,
-            updateData
-        );
-
-        return res.status(result.status ? 200 : 400).json(result);
-
+        return { status: true, data: updatedCourse };
     } catch (error) {
-        console.error("❌ updateStudentCourse Error:", error);
-        return res.status(500).json({
-            status: false,
-            message: error.message,
-            data: null,
-        });
+        console.error("❌ updateStudentCourseById Error:", error);
+        return { status: false, message: error.message };
     }
 };
 
