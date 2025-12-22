@@ -34,12 +34,12 @@ exports.listCustomTemplates = async (createdBy, templateCategoryId = null) => {
   try {
     const where = { createdBy: Number(createdBy) };
 
+    // Filter by template category if provided
     if (templateCategoryId) {
       const filterId = Number(templateCategoryId);
-      // (2) array search condition for JSON column
       where.template_category_id = {
         [Op.or]: [
-          { [Op.contains]: [filterId] },   // PostgreSQL / Sequelize JSON contains
+          { [Op.contains]: [filterId] },
           sequelize.where(
             sequelize.fn("JSON_CONTAINS", sequelize.col("template_category_id"), JSON.stringify(filterId)),
             1
@@ -54,47 +54,80 @@ exports.listCustomTemplates = async (createdBy, templateCategoryId = null) => {
       raw: true,
     });
 
+    // Fetch categories
     const catResult = await TemplateCategoryService.listTemplateCategories(createdBy);
     const catMap = {};
-
-    catResult.data.forEach((cat) => {
+    catResult.data.forEach(cat => {
       catMap[cat.id] = cat.category;
     });
 
-    // ✅ Final grouping format must stay same:
-    const grouped = {
-      email: [],
-      text: [],
-    };
+    // Grouping buckets
+    const grouped = { email: [], text: [] };
+    const bucket = { email: {}, text: {} };
 
-    const bucket = {
-      email: {},
-      text: {},
-    };
+    templates.forEach(temp => {
+      // -------------------------
+      // 1) Clean tags
+      // -------------------------
+      if (typeof temp.tags === "string") {
+        temp.tags = temp.tags.replace(/\\|"/g, "").trim();
+      }
 
-    templates.forEach((temp) => {
-      const mode = temp.mode_of_communication;
-
-      // (3) read array of IDs
-      let catIds = temp.template_category_id;
-
-      console.log('catIdtesmp', catIds);
-
-      catIds = catIds ? JSON.parse(catIds) : [];
-
-      const catNames = catIds.map(id => catMap[id] || "Uncategorized");
-
-      // (5) push template under each category name
-      catNames.forEach(catName => {
-        if (!bucket[mode][catName]) {
-          bucket[mode][catName] = [];
+      // -------------------------
+      // 2) Parse content JSON
+      // -------------------------
+      if (typeof temp.content === "string") {
+        try {
+          temp.content = JSON.parse(temp.content);
+        } catch {
+          temp.content = { blocks: [] };
         }
+      }
+
+      // -------------------------
+      // 3) Parse template_category_id safely
+      // -------------------------
+      let catIds = [];
+      try {
+        const parsed = JSON.parse(temp.template_category_id);
+        parsed.forEach(item => {
+          if (typeof item === "string") {
+            // Remove extra brackets and split
+            const cleaned = item.replace(/[\[\]]/g, "");
+            cleaned.split(",").forEach(id => {
+              const n = Number(id);
+              if (!isNaN(n)) catIds.push(n);
+            });
+          } else if (typeof item === "number") {
+            catIds.push(item);
+          }
+        });
+      } catch {
+        catIds = [];
+      }
+
+      // -------------------------
+      // 4) Map category IDs to names
+      // -------------------------
+      const catNames = catIds.length
+        ? catIds.map(id => catMap[id] || "Uncategorized")
+        : ["Uncategorized"];
+
+      // -------------------------
+      // 5) Group templates by mode and category
+      // -------------------------
+      const mode = temp.mode_of_communication;
+      catNames.forEach(catName => {
+        if (!bucket[mode][catName]) bucket[mode][catName] = [];
         bucket[mode][catName].push(temp);
       });
     });
 
+    // -------------------------
+    // 6) Convert bucket to grouped array
+    // -------------------------
     for (const mode of ["email", "text"]) {
-      Object.keys(bucket[mode]).forEach((cat) => {
+      Object.keys(bucket[mode]).forEach(cat => {
         grouped[mode].push({
           template_category: cat,
           templates: bucket[mode][cat],

@@ -15,6 +15,7 @@ const { getCustomTemplateById } = require("../../../services/admin/templates/cus
 const PANEL = "admin";
 const MODULE = "custom-template";
 
+
 // ✅ CREATE Template Category
 exports.createCustomTemplate = async (req, res) => {
   try {
@@ -79,15 +80,15 @@ exports.createCustomTemplate = async (req, res) => {
       parsedContent = content;
     }
 
+    if (!parsedContent?.blocks) parsedContent = { blocks: [] };
+
     // -------------------------
-    // 5) Upload images from req.files and add to content
+    // 5) Upload images from req.files
     // -------------------------
+    const allowedExtensions = ["jpg","jpeg","png","webp","gif","bmp","svg","tiff"];
     let uploadedUrls = [];
 
-    // Normalize files array
-    let filesArray = Array.isArray(files) ? files : Object.values(files).flat();
-
-    const allowedExtensions = ["jpg","jpeg","png","webp","gif","bmp","svg","tiff"];
+    const filesArray = Array.isArray(files) ? files : Object.values(files).flat();
     for (const file of filesArray) {
       const ext = path.extname(file.originalname).toLowerCase().slice(1);
       if (!allowedExtensions.includes(ext)) {
@@ -99,7 +100,6 @@ exports.createCustomTemplate = async (req, res) => {
       const uniqueId = Date.now() + "_" + Math.floor(Math.random() * 1e9);
       const ext = path.extname(file.originalname).toLowerCase();
       const fileName = `${uniqueId}${ext}`;
-
       const localPath = path.join(
         process.cwd(),
         "uploads",
@@ -122,22 +122,21 @@ exports.createCustomTemplate = async (req, res) => {
       }
     }
 
-    // Add uploaded image URLs to content.blocks
-    if (uploadedUrls.length > 0) {
-      if (!parsedContent?.blocks) parsedContent = { blocks: [] };
-      uploadedUrls.forEach(url => {
-        parsedContent.blocks.push({
-          id: `img_${Date.now()}_${Math.floor(Math.random() * 1e5)}`,
-          type: "image",
-          content: "",
-          url,
-          placeholder: ""
-        });
-      });
+    // -------------------------
+    // 6) Map uploaded images to blocks
+    // -------------------------
+    let imageIndex = 0;
+    for (let block of parsedContent.blocks) {
+      if (block.type === "text") {
+        if (uploadedUrls[imageIndex]) {
+          block[`image_${imageIndex + 1}`] = uploadedUrls[imageIndex];
+          imageIndex++;
+        }
+      }
     }
 
     // -------------------------
-    // 6) Prepare payload
+    // 7) Prepare payload
     // -------------------------
     const payload = {
       title,
@@ -151,7 +150,7 @@ exports.createCustomTemplate = async (req, res) => {
     if (mode_of_communication === "text") payload.sender_name = sender_name;
 
     // -------------------------
-    // 7) Call service
+    // 8) Call service
     // -------------------------
     const result = await CustomTemplate.createCustomTemplate(payload);
 
