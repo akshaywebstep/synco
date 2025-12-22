@@ -32,12 +32,12 @@ router.put(
   updateBooking
 );
 
-router.get(
-  "/service-history/:bookingId",
-  authMiddleware,
-  permissionMiddleware("account-information", "view-listing"),
-  getBookingsById
-);
+// router.get(
+//   "/service-history/:bookingId",
+//   authMiddleware,
+//   permissionMiddleware("account-information", "view-listing"),
+//   getBookingsById
+// );
 
 router.get(
   "/venues/classes/:bookingId",

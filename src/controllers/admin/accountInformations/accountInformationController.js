@@ -375,85 +375,85 @@ exports.updateBooking = async (req, res) => {
   }
 };
 
-exports.getBookingsById = async (req, res) => {
-  try {
-    const { bookingId } = req.params;
-    const { type, fromDate, toDate } = req.query;
+// exports.getBookingsById = async (req, res) => {
+//   try {
+//     const { bookingId } = req.params;
+//     const { type, fromDate, toDate } = req.query;
 
-    // 🧾 Validate input
-    if (!bookingId) {
-      return res.status(400).json({
-        status: false,
-        message: "Booking ID is required",
-      });
-    }
+//     // 🧾 Validate input
+//     if (!bookingId) {
+//       return res.status(400).json({
+//         status: false,
+//         message: "Booking ID is required",
+//       });
+//     }
 
-    // 🔎 Call service with filters
-    const result = await AccountInformationService.getBookingsById(bookingId, {
-      type,
-      fromDate,
-      toDate,
-    });
+//     // 🔎 Call service with filters
+//     const result = await AccountInformationService.getBookingsById(bookingId, {
+//       type,
+//       fromDate,
+//       toDate,
+//     });
 
-    // ❌ Handle service failure
-    if (!result.status) {
-      await logActivity(
-        req,
-        PANEL,
-        MODULE,
-        "read",
-        { bookingId, error: result.message },
-        false
-      );
+//     // ❌ Handle service failure
+//     if (!result.status) {
+//       await logActivity(
+//         req,
+//         PANEL,
+//         MODULE,
+//         "read",
+//         { bookingId, error: result.message },
+//         false
+//       );
 
-      return res.status(404).json({
-        status: false,
-        message: result.message || "Booking not found",
-      });
-    }
+//       return res.status(404).json({
+//         status: false,
+//         message: result.message || "Booking not found",
+//       });
+//     }
 
-    // 🧩 Optional Debug Logging
-    if (DEBUG) {
-      console.log(
-        "DEBUG: Retrieved booking info:",
-        JSON.stringify(result.data, null, 2)
-      );
-    }
+//     // 🧩 Optional Debug Logging
+//     if (DEBUG) {
+//       console.log(
+//         "DEBUG: Retrieved booking info:",
+//         JSON.stringify(result.data, null, 2)
+//       );
+//     }
 
-    // ✅ Log successful retrieval
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "read",
-      { bookingId },
-      true
-    );
+//     // ✅ Log successful retrieval
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "read",
+//       { bookingId },
+//       true
+//     );
 
-    // ✅ Send successful response
-    return res.status(200).json({
-      status: true,
-      message: "Booking retrieved successfully",
-      data: result.data,
-    });
-  } catch (error) {
-    console.error("❌ getBookingsById Controller Error:", error.message);
+//     // ✅ Send successful response
+//     return res.status(200).json({
+//       status: true,
+//       message: "Booking retrieved successfully",
+//       data: result.data,
+//     });
+//   } catch (error) {
+//     console.error("❌ getBookingsById Controller Error:", error.message);
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "read",
-      { error: error.message },
-      false
-    );
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "read",
+//       { error: error.message },
+//       false
+//     );
 
-    return res.status(500).json({
-      status: false,
-      message: "Server error. Please try again later.",
-    });
-  }
-};
+//     return res.status(500).json({
+//       status: false,
+//       message: "Server error. Please try again later.",
+//     });
+//   }
+// };
 
 exports.getVenuesWithClassesFromBookings = async (req, res) => {
   try {

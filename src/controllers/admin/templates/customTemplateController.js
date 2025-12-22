@@ -16,6 +16,7 @@ const PANEL = "admin";
 const MODULE = "custom-template";
 
 // ✅ CREATE Template Category
+
 exports.createCustomTemplate = async (req, res) => {
   try {
     const formData = req.body || {};
@@ -46,7 +47,7 @@ exports.createCustomTemplate = async (req, res) => {
     // -------------------------
     // 2) Validate Required Fields
     // -------------------------
-    let required = ["mode_of_communication", "title"];
+    const required = ["mode_of_communication", "title"];
     if (mode_of_communication === "text") required.push("sender_name", "content");
     if (mode_of_communication === "email") required.push("content");
 
@@ -61,7 +62,7 @@ exports.createCustomTemplate = async (req, res) => {
     // -------------------------
     // 3) Normalize category IDs
     // -------------------------
-    let categoryId = Array.isArray(template_category_id) ? template_category_id[0] : template_category_id;
+    const categoryId = Array.isArray(template_category_id) ? template_category_id[0] : template_category_id;
 
     if (!categoryId) {
       return res.status(400).json({
@@ -69,25 +70,26 @@ exports.createCustomTemplate = async (req, res) => {
         message: "template_category_id is required."
       });
     }
+
     // -------------------------
-    // 4) Parse content (JSON)
+    // 4) Parse content JSON
     // -------------------------
     let parsedContent;
     try {
       parsedContent = typeof content === "string" ? JSON.parse(content) : content;
     } catch {
-      parsedContent = content;
+      return res.status(400).json({ status: false, message: "Invalid JSON in content." });
     }
 
-    if (!parsedContent?.blocks) parsedContent = { blocks: [] };
+    if (!parsedContent?.blocks || !Array.isArray(parsedContent.blocks)) parsedContent = { blocks: [] };
 
     // -------------------------
-    // 5) Upload images from req.files
+    // 5) Upload images
     // -------------------------
     const allowedExtensions = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "svg", "tiff"];
-    let uploadedUrls = {};
+    const uploadedUrls = {};
 
-    // Flatten files object to handle multiple files
+    // Ensure files is always an array
     const filesArray = Array.isArray(files) ? files : Object.values(files).flat();
 
     for (const file of filesArray) {
@@ -95,13 +97,10 @@ exports.createCustomTemplate = async (req, res) => {
       if (!allowedExtensions.includes(ext)) {
         return res.status(400).json({ status: false, message: `Invalid file type: ${file.originalname}` });
       }
-    }
 
-    // Upload files
-    for (const file of filesArray) {
+      // Save file locally first
       const uniqueId = Date.now() + "_" + Math.floor(Math.random() * 1e9);
-      const ext = path.extname(file.originalname).toLowerCase();
-      const fileName = `${uniqueId}${ext}`;
+      const fileName = `${uniqueId}.${ext}`;
       const localPath = path.join(
         process.cwd(),
         "uploads",
@@ -118,32 +117,21 @@ exports.createCustomTemplate = async (req, res) => {
       try {
         const remotePath = `uploads/temp/admin/${adminId}/templates/${fileName}`;
         const publicUrl = await uploadToFTP(localPath, remotePath);
-        if (publicUrl) {
-          // Save URL using the original field name (e.g., image_1, image_2)
-          uploadedUrls[file.fieldname] = publicUrl;
-        }
+        if (publicUrl) uploadedUrls[file.fieldname] = publicUrl;
       } finally {
-        await fs.promises.unlink(localPath).catch(() => { });
+        await fs.promises.unlink(localPath).catch(() => {});
       }
     }
 
     // -------------------------
-    // 6) Map uploaded images to blocks
+    // 6) Map uploaded images to content blocks
     // -------------------------
-    for (let block of parsedContent.blocks) {
-      if (block.type === "text") {
-        // Replace the URL if the content references an image key
-        for (const key of Object.keys(uploadedUrls)) {
-          if (block.url && block.url === key) {
-            block.url = uploadedUrls[key];
-          }
-          // Optional: replace references inside the content as well
-          if (block.content && block.content.includes(key)) {
-            block.content = block.content.replaceAll(key, uploadedUrls[key]);
-          }
-        }
+    parsedContent.blocks = parsedContent.blocks.map(block => {
+      if (block.type === "image" && block.url && uploadedUrls[block.url]) {
+        block.url = uploadedUrls[block.url]; // replace with uploaded URL
       }
-    }
+      return block;
+    });
 
     // -------------------------
     // 7) Prepare payload
@@ -160,7 +148,7 @@ exports.createCustomTemplate = async (req, res) => {
     if (mode_of_communication === "text") payload.sender_name = sender_name;
 
     // -------------------------
-    // 8) Call service
+    // 8) Call service to create template
     // -------------------------
     const result = await CustomTemplate.createCustomTemplate(payload);
 
