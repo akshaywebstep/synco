@@ -15,7 +15,6 @@ const { getCustomTemplateById } = require("../../../services/admin/templates/cus
 const PANEL = "admin";
 const MODULE = "custom-template";
 
-
 // ✅ CREATE Template Category
 exports.createCustomTemplate = async (req, res) => {
   try {
@@ -62,14 +61,14 @@ exports.createCustomTemplate = async (req, res) => {
     // -------------------------
     // 3) Normalize category IDs
     // -------------------------
-    let categoryIds = Array.isArray(template_category_id) ? template_category_id : [template_category_id];
-    if (categoryIds.length === 0) {
+    let categoryId = Array.isArray(template_category_id) ? template_category_id[0] : template_category_id;
+
+    if (!categoryId) {
       return res.status(400).json({
         status: false,
         message: "template_category_id is required."
       });
     }
-
     // -------------------------
     // 4) Parse content (JSON)
     // -------------------------
@@ -85,10 +84,12 @@ exports.createCustomTemplate = async (req, res) => {
     // -------------------------
     // 5) Upload images from req.files
     // -------------------------
-    const allowedExtensions = ["jpg","jpeg","png","webp","gif","bmp","svg","tiff"];
-    let uploadedUrls = [];
+    const allowedExtensions = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "svg", "tiff"];
+    let uploadedUrls = {};
 
+    // Flatten files object to handle multiple files
     const filesArray = Array.isArray(files) ? files : Object.values(files).flat();
+
     for (const file of filesArray) {
       const ext = path.extname(file.originalname).toLowerCase().slice(1);
       if (!allowedExtensions.includes(ext)) {
@@ -96,6 +97,7 @@ exports.createCustomTemplate = async (req, res) => {
       }
     }
 
+    // Upload files
     for (const file of filesArray) {
       const uniqueId = Date.now() + "_" + Math.floor(Math.random() * 1e9);
       const ext = path.extname(file.originalname).toLowerCase();
@@ -116,21 +118,29 @@ exports.createCustomTemplate = async (req, res) => {
       try {
         const remotePath = `uploads/temp/admin/${adminId}/templates/${fileName}`;
         const publicUrl = await uploadToFTP(localPath, remotePath);
-        if (publicUrl) uploadedUrls.push(publicUrl);
+        if (publicUrl) {
+          // Save URL using the original field name (e.g., image_1, image_2)
+          uploadedUrls[file.fieldname] = publicUrl;
+        }
       } finally {
-        await fs.promises.unlink(localPath).catch(() => {});
+        await fs.promises.unlink(localPath).catch(() => { });
       }
     }
 
     // -------------------------
     // 6) Map uploaded images to blocks
     // -------------------------
-    let imageIndex = 0;
     for (let block of parsedContent.blocks) {
       if (block.type === "text") {
-        if (uploadedUrls[imageIndex]) {
-          block[`image_${imageIndex + 1}`] = uploadedUrls[imageIndex];
-          imageIndex++;
+        // Replace the URL if the content references an image key
+        for (const key of Object.keys(uploadedUrls)) {
+          if (block.url && block.url === key) {
+            block.url = uploadedUrls[key];
+          }
+          // Optional: replace references inside the content as well
+          if (block.content && block.content.includes(key)) {
+            block.content = block.content.replaceAll(key, uploadedUrls[key]);
+          }
         }
       }
     }
@@ -141,7 +151,7 @@ exports.createCustomTemplate = async (req, res) => {
     const payload = {
       title,
       mode_of_communication,
-      template_category_id: JSON.stringify(categoryIds),
+      template_category_id: categoryId,
       content: parsedContent,
       tags,
       createdBy: adminId

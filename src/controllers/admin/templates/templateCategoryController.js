@@ -12,6 +12,7 @@ const PANEL = "admin";
 const MODULE = "template-category";
 
 // ✅ CREATE Template Category
+// ✅ CREATE Template Category (Controller)
 exports.createTemplateCategory = async (req, res) => {
   const formData = req.body;
   const { category } = formData;
@@ -21,6 +22,7 @@ exports.createTemplateCategory = async (req, res) => {
     console.log("📝 Form Data:", formData);
   }
 
+  // ✅ Validate request body
   const validation = validateFormData(formData, {
     requiredFields: ["category"],
   });
@@ -28,30 +30,33 @@ exports.createTemplateCategory = async (req, res) => {
   if (!validation.isValid) {
     if (DEBUG) console.log("❌ STEP 2: Validation failed:", validation.error);
     await logActivity(req, PANEL, MODULE, "create", { message: validation.error }, false);
+
     return res.status(400).json({
       status: false,
-      error: validation.error,
       message: validation.message,
+      error: validation.error,
     });
   }
 
   try {
-    // ✅ Direct model creation since this is actual Sequelize model
-    const data = await TemplateCategory.createTemplateCategory({
+    // ✅ Call SERVICE (not model directly)
+    const result = await TemplateCategoryService.createTemplateCategory({
       category,
-      createdBy: req.admin.id, // ✅ matches schema
+      createdBy: req.admin.id
     });
 
-    if (!data) {
-      if (DEBUG) console.log("⚠️ STEP 3: Creation returned empty");
-      await logActivity(req, PANEL, MODULE, "create", { message: "Creation failed" }, false);
+    if (!result.status) {
+      if (DEBUG) console.log("⚠️ STEP 3: Service creation failed");
+      await logActivity(req, PANEL, MODULE, "create", { message: result.message }, false);
+
       return res.status(500).json({
         status: false,
-        message: "Failed to create template category.",
+        message: result.message || "Failed to create template category."
       });
     }
 
-    if (DEBUG) console.log("✅ STEP 4: Template Category created:", data);
+    if (DEBUG) console.log("✅ STEP 4: Template Category created:", result.data);
+
     await logActivity(req, PANEL, MODULE, "create", { message: "Created successfully" }, true);
 
     const adminFullName =
@@ -66,15 +71,28 @@ exports.createTemplateCategory = async (req, res) => {
     return res.status(201).json({
       status: true,
       message: "Template category created successfully.",
-      data,
+      data: result.data
     });
 
   } catch (error) {
     console.error("❌ STEP 5: Server error during creation:", error);
-    await logActivity(req, PANEL, MODULE, "create", { oneLineMessage: error.message }, false);
-    return res.status(500).json({ status: false, message: "Server error." });
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "create",
+      { oneLineMessage: error.message },
+      false
+    );
+
+    return res.status(500).json({
+      status: false,
+      message: "Server error."
+    });
   }
 };
+
 exports.listTemplateCategories = async (req, res) => {
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;

@@ -533,7 +533,7 @@ exports.getHolidayBooking = async (superAdminId, adminId) => {
         .sort((a, b) => b[1] - a[1])[0][0];
     }
     return {
-      success: true,
+      status: true,
       // count: bookings.length,
       summary: {
         totalStudents,

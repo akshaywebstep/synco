@@ -2,6 +2,8 @@ const AccountInformationService = require("../../../services/admin/accountInform
 const { logActivity } = require("../../../utils/admin/activityLogger");
 const oneToOneLeadService = require("../../../services/admin/oneToOne//oneToOneLeadsService");
 const birthdayPartyLeadService = require("../../../services/admin/birthdayParty/birthdayPartyLeadsService");
+const freeTrialBookingService = require("../../../services/admin/booking/bookingTrial");
+const holidayBookingService = require("../../../services/admin/holidayCamps/booking/holidayBooking");
 const {
   createNotification,
 } = require("../../../utils/admin/notificationHelper");
@@ -33,7 +35,6 @@ exports.getAllStudentsListing = async (req, res) => {
     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
     // ✅ Apply bookedBy filter
-    // ✅ Apply bookedBy filter
     if (req.admin?.role?.toLowerCase() === "super admin") {
 
       const childAdminIds = (mainSuperAdminResult?.admins || [])
@@ -49,11 +50,18 @@ exports.getAllStudentsListing = async (req, res) => {
     }
 
     // 🧠 Run all three service calls in parallel for performance
-    const [membershipResult, oneToOneResult, birthdayPartyResult] = await Promise.all([
+    const [membershipResult, trialsResult, oneToOneResult, birthdayPartyResult, holidayBookingResult] = await Promise.all([
       AccountInformationService.getAllStudentsListing(filters),
+      freeTrialBookingService.getAllBookings(filters),
       oneToOneLeadService.getAllOnetoOneLeadsSales(superAdminId, adminId, filters),
       birthdayPartyLeadService.getAllBirthdayPartyLeadsSales(superAdminId, adminId, filters),
+      holidayBookingService.getHolidayBooking(superAdminId, adminId),
     ]);
+    console.log("membershipResult:", membershipResult);
+    console.log("trialsResult:", trialsResult);
+    console.log("oneToOneResult:", oneToOneResult);
+    console.log("birthdayPartyResult:", birthdayPartyResult);
+    console.log("holidayBookingResult:", holidayBookingResult);
 
     // ❌ Handle Membership failure
     if (!membershipResult.status) {
@@ -61,6 +69,14 @@ exports.getAllStudentsListing = async (req, res) => {
       return res.status(500).json({
         status: false,
         message: membershipResult.message || "Failed to retrieve student listings",
+      });
+    }
+    // ❌ Handle Trials failure
+    if (!trialsResult.status) {
+      await logActivity(req, PANEL, MODULE, "read", { filters, error: trialsResult.message }, false);
+      return res.status(500).json({
+        status: false,
+        message: trialsResult.message || "Failed to retrieve trials listings",
       });
     }
 
@@ -81,20 +97,33 @@ exports.getAllStudentsListing = async (req, res) => {
         message: birthdayPartyResult.message || "Failed to retrieve Birthday Party leads",
       });
     }
+    // ❌ Handle Holiday Booking Party failure
+    if (!holidayBookingResult.status) {
+      await logActivity(req, PANEL, MODULE, "read", { filters, error: holidayBookingResult.message }, false);
+      return res.status(500).json({
+        status: false,
+        message: holidayBookingResult.message || "Failed to retrieve Holiday Booking data",
+      });
+    }
 
     // 🧩 Optional: Debug logging
     if (DEBUG) {
       console.log("DEBUG: Membership data:", JSON.stringify(membershipResult.data, null, 2));
+      console.log("DEBUG: Trials data:", JSON.stringify(trialsResult.data, null, 2));
       console.log("DEBUG: One-to-One data:", JSON.stringify(oneToOneResult.data, null, 2));
       console.log("DEBUG: Birthday Party data:", JSON.stringify(birthdayPartyResult.data, null, 2));
+      console.log("DEBUG: Holiday Booking data:", JSON.stringify(holidayBookingResult.data, null, 2));
+
     }
 
     // ✅ Combine results into unified structure
     const unifiedData = {
       accountInformation: {
         membership: membershipResult?.data?.accountInformation || [],
+        trials: trialsResult?.data?.trials || [],
         oneToOne: oneToOneResult?.data || [],
         birthdayParty: birthdayPartyResult?.data || [],
+        holidayCamps: holidayBookingResult?.data || [],
       },
     };
 
@@ -107,8 +136,10 @@ exports.getAllStudentsListing = async (req, res) => {
       {
         filters,
         membershipCount: membershipResult.data?.accountInformation?.length || 0,
+        trialsCount: trialsResult?.data?.trials?.length || 0,
         oneToOneCount: oneToOneResult.data?.length || 0,
         birthdayPartyCount: birthdayPartyResult.data?.length || 0,
+        holidayCampCount: holidayBookingResult?.data?.length || 0,
       },
       true
     );

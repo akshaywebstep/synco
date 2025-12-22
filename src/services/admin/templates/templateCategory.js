@@ -6,11 +6,31 @@ const { Op } = require("sequelize");
 // ✅ Create a new class
 exports.createTemplateCategory = async (data) => {
   try {
-    const savedCategory = await TemplateCategory.create(data);
-    return { status: true, data: TemplateCategory };
+    // ✅ Basic safety validation
+    if (!data.category) {
+      return {
+        status: false,
+        message: "Category is required"
+      };
+    }
+
+    const savedCategory = await TemplateCategory.create({
+      category: data.category,
+      createdBy: data.createdBy
+    });
+
+    return {
+      status: true,
+      data: savedCategory
+    };
+
   } catch (error) {
     console.error("❌ createTemplateCategory Error:", error);
-    return { status: false, message: error.message };
+
+    return {
+      status: false,
+      message: error.message
+    };
   }
 };
 exports.listTemplateCategories = async (createdBy) => {

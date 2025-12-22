@@ -9,11 +9,6 @@ const {
   updateBooking,
   getBookingsById,
   getVenuesWithClassesFromBookings,
-  // createFeedback,
-  // listAllFeedbacks,
-  // getFeedbackById,
-  // resolveFeedback,
-  // getEventsByBookingId,
 } = require("../../controllers/admin/accountInformations/accountInformationController");
 
 router.get(
@@ -50,38 +45,5 @@ router.get(
   permissionMiddleware("account-information", "view-listing"),
   getVenuesWithClassesFromBookings
 );
-// router.post(
-//   "/feedback",
-//   authMiddleware,
-//   permissionMiddleware("feedback", "create"),
-//   createFeedback
-// );
-
-// router.get(
-//   "/feedback/booking/:bookingId",
-//   authMiddleware,
-//   permissionMiddleware("feedback", "view-listing"),
-//   listAllFeedbacks
-// );
-
-// router.get(
-//   "/feedback/:id",
-//   authMiddleware,
-//   permissionMiddleware("feedback", "view-listing"),
-//   getFeedbackById
-// );
-// router.put(
-//   "/feedback/:feedbackId/resolve",
-//   authMiddleware,
-//   permissionMiddleware("feedback", "update"),
-//   resolveFeedback
-// );
-
-// router.get(
-//   "/events/:bookingId",
-//   authMiddleware,
-//   permissionMiddleware("event", "view-listing"),
-//   getEventsByBookingId
-// );
 
 module.exports = router;
