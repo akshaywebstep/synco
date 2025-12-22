@@ -10,7 +10,7 @@ const {
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 
 const {
-  sequelize, BirthdayPartyBooking, OneToOneBooking
+  sequelize, BirthdayPartyBooking
 } = require("../../../models");
 
 const DEBUG = process.env.DEBUG === "true";
@@ -116,7 +116,7 @@ exports.getBookingById = async (req, res) => {
         data: oneToOneResult.data,
       });
     }
-       // 🟣 STEP 4 — HOLIDAY CAMP (BOOKING-BASED ✅)
+       // 🟣 STEP 5 — HOLIDAY CAMP (BOOKING-BASED ✅)
     if (requestedServiceType === "holiday camp") {
       if (DEBUG) console.log("🟣 [STEP 4] Holiday Camp flow");
 

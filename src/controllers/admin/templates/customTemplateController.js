@@ -1,5 +1,4 @@
 
-
 const { validateFormData } = require("../../../utils/validateFormData");
 const { logActivity } = require("../../../utils/admin/activityLogger");
 const { createNotification } = require("../../../utils/admin/notificationHelper");
@@ -118,7 +117,7 @@ exports.createCustomTemplate = async (req, res) => {
         const publicUrl = await uploadToFTP(localPath, remotePath);
         if (publicUrl) uploadedUrls[file.fieldname] = publicUrl;
       } finally {
-        await fs.promises.unlink(localPath).catch(() => {});
+        await fs.promises.unlink(localPath).catch(() => { });
       }
     }
 
@@ -180,6 +179,188 @@ exports.createCustomTemplate = async (req, res) => {
   }
 };
 
+// ✅ UPDATE Custom Template (Full Flow)
+exports.updateCustomTemplate = async (req, res) => {
+  const DEBUG = process.env.DEBUG === "true";
+  const { id } = req.params;
+  const formData = req.body || {};
+  const files = req.files || [];
+  const adminId = req.admin?.id;
+
+  let { mode_of_communication, title, template_category_id, sender_name, content, tags } = formData;
+
+  if (DEBUG) {
+    console.log("📩 Incoming Body for Update:", formData);
+    console.log("📁 Incoming Files:", files);
+  }
+
+  // -------------------------
+  // 1) Validate Mode of Communication
+  // -------------------------
+  if (!["email", "text"].includes(mode_of_communication)) {
+    await logActivity(req, PANEL, MODULE, "update", { message: "Invalid communication mode" }, false);
+    return res.status(400).json({
+      status: false,
+      message: "mode_of_communication must be either 'email' or 'text'."
+    });
+  }
+
+  // -------------------------
+  // 2) Validate Required Fields
+  // -------------------------
+  const required = ["mode_of_communication", "title"];
+  if (mode_of_communication === "text") required.push("sender_name", "content");
+  if (mode_of_communication === "email") required.push("content");
+
+  const missing = required.filter(f => !formData[f]);
+  if (missing.length) {
+    return res.status(400).json({
+      status: false,
+      message: `Missing required fields: ${missing.join(", ")}`
+    });
+  }
+
+  // -------------------------
+  // 3) Normalize category IDs
+  // -------------------------
+  const categoryId = Array.isArray(template_category_id) ? template_category_id[0] : template_category_id;
+  if (!categoryId) {
+    return res.status(400).json({
+      status: false,
+      message: "template_category_id is required."
+    });
+  }
+
+  // -------------------------
+  // 4) Parse content JSON
+  // -------------------------
+  let parsedContent;
+  try {
+    parsedContent = typeof content === "string" ? JSON.parse(content) : content;
+  } catch {
+    return res.status(400).json({ status: false, message: "Invalid JSON in content." });
+  }
+  if (!parsedContent?.blocks || !Array.isArray(parsedContent.blocks)) parsedContent = { blocks: [] };
+
+  if (DEBUG) console.log("📝 Parsed Content:", parsedContent);
+
+  // -------------------------
+  // 5) Upload files
+  // -------------------------
+  const allowedExtensions = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "svg", "tiff"];
+  const uploadedUrls = {};
+  const filesArray = Array.isArray(files) ? files : Object.values(files).flat();
+
+  for (const file of filesArray) {
+    const ext = path.extname(file.originalname).toLowerCase().slice(1);
+    if (!allowedExtensions.includes(ext)) {
+      return res.status(400).json({ status: false, message: `Invalid file type: ${file.originalname}` });
+    }
+
+    const uniqueId = Date.now() + "_" + Math.floor(Math.random() * 1e9);
+    const fileName = `${uniqueId}.${ext}`;
+    const localPath = path.join(
+      process.cwd(),
+      "uploads",
+      "temp",
+      "admin",
+      `${adminId}`,
+      "templates",
+      fileName
+    );
+
+    await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
+    await saveFile(file, localPath);
+
+    try {
+      const remotePath = `uploads/temp/admin/${adminId}/templates/${fileName}`;
+      const publicUrl = await uploadToFTP(localPath, remotePath);
+      if (publicUrl) uploadedUrls[file.fieldname] = publicUrl;
+    } finally {
+      await fs.promises.unlink(localPath).catch(() => { });
+    }
+  }
+
+  if (DEBUG) console.log("🌐 Uploaded URLs:", uploadedUrls);
+
+  // -------------------------
+  // 6) Replace image URLs recursively (conditional)
+  // -------------------------
+  function replaceImageUrls(blocks) {
+    if (!blocks || !Array.isArray(blocks)) return;
+
+    for (const block of blocks) {
+      if (block.url) {
+        // Replace only if placeholder matches uploaded file
+        if (uploadedUrls[block.url]) {
+          block.url = uploadedUrls[block.url];
+        }
+        // If full URL already present, leave it as-is
+        else if (block.url.startsWith("http")) {
+          // do nothing
+        } else {
+          // optional: clear invalid placeholder
+          block.url = "";
+        }
+      }
+
+      // Recursively process columns in sectionGrid
+      if (block.columns && Array.isArray(block.columns)) {
+        for (const col of block.columns) replaceImageUrls(col);
+      }
+    }
+  }
+
+  replaceImageUrls(parsedContent.blocks);
+
+  if (DEBUG) console.log("🔄 Content after URL replacement:", parsedContent);
+
+  // -------------------------
+  // 7) Prepare payload
+  // -------------------------
+  const payload = {
+    title,
+    mode_of_communication,
+    template_category_id: categoryId,
+    content: parsedContent,
+    tags
+  };
+  if (mode_of_communication === "text") payload.sender_name = sender_name;
+
+  if (DEBUG) console.log("📦 Payload for update:", payload);
+
+  // -------------------------
+  // 8) Call service to update
+  // -------------------------
+  try {
+    const result = await CustomTemplate.updateCustomTemplate(id, payload, adminId);
+
+    if (!result.status) {
+      await logActivity(req, PANEL, MODULE, "update", { message: result.message }, false);
+      return res.status(404).json({ status: false, message: result.message });
+    }
+
+    const adminFullName =
+      req.admin?.name || `${req.admin?.firstName || ""} ${req.admin?.lastName || ""}`.trim() || "Unknown Admin";
+
+    const msg = `Custom template updated successfully by ${adminFullName}`;
+
+    await logActivity(req, PANEL, MODULE, "update", { message: "Updated successfully" }, true);
+    await createNotification(req, "Custom Template Updated", msg, "Support");
+
+    return res.status(200).json({
+      status: true,
+      message: "Custom template updated successfully.",
+      data: result.data
+    });
+
+  } catch (error) {
+    console.error("❌ Controller Error:", error);
+    await logActivity(req, PANEL, MODULE, "update", { oneLineMessage: error.message }, false);
+    return res.status(500).json({ status: false, message: "Internal server error." });
+  }
+};
+
 // ✅ LIST API
 exports.listCustomTemplates = async (req, res) => {
   const { template_category_id } = req.query;
@@ -219,136 +400,6 @@ exports.deleteCustomTemplate = async (req, res) => {
 
   await logActivity(req, PANEL, MODULE, "delete", { message: result.message }, true);
   return res.status(200).json({ status: true, message: result.message });
-};
-
-// ✅ UPDATE API
-exports.updateCustomTemplate = async (req, res) => {
-  const { id } = req.params;
-  const formData = req.body;
-  const { mode_of_communication, title, template_category_id, sender_name, content, tags } = formData;
-
-  // -------------------------------------------
-  // 1) Validate communication mode
-  // -------------------------------------------
-  if (!["email", "text"].includes(mode_of_communication)) {
-    await logActivity(req, PANEL, MODULE, "update", { message: "Invalid communication mode" }, false);
-    return res.status(400).json({
-      status: false,
-      message: "mode_of_communication must be email or text only.",
-    });
-  }
-
-  // -------------------------------------------
-  // 2) Normalize category IDs (ALWAYS ARRAY)
-  // -------------------------------------------
-  let categoryIds = [];
-
-  if (Array.isArray(template_category_id)) {
-    categoryIds = template_category_id;
-  } else if (template_category_id) {
-    categoryIds = [template_category_id];
-  }
-
-  if (categoryIds.length === 0) {
-    return res.status(400).json({
-      status: false,
-      message: "template_category_id is required."
-    });
-  }
-
-  // -------------------------------------------
-  // 3) Required field rules
-  // -------------------------------------------
-  const rules = {
-    requiredFields: ["mode_of_communication", "title"],
-  };
-
-  if (mode_of_communication === "text") {
-    rules.requiredFields.push("sender_name", "content");
-  }
-
-  if (mode_of_communication === "email") {
-    rules.requiredFields.push("content");
-  }
-
-  const validation = validateFormData(formData, rules);
-
-  if (!validation.isValid) {
-    await logActivity(req, PANEL, MODULE, "update", { message: validation.error }, false);
-    return res.status(400).json({
-      status: false,
-      error: validation.error,
-      message: validation.message,
-    });
-  }
-
-  try {
-    // -------------------------------------------
-    // 4) Parse content if JSON string
-    // -------------------------------------------
-    let parsedContent = content;
-    if (typeof content === "string") {
-      try {
-        parsedContent = JSON.parse(content);
-      } catch {
-        parsedContent = content; // Keep as normal string
-      }
-    }
-
-    // -------------------------------------------
-    // 5) Build payload (IMPORTANT PART)
-    // -------------------------------------------
-    const payload = {
-      title,
-      tags,
-      mode_of_communication,
-      template_category_id: JSON.stringify(categoryIds),  // MUST be STRING for DB column
-      content: parsedContent
-    };
-
-    if (mode_of_communication === "text") {
-      payload.sender_name = sender_name;
-    } else {
-      delete payload.sender_name;
-    }
-
-    // -------------------------------------------
-    // 6) Call service
-    // -------------------------------------------
-    const result = await CustomTemplate.updateCustomTemplate(id, payload, req.admin.id);
-
-    if (!result.status) {
-      await logActivity(req, PANEL, MODULE, "update", { message: result.message }, false);
-      return res.status(404).json({ status: false, message: result.message });
-    }
-
-    // -------------------------------------------
-    // 7) Notification & Logs
-    // -------------------------------------------
-    const adminFullName =
-      req.admin?.name ||
-      `${req.admin?.firstName || ""} ${req.admin?.lastName || ""}`.trim() ||
-      "Unknown Admin";
-
-    const msg = `Custom template updated successfully by ${adminFullName}`;
-
-    await logActivity(req, PANEL, MODULE, "update", { message: "Updated successfully" }, true);
-    await createNotification(req, "Custom Template Updated", msg, "Support");
-
-    // -------------------------------------------
-    // 8) SUCCESS RESPONSE
-    // -------------------------------------------
-    return res.status(200).json({
-      status: true,
-      message: "Custom template updated successfully.",
-      data: result.data,
-    });
-
-  } catch (error) {
-    console.error("❌ Error:", error);
-    await logActivity(req, PANEL, MODULE, "update", { oneLineMessage: error.message }, false);
-    return res.status(500).json({ status: false, message: "Server error." });
-  }
 };
 
 // ✅ FETCH BY ID API

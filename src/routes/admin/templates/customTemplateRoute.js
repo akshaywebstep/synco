@@ -45,6 +45,7 @@ router.delete(
 router.put(
   "/update/:id",
   authMiddleware,
+   upload.any(),
   permissionMiddleware("holiday-custom-template", "update"),
   updateCustomTemplate
 );
