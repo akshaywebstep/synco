@@ -89,7 +89,6 @@ exports.createCustomTemplate = async (req, res) => {
     const allowedExtensions = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "svg", "tiff"];
     const uploadedUrls = {};
 
-    // Ensure files is always an array
     const filesArray = Array.isArray(files) ? files : Object.values(files).flat();
 
     for (const file of filesArray) {
@@ -124,14 +123,27 @@ exports.createCustomTemplate = async (req, res) => {
     }
 
     // -------------------------
-    // 6) Map uploaded images to content blocks
+    // 6) Replace image URLs recursively
     // -------------------------
-    parsedContent.blocks = parsedContent.blocks.map(block => {
-      if (block.type === "image" && block.url && uploadedUrls[block.url]) {
-        block.url = uploadedUrls[block.url]; // replace with uploaded URL
+    function replaceImageUrls(blocks) {
+      if (!blocks || !Array.isArray(blocks)) return;
+
+      for (const block of blocks) {
+        // Replace the url if it matches a key from uploaded files
+        if (block.url && uploadedUrls[block.url]) {
+          block.url = uploadedUrls[block.url];
+        }
+
+        // Recursively replace in columns (nested blocks)
+        if (block.columns && Array.isArray(block.columns)) {
+          for (const col of block.columns) {
+            replaceImageUrls(col);
+          }
+        }
       }
-      return block;
-    });
+    }
+
+    replaceImageUrls(parsedContent.blocks);
 
     // -------------------------
     // 7) Prepare payload
