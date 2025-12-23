@@ -1693,6 +1693,7 @@ exports.getOnetoOneLeadsById = async (id, superAdminId, adminId) => {
         id: booking.id,
         leadId: booking.leadId,
         coachId: booking.coachId,
+        serviceType: booking.serviceType,
         coach: booking.coach,
         location: booking.location,
         address: booking.address,
