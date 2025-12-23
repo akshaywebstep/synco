@@ -2,165 +2,150 @@ const FeedbackService = require("../../services/admin/feedbackService");
 const { logActivity } = require("../../utils/admin/activityLogger");
 const { validateFormData } = require("../../utils/validateFormData");
 const { createNotification } = require("../../utils/admin/notificationHelper");
+const { getMainSuperAdminOfAdmin } = require("../../utils/auth");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "feedback";
 
 exports.createFeedback = async (req, res) => {
-    const transaction = await require("../../models").sequelize.transaction();
+  const transaction = await require("../../models").sequelize.transaction();
 
-    try {
-        // 🔹 Step 1: Validate request body (NO venueId)
-        const validation = validateFormData(req.body, [
-            "bookingId",
-            "title",
-            "classScheduleId",
-            "feedbackType",
-            "category",
-        ]);
+  try {
+    // 🔹 Step 1: Validate request body (NO venueId)
+    const validation = validateFormData(req.body, [
+      "bookingId",
+      "classScheduleId",
+      "feedbackType",
+      "category",
+    ]);
 
-        if (!validation.isValid) {
-            await transaction.rollback();
-            return res.status(400).json({
-                status: false,
-                message: validation.message,
-            });
-        }
-
-        // 🔹 Step 2: Prepare feedback data
-        const feedbackData = {
-            ...req.body,
-            createdBy: req.admin.id,
-        };
-
-        // 🔹 Step 3: Call service
-        const result = await FeedbackService.createFeedbackById(
-            feedbackData,
-            transaction
-        );
-
-        if (!result.status) {
-            await transaction.rollback();
-
-            await logActivity(
-                req,
-                PANEL,
-                MODULE,
-                "create",
-                { error: result.message },
-                false
-            );
-
-            return res.status(400).json(result);
-        }
-
-        await transaction.commit();
-
-        await logActivity(
-            req,
-            PANEL,
-            MODULE,
-            "create",
-            { feedbackId: result.data.id },
-            true
-        );
-
-        if (feedbackData.agentAssigned) {
-            await createNotification(
-                req,
-                "New Feedback Assigned",
-                "You have been assigned a new feedback.",
-                "Support"
-            );
-        }
-
-        return res.status(201).json({
-            status: true,
-            message: "Feedback created successfully",
-            data: result.data,
-        });
-
-    } catch (error) {
-        await transaction.rollback();
-        console.error("❌ createFeedback Controller Error:", error);
-
-        return res.status(500).json({
-            status: false,
-            message: "Internal server error",
-        });
+    if (!validation.isValid) {
+      await transaction.rollback();
+      return res.status(400).json({
+        status: false,
+        message: validation.message,
+      });
     }
+
+    // 🔹 Step 2: Prepare feedback data
+    const feedbackData = {
+      ...req.body,
+      createdBy: req.admin.id,
+    };
+
+    // 🔹 Step 3: Call service
+    const result = await FeedbackService.createFeedbackById(
+      feedbackData,
+      transaction
+    );
+
+    if (!result.status) {
+      await transaction.rollback();
+
+      await logActivity(
+        req,
+        PANEL,
+        MODULE,
+        "create",
+        { error: result.message },
+        false
+      );
+
+      return res.status(400).json(result);
+    }
+
+    await transaction.commit();
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "create",
+      { feedbackId: result.data.id },
+      true
+    );
+
+    if (feedbackData.agentAssigned) {
+      await createNotification(
+        req,
+        "New Feedback Assigned",
+        "You have been assigned a new feedback.",
+        "Support"
+      );
+    }
+
+    return res.status(201).json({
+      status: true,
+      message: "Feedback created successfully",
+      data: result.data,
+    });
+
+  } catch (error) {
+    await transaction.rollback();
+    console.error("❌ createFeedback Controller Error:", error);
+
+    return res.status(500).json({
+      status: false,
+      message: "Internal server error",
+    });
+  }
 };
 
 exports.getAllFeedbacks = async (req, res) => {
   try {
-    const result = await FeedbackService.getAllFeedbacks();
+    const adminId = req.admin?.id;
 
-    console.log("🔹 Step 2: Service call completed");
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+    const superAdminId =
+      mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    const result = await FeedbackService.getAllFeedbacks(
+      adminId,
+      superAdminId
+    );
 
     if (!result.status) {
-      console.log("❌ Step 3: Service returned failure:", result.message);
-      await logActivity(
-        req,
-        PANEL,
-        "feedback",
-        "read",
-        { error: result.message },
-        false
-      );
       return res.status(400).json(result);
     }
 
-    if (DEBUG) {
-      console.log(
-        "🔹 Step 4: DEBUG: Retrieved feedbacks:",
-        JSON.stringify(result.data, null, 2)
-      );
-    }
-
-    console.log(
-      `🔹 Step 5: Logging success activity for ${result.data.length} feedback(s)`
-    );
-    await logActivity(
-      req,
-      PANEL,
-      "feedback",
-      "read",
-      { feedbackCount: result.data.length },
-      true
-    );
-
-    console.log("✅ Step 6: Returning response to client");
     return res.status(200).json({
       status: true,
       message: "All feedbacks retrieved successfully",
       data: result.data,
     });
   } catch (error) {
-    console.error("❌ listAllFeedbacks Controller Error:", error.message);
-    await logActivity(
-      req,
-      PANEL,
-      "feedback",
-      "read",
-      { error: error.message },
-      false
-    );
-    return res.status(500).json({ status: false, message: "Server error" });
+    console.error("❌ getAllFeedbacks Controller Error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Server error",
+    });
   }
 };
 
 exports.getFeedbackById = async (req, res) => {
   try {
-    const { id } = req.params; // ✅ feedbackId comes from route param
-    console.log("🔹 Step 1: Calling service to get feedback by id...", { id });
+    const { id } = req.params;
+    const adminId = req.admin?.id;
 
-    const result = await FeedbackService.getFeedbackById(id);
+    if (!adminId) {
+      return res.status(401).json({
+        status: false,
+        message: "Unauthorized",
+      });
+    }
 
-    console.log("🔹 Step 2: Service call completed");
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+    const superAdminId =
+      mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    const result = await FeedbackService.getFeedbackById(
+      id,
+      adminId,
+      superAdminId
+    );
 
     if (!result.status) {
-      console.log("❌ Step 3: Service returned failure:", result.message);
       await logActivity(
         req,
         PANEL,
@@ -172,14 +157,6 @@ exports.getFeedbackById = async (req, res) => {
       return res.status(404).json(result);
     }
 
-    if (DEBUG) {
-      console.log(
-        "🔹 Step 4: DEBUG: Retrieved feedback:",
-        JSON.stringify(result.data, null, 2)
-      );
-    }
-
-    console.log("🔹 Step 5: Logging success activity for feedback", id);
     await logActivity(
       req,
       PANEL,
@@ -189,7 +166,6 @@ exports.getFeedbackById = async (req, res) => {
       true
     );
 
-    console.log("✅ Step 6: Returning response to client");
     return res.status(200).json({
       status: true,
       message: "Feedback retrieved successfully",
@@ -197,15 +173,10 @@ exports.getFeedbackById = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ getFeedbackById Controller Error:", error.message);
-    await logActivity(
-      req,
-      PANEL,
-      "feedback",
-      "read-single",
-      { error: error.message },
-      false
-    );
-    return res.status(500).json({ status: false, message: "Server error" });
+    return res.status(500).json({
+      status: false,
+      message: "Server error",
+    });
   }
 };
 
@@ -231,6 +202,107 @@ exports.resolveFeedback = async (req, res) => {
       status: false,
       message: "Server error",
     });
+  }
+};
+
+// ✅ Get all admins
+exports.getAllAgent = async (req, res) => {
+  if (DEBUG) console.log("📋 Request received to list all admins");
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin?.id);
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+  try {
+    const result = await FeedbackService.getAllAgent(superAdminId);
+
+    if (!result.status) {
+      if (DEBUG) console.log("❌ Failed to retrieve agent:", result.message);
+
+      await logActivity(req, PANEL, MODULE, "list", result, false);
+      return res.status(500).json({
+        status: false,
+        message: result.message || "Failed to fetch agent.",
+      });
+    }
+
+    if (DEBUG) {
+      console.log(`✅ Retrieved ${result.data.length} admin(s)`);
+      console.table(
+        result.data.map((m) => ({
+          ID: m.id,
+          Name: m.name,
+          Email: m.email,
+          Created: m.createdAt,
+        }))
+      );
+    }
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      {
+        oneLineMessage: `Fetched ${result.data.length} agent(s) successfully.`,
+      },
+      true
+    );
+
+    return res.status(200).json({
+      status: true,
+      message: `Fetched ${result.data.length} agent(s) successfully.`,
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ List Admins Error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Failed to fetch agents. Please try again later.",
+    });
+  }
+};
+
+// ✅ GET All Class Schedules
+exports.getAllClassSchedules = async (req, res) => {
+  if (DEBUG) console.log("📥 Fetching all class schedules...");
+
+  try {
+    const adminId = req.admin?.id;
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    const result = await FeedbackService.getAllClasses(superAdminId); // ✅ pass admin ID
+
+    if (!result.status) {
+      if (DEBUG) console.log("⚠️ Fetch failed:", result.message);
+      await logActivity(req, PANEL, MODULE, "list", result, false);
+      return res.status(500).json({ status: false, message: result.message });
+    }
+
+    if (DEBUG) console.table(result.data);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { oneLineMessage: `Fetched ${result.data.length} class schedules.` },
+      true
+    );
+
+    return res.status(200).json({
+      status: true,
+      message: "Fetched class schedules successfully.",
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching all class schedules:", error);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { oneLineMessage: error.message },
+      false
+    );
+    return res.status(500).json({ status: false, message: "Server error." });
   }
 };
 

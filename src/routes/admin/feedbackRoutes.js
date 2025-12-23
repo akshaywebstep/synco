@@ -8,6 +8,8 @@ const {
     getAllFeedbacks,
     getFeedbackById,
     resolveFeedback,
+    getAllAgent,
+    getAllClassSchedules,
     // getEventsByBookingId,
 } = require("../../controllers/admin/feedbackController");
 
@@ -23,6 +25,20 @@ router.get(
   authMiddleware,
   permissionMiddleware("feedback", "view-listing"),
   getAllFeedbacks
+);
+
+router.get(
+  "/agent-list",
+  authMiddleware,
+  permissionMiddleware("feedback", "view-listing"),
+  getAllAgent
+);
+
+router.get(
+  "/class-list",
+  authMiddleware,
+  permissionMiddleware("feedback", "view-listing"),
+  getAllClassSchedules
 );
 
 router.get(

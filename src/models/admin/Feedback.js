@@ -10,11 +10,6 @@ const Feedback = sequelize.define(
       autoIncrement: true,
     },
 
-    title: {
-      type: DataTypes.STRING(255),
-      allowNull: false,
-    },
-
     bookingId: {
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
@@ -58,7 +53,7 @@ const Feedback = sequelize.define(
       allowNull: false,
     },
 
-    reason: {
+    notes: {
       type: DataTypes.TEXT,
       allowNull: true,
     },

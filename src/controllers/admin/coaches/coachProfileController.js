@@ -1,6 +1,7 @@
 const bcrypt = require("bcrypt");
 const path = require("path");
 const fs = require("fs");
+const axios = require("axios");
 
 const { generatePasswordHint, getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 const { validateFormData } = require("../../../utils/validateFormData");
@@ -312,44 +313,23 @@ exports.downloadCoachQualification = async (req, res) => {
     const qualificationType = req.params.type;
 
     if (DEBUG)
-      console.log(
-        `🔍 CoachId: ${coachId}, Qualification: ${qualificationType}`
-      );
+      console.log(`🔍 CoachId: ${coachId}, Qualification: ${qualificationType}`);
 
     // Get Super Admin
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(
-      req.admin?.id
-    );
-    const superAdminId =
-      mainSuperAdminResult?.superAdmin.id ?? null;
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin?.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
     if (DEBUG)
-      console.log(
-        `🧩 SuperAdminId resolved as: ${superAdminId}`
-      );
+      console.log(`🧩 SuperAdminId resolved as: ${superAdminId}`);
 
-    const result =
-      await coachService.getCoachQualificationFile(
-        coachId,
-        superAdminId,
-        qualificationType
-      );
+    const result = await coachService.getCoachQualificationFile(
+      coachId,
+      superAdminId,
+      qualificationType
+    );
 
     if (!result.status) {
-      if (DEBUG)
-        console.log(
-          "❌ Failed to download qualification:",
-          result.message
-        );
-
-      await logActivity(
-        req,
-        PANEL,
-        MODULE,
-        "download",
-        result,
-        false
-      );
+      await logActivity(req, PANEL, MODULE, "download", result, false);
 
       return res.status(404).json({
         status: false,
@@ -357,7 +337,28 @@ exports.downloadCoachQualification = async (req, res) => {
       });
     }
 
-    const { fileUrl } = result.data;
+    const { fileUrl, fileName } = result.data;
+
+    // 🔹 Fetch file as stream
+    const fileResponse = await axios({
+      url: fileUrl,
+      method: "GET",
+      responseType: "stream",
+    });
+
+    const ext = path.extname(fileUrl);
+    const downloadName =
+      fileName || `${qualificationType}_qualification${ext}`;
+
+    // 🔹 Force download headers
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${downloadName}"`
+    );
+    res.setHeader(
+      "Content-Type",
+      fileResponse.headers["content-type"] || "application/octet-stream"
+    );
 
     await logActivity(
       req,
@@ -370,20 +371,15 @@ exports.downloadCoachQualification = async (req, res) => {
       true
     );
 
-    /**
-     * ✅ Redirect to file URL (browser handles download)
-     */
-    return res.redirect(fileUrl);
+    // 🔹 Pipe file to client
+    fileResponse.data.pipe(res);
+
   } catch (error) {
-    console.error(
-      "❌ Controller downloadCoachQualification Error:",
-      error
-    );
+    console.error("❌ Controller downloadCoachQualification Error:", error);
 
     return res.status(500).json({
       status: false,
-      message:
-        "Failed to download qualification file. Please try again later.",
+      message: "Failed to download qualification file. Please try again later.",
     });
   }
 };
