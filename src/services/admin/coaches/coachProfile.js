@@ -35,16 +35,49 @@ exports.getAllCoaches = async (superAdminId, includeSuperAdmin = false) => {
           model: AdminRole,
           as: "role",
           attributes: ["id", "role"],
-          where: { role: "coach" },  // 🔥 Filter only COACH role
+          where: { role: "coach" }, // 🔥 Only coaches
+        },
+        {
+          model: CoachVenueAllocation,
+          as: "coachAllocations", // ✅ SAME AS getCoachById
+          attributes: [
+            "id",
+            "venueId",
+            "rate",
+            "createdBy",
+            "createdAt",
+            "updatedAt",
+          ],
         },
       ],
       order: [["createdAt", "DESC"]],
     });
 
+    /* ==========================
+       ✅ PARSE QUALIFICATIONS
+    ========================== */
+    const parsedAdmins = admins.map((coach) => {
+      const coachData = coach.toJSON();
+
+      if (coachData.qualifications) {
+        try {
+          coachData.qualifications =
+            typeof coachData.qualifications === "string"
+              ? JSON.parse(coachData.qualifications)
+              : coachData.qualifications;
+        } catch (err) {
+          console.warn("⚠️ Failed to parse qualifications:", err);
+          coachData.qualifications = null;
+        }
+      }
+
+      return coachData;
+    });
+
     return {
       status: true,
-      message: `Fetched ${admins.length} coach(s) successfully.`,
-      data: admins,
+      message: `Fetched ${parsedAdmins.length} coach(s) successfully.`,
+      data: parsedAdmins,
     };
   } catch (error) {
     console.error("❌ Sequelize Error in getAllCoaches:", error);
@@ -54,7 +87,8 @@ exports.getAllCoaches = async (superAdminId, includeSuperAdmin = false) => {
       message:
         error?.parent?.sqlMessage ||
         error?.message ||
-        "Failed to fetch choaches.",
+        "Failed to fetch coaches.",
+      data: [],
     };
   }
 };
