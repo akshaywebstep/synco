@@ -1,6 +1,7 @@
 const {
   Admin,
   AdminRole,
+  Venue,
   CoachVenueAllocation,
 } = require("../../../models");
 const DEBUG = process.env.DEBUG === "true";
@@ -35,11 +36,11 @@ exports.getAllCoaches = async (superAdminId, includeSuperAdmin = false) => {
           model: AdminRole,
           as: "role",
           attributes: ["id", "role"],
-          where: { role: "coach" }, // 🔥 Only coaches
+          where: { role: "coach" },
         },
         {
           model: CoachVenueAllocation,
-          as: "coachAllocations", // ✅ SAME AS getCoachById
+          as: "coachAllocations",
           attributes: [
             "id",
             "venueId",
@@ -47,6 +48,12 @@ exports.getAllCoaches = async (superAdminId, includeSuperAdmin = false) => {
             "createdBy",
             "createdAt",
             "updatedAt",
+          ],
+          include: [
+            {
+              model: Venue,
+              as: "venue", // 🔥 Venue details here
+            },
           ],
         },
       ],
@@ -65,8 +72,7 @@ exports.getAllCoaches = async (superAdminId, includeSuperAdmin = false) => {
             typeof coachData.qualifications === "string"
               ? JSON.parse(coachData.qualifications)
               : coachData.qualifications;
-        } catch (err) {
-          console.warn("⚠️ Failed to parse qualifications:", err);
+        } catch {
           coachData.qualifications = null;
         }
       }

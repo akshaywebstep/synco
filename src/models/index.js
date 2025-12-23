@@ -489,26 +489,45 @@ CandidateProfile.belongsTo(RecruitmentLead, {
   as: "lead",
 });
 
-CoachVenueAllocation.associate = (models) => {
-  CoachVenueAllocation.belongsTo(models.Venue, {
-    foreignKey: "venueId",
-    as: "venue",
-  });
+// ===============================
+// Coach ↔ Venue Allocation
+// ===============================
 
-  CoachVenueAllocation.belongsTo(models.Admin, {
-    foreignKey: "createdBy",
-    as: "creator",
-  });
-};
-
+// Coach (Admin) → Allocations
 Admin.hasMany(CoachVenueAllocation, {
   foreignKey: "coachId",
   as: "coachAllocations",
 });
 
+// Allocation → Coach
 CoachVenueAllocation.belongsTo(Admin, {
   foreignKey: "coachId",
   as: "coach",
+});
+
+// ===============================
+// Venue ↔ Venue Allocation
+// ===============================
+
+// Venue → Allocations
+Venue.hasMany(CoachVenueAllocation, {
+  foreignKey: "venueId",
+  as: "coachAllocations",
+});
+
+// Allocation → Venue
+CoachVenueAllocation.belongsTo(Venue, {
+  foreignKey: "venueId",
+  as: "venue",
+});
+
+// ===============================
+// Created By (Admin)
+// ===============================
+
+CoachVenueAllocation.belongsTo(Admin, {
+  foreignKey: "createdBy",
+  as: "creator",
 });
 
 RecruitmentLead.belongsTo(Admin, { foreignKey: "createdBy", as: "creator" });
