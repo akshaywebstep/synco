@@ -116,7 +116,7 @@ exports.getBookingById = async (req, res) => {
         data: oneToOneResult.data,
       });
     }
-       // 🟣 STEP 5 — HOLIDAY CAMP (BOOKING-BASED ✅)
+    // 🟣 STEP 5 — HOLIDAY CAMP (BOOKING-BASED ✅)
     if (requestedServiceType === "holiday camp") {
       if (DEBUG) console.log("🟣 [STEP 4] Holiday Camp flow");
 
@@ -142,6 +142,31 @@ exports.getBookingById = async (req, res) => {
         message: "Holiday Camp booking fetched successfully",
         data: holidayResult.data,
         summary: holidayResult.summary,
+      });
+    }
+    if (requestedServiceType === "weekly class trial") {
+      if (DEBUG) console.log("🟣 [STEP 4] Weekly Class Trial flow");
+
+      const trialsResult =
+        await freeTrialBookingService.getBookingById(
+          bookingId,
+          superAdminId // ✅ FIX
+        );
+
+      if (DEBUG)
+        console.log("📦 [STEP 4] Trials result:", trialsResult);
+
+      if (!trialsResult.status) {
+        return res.status(404).json({
+          status: false,
+          message: trialsResult.message,
+        });
+      }
+
+      return res.status(200).json({
+        status: true,
+        message: "Trials booking fetched successfully",
+        data: trialsResult.data,
       });
     }
 

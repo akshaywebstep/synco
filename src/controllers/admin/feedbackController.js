@@ -208,13 +208,16 @@ exports.getFeedbackById = async (req, res) => {
     return res.status(500).json({ status: false, message: "Server error" });
   }
 };
+
 exports.resolveFeedback = async (req, res) => {
   try {
-    const { feedbackId } = req.params; // ✅ correct param
+    const { feedbackId } = req.params;
+    const { agentAssigned } = req.body; // 👈 optional
 
     const result = await FeedbackService.updateFeedbackStatus(
       feedbackId,
-      "resolved"
+      "resolved",
+      agentAssigned
     );
 
     if (!result.status) {

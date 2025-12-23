@@ -7,7 +7,7 @@ const {
     createFeedback,
     getAllFeedbacks,
     getFeedbackById,
-    // resolveFeedback,
+    resolveFeedback,
     // getEventsByBookingId,
 } = require("../../controllers/admin/feedbackController");
 
@@ -31,12 +31,12 @@ router.get(
   permissionMiddleware("feedback", "view-listing"),
   getFeedbackById
 );
-// router.put(
-//   "/feedback/:feedbackId/resolve",
-//   authMiddleware,
-//   permissionMiddleware("feedback", "update"),
-//   resolveFeedback
-// );
+router.put(
+  "/resolve/:feedbackId/",
+  authMiddleware,
+  permissionMiddleware("feedback", "update"),
+  resolveFeedback
+);
 
 // router.get(
 //   "/events/:bookingId",

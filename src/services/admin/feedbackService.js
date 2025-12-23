@@ -180,7 +180,11 @@ exports.getFeedbackById = async (id) => {
   }
 };
 
-exports.updateFeedbackStatus = async (feedbackId, newStatus = "resolved") => {
+exports.updateFeedbackStatus = async (
+  feedbackId,
+  newStatus = "resolved",
+  agentAssigned = null
+) => {
   try {
     const feedback = await Feedback.findByPk(feedbackId);
 
@@ -191,7 +195,16 @@ exports.updateFeedbackStatus = async (feedbackId, newStatus = "resolved") => {
       };
     }
 
+    // -------------------------
+    // Update fields
+    // -------------------------
     feedback.status = newStatus;
+
+    // 👇 Update agentAssigned ONLY if provided
+    if (agentAssigned !== undefined && agentAssigned !== null) {
+      feedback.agentAssigned = agentAssigned;
+    }
+
     await feedback.save();
 
     return {
