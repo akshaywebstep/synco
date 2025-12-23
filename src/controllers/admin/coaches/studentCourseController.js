@@ -510,60 +510,42 @@ exports.updateStudentCourse = async (req, res) => {
             } catch {
                 return res.status(422).json({
                     status: false,
-                    message: "Invalid videos metadata JSON format",
-                });
-            }
-
-            if (!Array.isArray(videos)) {
-                return res.status(422).json({
-                    status: false,
-                    message: "videos must be an array",
+                    message: "Invalid videos JSON",
                 });
             }
 
             const uploadedVideos = [];
 
-            const videoFiles = (req.files || []).filter(f =>
-                f.fieldname.startsWith("video_")
-            );
-
-            // ⚠️ Only validate count if files are sent
-            if (videoFiles.length && videoFiles.length !== videos.length) {
-                return res.status(422).json({
-                    status: false,
-                    message: "Number of videos and video files do not match",
-                });
-            }
-
-            for (let i = 0; i < videos.length; i++) {
-                const meta = videos[i];
-                const file = videoFiles[i];
-
+            for (const meta of videos) {
                 let videoUrl = meta.videoUrl || null;
 
-                if (file) {
-                    const videoName = `${Date.now()}_${file.originalname}`;
-                    const videoLocalPath = path.join(
-                        process.cwd(),
-                        "uploads/temp/studentCourses",
-                        videoName
+                // 🎯 Find matching file using fileKey
+                if (meta.fileKey) {
+                    const file = req.files?.find(
+                        f => f.fieldname === meta.fileKey
                     );
 
-                    await fs.promises.mkdir(path.dirname(videoLocalPath), { recursive: true });
-                    await saveFile(file, videoLocalPath);
+                    if (file) {
+                        const videoName = `${Date.now()}_${file.originalname}`;
+                        const localPath = path.join(
+                            process.cwd(),
+                            "uploads/temp/studentCourses",
+                            videoName
+                        );
 
-                    const videoRemotePath =
-                        `uploads/studentCourses/${adminId}/videos/${videoName}`;
+                        await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
+                        await saveFile(file, localPath);
 
-                    videoUrl = await uploadToFTP(
-                        videoLocalPath,
-                        videoRemotePath
-                    );
+                        const remotePath =
+                            `uploads/studentCourses/${adminId}/videos/${videoName}`;
 
-                    await fs.promises.unlink(videoLocalPath).catch(() => { });
+                        videoUrl = await uploadToFTP(localPath, remotePath);
+                        await fs.promises.unlink(localPath).catch(() => { });
+                    }
                 }
 
                 uploadedVideos.push({
+                    id: meta.id || undefined, // keep id if exists
                     name: meta.name,
                     videoUrl,
                     childFeatures: meta.childFeatures || [],

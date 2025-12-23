@@ -205,7 +205,7 @@ exports.getStudentCourseById = async (adminId, superAdminId, courseId) => {
 };
 
 /**
- * Update Student Course (Controller)
+ * Update Student Course ()
  */
 exports.updateStudentCourseById = async (adminId, superAdminId, courseId, updateData) => {
     if (!courseId) throw new Error("Course ID is required");
