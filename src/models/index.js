@@ -555,6 +555,33 @@ Feedback.belongsTo(Booking, {
   foreignKey: "bookingId",
   as: "booking",
 });
+// One to One
+  Feedback.belongsTo(models.OneToOneBooking, {
+    foreignKey: "oneToOneBookingId",
+    as: "oneToOneBooking",
+  });
+
+  // Birthday Party
+  Feedback.belongsTo(models.BirthdayPartyBooking, {
+    foreignKey: "birthdayPartyBookingId",
+    as: "birthdayPartyBooking",
+  });
+
+  // Holiday Camp
+  Feedback.belongsTo(models.HolidayBooking, {
+    foreignKey: "holidayBookingId",
+    as: "holidayBooking",
+  });
+
+  Feedback.belongsTo(models.HolidayClassSchedule, {
+    foreignKey: "holidayClassScheduleId",
+    as: "holidayClassSchedule",
+  });
+
+  Feedback.belongsTo(models.HolidayVenue, {
+    foreignKey: "holidayVenueId",
+    as: "holidayVenue",
+  });
 
 // Booking.belongsTo(Admin, {
 //   foreignKey: "updatedBy",

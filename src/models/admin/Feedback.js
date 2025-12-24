@@ -12,9 +12,40 @@ const Feedback = sequelize.define(
 
     bookingId: {
       type: DataTypes.BIGINT.UNSIGNED,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: "bookings",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "CASCADE",
+    },
+
+    oneToOneBookingId: {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: "one_to_one_bookings",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "CASCADE",
+    },
+     birthdayPartyBookingId: {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: "birthday_party_bookings",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "CASCADE",
+    },
+     holidayBookingId: {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: "holiday_booking",
         key: "id",
       },
       onUpdate: "CASCADE",
@@ -44,11 +75,11 @@ const Feedback = sequelize.define(
     },
     serviceType: {
       type: DataTypes.ENUM(
-        "holiday_camp",
-        "weekly_class_membership",
-        "weekly_class_trial",
-        "one_to_one",
-        "birthday_party"
+        "holiday camp",
+        "weekly class membership",
+        "weekly class_trial",
+        "one to one",
+        "birthday party"
       ),
       allowNull: false,
     },

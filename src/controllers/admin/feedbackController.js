@@ -12,29 +12,68 @@ exports.createFeedback = async (req, res) => {
   const transaction = await require("../../models").sequelize.transaction();
 
   try {
-    // 🔹 Step 1: Validate request body (NO venueId)
+    const {
+      serviceType,
+      bookingId,
+      classScheduleId,
+      oneToOneBookingId,
+      birthdayPartyBookingId,
+      holidayBookingId,
+      holidayClassScheduleId,
+    } = req.body;
+
+    // 🔹 Common validation
     const validation = validateFormData(req.body, [
-      "bookingId",
-      "classScheduleId",
+      "serviceType",
       "feedbackType",
       "category",
     ]);
 
     if (!validation.isValid) {
       await transaction.rollback();
-      return res.status(400).json({
-        status: false,
-        message: validation.message,
-      });
+      return res.status(400).json(validation);
     }
 
-    // 🔹 Step 2: Prepare feedback data
+    // 🔹 Service-type specific validation
+    switch (serviceType) {
+      case "weekly class membership":
+      case "weekly class trial":
+        if (!bookingId || !classScheduleId) {
+          throw new Error("bookingId and classScheduleId are required");
+        }
+        break;
+
+      case "one to one":
+        if (!oneToOneBookingId || !classScheduleId) {
+          throw new Error("oneToOneBookingId and classScheduleId are required");
+        }
+        break;
+
+      case "birthday party":
+        if (!birthdayPartyBookingId || !classScheduleId) {
+          throw new Error("birthdayPartyBookingId and classScheduleId are required");
+        }
+        break;
+
+      case "holiday camp":
+        if (!holidayBookingId || !holidayClassScheduleId) {
+          throw new Error(
+            "holidayBookingId and holidayClassScheduleId are required"
+          );
+        }
+        break;
+
+      default:
+        throw new Error("Invalid serviceType");
+    }
+
+    // 🔹 Prepare data
     const feedbackData = {
       ...req.body,
       createdBy: req.admin.id,
     };
 
-    // 🔹 Step 3: Call service
+    // 🔹 Create feedback
     const result = await FeedbackService.createFeedbackById(
       feedbackData,
       transaction
@@ -42,30 +81,12 @@ exports.createFeedback = async (req, res) => {
 
     if (!result.status) {
       await transaction.rollback();
-
-      await logActivity(
-        req,
-        PANEL,
-        MODULE,
-        "create",
-        { error: result.message },
-        false
-      );
-
       return res.status(400).json(result);
     }
 
     await transaction.commit();
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "create",
-      { feedbackId: result.data.id },
-      true
-    );
-
+    // 🔹 Notification
     if (feedbackData.agentAssigned) {
       await createNotification(
         req,
@@ -80,14 +101,13 @@ exports.createFeedback = async (req, res) => {
       message: "Feedback created successfully",
       data: result.data,
     });
-
   } catch (error) {
     await transaction.rollback();
-    console.error("❌ createFeedback Controller Error:", error);
+    console.error("❌ createFeedback Error:", error.message);
 
-    return res.status(500).json({
+    return res.status(400).json({
       status: false,
-      message: "Internal server error",
+      message: error.message,
     });
   }
 };
@@ -205,34 +225,21 @@ exports.resolveFeedback = async (req, res) => {
   }
 };
 
-// ✅ Get all admins
-exports.getAllAgent = async (req, res) => {
-  if (DEBUG) console.log("📋 Request received to list all admins");
-  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin?.id);
-  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+exports.getAgentsAndClasses = async (req, res) => {
+  if (DEBUG) console.log("📥 Fetching agents & class schedules...");
+
   try {
-    const result = await FeedbackService.getAllAgent(superAdminId);
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin?.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    const result = await FeedbackService.getAgentsAndClasses(superAdminId);
 
     if (!result.status) {
-      if (DEBUG) console.log("❌ Failed to retrieve agent:", result.message);
-
       await logActivity(req, PANEL, MODULE, "list", result, false);
       return res.status(500).json({
         status: false,
-        message: result.message || "Failed to fetch agent.",
+        message: result.message,
       });
-    }
-
-    if (DEBUG) {
-      console.log(`✅ Retrieved ${result.data.length} admin(s)`);
-      console.table(
-        result.data.map((m) => ({
-          ID: m.id,
-          Name: m.name,
-          Email: m.email,
-          Created: m.createdAt,
-        }))
-      );
     }
 
     await logActivity(
@@ -241,68 +248,22 @@ exports.getAllAgent = async (req, res) => {
       MODULE,
       "list",
       {
-        oneLineMessage: `Fetched ${result.data.length} agent(s) successfully.`,
+        oneLineMessage: `Fetched ${result.data.agents.length} agents & ${result.data.classSchedules.length} classes.`,
       },
       true
     );
 
     return res.status(200).json({
       status: true,
-      message: `Fetched ${result.data.length} agent(s) successfully.`,
+      message: "Fetched agents and class schedules successfully.",
       data: result.data,
     });
   } catch (error) {
-    console.error("❌ List Admins Error:", error);
+    console.error("❌ getAgentsAndClasses Error:", error);
     return res.status(500).json({
       status: false,
-      message: "Failed to fetch agents. Please try again later.",
+      message: "Server error.",
     });
-  }
-};
-
-// ✅ GET All Class Schedules
-exports.getAllClassSchedules = async (req, res) => {
-  if (DEBUG) console.log("📥 Fetching all class schedules...");
-
-  try {
-    const adminId = req.admin?.id;
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
-
-    const result = await FeedbackService.getAllClasses(superAdminId); // ✅ pass admin ID
-
-    if (!result.status) {
-      if (DEBUG) console.log("⚠️ Fetch failed:", result.message);
-      await logActivity(req, PANEL, MODULE, "list", result, false);
-      return res.status(500).json({ status: false, message: result.message });
-    }
-
-    if (DEBUG) console.table(result.data);
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "list",
-      { oneLineMessage: `Fetched ${result.data.length} class schedules.` },
-      true
-    );
-
-    return res.status(200).json({
-      status: true,
-      message: "Fetched class schedules successfully.",
-      data: result.data,
-    });
-  } catch (error) {
-    console.error("❌ Error fetching all class schedules:", error);
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "list",
-      { oneLineMessage: error.message },
-      false
-    );
-    return res.status(500).json({ status: false, message: "Server error." });
   }
 };
 
