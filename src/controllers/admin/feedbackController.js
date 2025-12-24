@@ -44,14 +44,14 @@ exports.createFeedback = async (req, res) => {
         break;
 
       case "one to one":
-        if (!oneToOneBookingId || !classScheduleId) {
-          throw new Error("oneToOneBookingId and classScheduleId are required");
+        if (!oneToOneBookingId) {  // classScheduleId no longer required here
+          throw new Error("oneToOneBookingId is required");
         }
         break;
 
       case "birthday party":
-        if (!birthdayPartyBookingId || !classScheduleId) {
-          throw new Error("birthdayPartyBookingId and classScheduleId are required");
+        if (!birthdayPartyBookingId) {  // classScheduleId no longer required here
+          throw new Error("birthdayPartyBookingId is required");
         }
         break;
 
@@ -166,25 +166,8 @@ exports.getFeedbackById = async (req, res) => {
     );
 
     if (!result.status) {
-      await logActivity(
-        req,
-        PANEL,
-        "feedback",
-        "read-single",
-        { error: result.message, feedbackId: id },
-        false
-      );
       return res.status(404).json(result);
     }
-
-    await logActivity(
-      req,
-      PANEL,
-      "feedback",
-      "read-single",
-      { feedbackId: id },
-      true
-    );
 
     return res.status(200).json({
       status: true,
@@ -260,6 +243,48 @@ exports.getAgentsAndClasses = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ getAgentsAndClasses Error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Server error.",
+    });
+  }
+};
+
+exports.getAgentsAndHolidayClasses = async (req, res) => {
+  if (DEBUG) console.log("📥 Fetching agents & class schedules...");
+
+  try {
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin?.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    const result = await FeedbackService.getAgentsAndHolidayClasses(superAdminId);
+
+    if (!result.status) {
+      await logActivity(req, PANEL, MODULE, "list", result, false);
+      return res.status(500).json({
+        status: false,
+        message: result.message,
+      });
+    }
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      {
+        oneLineMessage: `Fetched ${result.data.agents.length} agents & ${result.data.holidayClassSchedules.length} classes.`,
+      },
+      true
+    );
+
+    return res.status(200).json({
+      status: true,
+      message: "Fetched agents and class schedules successfully.",
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ getAgentsAndHolidayClasses Error:", error);
     return res.status(500).json({
       status: false,
       message: "Server error.",

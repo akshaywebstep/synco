@@ -36,7 +36,7 @@ exports.createFeedbackById = async (feedbackData, transaction = null) => {
     let venueId = null;
     let holidayVenueId = null;
 
-    // 🔹 HOLIDAY CAMP
+    // For holiday camp, validate holidayClassScheduleId & fetch venueId
     if (serviceType === "holiday camp") {
       if (!holidayClassScheduleId) {
         return {
@@ -48,23 +48,25 @@ exports.createFeedbackById = async (feedbackData, transaction = null) => {
       const holidaySchedule = await HolidayClassSchedule.findByPk(
         holidayClassScheduleId,
         {
-          attributes: ["id", "holidayVenueId"],
+          attributes: ["id", "venueId"],
           transaction,
         }
       );
 
-      if (!holidaySchedule || !holidaySchedule.holidayVenueId) {
+      if (!holidaySchedule || !holidaySchedule.venueId) {
         return {
           status: false,
           message: "Invalid holidayClassScheduleId or venue not assigned",
         };
       }
 
-      holidayVenueId = holidaySchedule.holidayVenueId;
+      holidayVenueId = holidaySchedule.venueId;
     }
-
-    // 🔹 ALL NON-HOLIDAY SERVICES
-    else {
+    // For weekly classes, validate classScheduleId & fetch venueId
+    else if (
+      serviceType === "weekly class membership" ||
+      serviceType === "weekly class trial"
+    ) {
       if (!classScheduleId) {
         return {
           status: false,
@@ -86,11 +88,11 @@ exports.createFeedbackById = async (feedbackData, transaction = null) => {
 
       venueId = classSchedule.venueId;
     }
+    // For "one to one" and "birthday party" skip classScheduleId and venueId
 
     // 🔹 CREATE FEEDBACK
     const feedback = await Feedback.create(
       {
-        // booking mappings
         bookingId:
           serviceType.includes("weekly") ? bookingId : null,
 
@@ -98,26 +100,29 @@ exports.createFeedbackById = async (feedbackData, transaction = null) => {
           serviceType === "one to one" ? oneToOneBookingId : null,
 
         birthdayPartyBookingId:
-          serviceType === "birthday party"
-            ? birthdayPartyBookingId
-            : null,
+          serviceType === "birthday party" ? birthdayPartyBookingId : null,
 
         holidayBookingId:
           serviceType === "holiday camp" ? holidayBookingId : null,
 
         serviceType,
 
-        // schedules
         classScheduleId:
-          serviceType === "holiday camp" ? null : classScheduleId,
+          serviceType === "holiday camp" ||
+          serviceType === "one to one" ||
+          serviceType === "birthday party"
+            ? null
+            : classScheduleId,
 
         venueId:
-          serviceType === "holiday camp" ? null : venueId,
+          serviceType === "holiday camp" ||
+          serviceType === "one to one" ||
+          serviceType === "birthday party"
+            ? null
+            : venueId,
 
         holidayClassScheduleId:
-          serviceType === "holiday camp"
-            ? holidayClassScheduleId
-            : null,
+          serviceType === "holiday camp" ? holidayClassScheduleId : null,
 
         holidayVenueId:
           serviceType === "holiday camp" ? holidayVenueId : null,
@@ -183,13 +188,13 @@ exports.getAllFeedbacks = async (adminId, superAdminId) => {
         {
           model: OneToOneBooking,
           as: "oneToOneBooking",
-          attributes: ["id", "status"],
+          // attributes: ["id", "status","addres"],
           required: false,
         },
         {
           model: BirthdayPartyBooking,
           as: "birthdayPartyBooking",
-          attributes: ["id", "status"],
+          // attributes: ["id", "status"],
           required: false,
         },
         {
@@ -271,24 +276,26 @@ exports.getAllFeedbacks = async (adminId, superAdminId) => {
   }
 };
 
-exports.getFeedbackById = async (id, adminId, superAdminId) => {
+exports.getFeedbackById = async (feedbackId, adminId, superAdminId) => {
+  if (!feedbackId || isNaN(Number(feedbackId))) {
+    return {
+      status: false,
+      message: "Invalid feedback ID",
+    };
+  }
+
   try {
-    if (!id || isNaN(Number(id))) {
-      return {
-        status: false,
-        message: "Invalid feedback ID",
-      };
-    }
+    let whereCondition = {
+      id: Number(feedbackId),
+    };
 
-    let whereCondition = { id: Number(id) };
-
-    // 🔐 Normal Admin → own + super admin only
-    if (Number(adminId) !== Number(superAdminId)) {
+    // 🔐 SUPER ADMIN → access all
+    if (!(superAdminId && Number(adminId) === Number(superAdminId))) {
+      // 🔐 NORMAL ADMIN → own + super admin feedbacks
       whereCondition.createdBy = {
         [Op.in]: [Number(adminId), Number(superAdminId)],
       };
     }
-    // 🔐 Super Admin → unrestricted (no extra filter)
 
     const feedback = await Feedback.findOne({
       where: whereCondition,
@@ -297,23 +304,47 @@ exports.getFeedbackById = async (id, adminId, superAdminId) => {
           model: Booking,
           as: "booking",
           attributes: ["id", "status"],
-          include: [
-            {
-              model: Admin,
-              as: "bookedByAdmin",
-              attributes: ["id", "firstName", "lastName", "email"],
-            },
-          ],
+          required: false,
+        },
+        {
+          model: OneToOneBooking,
+          as: "oneToOneBooking",
+          attributes: ["id", "status"],
+          required: false,
+        },
+        {
+          model: BirthdayPartyBooking,
+          as: "birthdayPartyBooking",
+          // attributes: ["id", "status"],
+          required: false,
+        },
+        {
+          model: HolidayBooking,
+          as: "holidayBooking",
+          // attributes: ["id", "status"],
+          required: false,
         },
         {
           model: ClassSchedule,
           as: "classSchedule",
-          attributes: ["id", "className", "startTime", "endTime"],
+          required: false,
+        },
+        {
+          model: HolidayClassSchedule,
+          as: "holidayClassSchedule",
+          required: false,
         },
         {
           model: Venue,
           as: "venue",
           attributes: ["id", "name"],
+          required: false,
+        },
+        {
+          model: HolidayVenue,
+          as: "holidayVenue",
+          attributes: ["id", "name"],
+          required: false,
         },
         {
           model: Admin,
@@ -457,6 +488,97 @@ exports.getAgentsAndClasses = async (superAdminId) => {
         error?.parent?.sqlMessage ||
         error?.message ||
         "Failed to fetch agents and classes.",
+    };
+  }
+};
+
+exports.getAgentsAndHolidayClasses = async (superAdminId) => {
+  if (!superAdminId || Number.isNaN(Number(superAdminId))) {
+    return {
+      status: false,
+      message: "Invalid Super Admin ID.",
+      data: {
+        agents: [],
+        holidayClassSchedules: [],
+      },
+    };
+  }
+
+  try {
+    const parsedSuperAdminId = Number(superAdminId);
+
+    /* 🔹 FETCH AGENTS */
+    const agentsRaw = await Admin.findAll({
+      where: {
+        [Op.or]: [
+          { superAdminId: parsedSuperAdminId },
+          { id: parsedSuperAdminId },
+        ],
+      },
+      attributes: {
+        exclude: ["password", "resetOtp", "resetOtpExpiry", "deletedAt"],
+      },
+      include: [
+        {
+          model: AdminRole,
+          as: "role",
+          attributes: ["id", "role"],
+          where: {
+            role: { [Op.in]: ["admin", "super admin"] },
+          },
+          required: true,
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+    });
+
+    /* 🔹 FETCH HOLIDAY CLASS SCHEDULES */
+    const holidayClassesRaw = await HolidayClassSchedule.findAll({
+      where: {
+        createdBy: parsedSuperAdminId,
+        venueId: { [Op.not]: null },
+      },
+      include: [
+        {
+          model: HolidayVenue,
+          as: "venue",
+          required: true,
+          attributes: { exclude: ["deletedAt"] },
+        },
+      ],
+      attributes: { exclude: ["deletedAt"] },
+      order: [["id", "ASC"]],
+    });
+
+    /* 🔹 REMOVE NULL FIELDS (CLEAN RESPONSE) */
+    const clean = (data) =>
+      JSON.parse(
+        JSON.stringify(data, (_, value) =>
+          value === null || value === undefined ? undefined : value
+        )
+      );
+
+    return {
+      status: true,
+      message: "Fetched agents and holiday class schedules successfully.",
+      data: {
+        agents: clean(agentsRaw),
+        holidayClassSchedules: clean(holidayClassesRaw),
+      },
+    };
+  } catch (error) {
+    console.error("❌ getAgentsAndHolidayClasses Service Error:", error);
+
+    return {
+      status: false,
+      message:
+        error?.parent?.sqlMessage ||
+        error?.message ||
+        "Failed to fetch agents and holiday class schedules.",
+      data: {
+        agents: [],
+        holidayClassSchedules: [],
+      },
     };
   }
 };
