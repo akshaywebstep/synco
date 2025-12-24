@@ -42,7 +42,7 @@ app.use(bodyParser.urlencoded({ limit: "1000mb", extended: true, parameterLimit:
 // ✅ Serve static files from /uploads
 app.use("/uploads", express.static("uploads"));
 
-app.use("/api", require("./routes/open"));
+app.use("/api", require("./routes/website"));
 
 // ✅ Auth & Profile
 app.use("/api/admin/auth", require("./routes/admin/authRoutes")); // Login, Logout, etc.

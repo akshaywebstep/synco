@@ -33,7 +33,7 @@ exports.createBooking = async (data, options) => {
     const adminId = options?.adminId;
     const source = options?.source;
     const leadId = options?.leadId || null;
-    
+
     if (DEBUG) {
       console.log("🔍 [DEBUG] Extracted adminId:", adminId);
       console.log("🔍 [DEBUG] Extracted source:", source);
@@ -71,7 +71,7 @@ exports.createBooking = async (data, options) => {
           phoneNumber: firstParent.parentPhoneNumber || "",
           email,
           password: hashedPassword,
-          roleId: 9, 
+          roleId: 9,
           status: "active",
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -256,7 +256,12 @@ exports.getAllBookings = async (filters = {}) => {
         ? filters.bookedBy
         : [filters.bookedBy];
 
-      trialWhere.bookedBy = { [Op.in]: bookedByArray };
+      // trialWhere.bookedBy = { [Op.in]: bookedByArray };
+      trialWhere[Op.or] = [
+        { bookedBy: { [Op.in]: bookedByArray } },
+        { bookedBy: null },
+      ];
+
     }
 
     if (filters.dateBooked) {

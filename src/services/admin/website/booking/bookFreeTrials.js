@@ -5,17 +5,12 @@ const {
   BookingParentMeta,
   BookingEmergencyMeta,
   ClassSchedule,
-  Venue,
-  PaymentPlan,
   Admin,
+  AdminRole,
 } = require("../../../../models");
 const DEBUG = process.env.DEBUG === "true";
 
-const { Op } = require("sequelize");
 const bcrypt = require("bcrypt");
-
-const { getEmailConfig } = require("../../email");
-const sendEmail = require("../../../utils/email/sendEmail");
 
 function generateBookingId(length = 12) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -33,7 +28,7 @@ exports.createBooking = async (data, options) => {
     const adminId = options?.adminId;
     const source = options?.source;
     const leadId = options?.leadId || null;
-    
+
     if (DEBUG) {
       console.log("🔍 [DEBUG] Extracted adminId:", adminId);
       console.log("🔍 [DEBUG] Extracted source:", source);
@@ -62,6 +57,18 @@ exports.createBooking = async (data, options) => {
 
       if (DEBUG)
         console.log("🔍 [DEBUG] Generated hashed password for parent account");
+      // 🔹 Fetch Parent role
+      const parentRole = await AdminRole.findOne({
+        where: { role: "Parents" }, // ✅ correct column
+        transaction: t,
+      });
+      if (DEBUG) console.log("🔍 [DEBUG] Extracted parent role:", parentRole);
+
+      if (!parentRole) {
+        throw new Error("Parent role not found in admin_roles table");
+      }
+
+      const parentRoleId = parentRole.id;
 
       const [admin, created] = await Admin.findOrCreate({
         where: { email },
@@ -71,8 +78,10 @@ exports.createBooking = async (data, options) => {
           phoneNumber: firstParent.parentPhoneNumber || "",
           email,
           password: hashedPassword,
-          roleId: 9, 
+
+          roleId: parentRoleId,
           status: "active",
+
           createdAt: new Date(),
           updatedAt: new Date(),
         },
@@ -90,24 +99,17 @@ exports.createBooking = async (data, options) => {
 
       if (!created) {
         if (DEBUG)
-          console.log(
-            "🔍 [DEBUG] Updating existing admin record with parent details"
-          );
+          console.log("🔍 Updating existing admin record with parent details");
 
         await admin.update(
           {
             firstName: firstParent.parentFirstName,
             lastName: firstParent.parentLastName,
             phoneNumber: firstParent.parentPhoneNumber || "",
+            roleId: parentRoleId, // ✅ IMPORTANT FIX
           },
           { transaction: t }
         );
-      }
-
-      if (source === "open") {
-        bookedByAdminId = admin.id;
-        if (DEBUG)
-          console.log("🔍 [DEBUG] bookedByAdminId set to:", bookedByAdminId);
       }
     }
 
@@ -124,8 +126,9 @@ exports.createBooking = async (data, options) => {
         serviceType: "weekly class trial",
         attempt: 1,
         classTime: data.classTime,
-        status: data.status || "pending",
-        bookedBy: source === "open" ? bookedByAdminId : adminId,
+        status: data.status || "active",
+        bookedBy: source === "open" ? null : adminId,
+        source: source === "open" ? "website" : "admin",
         createdAt: new Date(),
         updatedAt: new Date(),
       },

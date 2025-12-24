@@ -5,7 +5,7 @@ const router = express.Router();
 router.use("/find-class", require("./findAClass/findClassRoutes"));
 
 // Book Free Trials Module Base Routes
-router.use("/book/free-trials", require("./bookFreeTrialsRoutes"));
+router.use("/book-free-trials", require("./booking/bookFreeTrialsRoutes"));
 
 // Waiting List Module Base Routes
 router.use("/waiting-list", require("./waitingListRoutes"));

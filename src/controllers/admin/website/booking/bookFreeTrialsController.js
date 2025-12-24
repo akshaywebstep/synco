@@ -8,7 +8,7 @@ const {
   BookingParentMeta,
   BookingStudentMeta,
   Booking,
-} = require("../../../models");
+} = require("../../../../models");
 const {
   createNotification,
 } = require("../../../../utils/admin/notificationHelper");
@@ -20,8 +20,6 @@ const MODULE = "book-free-trial";
 exports.createBooking = async (req, res) => {
   if (DEBUG) console.log("📥 Received booking request");
   const formData = req.body;
-
-  // formData.createdBy = req.admin.id;
 
   if (DEBUG) console.log("🔍 Fetching class data...");
   const classData = await ClassSchedule.findByPk(formData.classScheduleId);
@@ -109,24 +107,28 @@ exports.createBooking = async (req, res) => {
     }
 
     // ✅ Validate emergency contact
-    const emergency = req.body.emergency || {};
-    if (!emergency.emergencyFirstName) {
-      return res.status(400).json({
-        status: false,
-        message: "Emergency contact first name is required.",
-      });
-    }
-    if (!emergency.emergencyLastName) {
-      return res.status(400).json({
-        status: false,
-        message: "Emergency contact last name is required.",
-      });
-    }
-    if (!emergency.emergencyPhoneNumber) {
-      return res.status(400).json({
-        status: false,
-        message: "Emergency contact phone number is required.",
-      });
+    // ✅ Emergency contact is OPTIONAL
+    const emergency = req.body.emergency;
+
+    if (emergency) {
+      if (!emergency.emergencyFirstName) {
+        return res.status(400).json({
+          status: false,
+          message: "Emergency contact first name is required.",
+        });
+      }
+      if (!emergency.emergencyLastName) {
+        return res.status(400).json({
+          status: false,
+          message: "Emergency contact last name is required.",
+        });
+      }
+      if (!emergency.emergencyPhoneNumber) {
+        return res.status(400).json({
+          status: false,
+          message: "Emergency contact phone number is required.",
+        });
+      }
     }
 
     student.className = classData.className;
@@ -228,19 +230,9 @@ exports.createBooking = async (req, res) => {
     // const result = await BookingTrialService.createBooking(formData);
     const leadId = req.params.leadId || null;
 
-    // if (leadId) {
-    //   const existingBooking = await Booking.findOne({ where: { leadId } });
-    //   if (existingBooking) {
-    //     return res.status(400).json({
-    //       status: false,
-    //       message: "You already have a booking linked to this lead.",
-    //     });
-    //   }
-    // }
-
     const result = await BookingTrialService.createBooking(formData, {
       source: req.source,
-      adminId: req.admin?.id, // <-- pass adminId here
+      adminId: req.admin?.id,
       adminFirstName: req.admin?.firstName || "Unknown",
       leadId,
     });
@@ -253,66 +245,7 @@ exports.createBooking = async (req, res) => {
 
     const booking = result.data.booking;
     const studentId = result.data.studentId;
-    const studentFirstName = result.data.studentFirstName;
-    const studentLastName = result.data.studentLastName;
 
-    // Create parent admin accounts
-
-    // // Send email
-    // const parentMetas = await BookingParentMeta.findAll({
-    //   where: { studentId },
-    // });
-
-    // if (parentMetas && parentMetas.length > 0) {
-    //   const {
-    //     status: configStatus,
-    //     emailConfig,
-    //     htmlTemplate,
-    //     subject,
-    //   } = await emailModel.getEmailConfig(PANEL, "free-trial-confirmation");
-
-    //   if (configStatus && htmlTemplate) {
-    //     const recipients = parentMetas.map((p) => ({
-    //       name: `${p.parentFirstName} ${p.parentLastName}`,
-    //       email: p.parentEmail,
-    //     }));
-
-    //     for (const recipient of recipients) {
-    //       const variables = {
-    //         "{{parentName}}": recipient.name,
-    //         "{{parentEmail}}": recipient.email,
-    //         "{{parentPassword}}": "Synco123",
-    //         "{{studentFirstName}}": studentFirstName || "",
-    //         "{{studentLastName}}": studentLastName || "",
-    //         "{{venueName}}": venue?.name || "N/A",
-    //         "{{className}}": classData?.className || "N/A",
-    //         "{{trialDate}}": booking?.trialDate || "",
-    //         "{{classTime}}": classData?.startTime || "",
-    //         "{{logoUrl}}": "https://webstepdev.com/demo/syncoUploads/syncoLogo.png",
-    //         "{{kidsPlaying}}": "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png",
-    //         "{{appName}}": "Synco",
-    //         "{{year}}": new Date().getFullYear().toString(),
-    //       };
-
-    //       let finalHtml = htmlTemplate;
-    //       for (const [key, val] of Object.entries(variables)) {
-    //         const safeKey = key.replace(/[{}]/g, "").trim(); // remove braces and spaces
-    //         const regex = new RegExp(`{{\\s*${safeKey}\\s*}}`, "g"); // match {{ parentName }} or {{parentName}}
-    //         finalHtml = finalHtml.replace(regex, val);
-    //       }
-
-    //       await sendEmail(emailConfig, {
-    //         recipient: [recipient],
-    //         cc: emailConfig.cc || [],
-    //         bcc: emailConfig.bcc || [],
-    //         subject,
-    //         htmlBody: finalHtml,
-    //       });
-    //     }
-    //   }
-    // }
-    // Send email
-    // Send email to only the first parent
     // Send email
     const parentMetas = await BookingParentMeta.findAll({
       where: { studentId },

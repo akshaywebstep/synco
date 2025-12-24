@@ -76,7 +76,8 @@ exports.createNotification = async (
       title || null,
       description || null,
       category,
-      req?.admin?.id
+      // req?.admin?.id
+      req?.admin?.id || req?.notificationAdminId
     );
 
     if (!result.status) {

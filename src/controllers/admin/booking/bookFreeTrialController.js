@@ -452,38 +452,47 @@ exports.getAllBookFreeTrials = async (req, res) => {
     dateTrialTo: req.query.dateTrialTo ? req.query.dateTrialTo : undefined,
     fromDate: req.query.fromDate ? req.query.fromDate : undefined, // ✅ added
     toDate: req.query.toDate ? req.query.toDate : undefined, // ✅ added
-    bookedBy: req.query.bookedBy,
+    // bookedBy: req.query.bookedBy,
   };
 
   try {
-    // ✅ Apply bookedBy filter
-    if (req.query.bookedBy) {
-      let bookedByParam = req.query.bookedBy;
+    // ✅ Resolve bookedBy filter safely
+    const bookedByQuery = req.query.bookedBy;
 
-      // If multiple query params → array
-      if (Array.isArray(bookedByParam)) {
-        filters.bookedBy = bookedByParam.map(Number);
-
-        // If single param → string
+    // CASE 1: bookedBy explicitly sent (can be string, csv, or array)
+    if (
+      bookedByQuery !== undefined &&
+      bookedByQuery !== null &&
+      bookedByQuery !== ""
+    ) {
+      if (Array.isArray(bookedByQuery)) {
+        filters.bookedBy = bookedByQuery.map(Number).filter(Boolean);
       } else {
-        filters.bookedBy = bookedByParam.split(",").map(Number);
+        filters.bookedBy = bookedByQuery
+          .split(",")
+          .map(Number)
+          .filter(Boolean);
+      }
+    }
+
+    // CASE 2: bookedBy NOT sent → default behaviour
+    else {
+      // Super Admin → self + child admins
+      if (req.admin?.role?.toLowerCase() === "super admin") {
+        const childAdminIds = (mainSuperAdminResult?.admins || []).map(
+          (a) => a.id
+        );
+
+        filters.bookedBy = [
+          req.admin.id,
+          ...childAdminIds,
+        ];
       }
 
-    } else if (req.admin?.role?.toLowerCase() === "super admin") {
-
-      const childAdminIds = (mainSuperAdminResult?.admins || [])
-        .map((a) => a.id);
-
-      filters.bookedBy = [
-        req.admin.id,        // ✅ include Super Admin
-        ...childAdminIds,    // ✅ include child admins
-      ];
-
-    }
-    else {
-
-      filters.bookedBy = [req.admin.id];
-
+      // Normal Admin / Agent → only self
+      else {
+        filters.bookedBy = [req.admin.id];
+      }
     }
 
     const result = await BookingTrialService.getAllBookings(filters);
