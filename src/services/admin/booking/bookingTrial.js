@@ -33,8 +33,7 @@ exports.createBooking = async (data, options) => {
     const adminId = options?.adminId;
     const source = options?.source;
     const leadId = options?.leadId || null;
-    // const adminFirstName = options?.adminFirstName || "Unknown"; // still available for logs if needed
-
+    
     if (DEBUG) {
       console.log("🔍 [DEBUG] Extracted adminId:", adminId);
       console.log("🔍 [DEBUG] Extracted source:", source);
@@ -72,7 +71,7 @@ exports.createBooking = async (data, options) => {
           phoneNumber: firstParent.parentPhoneNumber || "",
           email,
           password: hashedPassword,
-          roleId: 9, // parent role
+          roleId: 9, 
           status: "active",
           createdAt: new Date(),
           updatedAt: new Date(),

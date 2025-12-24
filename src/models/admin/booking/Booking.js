@@ -123,15 +123,22 @@ const Booking = sequelize.define(
     // ✅ NEW FIELD — FK → Admins.id
     bookedBy: {
       type: DataTypes.BIGINT.UNSIGNED,
-      allowNull: false,
+      allowNull: true, // ✅ allow null for website bookings
       references: {
-        model: "admins", // table name for admins
+        model: "admins",
         key: "id",
       },
       onUpdate: "CASCADE",
-      onDelete: "RESTRICT",
-      comment: "Admin ID who created the booking",
+      onDelete: "SET NULL",
+      comment: "Admin ID who created the booking (NULL for website bookings)",
     },
+    source: {
+      type: DataTypes.ENUM("admin", "website", "open"),
+      allowNull: true,        // ✅ allow null
+      defaultValue: null,     // ✅ real NULL
+      comment: "Source of booking creation (admin / website / open)",
+    },
+
     additionalNote: {
       type: DataTypes.TEXT,
       allowNull: true,
