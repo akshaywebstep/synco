@@ -4,9 +4,8 @@ const router = express.Router({ mergeParams: true });
 const {
   findAClassListing,
   getClassScheduleById
-} = require("../../controllers/admin/findClass/listingVenueAndClassController");
+} = require("../../../controllers/admin/website/findClass/listingVenueAndClassController");
 
-// ✅ Get ALL venues + classes
 router.get(
   "/",
   findAClassListing

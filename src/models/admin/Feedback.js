@@ -23,7 +23,7 @@ const Feedback = sequelize.define(
 
     classScheduleId: {
       type: DataTypes.BIGINT.UNSIGNED,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: "class_schedules",
         key: "id",
@@ -34,9 +34,41 @@ const Feedback = sequelize.define(
 
     venueId: {
       type: DataTypes.BIGINT.UNSIGNED,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: "venues",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "CASCADE",
+    },
+    serviceType: {
+      type: DataTypes.ENUM(
+        "holiday_camp",
+        "weekly_class_membership",
+        "weekly_class_trial",
+        "one_to_one",
+        "birthday_party"
+      ),
+      allowNull: false,
+    },
+
+    holidayClassScheduleId: {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: "holiday_class_schedules",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "CASCADE",
+    },
+
+    holidayVenueId: {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: "holiday_venues",
         key: "id",
       },
       onUpdate: "CASCADE",

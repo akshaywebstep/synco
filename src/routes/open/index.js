@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 
 // Find  Class Module Base Route
-router.use("/find-class", require("./findClassRoutes"));
+router.use("/find-class", require("./findAClass/findClassRoutes"));
 
 // Book Free Trials Module Base Routes
 router.use("/book/free-trials", require("./bookFreeTrialsRoutes"));

@@ -3,14 +3,87 @@ const http = require("http");
 
 const DEBUG = process.env.DEBUG === "true";
 
+// exports.logActivity = async (req, panel, module, action, data, status) => {
+//   try {
+//     if (!req.admin.id) {
+//       return {
+//         status: false,
+//         message: "adminId missing in request. Logging skipped.",
+//       };
+//     }
+
+//     const ip =
+//       req.headers["x-forwarded-for"]?.split(",")[0] ||
+//       req.socket?.remoteAddress ||
+//       req.connection?.remoteAddress ||
+//       "Unknown IP";
+
+//     // const ip = '139.5.0.94';
+//     const apiUrl = `http://ip-api.com/json/${ip}?fields=status,message,continent,continentCode,country,countryCode,region,regionName,city,district,zip,lat,lon,timezone,offset,currency,isp,org,as,asname,reverse,mobile,proxy,hosting,query`;
+
+//     // Fetch geolocation data from ip-api
+//     const geoData = await fetchLocationData(apiUrl);
+//     // Extract user agent details
+//     const userAgent = req.headers["user-agent"] || "Unknown";
+//     const { deviceType, browserName, osName } = parseUserAgent(userAgent);
+
+//     const log = {
+//       adminId: req.admin.id,
+//       panel,
+//       module,
+//       action,
+//       data,
+//       status,
+//       method: req.method,
+//       route: req.originalUrl,
+//       ip,
+//       userAgent: userAgent,
+//       location: {
+//         latitude: geoData?.lat ?? "N/A",
+//         longitude: geoData?.lon ?? "N/A",
+//         city: geoData?.city ?? "N/A",
+//         region: geoData?.regionName ?? "N/A",
+//         country: geoData?.country ?? "N/A",
+//         timezone: geoData?.timezone ?? "N/A",
+//       },
+//       ispInfo: {
+//         isp: geoData?.isp ?? "Unknown",
+//         organization: geoData?.org ?? "Unknown",
+//         as: geoData?.as ?? "Unknown",
+//         proxy: geoData?.proxy ?? false,
+//       },
+//       deviceInfo: {
+//         device_type: deviceType,
+//         browser_name: browserName,
+//         os: osName,
+//       },
+//     };
+
+//     await activityLog.create(log);
+
+//     if (DEBUG) console.log("📌 Full Request Log:", log);
+
+//     return {
+//       status: true,
+//       message: "Activity log saved successfully.",
+//     };
+//   } catch (error) {
+//     console.error("❌ Error logging request:", error.message);
+
+//     return {
+//       status: false,
+//       message: "Failed to save activity log.",
+//     };
+//   }
+// };
+
+// Helper: Fetch IP location data
+
 exports.logActivity = async (req, panel, module, action, data, status) => {
   try {
-    if (!req.admin.id) {
-      return {
-        status: false,
-        message: "adminId missing in request. Logging skipped.",
-      };
-    }
+    // ✅ SUPPORT BOTH ADMIN & PUBLIC
+    const adminId = req?.admin?.id || null;
+    const userId = req?.user?.id || null;
 
     const ip =
       req.headers["x-forwarded-for"]?.split(",")[0] ||
@@ -18,18 +91,18 @@ exports.logActivity = async (req, panel, module, action, data, status) => {
       req.connection?.remoteAddress ||
       "Unknown IP";
 
-    // const ip = '139.5.0.94';
-    const apiUrl = `http://ip-api.com/json/${ip}?fields=status,message,continent,continentCode,country,countryCode,region,regionName,city,district,zip,lat,lon,timezone,offset,currency,isp,org,as,asname,reverse,mobile,proxy,hosting,query`;
+    const apiUrl = `http://ip-api.com/json/${ip}?fields=status,country,regionName,city,lat,lon,timezone,isp,org,as,proxy`;
 
-    // Fetch geolocation data from ip-api
     const geoData = await fetchLocationData(apiUrl);
-    // Extract user agent details
+
     const userAgent = req.headers["user-agent"] || "Unknown";
     const { deviceType, browserName, osName } = parseUserAgent(userAgent);
 
+    // ✅ PUBLIC SAFE LOG STRUCTURE
     const log = {
-      adminId: req.admin.id,
-      panel,
+      adminId,        // null for public
+      userId,         // optional future support
+      panel,          // admin | website
       module,
       action,
       data,
@@ -37,21 +110,24 @@ exports.logActivity = async (req, panel, module, action, data, status) => {
       method: req.method,
       route: req.originalUrl,
       ip,
-      userAgent: userAgent,
+      userAgent,
+
       location: {
-        latitude: geoData?.lat ?? "N/A",
-        longitude: geoData?.lon ?? "N/A",
-        city: geoData?.city ?? "N/A",
-        region: geoData?.regionName ?? "N/A",
-        country: geoData?.country ?? "N/A",
-        timezone: geoData?.timezone ?? "N/A",
+        latitude: geoData?.lat ?? null,
+        longitude: geoData?.lon ?? null,
+        city: geoData?.city ?? null,
+        region: geoData?.regionName ?? null,
+        country: geoData?.country ?? null,
+        timezone: geoData?.timezone ?? null,
       },
+
       ispInfo: {
-        isp: geoData?.isp ?? "Unknown",
-        organization: geoData?.org ?? "Unknown",
-        as: geoData?.as ?? "Unknown",
+        isp: geoData?.isp ?? null,
+        organization: geoData?.org ?? null,
+        as: geoData?.as ?? null,
         proxy: geoData?.proxy ?? false,
       },
+
       deviceInfo: {
         device_type: deviceType,
         browser_name: browserName,
@@ -59,25 +135,19 @@ exports.logActivity = async (req, panel, module, action, data, status) => {
       },
     };
 
+    // ✅ ALWAYS SAVE (ADMIN OR PUBLIC)
     await activityLog.create(log);
 
-    if (DEBUG) console.log("📌 Full Request Log:", log);
+    if (DEBUG) console.log("📌 Activity logged:", log);
 
-    return {
-      status: true,
-      message: "Activity log saved successfully.",
-    };
+    return { status: true };
   } catch (error) {
-    console.error("❌ Error logging request:", error.message);
-
-    return {
-      status: false,
-      message: "Failed to save activity log.",
-    };
+    // ❌ NEVER BREAK API
+    console.error("❌ Activity log error:", error.message);
+    return { status: false };
   }
 };
 
-// Helper: Fetch IP location data
 async function fetchLocationData(url) {
   return new Promise((resolve, reject) => {
     http

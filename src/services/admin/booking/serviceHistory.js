@@ -347,7 +347,7 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
 //   }
 // };
 
-exports.getBookingById = async (id, adminId) => {
+exports.getBookingById = async (id, adminId,superAdminId) => {
   console.log("🔍 Function getBookingById called with params:", {
     id,
     adminId,

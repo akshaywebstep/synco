@@ -115,18 +115,19 @@ exports.getAccountProfile = async (req, res) => {
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id, true);
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
-  // ✅ Apply bookedBy filter
   if (req.admin?.role?.toLowerCase() === 'super admin') {
     const admins = mainSuperAdminResult?.admins || [];
-    bookedBy = admins.length > 0 ? admins.map(a => a.id) : [];
+    bookedBy = [
+      req.admin.id,               // ✅ include super admin
+      ...admins.map(a => a.id)
+    ];
   } else {
-    // Always assign bookedBy even if not in query
-    bookedBy = req.admin?.id || null;
+    bookedBy = [req.admin.id];
   }
 
   try {
     // const result = await BookingTrialService.getBookingById(id);
-    const result = await BookingTrialService.getBookingById(id, bookedBy); // ✅ pass adminId
+    const result = await BookingTrialService.getBookingById(id, bookedBy, superAdminId); // ✅ pass adminId
 
     if (!result.status) {
       return res.status(404).json({ status: false, message: result.message });
@@ -279,11 +280,11 @@ exports.updateBooking = async (req, res) => {
         // Build HTML list
         const studentsHtml = allStudents.length
           ? allStudents
-              .map(
-                (s) =>
-                  `<p style="margin:0; font-size:13px; color:#5F5F6D;">${s.studentFirstName} ${s.studentLastName}</p>`
-              )
-              .join("")
+            .map(
+              (s) =>
+                `<p style="margin:0; font-size:13px; color:#5F5F6D;">${s.studentFirstName} ${s.studentLastName}</p>`
+            )
+            .join("")
           : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
 
         console.log("Generated studentsHtml length:", studentsHtml.length);
