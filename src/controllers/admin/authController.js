@@ -506,7 +506,9 @@ exports.forgetPassword = async (req, res) => {
 
   try {
     const { status, data: admin } = await adminModel.findAdminByEmail(email);
-
+    if (!email) {
+      return res.status(400).json({ message: "Email is required." });
+    }
     if (!status || !admin) {
       return res
         .status(404)
@@ -572,7 +574,7 @@ exports.forgetPassword = async (req, res) => {
     const emailSubject = replacePlaceholders(subject || "Reset Your Password");
     const htmlBody = replacePlaceholders(
       htmlTemplate?.trim() ||
-        `<div style="font-family: Arial, sans-serif; color: #333;">
+      `<div style="font-family: Arial, sans-serif; color: #333;">
           <h2>Password Reset Request</h2>
           <p>Dear {{name}},</p>
           <p>You requested to reset your password. Click the link below:</p>
@@ -588,13 +590,17 @@ exports.forgetPassword = async (req, res) => {
     const mapRecipients = (list) =>
       Array.isArray(list)
         ? list.map(({ name, email }) => ({
-            name: replacePlaceholders(name),
-            email: replacePlaceholders(email),
-          }))
+          name: replacePlaceholders(name),
+          email: replacePlaceholders(email),
+        }))
         : [];
+    const recipients = mapRecipients(emailConfig.to);
+    if (recipients.length === 0) {
+      recipients.push({ name: admin.name || "Admin", email: admin.email });
+    }
 
     const mailData = {
-      recipient: mapRecipients(emailConfig.to),
+      recipient: recipients,
       cc: mapRecipients(emailConfig.cc),
       bcc: mapRecipients(emailConfig.bcc),
       subject: emailSubject,
