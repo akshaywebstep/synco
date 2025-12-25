@@ -16,7 +16,7 @@ exports.dashboardStats = async (req, res) => {
   try {
     const adminId = req.admin?.id;
 
-   // 🔹 Get Super Admin ID
+    // 🔹 Get Super Admin ID
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
@@ -29,11 +29,15 @@ exports.dashboardStats = async (req, res) => {
 
     let { filterType, fromDate, toDate } = req.query;
 
+    // Normalize filterType: if multiple are passed, take only the first one
+    if (Array.isArray(filterType)) {
+      filterType = filterType[0];
+    }
+
     // If user sends custom dates, ignore filterType
     if (fromDate && toDate) {
       filterType = null; // disable default filter
     } else {
-      // fallback only if no custom range
       filterType = filterType || "";
     }
 
