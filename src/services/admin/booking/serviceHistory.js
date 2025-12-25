@@ -20,6 +20,8 @@ const axios = require("axios");
 const bcrypt = require("bcrypt");
 const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
+const { createSchedule, getSchedules, createAccessPaySuiteCustomer,
+  createContract, } = require("../../../utils/payment/accessPaySuit/accesPaySuit");
 const {
   createCustomer,
   removeCustomer,
@@ -28,6 +30,58 @@ const {
   createBillingRequest,
 } = require("../../../utils/payment/pay360/payment");
 const DEBUG = process.env.DEBUG === "true";
+
+function generateBookingId(length = 12) {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let result = "";
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+function normalizeContractStartDate(requestedStartDate, matchedSchedule) {
+  const requested = new Date(requestedStartDate);
+  requested.setHours(0, 0, 0, 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const diffTime = requested.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 1) {
+    throw new Error(
+      `Start date must be at least 1 day after today (currently ${diffDays} day(s) from today)`
+    );
+  }
+
+  if (matchedSchedule?.Start) {
+    const scheduleStart = new Date(matchedSchedule.Start);
+    scheduleStart.setHours(0, 0, 0, 0);
+
+    if (requested < scheduleStart) {
+      const diffScheduleDays = Math.ceil(
+        (scheduleStart.getTime() - requested.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      throw new Error(
+        `Start date must be on or after ${matchedSchedule.Start.split("T")[0]} (${diffScheduleDays} day(s) later)`
+      );
+    }
+  }
+
+  return requested.toISOString().split("T")[0];
+}
+
+function findMatchingSchedule(schedules) {
+  if (!Array.isArray(schedules)) return null;
+
+  return schedules.find(
+    (s) =>
+      s.Name &&
+      s.Name.trim().toLowerCase() === "default schedule"
+  );
+}
 
 exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
   if (!adminId) throw new Error("Unauthorized");
@@ -347,7 +401,7 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
 //   }
 // };
 
-exports.getBookingById = async (id, adminId,superAdminId) => {
+exports.getBookingById = async (id, adminId, superAdminId) => {
   console.log("🔍 Function getBookingById called with params:", {
     id,
     adminId,
@@ -816,68 +870,92 @@ exports.updateBooking = async (payload, adminId, id) => {
         const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
         const firstStudentId = booking.students?.[0]?.id;
 
-        if (paymentType === "card") {
-          // ✅ Fetch Pay360 credentials dynamically from AppConfig
-          const [instIdConfig, usernameConfig, passwordConfig] = await Promise.all([
-            AppConfig.findOne({ where: { key: "PAY360_INST_ID" }, transaction: t }),
-            AppConfig.findOne({ where: { key: "PAY360_API_USERNAME" }, transaction: t }),
-            AppConfig.findOne({ where: { key: "PAY360_API_PASSWORD" }, transaction: t }),
-          ]);
+        if (paymentType === "accesspaysuite") {
+          if (DEBUG) console.log("🔁 Processing Access PaySuite recurring payment");
 
-          if (!instIdConfig || !usernameConfig || !passwordConfig) {
-            throw new Error("Pay360 credentials not configured in AppConfig.");
+          const schedulesRes = await getSchedules();
+          if (!schedulesRes.status) {
+            throw new Error("Access PaySuite: Failed to fetch schedules");
           }
 
-          const PAY360_INST_ID = instIdConfig.value;
-          const PAY360_API_USERNAME = usernameConfig.value;
-          const PAY360_API_PASSWORD = passwordConfig.value;
+          const services = schedulesRes.data?.Services || [];
+          const schedules = services.flatMap(
+            service => service.Schedules || []
+          );
 
-          // ✅ Build payment payload
-          const paymentPayload = {
-            transaction: {
-              currency: "GBP",
-              amount: price,
-              merchantRef,
-              description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-                }`,
-              commerceType: "ECOM",
-            },
-            paymentMethod: {
-              card: {
-                pan: payload.payment.pan,
-                expiryDate: payload.payment.expiryDate,
-                cardHolderName: payload.payment.cardHolderName,
-                cv2: payload.payment.cv2,
-              },
-            },
+          let matchedSchedule = findMatchingSchedule(schedules, paymentPlan);
+
+          if (!matchedSchedule) {
+            // DO NOT try to create the schedule
+            throw new Error(
+              `Access PaySuite: Schedule "Default Schedule" not found. Please create this schedule in APS dashboard before proceeding.`
+            );
+          }
+
+          // Use matchedSchedule.id for contract creation
+          const scheduleId = matchedSchedule.ScheduleId;
+
+          const customerPayload = {
+            email: payload.payment?.email || payload.parents?.[0]?.parentEmail,
+            title: "Mr",
+            customerRef: `BOOK-${booking.id}-${Date.now()}`, // ✅ unique reference
+            firstName: payload.payment?.firstName || payload.parents?.[0]?.parentFirstName,
+            surname: payload.payment?.lastName || payload.parents?.[0]?.parentLastName,
+            line1: payload.payment?.addressLine1 || "N/A",
+            postCode: payload.payment?.postalCode || "N/A",
+            accountNumber: payload.payment?.account_number,
+            bankSortCode: payload.payment?.branch_code,
+            accountHolderName:
+              payload.payment?.account_holder_name ||
+              `${payload.parents?.[0]?.parentFirstName} ${payload.parents?.[0]?.parentLastName}`,
           };
 
-          // ✅ Construct API URL dynamically
-          const url = `https://api.mite.pay360.com/acceptor/rest/transactions/${PAY360_INST_ID}/payment`;
+          const customerRes = await createAccessPaySuiteCustomer(customerPayload);
+          if (!customerRes.status)
+            throw new Error("Access PaySuite: Customer creation failed");
 
-          // ✅ Create Basic Auth header using DB credentials
-          const authHeader = Buffer.from(
-            `${PAY360_API_USERNAME}:${PAY360_API_PASSWORD}`
-          ).toString("base64");
+          const customerId =
+            customerRes.data?.CustomerId ||
+            customerRes.data?.Id ||
+            customerRes.data?.customerId ||
+            customerRes.data?.id;
 
-          // ✅ Send request
-          const response = await axios.post(url, paymentPayload, {
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Basic ${authHeader}`,
-            },
-          });
+          if (!customerId)
+            throw new Error("Access PaySuite: Customer ID missing");
 
-          // ✅ Extract transaction status safely
-          const txnStatus = response.data?.transaction?.status?.toLowerCase();
-          paymentStatusFromGateway =
-            txnStatus === "success"
-              ? "paid"
-              : txnStatus === "pending"
-                ? "pending"
-                : txnStatus === "declined"
-                  ? "failed"
-                  : "unknown";
+          const normalizedStartDate = normalizeContractStartDate(
+            payload.startDate,
+            matchedSchedule
+          );
+
+          const contractPayload = {
+            scheduleName: matchedSchedule.Name,
+            start: normalizedStartDate,
+            isGiftAid: false,
+            terminationType: paymentPlan.duration
+              ? "Fixed term"
+              : "Until further notice",
+            atTheEnd: "Switch to further notice",
+          };
+          if (paymentPlan.duration) {
+            const start = new Date(payload.startDate);
+            const end = new Date(start);
+            end.setMonth(end.getMonth() + Number(paymentPlan.duration));
+            contractPayload.TerminationDate = end.toISOString().split("T")[0];
+          }
+
+          const contractRes = await createContract(customerId, contractPayload);
+          if (!contractRes.status)
+            throw new Error("Access PaySuite: Contract creation failed");
+
+          gatewayResponse = {
+            gateway: "accesspaysuite",
+            schedule: matchedSchedule,
+            customer: customerRes.data,
+            contract: contractRes.data,
+          };
+
+          paymentStatusFromGateway = "active";
         }
         else if (paymentType === "bank") {
           // ⚠️ Fixed bug: replaced 'data' references with 'payload'

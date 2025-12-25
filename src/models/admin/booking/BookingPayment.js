@@ -60,7 +60,7 @@ const BookingPayment = sequelize.define(
     },
     // Add this inside your BookingPayment.define fields
     paymentType: {
-      type: DataTypes.ENUM("rrn", "card","bank"),
+      type: DataTypes.ENUM("accesspaysuite", "card","bank"),
       allowNull: false,
       defaultValue: "card", // optional: choose a default if needed
     },
@@ -72,15 +72,10 @@ const BookingPayment = sequelize.define(
 
     // Payment status
     paymentStatus: {
-      type: DataTypes.ENUM("pending", "paid", "failed"),
+      type: DataTypes.ENUM("pending", "paid", "failed","active"),
       defaultValue: "pending",
     },
-    // Cardless reference ID
-    // referenceId: {
-    //   type: DataTypes.STRING(100),
-    //   allowNull: true,
-    // },
-
+   
     // Additional payment details
     currency: {
       type: DataTypes.STRING(10),

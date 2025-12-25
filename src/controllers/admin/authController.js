@@ -548,7 +548,7 @@ exports.forgetPassword = async (req, res) => {
     }
 
     // ✅ Construct reset URL
-    const resetUrl = `https://webstepdev.com/demo/synco/admin-login?token=${resetToken}&email=${encodeURIComponent(
+    const resetUrl = `https://grabbite.com/admin-login?token=${resetToken}&email=${encodeURIComponent(
       admin.email
     )}`;
 

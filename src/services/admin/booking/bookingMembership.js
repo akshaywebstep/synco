@@ -14,6 +14,8 @@ const {
 } = require("../../../models");
 const { sequelize } = require("../../../models");
 const { validateFormData, isValidEmail } = require("../../../utils/validateFormData");
+const { createSchedule, getSchedules, createAccessPaySuiteCustomer,
+  createContract, } = require("../../../utils/payment/accessPaySuit/accesPaySuit");
 
 const axios = require("axios");
 const { Op } = require("sequelize");
@@ -37,6 +39,47 @@ function generateBookingId(length = 12) {
     result += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return result;
+}
+
+function normalizeContractStartDate(requestedStartDate, matchedSchedule) {
+  const requested = new Date(requestedStartDate);
+  requested.setHours(0, 0, 0, 0);
+
+  // Rule 1: must be from tomorrow onwards
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(0, 0, 0, 0);
+
+  if (requested < tomorrow) {
+    throw new Error(
+      "Start date must be from tomorrow onwards"
+    );
+  }
+
+  // Rule 2: must respect schedule minimum start date (APS rule)
+  if (matchedSchedule?.Start) {
+    const scheduleStart = new Date(matchedSchedule.Start);
+    scheduleStart.setHours(0, 0, 0, 0);
+
+    if (requested < scheduleStart) {
+      throw new Error(
+        `Start date must be on or after ${matchedSchedule.Start.split("T")[0]}`
+      );
+    }
+  }
+
+  // APS expects YYYY-MM-DD
+  return requested.toISOString().split("T")[0];
+}
+
+function findMatchingSchedule(schedules) {
+  if (!Array.isArray(schedules)) return null;
+
+  return schedules.find(
+    (s) =>
+      s.Name &&
+      s.Name.trim().toLowerCase() === "default schedule"
+  );
 }
 
 async function updateBookingStats() {
@@ -139,7 +182,7 @@ exports.createBooking = async (data, options) => {
     if (DEBUG) {
       console.log("🔍 [DEBUG] Extracted adminId:", adminId);
       console.log("🔍 [DEBUG] Extracted source:", source);
-      console.log("🔍 [DEBUG] Extracted source:", leadId);
+      console.log("🔍 [DEBUG] Extracted leadId:", leadId);
     }
 
     if (source !== "open" && !adminId) {
@@ -163,18 +206,7 @@ exports.createBooking = async (data, options) => {
         throw new Error("Parent Email must be a valid email.");
       }
 
-      // 🔍 Check duplicate email in Admin table
-      const existingAdmin = await Admin.findOne({
-        where: { email },
-        transaction: t,
-      });
-
-      if (existingAdmin) {
-        throw new Error(
-          `Parent with email ${email} already exists as an admin.`
-        );
-      }
-
+      // Use findOrCreate only - no duplicate pre-check to avoid race condition
       const plainPassword = "Synco123";
       const hashedPassword = await bcrypt.hash(plainPassword, 10);
 
@@ -229,7 +261,7 @@ exports.createBooking = async (data, options) => {
       }
     }
 
-    // 🔹 Step 1: Create Booking
+    // Create Booking
     const booking = await Booking.create(
       {
         venueId: data.venueId,
@@ -249,12 +281,12 @@ exports.createBooking = async (data, options) => {
       { transaction: t }
     );
 
-    // 🔹 Step 2: Create Students
+    // Create Students
     const studentRecords = [];
     for (const student of data.students || []) {
       const studentMeta = await BookingStudentMeta.create(
         {
-          bookingTrialId: booking.id,
+          bookingTrialId: booking.id, // renamed from bookingTrialId to bookingId
           studentFirstName: student.studentFirstName,
           studentLastName: student.studentLastName,
           dateOfBirth: student.dateOfBirth,
@@ -269,7 +301,7 @@ exports.createBooking = async (data, options) => {
       studentRecords.push(studentMeta);
     }
 
-    // 🔹 Step 3: Create Parents
+    // Create Parents
     if (data.parents?.length && studentRecords.length) {
       const firstStudent = studentRecords[0];
 
@@ -277,7 +309,6 @@ exports.createBooking = async (data, options) => {
         const email = parent.parentEmail?.trim()?.toLowerCase();
         if (!email) throw new Error("Parent email is required.");
 
-        // If no duplicates, create parent
         await BookingParentMeta.create(
           {
             studentId: firstStudent.id,
@@ -295,7 +326,7 @@ exports.createBooking = async (data, options) => {
       }
     }
 
-    // 🔹 Step 4: Emergency Contact
+    // Emergency Contact
     if (
       data.emergency?.emergencyFirstName &&
       data.emergency?.emergencyPhoneNumber &&
@@ -316,37 +347,24 @@ exports.createBooking = async (data, options) => {
       );
     }
 
-    // Step 5: Process Payment if booking has a payment plan
+    // Payment processing (same as your logic but fixed typo and consistency)
     if (booking.paymentPlanId && data.payment?.paymentType) {
-      const paymentType = data.payment.paymentType; // "bank" or "card"
-      console.log("Step 5: Start payment process, paymentType:", paymentType);
+      const paymentType = data.payment.paymentType;
+      if (DEBUG) console.log("Step 5: Start payment process, paymentType:", paymentType);
 
-      console.log(`Step - 1`);
       let paymentStatusFromGateway = "pending";
       const firstStudentId = studentRecords[0]?.id;
-      console.log(`Step - 2`);
 
       try {
-        // ✅ Fetch Payment Plan to get price
-        const paymentPlan = await PaymentPlan.findByPk(booking.paymentPlanId, {
-          transaction: t,
-        });
+        const paymentPlan = await PaymentPlan.findByPk(booking.paymentPlanId, { transaction: t });
         if (!paymentPlan) throw new Error("Invalid payment plan selected.");
         const planPrice = paymentPlan.price || 0;
-        console.log(`Step - 3`);
 
-        // Fetch venue & classSchedule info
         const venue = await Venue.findByPk(data.venueId, { transaction: t });
-        const classSchedule = await ClassSchedule.findByPk(
-          data.classScheduleId,
-          { transaction: t }
-        );
+        const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, { transaction: t });
 
         const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
         let gatewayResponse = null;
-        let response;
-        let goCardlessCustomer, goCardlessBankAccount, goCardlessBillingRequest;
-        console.log(`Step - 4`);
 
         if (paymentType === "bank") {
           // ✅ Prepare GoCardless payload
@@ -405,112 +423,107 @@ exports.createBooking = async (data, options) => {
             ...createBillingRequestRes.billingRequest,
             planPrice,
           }; // ✅ store plan price
-        } else if (paymentType === "card") {
-          console.log(`Step - 5`);
+        } else if (paymentType === "accesspaysuite") {
+          if (DEBUG) console.log("🔁 Processing Access PaySuite recurring payment");
 
-          // Card payment
-          const paymentPayload = {
-            transaction: {
-              currency: "GBP",
-              amount: planPrice, // ✅ use plan price
-              merchantRef,
-              description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-                }`,
-              commerceType: "ECOM",
-            },
-            paymentMethod: {
-              card: {
-                pan: data.payment.pan,
-                expiryDate: data.payment.expiryDate,
-                cardHolderName: data.payment.cardHolderName,
-                cv2: data.payment.cv2,
-              },
-            },
-          };
-
-          // ✅ Fetch Pay360 credentials dynamically from AppConfig
-          const [instIdConfig, usernameConfig, passwordConfig] =
-            await Promise.all([
-              AppConfig.findOne({
-                where: { key: "PAY360_INST_ID" },
-                transaction: t,
-              }),
-              AppConfig.findOne({
-                where: { key: "PAY360_API_USERNAME" },
-                transaction: t,
-              }),
-              AppConfig.findOne({
-                where: { key: "PAY360_API_PASSWORD" },
-                transaction: t,
-              }),
-            ]);
-
-          if (!instIdConfig || !usernameConfig || !passwordConfig) {
-            throw new Error("Missing Pay360 configuration in AppConfig table.");
+          const schedulesRes = await getSchedules();
+          if (!schedulesRes.status) {
+            throw new Error("Access PaySuite: Failed to fetch schedules");
           }
 
-          const PAY360_INST_ID = instIdConfig.value;
-          const PAY360_API_USERNAME = usernameConfig.value;
-          const PAY360_API_PASSWORD = passwordConfig.value;
+          const services = schedulesRes.data?.Services || [];
+          const schedules = services.flatMap(
+            service => service.Schedules || []
+          );
 
-          // ✅ Construct Pay360 API URL dynamically
-          const url = `https://api.mite.pay360.com/acceptor/rest/transactions/${PAY360_INST_ID}/payment`;
+          let matchedSchedule = findMatchingSchedule(schedules, paymentPlan);
 
-          try {
-            // ✅ Build Basic Auth header using DB values
-            const authHeader = Buffer.from(
-              `${PAY360_API_USERNAME}:${PAY360_API_PASSWORD}`
-            ).toString("base64");
-
-            response = await axios.post(url, paymentPayload, {
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Basic ${authHeader}`,
-              },
-            });
-            // Log the full response if needed
-            console.log("🔍 [DEBUG] Full Axios response:", response);
-          } catch (err) {
-            console.error(
-              "❌ Axios request failed:",
-              err.response?.data || err.message || err
+          if (!matchedSchedule) {
+            // DO NOT try to create the schedule
+            throw new Error(
+              `Access PaySuite: Schedule "Default Schedule" not found. Please create this schedule in APS dashboard before proceeding.`
             );
           }
 
-          const gatewayResponse = response?.data;
+          // Use matchedSchedule.id for contract creation
+          const scheduleId = matchedSchedule.ScheduleId;
 
-          // Safely check if transaction and status exist
-          const txnStatus = gatewayResponse?.transaction?.status
-            ? gatewayResponse.transaction.status.toLowerCase()
-            : null;
+          const customerPayload = {
+            email: data.payment?.email || data.parents?.[0]?.parentEmail,
+            title: "Mr",
+            customerRef: `BOOK-${booking.id}`,
+            firstName:
+              data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+            surname:
+              data.payment?.lastName || data.parents?.[0]?.parentLastName,
+            line1: data.payment?.addressLine1 || "N/A",
+            postCode: data.payment?.postalCode || "N/A",
+            accountNumber: data.payment?.account_number,
+            bankSortCode: data.payment?.branch_code,
+            accountHolderName:
+              data.payment?.account_holder_name ||
+              `${data.parents?.[0]?.parentFirstName} ${data.parents?.[0]?.parentLastName}`,
+          };
 
-          paymentStatusFromGateway =
-            txnStatus === "success"
-              ? "paid"
-              : txnStatus === "pending"
-                ? "pending"
-                : txnStatus === "declined"
-                  ? "failed"
-                  : txnStatus || "unknown";
+          const customerRes = await createAccessPaySuiteCustomer(customerPayload);
+          if (!customerRes.status)
+            throw new Error("Access PaySuite: Customer creation failed");
+
+          const customerId =
+            customerRes.data?.CustomerId ||
+            customerRes.data?.Id ||
+            customerRes.data?.customerId ||
+            customerRes.data?.id;
+
+          if (!customerId)
+            throw new Error("Access PaySuite: Customer ID missing");
+
+          const normalizedStartDate = normalizeContractStartDate(
+            data.startDate,
+            matchedSchedule
+          );
+
+          const contractPayload = {
+            scheduleName: matchedSchedule.Name,
+            start: normalizedStartDate,
+            isGiftAid: false,
+            terminationType: paymentPlan.duration
+              ? "Fixed term"
+              : "Until further notice",
+            atTheEnd: "Switch to further notice",
+          };
+          if (paymentPlan.duration) {
+            const start = new Date(data.startDate);
+            const end = new Date(start);
+            end.setMonth(end.getMonth() + Number(paymentPlan.duration));
+            contractPayload.TerminationDate = end.toISOString().split("T")[0];
+          }
+
+          const contractRes = await createContract(customerId, contractPayload);
+          if (!contractRes.status)
+            throw new Error("Access PaySuite: Contract creation failed");
+
+          gatewayResponse = {
+            gateway: "accesspaysuite",
+            schedule: matchedSchedule,
+            customer: customerRes.data,
+            contract: contractRes.data,
+          };
+
+          paymentStatusFromGateway = "active";
         }
 
-        console.log("🔍 [DEBUG] Response data:", response?.data);
-
-        // 🔹 Save BookingPayment
+        // Save BookingPayment
         await BookingPayment.create(
           {
             bookingId: booking.id,
             paymentPlanId: booking.paymentPlanId,
             studentId: firstStudentId,
             paymentType,
-            firstName:
-              data.payment.firstName ||
-              data.parents?.[0]?.parentFirstName ||
-              "",
-            lastName:
-              data.payment.lastName || data.parents?.[0]?.parentLastName || "",
+            firstName: data.payment.firstName || data.parents?.[0]?.parentFirstName || "",
+            lastName: data.payment.lastName || data.parents?.[0]?.parentLastName || "",
             email: data.payment.email || data.parents?.[0]?.parentEmail || "",
-            amount: planPrice, // ✅ save price from PaymentPlan
+            amount: planPrice,
             billingAddress: data.payment.billingAddress || "",
             cardHolderName: data.payment.cardHolderName || "",
             cv2: data.payment.cv2 || "",
@@ -519,20 +532,18 @@ exports.createBooking = async (data, options) => {
             account_holder_name: data.payment.account_holder_name || "",
             paymentStatus: paymentStatusFromGateway,
             currency: gatewayResponse?.transaction?.currency || "GBP",
-            merchantRef:
-              gatewayResponse?.transaction?.merchantRef || merchantRef,
+            merchantRef: gatewayResponse?.transaction?.merchantRef || merchantRef,
             description:
               gatewayResponse?.transaction?.description ||
-              `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-              }`,
+              `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"}`,
             commerceType: "ECOM",
             gatewayResponse,
             transactionMeta: {
               status: gatewayResponse?.transaction?.status || "pending",
             },
-            goCardlessCustomer,
-            goCardlessBankAccount,
-            goCardlessBillingRequest,
+            goCardlessCustomer: gatewayResponse?.goCardlessCustomer || null,
+            goCardlessBankAccount: gatewayResponse?.goCardlessBankAccount || null,
+            goCardlessBillingRequest: gatewayResponse?.goCardlessBillingRequest || null,
             createdAt: new Date(),
             updatedAt: new Date(),
           },
@@ -541,25 +552,18 @@ exports.createBooking = async (data, options) => {
 
         if (paymentStatusFromGateway === "failed")
           throw new Error("Payment failed. Booking not created.");
+
         if (DEBUG) {
-          console.log(
-            "🔍 [DEBUG] Extracted paymentStatusFromGateway:",
-            paymentStatusFromGateway
-          );
+          console.log("🔍 [DEBUG] Payment processed with status:", paymentStatusFromGateway);
         }
       } catch (err) {
         await t.rollback();
         return { status: false, message: err.message || "Payment failed" };
-        // if (DEBUG) {
-        //   console.log("🔍 [DEBUG] Extracted message:", message);
-        // }
       }
     }
 
-    // 🔹 Step 6: Update Class Capacity
-    const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, {
-      transaction: t,
-    });
+    // Update Class Capacity
+    const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, { transaction: t });
     const newCapacity = classSchedule.capacity - data.totalStudents;
     if (newCapacity < 0) throw new Error("Not enough capacity left.");
     await classSchedule.update({ capacity: newCapacity }, { transaction: t });
@@ -694,346 +698,346 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
     // } else if (filters.dateTo) {
     //   const end = new Date(`${filters.dateTo} 23:59:59`);
     //   whereBooking.createdAt = { [Op.lte]: end };
-  // }
+    // }
 
     const bookings = await Booking.findAll({
-    where: {
-      ...whereBooking, // spread the filters correctly
-      // serviceType: "weekly class membership",
-      serviceType: {
-        [Op.in]: ["weekly class membership", "weekly class trial"], // ✅ both types
+      where: {
+        ...whereBooking, // spread the filters correctly
+        // serviceType: "weekly class membership",
+        serviceType: {
+          [Op.in]: ["weekly class membership", "weekly class trial"], // ✅ both types
+        },
       },
-    },
-    order: [["id", "DESC"]],
-    include: [
-      {
-        model: BookingStudentMeta,
-        as: "students",
-        include: [
-          { model: BookingParentMeta, as: "parents", required: false },
-          {
-            model: BookingEmergencyMeta,
-            as: "emergencyContacts",
-            required: false,
-          },
-        ],
-        required: false,
-      },
-      {
-        model: ClassSchedule,
-        as: "classSchedule",
-        required: false,
-        include: [
-          {
-            model: Venue,
-            as: "venue",
-            where: whereVenue,
-            required: !!filters.venueName,
-          },
-        ],
-      },
-      { model: BookingPayment, as: "payments", required: false },
-      { model: PaymentPlan, as: "paymentPlan", required: false },
-      {
-        model: Admin,
-        as: "bookedByAdmin",
-        attributes: [
-          "id",
-          "firstName",
-          "lastName",
-          "email",
-          "roleId",
-          "status",
-          "profile",
-        ],
-        required: false,
-      },
-    ],
-  });
+      order: [["id", "DESC"]],
+      include: [
+        {
+          model: BookingStudentMeta,
+          as: "students",
+          include: [
+            { model: BookingParentMeta, as: "parents", required: false },
+            {
+              model: BookingEmergencyMeta,
+              as: "emergencyContacts",
+              required: false,
+            },
+          ],
+          required: false,
+        },
+        {
+          model: ClassSchedule,
+          as: "classSchedule",
+          required: false,
+          include: [
+            {
+              model: Venue,
+              as: "venue",
+              where: whereVenue,
+              required: !!filters.venueName,
+            },
+          ],
+        },
+        { model: BookingPayment, as: "payments", required: false },
+        { model: PaymentPlan, as: "paymentPlan", required: false },
+        {
+          model: Admin,
+          as: "bookedByAdmin",
+          attributes: [
+            "id",
+            "firstName",
+            "lastName",
+            "email",
+            "roleId",
+            "status",
+            "profile",
+          ],
+          required: false,
+        },
+      ],
+    });
 
-  const parsedBookings = await Promise.all(
-    bookings.map(async (booking) => {
-      // Students
-      const students =
-        booking.students?.map((s) => ({
-          studentFirstName: s.studentFirstName,
-          studentLastName: s.studentLastName,
-          dateOfBirth: s.dateOfBirth,
-          age: s.age,
-          gender: s.gender,
-          medicalInformation: s.medicalInformation,
-        })) || [];
+    const parsedBookings = await Promise.all(
+      bookings.map(async (booking) => {
+        // Students
+        const students =
+          booking.students?.map((s) => ({
+            studentFirstName: s.studentFirstName,
+            studentLastName: s.studentLastName,
+            dateOfBirth: s.dateOfBirth,
+            age: s.age,
+            gender: s.gender,
+            medicalInformation: s.medicalInformation,
+          })) || [];
 
-      // Parents (flatten all student parents)
-      const parents =
-        booking.students?.flatMap(
-          (s) =>
-            s.parents?.map((p) => ({
-              parentFirstName: p.parentFirstName,
-              parentLastName: p.parentLastName,
-              parentEmail: p.parentEmail,
-              parentPhoneNumber: p.parentPhoneNumber,
-              relationToChild: p.relationToChild,
-              howDidYouHear: p.howDidYouHear,
-            })) || []
-        ) || [];
+        // Parents (flatten all student parents)
+        const parents =
+          booking.students?.flatMap(
+            (s) =>
+              s.parents?.map((p) => ({
+                parentFirstName: p.parentFirstName,
+                parentLastName: p.parentLastName,
+                parentEmail: p.parentEmail,
+                parentPhoneNumber: p.parentPhoneNumber,
+                relationToChild: p.relationToChild,
+                howDidYouHear: p.howDidYouHear,
+              })) || []
+          ) || [];
 
-      // Emergency contacts (take first one per student)
-      // ✅ Pick only the first student's emergency contacts
-      const emergency =
-        booking.students?.[0]?.emergencyContacts?.map((e) => ({
-          emergencyFirstName: e.emergencyFirstName,
-          emergencyLastName: e.emergencyLastName,
-          emergencyPhoneNumber: e.emergencyPhoneNumber,
-          emergencyRelation: e.emergencyRelation,
-        })) || [];
+        // Emergency contacts (take first one per student)
+        // ✅ Pick only the first student's emergency contacts
+        const emergency =
+          booking.students?.[0]?.emergencyContacts?.map((e) => ({
+            emergencyFirstName: e.emergencyFirstName,
+            emergencyLastName: e.emergencyLastName,
+            emergencyPhoneNumber: e.emergencyPhoneNumber,
+            emergencyRelation: e.emergencyRelation,
+          })) || [];
 
-      // Venue & plan
-      const venue = booking.classSchedule?.venue || null;
-      const plan = booking.paymentPlan || null;
+        // Venue & plan
+        const venue = booking.classSchedule?.venue || null;
+        const plan = booking.paymentPlan || null;
 
-      const payment = booking.payments?.[0] || null;
-      const paymentPlans = plan ? [plan] : [];
+        const payment = booking.payments?.[0] || null;
+        const paymentPlans = plan ? [plan] : [];
 
-      // PaymentData with parsed gatewayResponse & transactionMeta
-      let parsedGatewayResponse = {};
-      let parsedTransactionMeta = {};
-      let parsedGoCardlessBillingRequest = {};
+        // PaymentData with parsed gatewayResponse & transactionMeta
+        let parsedGatewayResponse = {};
+        let parsedTransactionMeta = {};
+        let parsedGoCardlessBillingRequest = {};
 
-      try {
-        if (payment?.gatewayResponse) {
-          parsedGatewayResponse =
-            typeof payment.gatewayResponse === "string"
-              ? JSON.parse(payment.gatewayResponse)
-              : payment.gatewayResponse;
+        try {
+          if (payment?.gatewayResponse) {
+            parsedGatewayResponse =
+              typeof payment.gatewayResponse === "string"
+                ? JSON.parse(payment.gatewayResponse)
+                : payment.gatewayResponse;
+          }
+        } catch (e) {
+          console.error("Invalid gatewayResponse JSON", e);
         }
-      } catch (e) {
-        console.error("Invalid gatewayResponse JSON", e);
-      }
 
-      try {
-        if (payment?.goCardlessBillingRequest) {
-          parsedGoCardlessBillingRequest =
-            typeof payment.goCardlessBillingRequest === "string"
-              ? JSON.parse(payment.goCardlessBillingRequest)
-              : payment.goCardlessBillingRequest;
+        try {
+          if (payment?.goCardlessBillingRequest) {
+            parsedGoCardlessBillingRequest =
+              typeof payment.goCardlessBillingRequest === "string"
+                ? JSON.parse(payment.goCardlessBillingRequest)
+                : payment.goCardlessBillingRequest;
+          }
+        } catch (e) {
+          console.error("Invalid goCardlessBillingRequest JSON", e);
         }
-      } catch (e) {
-        console.error("Invalid goCardlessBillingRequest JSON", e);
-      }
-      try {
-        if (payment?.transactionMeta) {
-          parsedTransactionMeta =
-            typeof payment.transactionMeta === "string"
-              ? JSON.parse(payment.transactionMeta)
-              : payment.transactionMeta;
+        try {
+          if (payment?.transactionMeta) {
+            parsedTransactionMeta =
+              typeof payment.transactionMeta === "string"
+                ? JSON.parse(payment.transactionMeta)
+                : payment.transactionMeta;
+          }
+        } catch (e) {
+          console.error("Invalid transactionMeta JSON", e);
         }
-      } catch (e) {
-        console.error("Invalid transactionMeta JSON", e);
-      }
 
-      const paymentData = payment
-        ? {
-          id: payment.id,
-          bookingId: payment.bookingId,
-          firstName: payment.firstName,
-          lastName: payment.lastName,
-          email: payment.email,
-          billingAddress: payment.billingAddress,
-          cardHolderName: payment.cardHolderName,
-          cv2: payment.cv2,
-          expiryDate: payment.expiryDate,
-          paymentType: payment.paymentType,
-          pan: payment.pan,
-          paymentStatus: payment.paymentStatus,
-          referenceId: payment.referenceId,
-          currency: payment.currency,
-          merchantRef: payment.merchantRef,
-          description: payment.description,
-          commerceType: payment.commerceType,
-          createdAt: payment.createdAt,
-          updatedAt: payment.updatedAt,
-          goCardlessBillingRequest: parsedGoCardlessBillingRequest,
-          gatewayResponse: parsedGatewayResponse,
-          transactionMeta: parsedTransactionMeta,
-          totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
-        }
-        : null;
+        const paymentData = payment
+          ? {
+            id: payment.id,
+            bookingId: payment.bookingId,
+            firstName: payment.firstName,
+            lastName: payment.lastName,
+            email: payment.email,
+            billingAddress: payment.billingAddress,
+            cardHolderName: payment.cardHolderName,
+            cv2: payment.cv2,
+            expiryDate: payment.expiryDate,
+            paymentType: payment.paymentType,
+            pan: payment.pan,
+            paymentStatus: payment.paymentStatus,
+            referenceId: payment.referenceId,
+            currency: payment.currency,
+            merchantRef: payment.merchantRef,
+            description: payment.description,
+            commerceType: payment.commerceType,
+            createdAt: payment.createdAt,
+            updatedAt: payment.updatedAt,
+            goCardlessBillingRequest: parsedGoCardlessBillingRequest,
+            gatewayResponse: parsedGatewayResponse,
+            transactionMeta: parsedTransactionMeta,
+            totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
+          }
+          : null;
 
-      const { venue: _venue, ...bookingData } = booking.dataValues;
+        const { venue: _venue, ...bookingData } = booking.dataValues;
 
-      return {
-        ...bookingData,
-        students,
-        parents,
-        emergency,
-        classSchedule: booking.classSchedule || null,
-        // payments: booking.payments || [],
-        paymentPlan: booking.paymentPlan || null,
-        paymentPlans,
-        venue,
-        paymentData,
-        bookedByAdmin: booking.bookedByAdmin || null,
-      };
-    })
-  );
-
-  // Student filter
-  let finalBookings = parsedBookings;
-  if (filters.studentName) {
-    const keyword = filters.studentName.toLowerCase().trim();
-    finalBookings = finalBookings
-      .map((b) => {
-        const matchedStudents = b.students.filter((s) => {
-          const firstName = s.studentFirstName?.toLowerCase() || "";
-          const lastName = s.studentLastName?.toLowerCase() || "";
-          const fullName = `${firstName} ${lastName}`.trim();
-
-          return (
-            firstName.includes(keyword) ||
-            lastName.includes(keyword) ||
-            fullName.includes(keyword)
-          );
-        });
-
-        if (matchedStudents.length > 0) {
-          return {
-            ...b,
-            students: matchedStudents,
-          };
-        }
-        return null;
+        return {
+          ...bookingData,
+          students,
+          parents,
+          emergency,
+          classSchedule: booking.classSchedule || null,
+          // payments: booking.payments || [],
+          paymentPlan: booking.paymentPlan || null,
+          paymentPlans,
+          venue,
+          paymentData,
+          bookedByAdmin: booking.bookedByAdmin || null,
+        };
       })
-      .filter(Boolean);
-
-    if (finalBookings.length === 0) {
-      return {
-        status: true,
-        message: "No bookings found for the student.",
-        totalPaidBookings: 0,
-        data: { membership: [], venue: [], bookedByAdmins: [] },
-        stats: {
-          totalStudents: 0,
-          totalRevenue: 0,
-          avgMonthlyFee: 0,
-          avgLifeCycle: 0,
-        },
-      };
-    }
-  }
-
-  // Venue filter
-  if (filters.venueName) {
-    const keyword = filters.venueName.toLowerCase();
-    finalBookings = finalBookings.filter((b) =>
-      b.venue?.name?.toLowerCase().includes(keyword)
     );
-    if (finalBookings.length === 0) {
-      return {
-        status: true,
-        message: "No bookings found for the venue.",
-        totalPaidBookings: 0,
-        data: { membership: [], venue: [], bookedByAdmins: [] },
-        stats: {
-          totalStudents: 0,
-          totalRevenue: 0,
-          avgMonthlyFee: 0,
-          avgLifeCycle: 0,
+
+    // Student filter
+    let finalBookings = parsedBookings;
+    if (filters.studentName) {
+      const keyword = filters.studentName.toLowerCase().trim();
+      finalBookings = finalBookings
+        .map((b) => {
+          const matchedStudents = b.students.filter((s) => {
+            const firstName = s.studentFirstName?.toLowerCase() || "";
+            const lastName = s.studentLastName?.toLowerCase() || "";
+            const fullName = `${firstName} ${lastName}`.trim();
+
+            return (
+              firstName.includes(keyword) ||
+              lastName.includes(keyword) ||
+              fullName.includes(keyword)
+            );
+          });
+
+          if (matchedStudents.length > 0) {
+            return {
+              ...b,
+              students: matchedStudents,
+            };
+          }
+          return null;
+        })
+        .filter(Boolean);
+
+      if (finalBookings.length === 0) {
+        return {
+          status: true,
+          message: "No bookings found for the student.",
+          totalPaidBookings: 0,
+          data: { membership: [], venue: [], bookedByAdmins: [] },
+          stats: {
+            totalStudents: 0,
+            totalRevenue: 0,
+            avgMonthlyFee: 0,
+            avgLifeCycle: 0,
+          },
+        };
+      }
+    }
+
+    // Venue filter
+    if (filters.venueName) {
+      const keyword = filters.venueName.toLowerCase();
+      finalBookings = finalBookings.filter((b) =>
+        b.venue?.name?.toLowerCase().includes(keyword)
+      );
+      if (finalBookings.length === 0) {
+        return {
+          status: true,
+          message: "No bookings found for the venue.",
+          totalPaidBookings: 0,
+          data: { membership: [], venue: [], bookedByAdmins: [] },
+          stats: {
+            totalStudents: 0,
+            totalRevenue: 0,
+            avgMonthlyFee: 0,
+            avgLifeCycle: 0,
+          },
+        };
+      }
+    }
+
+    // Collect unique venues
+    const venueMap = {};
+    bookings.forEach((b) => {
+      if (b.classSchedule?.venue) {
+        venueMap[b.classSchedule.venue.id] = b.classSchedule.venue;
+      }
+    });
+    const allVenues = Object.values(venueMap);
+
+    // Collect unique bookedByAdmins
+    const adminMap = {};
+    bookings.forEach((b) => {
+      if (b.bookedByAdmin) {
+        adminMap[b.bookedByAdmin.id] = b.bookedByAdmin;
+      }
+    });
+    const allAdmins = Object.values(adminMap);
+
+    // Stats
+    const totalStudents = finalBookings.reduce(
+      (acc, b) => acc + (b.students?.length || 0),
+      0
+    );
+
+    // ✅ Calculate revenue only from PaymentPlan (price + joiningFee) * student count
+    const totalRevenue = finalBookings.reduce((acc, b) => {
+      const plan = b.paymentPlans?.[0];
+      if (plan?.price != null) {
+        const studentsCount = b.students?.length || 1;
+        return acc + (plan.price + (plan.joiningFee || 0)) * studentsCount;
+      }
+      return acc;
+    }, 0);
+
+    // ✅ Average monthly fee (spread over duration)
+    const avgMonthlyFeeRaw =
+      finalBookings.reduce((acc, b) => {
+        const plan = b.paymentPlans?.[0];
+        if (plan?.duration && plan.price != null) {
+          const studentsCount = b.students?.length || 1;
+          return (
+            acc +
+            ((plan.price + (plan.joiningFee || 0)) / plan.duration) *
+            studentsCount
+          );
+        }
+        return acc;
+      }, 0) / (totalStudents || 1);
+
+    // Round to 2 decimals (returns Number)
+    const avgMonthlyFee = Math.round(avgMonthlyFeeRaw * 100) / 100;
+
+    // ✅ Average lifecycle (duration * student count)
+    const avgLifeCycle =
+      finalBookings.reduce((acc, b) => {
+        const plan = b.paymentPlans?.[0];
+        if (plan?.duration != null) {
+          const studentsCount = b.students?.length || 1;
+          return acc + plan.duration * studentsCount;
+        }
+        return acc;
+      }, 0) / (totalStudents || 1);
+    // ✅ New: Fetch all venues from DB (including those with no bookings)
+    const allVenuesFromDB = await Venue.findAll({
+      order: [["name", "ASC"]],
+      include: [
+        {
+          model: ClassSchedule,
+          as: "classSchedules", // <-- make sure this matches your Sequelize association alias
+          required: false, // include venues even if they have no classes
         },
-      };
-    }
-  }
+      ],
+    });
 
-  // Collect unique venues
-  const venueMap = {};
-  bookings.forEach((b) => {
-    if (b.classSchedule?.venue) {
-      venueMap[b.classSchedule.venue.id] = b.classSchedule.venue;
-    }
-  });
-  const allVenues = Object.values(venueMap);
-
-  // Collect unique bookedByAdmins
-  const adminMap = {};
-  bookings.forEach((b) => {
-    if (b.bookedByAdmin) {
-      adminMap[b.bookedByAdmin.id] = b.bookedByAdmin;
-    }
-  });
-  const allAdmins = Object.values(adminMap);
-
-  // Stats
-  const totalStudents = finalBookings.reduce(
-    (acc, b) => acc + (b.students?.length || 0),
-    0
-  );
-
-  // ✅ Calculate revenue only from PaymentPlan (price + joiningFee) * student count
-  const totalRevenue = finalBookings.reduce((acc, b) => {
-    const plan = b.paymentPlans?.[0];
-    if (plan?.price != null) {
-      const studentsCount = b.students?.length || 1;
-      return acc + (plan.price + (plan.joiningFee || 0)) * studentsCount;
-    }
-    return acc;
-  }, 0);
-
-  // ✅ Average monthly fee (spread over duration)
-  const avgMonthlyFeeRaw =
-    finalBookings.reduce((acc, b) => {
-      const plan = b.paymentPlans?.[0];
-      if (plan?.duration && plan.price != null) {
-        const studentsCount = b.students?.length || 1;
-        return (
-          acc +
-          ((plan.price + (plan.joiningFee || 0)) / plan.duration) *
-          studentsCount
-        );
-      }
-      return acc;
-    }, 0) / (totalStudents || 1);
-
-  // Round to 2 decimals (returns Number)
-  const avgMonthlyFee = Math.round(avgMonthlyFeeRaw * 100) / 100;
-
-  // ✅ Average lifecycle (duration * student count)
-  const avgLifeCycle =
-    finalBookings.reduce((acc, b) => {
-      const plan = b.paymentPlans?.[0];
-      if (plan?.duration != null) {
-        const studentsCount = b.students?.length || 1;
-        return acc + plan.duration * studentsCount;
-      }
-      return acc;
-    }, 0) / (totalStudents || 1);
-  // ✅ New: Fetch all venues from DB (including those with no bookings)
-  const allVenuesFromDB = await Venue.findAll({
-    order: [["name", "ASC"]],
-    include: [
-      {
-        model: ClassSchedule,
-        as: "classSchedules", // <-- make sure this matches your Sequelize association alias
-        required: false, // include venues even if they have no classes
+    return {
+      status: true,
+      message: "Paid bookings retrieved successfully",
+      totalPaidBookings: finalBookings.length,
+      data: {
+        membership: finalBookings,
+        venue: allVenues,
+        bookedByAdmins: allAdmins, // ✅ unique list of admins like venues
+        allVenues: allVenuesFromDB,
       },
-    ],
-  });
-
-  return {
-    status: true,
-    message: "Paid bookings retrieved successfully",
-    totalPaidBookings: finalBookings.length,
-    data: {
-      membership: finalBookings,
-      venue: allVenues,
-      bookedByAdmins: allAdmins, // ✅ unique list of admins like venues
-      allVenues: allVenuesFromDB,
-    },
-    stats: { totalStudents, totalRevenue, avgMonthlyFee, avgLifeCycle },
-  };
-} catch (error) {
-  console.error("❌ getAllBookingsWithStats Error:", error.message);
-  return { status: false, message: error.message };
-}
+      stats: { totalStudents, totalRevenue, avgMonthlyFee, avgLifeCycle },
+    };
+  } catch (error) {
+    console.error("❌ getAllBookingsWithStats Error:", error.message);
+    return { status: false, message: error.message };
+  }
 };
 
 exports.getActiveMembershipBookings = async (filters = {}) => {
