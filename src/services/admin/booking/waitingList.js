@@ -1502,7 +1502,6 @@ exports.convertToMembership = async (data, options) => {
         let goCardlessCustomer, goCardlessBankAccount, goCardlessBillingRequest;
 
         if (paymentType === "bank") {
-          // GoCardless customer + billing request
           const customerPayload = {
             email: data.payment.email || data.parents?.[0]?.parentEmail || "",
             given_name: data.payment.firstName || "",
@@ -1523,32 +1522,40 @@ exports.convertToMembership = async (data, options) => {
 
           const billingRequestPayload = {
             customerId: createCustomerRes.customer.id,
-            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-              }`,
+            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"}`,
             amount: price,
             scheme: "faster_payments",
             currency: "GBP",
-            reference: `TRX-${Date.now()}-${Math.floor(
-              1000 + Math.random() * 9000
-            )}`,
-            mandateReference: `MD-${Date.now()}-${Math.floor(
-              1000 + Math.random() * 9000
-            )}`,
+            reference: `TRX-${Date.now()}`,
+            mandateReference: `MD-${Date.now()}`,
             fallbackEnabled: true,
           };
 
-          const createBillingRequestRes = await createBillingRequest(
-            billingRequestPayload
-          );
+          const createBillingRequestRes = await createBillingRequest(billingRequestPayload);
           if (!createBillingRequestRes.status) {
             await removeCustomer(createCustomerRes.customer.id);
             throw new Error(createBillingRequestRes.message);
           }
 
           goCardlessCustomer = createCustomerRes.customer;
-          goCardlessBankAccount = createCustomerRes.bankAccount;
+          goCardlessBankAccount = createCustomerRes.bankAccount || null;
           goCardlessBillingRequest = createBillingRequestRes.billingRequest;
-        } else if (paymentType === "accesspaysuite") {
+
+          gatewayResponse = {
+            gateway: "gocardless",
+            customer: goCardlessCustomer,
+            bankAccount: goCardlessBankAccount,
+            billingRequest: goCardlessBillingRequest,
+            meta: {
+              amount: price,
+              currency: "GBP",
+              scheme: "faster_payments",
+            },
+          };
+
+          paymentStatusFromGateway = "pending";
+        }
+        else if (paymentType === "accesspaysuite") {
           if (DEBUG) console.log("🔁 Processing Access PaySuite recurring payment");
 
           const schedulesRes = await getSchedules();
@@ -1657,6 +1664,8 @@ exports.convertToMembership = async (data, options) => {
             amount: price,
             billingAddress: data.payment.billingAddress || "",
             account_holder_name: data.payment.account_holder_name || "",
+            account_number: data.payment.account_number || "",
+            branch_code: data.payment.branch_code || "",
             paymentStatus: paymentStatusFromGateway,
             currency:
               gatewayResponse?.transaction?.currency ||

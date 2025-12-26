@@ -65,14 +65,18 @@ const BookingPayment = sequelize.define(
       defaultValue: "card", // optional: choose a default if needed
     },
 
-    pan: {
+    account_number: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+    },
+    branch_code: {
       type: DataTypes.STRING(20),
       allowNull: true,
     },
 
     // Payment status
     paymentStatus: {
-      type: DataTypes.ENUM("pending", "paid", "failed","active"),
+      type: DataTypes.ENUM("cancelled","pending", "paid", "failed","active"),
       defaultValue: "pending",
     },
    

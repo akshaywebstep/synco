@@ -265,4 +265,77 @@ async function removeCustomer(customerId) {
   }
 }
 
-module.exports = { createCustomer, removeCustomer };
+async function cancelBankMembership({ creditorId, accountNumber, branchCode }) {
+  // Step 1: List creditor bank accounts for the creditor
+  const response = await fetch(`${GOCARDLESS_API}/creditor_bank_accounts?creditor=${creditorId}`, {
+    method: 'GET',
+    headers: await buildHeaders(),
+  });
+  const result = await response.json();
+
+  if (!response.ok) {
+    return { status: false, message: "Failed to fetch creditor bank accounts", error: result };
+  }
+
+  // Step 2: Find the creditor bank account ID to cancel
+  const accountToCancel = result.creditor_bank_accounts.find(
+    acc => acc.account_number === accountNumber && acc.branch_code === branchCode
+  );
+
+  if (!accountToCancel) {
+    return { status: false, message: "Bank account to cancel not found" };
+  }
+
+  // Step 3: DELETE the creditor bank account by ID
+  const deleteResponse = await fetch(`${GOCARDLESS_API}/creditor_bank_accounts/${accountToCancel.id}`, {
+    method: 'DELETE',
+    headers: await buildHeaders(),
+  });
+
+  if (!deleteResponse.ok) {
+    const errorText = await deleteResponse.text();
+    return { status: false, message: "Failed to delete creditor bank account", error: errorText };
+  }
+
+  return { status: true, message: "Bank membership cancelled successfully" };
+}
+
+async function cancelGoCardlessBillingRequest(billingRequestId) {
+  try {
+    if (!billingRequestId) {
+      throw new Error("Missing billing_request ID");
+    }
+
+    if (DEBUG) {
+      console.log("🏦 Cancelling GoCardless billing request:", billingRequestId);
+    }
+
+    const response = await fetch(
+      `${GOCARDLESS_API}/billing_requests/${billingRequestId}/actions/cancel`,
+      {
+        method: "POST",
+        headers: await buildHeaders(),
+      }
+    );
+
+    const text = await response.text();
+
+    if (!response.ok) {
+      console.error("❌ Billing request cancellation failed:", text);
+      return { status: false, message: text };
+    }
+
+    const result = JSON.parse(text);
+
+    if (DEBUG) {
+      console.log("✅ Billing request cancelled successfully:", result);
+    }
+
+    return { status: true, data: result };
+  } catch (err) {
+    console.error("❌ Error cancelling billing request:", err.message);
+    return { status: false, message: err.message };
+  }
+}
+
+module.exports = { createCustomer, removeCustomer, cancelBankMembership, cancelGoCardlessBillingRequest };

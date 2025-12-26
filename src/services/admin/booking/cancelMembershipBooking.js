@@ -5,257 +5,228 @@ const {
   BookingParentMeta,
   BookingEmergencyMeta,
   PaymentPlan,
+  BookingPayment,  // You use it, but didn't import in snippet
+  Credits,
   Venue,
   ClassSchedule,
 } = require("../../../models");
 const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
-// const cancelContract = require("../../../utils/payment/accessPaysuit/accesPaySuit");
+const { cancelContract, } = require("../../../utils/payment/accessPaySuit/accesPaySuit");
+const { cancelGoCardlessBillingRequest, cancelBankMembership } = require("../../../utils/payment/pay360/customer");
+const DEBUG = process.env.DEBUG === "true";
 
 const { Op } = require("sequelize");
 
-// exports.createCancelBooking = async ({
-//   bookingId,
-//   cancelReason,
-//   additionalNote,
-//   cancelDate = null,
-//   cancellationType: rawCancellationType,
-// }) => {
-//   try {
-//     const bookingType = "membership";
-
-//     DEBUG && console.log("🚀 Cancel membership started:", bookingId);
-
-//     // --------------------------------------------------
-//     // 1️⃣ Existing logic (UNCHANGED)
-//     // --------------------------------------------------
-//     const booking = await Booking.findByPk(bookingId);
-//     if (!booking) return { status: false, message: "Booking not found." };
-
-//     const existingCancel = await CancelBooking.findOne({
-//       where: { bookingId, bookingType },
-//     });
-
-//     const cancellationType =
-//       rawCancellationType ?? (cancelDate ? "scheduled" : "immediate");
-
-//     const restoreClassCapacity = async () => {
-//       const studentMetaList = await BookingStudentMeta.findAll({
-//         where: { bookingTrialId: bookingId },
-//       });
-
-//       if (!studentMetaList.length || !booking.classScheduleId) return;
-
-//       const classSchedule = await ClassSchedule.findByPk(
-//         booking.classScheduleId
-//       );
-
-//       if (!classSchedule) return;
-
-//       await classSchedule.update({
-//         capacity: classSchedule.capacity + studentMetaList.length,
-//       });
-//     };
-
-//     if (existingCancel) {
-//       await existingCancel.update({
-//         cancelReason: cancelReason ?? existingCancel.cancelReason,
-//         additionalNote: additionalNote ?? existingCancel.additionalNote,
-//         cancelDate: cancelDate ?? existingCancel.cancelDate,
-//         cancellationType,
-//         updatedAt: new Date(),
-//       });
-//     } else {
-//       await CancelBooking.create({
-//         bookingId,
-//         bookingType,
-//         cancelReason: cancelReason || null,
-//         additionalNote: additionalNote || null,
-//         cancelDate: cancelDate || null,
-//         cancellationType,
-//       });
-//     }
-
-//     if (cancellationType === "immediate") {
-//       await booking.update({ status: "cancelled" });
-//       await restoreClassCapacity();
-//     } else {
-//       await booking.update({ status: "request_to_cancel" });
-//     }
-
-//     // --------------------------------------------------
-//     // 2️⃣ ADD-ON LOGIC STARTS HERE
-//     // --------------------------------------------------
-//     if (cancellationType === "immediate" || cancellationType === "scheduled") {
-//       DEBUG && console.log(`💳 Processing payment cancellation for type: ${cancellationType}`);
-
-//       const payment = await BookingPayment.findOne({
-//         where: { bookingId },
-//       });
-
-//       if (!payment) {
-//         DEBUG && console.log("⚠️ No payment found → skipping gateway & credits");
-//       } else {
-//         DEBUG && console.log("💰 Payment type detected:", payment.paymentType);
-
-//         let paymentCancelled = false;
-
-//         if (payment.paymentType === "accesspaysuite") {
-//           DEBUG && console.log("🌐 Cancelling APS contract:", payment.contractId);
-
-//           const apsResponse = await cancelContract(
-//             payment.contractId,
-//             {
-//               reason: cancelReason || "Membership cancelled",
-//             }
-//           );
-
-//           if (apsResponse?.status === true) {
-//             paymentCancelled = true;
-//             DEBUG && console.log("✅ APS contract cancelled successfully");
-
-//             await payment.update({ status: "cancelled" });
-//             DEBUG && console.log("✅ Payment status updated to cancelled");
-//           } else {
-//             DEBUG && console.error("❌ APS cancellation failed:", apsResponse);
-//           }
-//         }
-
-//         if (payment.paymentType === "bank") {
-//           DEBUG && console.log("🏦 Bank payment detected (integration pending)");
-         
-//         }
-
-//         if (paymentCancelled) {
-//           DEBUG && console.log("💳 Issuing credits...");
-
-//           await Credit.findOrCreate({
-//             where: { bookingId },
-//             defaults: {
-//               bookingId,
-//               creditAmount: booking.remainingCredits ?? 0,
-//               reason: "auto",
-//             },
-//           });
-
-//           DEBUG && console.log("✅ Credits issued successfully");
-//         } else {
-//           DEBUG && console.log("⛔ Credits NOT issued because payment not cancelled");
-//         }
-//       }
-//     }
-
-//     // --------------------------------------------------
-//     // 4️⃣ Final response
-//     // --------------------------------------------------
-//     return {
-//       status: true,
-//       message:
-//         cancellationType === "immediate"
-//           ? "Membership booking cancelled."
-//           : `Membership booking cancellation scheduled for ${cancelDate}.`,
-//     };
-//   } catch (error) {
-//     console.error("❌ createCancelBooking Error:", error);
-//     return { status: false, message: error.message };
-//   }
-// };
+const { sequelize } = require("../../../models"); // import sequelize instance for transactions
 
 exports.createCancelBooking = async ({
   bookingId,
   cancelReason,
   additionalNote,
-  cancelDate = null, 
-  cancellationType: rawCancellationType
+  cancelDate = null,
+  cancellationType: rawCancellationType,
 }) => {
+  const bookingType = "membership";
+
+  DEBUG && console.log("🚀 Cancel membership started:", bookingId);
+
+  const cancellationType =
+    rawCancellationType ?? (cancelDate ? "scheduled" : "immediate");
+
+  // Start transaction
+  const t = await sequelize.transaction();
+
   try {
-    const bookingType = "membership";
+    const booking = await Booking.findByPk(bookingId, { transaction: t });
+    if (!booking) {
+      await t.rollback();
+      return { status: false, message: "Booking not found." };
+    }
 
-    // Validate booking exists
-    const booking = await Booking.findByPk(bookingId);
-    if (!booking) return { status: false, message: "Booking not found." };
+    // --------------------------------------------------
+    // Payment cancellation and credit issuance
+    // --------------------------------------------------
 
-    // Check existing cancel record
-    const existingCancel = await CancelBooking.findOne({
-      where: { bookingId, bookingType },
-    });
+    const payment = await BookingPayment.findOne({ where: { bookingId }, transaction: t });
 
-    const cancellationType =
-      rawCancellationType ?? (cancelDate ? "scheduled" : "immediate");
+    let paymentCancelled = false;
+    let creditAmountToIssue = 0;
 
-    // Function — Restore class capacity based on used student count
-    const restoreClassCapacity = async () => {
-      const studentMetaList = await BookingStudentMeta.findAll({
-        where: { bookingTrialId: bookingId },
-      });
+    if (!payment) {
+      DEBUG && console.log("⚠️ No payment found → skipping gateway & credits");
+      // You may decide what to do here: skip cancel or allow cancel without payment?
+      await t.rollback();
+      return { status: false, message: "No payment info found. Cannot proceed." };
+    } else {
+      DEBUG && console.log("💰 Payment type detected:", payment.paymentType);
 
-      if (studentMetaList.length === 0 || !booking.classScheduleId) return;
+      if (payment.paymentType === "accesspaysuite") {
+        const apsResponse = await cancelContract(payment.contractId, {
+          reason: cancelReason || "Membership cancelled",
+        });
 
-      const classSchedule = await ClassSchedule.findByPk(
-        booking.classScheduleId
-      );
+        if (apsResponse?.status === true) {
+          paymentCancelled = true;
+          await payment.update({ paymentStatus: "cancelled" }, { transaction: t });
+          if (apsResponse.data && apsResponse.data.refunded_amount) {
+            creditAmountToIssue = apsResponse.data.refunded_amount / 100;
+          } else {
+            creditAmountToIssue = booking.remainingCredits ?? 0;
+          }
+        } else {
+          await t.rollback();
+          return { status: false, message: "Failed to cancel AccessPaySuite contract" };
+        }
+      } else if (payment.paymentType === "bank") {
+        let billingRequest = payment.goCardlessBillingRequest;
 
-      if (!classSchedule) return;
+        if (typeof billingRequest === "string") {
+          try {
+            billingRequest = JSON.parse(billingRequest);
+          } catch {
+            billingRequest = null;
+          }
+        }
 
-      await classSchedule.update({
-        capacity: classSchedule.capacity + studentMetaList.length,
-      });
-    };
+        DEBUG && console.log("🧾 Parsed GoCardless billing request:", billingRequest);
 
-    // If record exists → update
-    if (existingCancel) {
-      await existingCancel.update({
-        cancelReason: cancelReason ?? existingCancel.cancelReason,
-        additionalNote: additionalNote ?? existingCancel.additionalNote,
-        cancelDate: cancelDate ?? existingCancel.cancelDate,
-        cancellationType,
-         updatedAt: new Date(),
-      });
+        if (!billingRequest?.id) {
+          await t.rollback();
+          return {
+            status: false,
+            message: "Missing GoCardless billing request ID",
+          };
+        }
 
-      if (cancellationType === "immediate") {
-        await booking.update({ status: "cancelled" });
-        await restoreClassCapacity();
-      } else {
-        await booking.update({ status: "request_to_cancel" });
+        // Cancel the GoCardless billing request (this is the main cancellation step)
+        const billingCancelRes = await cancelGoCardlessBillingRequest(billingRequest.id);
+
+        if (!billingCancelRes?.status) {
+          await t.rollback();
+          return {
+            status: false,
+            message: "GoCardless billing request cancellation failed",
+          };
+        }
+
+        paymentCancelled = true;
+        await payment.update({ paymentStatus: "cancelled" }, { transaction: t });
+        // Issue credits: prefer remainingCredits, fallback to planPrice from billing request
+        creditAmountToIssue = booking.remainingCredits ?? billingRequest?.planPrice ?? 0;
       }
 
-      return {
-        status: true,
-        message: "Existing cancellation updated successfully.",
-        data: { cancelRequest: existingCancel, bookingDetails: booking },
-      };
+      else {
+        await t.rollback();
+        return { status: false, message: "Unsupported payment type" };
+      }
     }
 
-    // Otherwise → create a new cancellation entry
-    const cancelRequest = await CancelBooking.create({
-      bookingId,
-      bookingType,
-      cancelReason: cancelReason || null,
-      additionalNote: additionalNote || null,
-      cancelDate: cancelDate || null,
-      cancellationType,
+    // Issue credits only if payment cancelled
+    if (!paymentCancelled) {
+      await t.rollback();
+      return { status: false, message: "Payment cancellation failed. Aborting." };
+    }
+
+    if (creditAmountToIssue <= 0) {
+      await t.rollback();
+      return { status: false, message: "No credits to issue. Aborting cancellation." };
+    }
+
+    // Create or update Credit record
+    const [creditRecord, created] = await Credits.findOrCreate({
+      where: { bookingId },
+      defaults: {
+        bookingId,
+        creditAmount: creditAmountToIssue,
+        reason: "auto",
+      },
+      transaction: t,
     });
 
-    if (cancellationType === "immediate") {
-      await booking.update({ status: "cancelled" });
-      await restoreClassCapacity();
-    } else {
-      await booking.update({ status: "request_to_cancel" });
+    if (!created) {
+      // Update existing credit amount if needed
+      await creditRecord.update({ creditAmount: creditAmountToIssue }, { transaction: t });
     }
+
+    // --------------------------------------------------
+    // Now create or update CancelBooking record
+    // --------------------------------------------------
+
+    const existingCancel = await CancelBooking.findOne({
+      where: { bookingId, bookingType },
+      transaction: t,
+    });
+
+    if (existingCancel) {
+      await existingCancel.update(
+        {
+          cancelReason: cancelReason ?? existingCancel.cancelReason,
+          additionalNote: additionalNote ?? existingCancel.additionalNote,
+          cancelDate: cancelDate ?? existingCancel.cancelDate,
+          cancellationType,
+          updatedAt: new Date(),
+        },
+        { transaction: t }
+      );
+    } else {
+      await CancelBooking.create(
+        {
+          bookingId,
+          bookingType,
+          cancelReason: cancelReason || null,
+          additionalNote: additionalNote || null,
+          cancelDate: cancelDate || null,
+          cancellationType,
+        },
+        { transaction: t }
+      );
+    }
+
+    // Update booking status
+    if (cancellationType === "immediate") {
+      await booking.update({ status: "cancelled" }, { transaction: t });
+
+      // Restore class capacity
+      const studentMetaList = await BookingStudentMeta.findAll({
+        where: { bookingTrialId: bookingId },
+        transaction: t,
+      });
+
+      if (studentMetaList.length && booking.classScheduleId) {
+        const classSchedule = await ClassSchedule.findByPk(booking.classScheduleId, {
+          transaction: t,
+        });
+        if (classSchedule) {
+          await classSchedule.update(
+            {
+              capacity: classSchedule.capacity + studentMetaList.length,
+            },
+            { transaction: t }
+          );
+        }
+      }
+    } else {
+      await booking.update({ status: "request_to_cancel" }, { transaction: t });
+    }
+
+    // Commit transaction if all good
+    await t.commit();
 
     return {
       status: true,
       message:
         cancellationType === "immediate"
-          ? "Membership booking cancelled immediately."
+          ? "Membership booking cancelled."
           : `Membership booking cancellation scheduled for ${cancelDate}.`,
-      data: { cancelRequest, bookingDetails: booking },
     };
   } catch (error) {
+    if (t) await t.rollback();
     console.error("❌ createCancelBooking Error:", error);
     return { status: false, message: error.message };
   }
 };
+
 exports.sendCancelBookingEmailToParents = async ({ bookingId }) => {
   try {
     // 1️⃣ Get booking

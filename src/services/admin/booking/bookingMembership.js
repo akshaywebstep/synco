@@ -370,7 +370,11 @@ exports.createBooking = async (data, options) => {
         const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, { transaction: t });
 
         const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
+
         let gatewayResponse = null;
+        let goCardlessCustomer = null;
+        let goCardlessBankAccount = null;
+        let goCardlessBillingRequest = null;
 
         if (paymentType === "bank") {
           // ✅ Prepare GoCardless payload
@@ -428,7 +432,15 @@ exports.createBooking = async (data, options) => {
           goCardlessBillingRequest = {
             ...createBillingRequestRes.billingRequest,
             planPrice,
-          }; // ✅ store plan price
+          };
+
+          gatewayResponse = {
+            gateway: "gocardless",
+            goCardlessCustomer,
+            goCardlessBankAccount,
+            goCardlessBillingRequest,
+          };
+
         } else if (paymentType === "accesspaysuite") {
           if (DEBUG) console.log("🔁 Processing Access PaySuite recurring payment");
 
@@ -536,7 +548,8 @@ exports.createBooking = async (data, options) => {
             cardHolderName: data.payment.cardHolderName || "",
             cv2: data.payment.cv2 || "",
             expiryDate: data.payment.expiryDate || "",
-            pan: data.payment.pan || "",
+            account_number: data.payment.account_number || "",
+            branch_code: data.payment.branch_code || "",
             account_holder_name: data.payment.account_holder_name || "",
             paymentStatus: paymentStatusFromGateway,
             currency: gatewayResponse?.transaction?.currency || "GBP",
@@ -856,7 +869,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
             cv2: payment.cv2,
             expiryDate: payment.expiryDate,
             paymentType: payment.paymentType,
-            pan: payment.pan,
+            // pan: payment.pan,
             paymentStatus: payment.paymentStatus,
             referenceId: payment.referenceId,
             currency: payment.currency,
@@ -1295,7 +1308,7 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
           cv2: payment.cv2,
           expiryDate: payment.expiryDate,
           paymentType: payment.paymentType,
-          pan: payment.pan,
+          // pan: payment.pan,
           paymentStatus: payment.paymentStatus,
           referenceId: payment.referenceId,
           currency: payment.currency,
