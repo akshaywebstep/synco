@@ -65,7 +65,12 @@ function normalizeContractStartDate(requestedStartDate, matchedSchedule) {
   // APS expects YYYY-MM-DD
   return requested.toISOString().split("T")[0];
 }
-
+function calculateContractStartDate(delayDays = 18) {
+  const start = new Date();
+  start.setDate(start.getDate() + delayDays);
+  start.setHours(0, 0, 0, 0);
+  return start.toISOString().split("T")[0];
+}
 function findMatchingSchedule(schedules) {
   if (!Array.isArray(schedules)) return null;
 
@@ -1571,7 +1576,7 @@ exports.convertToMembership = async (data, options) => {
           const customerPayload = {
             email: data.payment?.email || data.parents?.[0]?.parentEmail,
             title: "Mr",
-             customerRef: `BOOK-${booking.id}-${Date.now()}`, // ✅ unique reference
+            customerRef: `BOOK-${booking.id}-${Date.now()}`, // ✅ unique reference
             firstName:
               data.payment?.firstName || data.parents?.[0]?.parentFirstName,
             surname:
@@ -1598,14 +1603,15 @@ exports.convertToMembership = async (data, options) => {
           if (!customerId)
             throw new Error("Access PaySuite: Customer ID missing");
 
-          const normalizedStartDate = normalizeContractStartDate(
-            data.startDate,
-            matchedSchedule
-          );
+          // const normalizedStartDate = normalizeContractStartDate(
+          //   data.startDate,
+          //   matchedSchedule
+          // );
+          const contractStartDate = calculateContractStartDate(18);
 
           const contractPayload = {
             scheduleName: matchedSchedule.Name,
-            start: normalizedStartDate,
+            start: contractStartDate,
             isGiftAid: false,
             terminationType: paymentPlan.duration
               ? "Fixed term"
@@ -1613,9 +1619,10 @@ exports.convertToMembership = async (data, options) => {
             atTheEnd: "Switch to further notice",
           };
           if (paymentPlan.duration) {
-            const start = new Date(data.startDate);
+            const start = new Date(contractStartDate);
             const end = new Date(start);
             end.setMonth(end.getMonth() + Number(paymentPlan.duration));
+
             contractPayload.TerminationDate = end.toISOString().split("T")[0];
           }
 

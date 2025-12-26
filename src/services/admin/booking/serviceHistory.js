@@ -72,6 +72,12 @@ function normalizeContractStartDate(requestedStartDate, matchedSchedule) {
 
   return requested.toISOString().split("T")[0];
 }
+function calculateContractStartDate(delayDays = 18) {
+  const start = new Date();
+  start.setDate(start.getDate() + delayDays);
+  start.setHours(0, 0, 0, 0);
+  return start.toISOString().split("T")[0];
+}
 
 function findMatchingSchedule(schedules) {
   if (!Array.isArray(schedules)) return null;
@@ -923,14 +929,11 @@ exports.updateBooking = async (payload, adminId, id) => {
           if (!customerId)
             throw new Error("Access PaySuite: Customer ID missing");
 
-          const normalizedStartDate = normalizeContractStartDate(
-            payload.startDate,
-            matchedSchedule
-          );
+          const contractStartDate = calculateContractStartDate(18);
 
           const contractPayload = {
             scheduleName: matchedSchedule.Name,
-            start: normalizedStartDate,
+            start: contractStartDate,
             isGiftAid: false,
             terminationType: paymentPlan.duration
               ? "Fixed term"
@@ -938,9 +941,10 @@ exports.updateBooking = async (payload, adminId, id) => {
             atTheEnd: "Switch to further notice",
           };
           if (paymentPlan.duration) {
-            const start = new Date(payload.startDate);
+            const start = new Date(contractStartDate);
             const end = new Date(start);
             end.setMonth(end.getMonth() + Number(paymentPlan.duration));
+
             contractPayload.TerminationDate = end.toISOString().split("T")[0];
           }
 

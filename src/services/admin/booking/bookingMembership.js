@@ -40,37 +40,43 @@ function generateBookingId(length = 12) {
   }
   return result;
 }
-
-function normalizeContractStartDate(requestedStartDate, matchedSchedule) {
-  const requested = new Date(requestedStartDate);
-  requested.setHours(0, 0, 0, 0);
-
-  // Rule 1: must be from tomorrow onwards
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(0, 0, 0, 0);
-
-  if (requested < tomorrow) {
-    throw new Error(
-      "Start date must be from tomorrow onwards"
-    );
-  }
-
-  // Rule 2: must respect schedule minimum start date (APS rule)
-  if (matchedSchedule?.Start) {
-    const scheduleStart = new Date(matchedSchedule.Start);
-    scheduleStart.setHours(0, 0, 0, 0);
-
-    if (requested < scheduleStart) {
-      throw new Error(
-        `Start date must be on or after ${matchedSchedule.Start.split("T")[0]}`
-      );
-    }
-  }
-
-  // APS expects YYYY-MM-DD
-  return requested.toISOString().split("T")[0];
+function calculateContractStartDate(delayDays = 18) {
+  const start = new Date();
+  start.setDate(start.getDate() + delayDays);
+  start.setHours(0, 0, 0, 0);
+  return start.toISOString().split("T")[0];
 }
+
+// function normalizeContractStartDate(requestedStartDate, matchedSchedule) {
+//   const requested = new Date(requestedStartDate);
+//   requested.setHours(0, 0, 0, 0);
+
+//   // Rule 1: must be from tomorrow onwards
+//   const tomorrow = new Date();
+//   tomorrow.setDate(tomorrow.getDate() + 1);
+//   tomorrow.setHours(0, 0, 0, 0);
+
+//   if (requested < tomorrow) {
+//     throw new Error(
+//       "Start date must be from tomorrow onwards"
+//     );
+//   }
+
+//   // Rule 2: must respect schedule minimum start date (APS rule)
+//   if (matchedSchedule?.Start) {
+//     const scheduleStart = new Date(matchedSchedule.Start);
+//     scheduleStart.setHours(0, 0, 0, 0);
+
+//     if (requested < scheduleStart) {
+//       throw new Error(
+//         `Start date must be on or after ${matchedSchedule.Start.split("T")[0]}`
+//       );
+//     }
+//   }
+
+//   // APS expects YYYY-MM-DD
+//   return requested.toISOString().split("T")[0];
+// }
 
 function findMatchingSchedule(schedules) {
   if (!Array.isArray(schedules)) return null;
