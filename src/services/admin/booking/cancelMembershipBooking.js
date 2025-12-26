@@ -62,22 +62,40 @@ exports.createCancelBooking = async ({
       DEBUG && console.log("💰 Payment type detected:", payment.paymentType);
 
       if (payment.paymentType === "accesspaysuite") {
-        const apsResponse = await cancelContract(payment.contractId, {
+        let gatewayResponse = payment.gatewayResponse;
+
+        if (typeof gatewayResponse === "string") {
+          gatewayResponse = JSON.parse(gatewayResponse);
+        }
+
+        const contractId = gatewayResponse?.contract?.Id;
+
+        if (!contractId) {
+          await t.rollback();
+          return {
+            status: false,
+            message: "Missing AccessPaySuite contract ID",
+          };
+        }
+
+        const apsResponse = await cancelContract(contractId, {
           reason: cancelReason || "Membership cancelled",
         });
 
-        if (apsResponse?.status === true) {
-          paymentCancelled = true;
-          await payment.update({ paymentStatus: "cancelled" }, { transaction: t });
-          if (apsResponse.data && apsResponse.data.refunded_amount) {
-            creditAmountToIssue = apsResponse.data.refunded_amount / 100;
-          } else {
-            creditAmountToIssue = booking.remainingCredits ?? 0;
-          }
-        } else {
+        if (!apsResponse?.status) {
           await t.rollback();
           return { status: false, message: "Failed to cancel AccessPaySuite contract" };
         }
+
+        paymentCancelled = true;
+
+        await payment.update(
+          { paymentStatus: "cancelled" },
+          { transaction: t }
+        );
+
+        creditAmountToIssue =
+          booking.remainingCredits ?? 0;
       } else if (payment.paymentType === "bank") {
         let billingRequest = payment.goCardlessBillingRequest;
 
@@ -128,25 +146,39 @@ exports.createCancelBooking = async ({
       return { status: false, message: "Payment cancellation failed. Aborting." };
     }
 
-    if (creditAmountToIssue <= 0) {
-      await t.rollback();
-      return { status: false, message: "No credits to issue. Aborting cancellation." };
-    }
+    // if (creditAmountToIssue <= 0) {
+    //   await t.rollback();
+    //   return { status: false, message: "No credits to issue. Aborting cancellation." };
+    // }
 
-    // Create or update Credit record
+    /// --------------------------------------------------
+    // Always create/update Credits (0 allowed)
+    // --------------------------------------------------
+
     const [creditRecord, created] = await Credits.findOrCreate({
       where: { bookingId },
       defaults: {
         bookingId,
-        creditAmount: creditAmountToIssue,
-        reason: "auto",
+        creditAmount: creditAmountToIssue || 0,
+        reason:
+          cancellationType === "immediate"
+            ? "membership_cancel_immediate"
+            : "membership_cancel_scheduled",
       },
       transaction: t,
     });
 
     if (!created) {
-      // Update existing credit amount if needed
-      await creditRecord.update({ creditAmount: creditAmountToIssue }, { transaction: t });
+      await creditRecord.update(
+        {
+          creditAmount: creditAmountToIssue || 0,
+          reason:
+            cancellationType === "immediate"
+              ? "membership_cancel_immediate"
+              : "membership_cancel_scheduled",
+        },
+        { transaction: t }
+      );
     }
 
     // --------------------------------------------------

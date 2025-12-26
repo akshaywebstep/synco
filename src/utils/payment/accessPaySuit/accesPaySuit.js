@@ -141,16 +141,6 @@ async function createAccessPaySuiteCustomer(queryParams) {
   return handleResponse(res);
 }
 
-function calculateDaysDifference(fromDate, toDate) {
-  const start = new Date(fromDate);
-  const end = new Date(toDate);
-  start.setHours(0, 0, 0, 0);
-  end.setHours(0, 0, 0, 0);
-
-  const diffMs = end - start;
-  return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-}
-
 // ================================
 // 3. Create Contract (query params)
 // ================================
@@ -241,7 +231,7 @@ async function cancelContract(contractId, queryParams = {}) {
 
   const queryString = new URLSearchParams(queryParams).toString();
   const url = `${BASE_URL}/api/v3/client/${clientCode}/contract/${contractId}/cancel?${queryString}`;
-
+  { headers }
   if (DEBUG) console.log("Cancelling contract:", url);
 
   const res = await fetch(url, {
