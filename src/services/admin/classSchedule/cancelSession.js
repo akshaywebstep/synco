@@ -4,6 +4,9 @@ const {
   Booking,
   BookingStudentMeta,
   BookingParentMeta,
+  BookingPayment,
+  PaymentPlan,
+  Credits,
   Admin,
   EmailConfig,
   Term,
@@ -13,6 +16,8 @@ const {
 } = require("../../../models");
 const { Op } = require("sequelize");
 const sendEmail = require("../../../utils/email/sendEmail");
+const { cancelContract, } = require("../../../utils/payment/accessPaySuit/accesPaySuit");
+const { cancelGoCardlessBillingRequest, cancelBankMembership } = require("../../../utils/payment/pay360/customer");
 
 exports.createCancellationRecord = async (
   classScheduleId,
@@ -171,6 +176,105 @@ exports.createCancellationRecord = async (
 
         const emailResult = await sendEmail(config, mailData);
         if (emailResult.status) alreadySent.add(recipient.email);
+      }
+    }
+    // --------------------------------------------------
+    // STEP X: CREDIT MEMBERS IF ENABLED
+    // --------------------------------------------------
+    if (cancelData.creditMembers === "Yes" && bookings.length) {
+      console.log("💳 Credit Members enabled — issuing credits");
+
+      for (const booking of bookings) {
+        // ❌ Skip non-membership bookings
+        if (booking.bookingType !== "paid") continue;
+
+        // ✅ NEW: Allow credits ONLY for active / frozen bookings
+        if (!["active", "frozen"].includes(booking.status)) {
+          console.log(
+            `⏭️ Skipped credit — booking ${booking.id} status=${booking.status}`
+          );
+          continue;
+        }
+
+        const payment = await BookingPayment.findOne({
+          where: { bookingId: booking.id },
+        });
+
+        if (!payment) {
+          console.log(`⚠️ No payment found for booking ${booking.id}`);
+          continue;
+        }
+
+        let creditAmount = 0;
+
+        // -----------------------------
+        // ACCESS PAY SUITE
+        // -----------------------------
+        if (payment.paymentType === "accesspaysuite") {
+          if (!booking.paymentPlanId) {
+            console.log(`⚠️ No paymentPlanId for booking ${booking.id}`);
+            continue;
+          }
+
+          const plan = await PaymentPlan.findByPk(booking.paymentPlanId);
+
+          if (!plan?.price) {
+            console.log(`⚠️ PaymentPlan price missing for booking ${booking.id}`);
+            continue;
+          }
+
+          creditAmount = plan.price;
+        }
+
+        // -----------------------------
+        // BANK PAYMENT
+        // -----------------------------
+        else if (payment.paymentType === "bank") {
+          let billingRequest = payment.goCardlessBillingRequest;
+
+          if (typeof billingRequest === "string") {
+            try {
+              billingRequest = JSON.parse(billingRequest);
+            } catch {
+              billingRequest = null;
+            }
+          }
+
+          creditAmount =
+            billingRequest?.planPrice ||
+            billingRequest?.amount ||
+            0;
+        }
+
+        if (creditAmount <= 0) {
+          console.log(`⚠️ Credit skipped — amount 0 for booking ${booking.id}`);
+          continue;
+        }
+
+        // -----------------------------
+        // CREATE OR UPDATE CREDIT
+        // -----------------------------
+        const [credit, created] = await Credits.findOrCreate({
+          where: {
+            bookingId: booking.id,
+            reason: "class_cancel_credit",
+          },
+          defaults: {
+            bookingId: booking.id,
+            creditAmount,
+            reason: "class_cancel_credit",
+          },
+        });
+
+        if (!created) {
+          await credit.update({
+            creditAmount: credit.creditAmount + creditAmount,
+          });
+        }
+
+        console.log(
+          `✅ Credit issued: bookingId=${booking.id}, amount=${creditAmount}`
+        );
       }
     }
 

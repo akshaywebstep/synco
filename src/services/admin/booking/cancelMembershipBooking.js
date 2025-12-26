@@ -52,6 +52,9 @@ exports.createCancelBooking = async ({
 
     let paymentCancelled = false;
     let creditAmountToIssue = 0;
+    const paymentPlan = booking.paymentPlanId
+      ? await PaymentPlan.findByPk(booking.paymentPlanId, { transaction: t })
+      : null;
 
     if (!payment) {
       DEBUG && console.log("⚠️ No payment found → skipping gateway & credits");
@@ -94,8 +97,10 @@ exports.createCancelBooking = async ({
           { transaction: t }
         );
 
-        creditAmountToIssue =
-          booking.remainingCredits ?? 0;
+        // ✅ FULL REFUND AS CREDIT 
+        creditAmountToIssue = paymentPlan?.price || 0;
+
+        DEBUG && console.log("💳 APS credit issued:", creditAmountToIssue);
       } else if (payment.paymentType === "bank") {
         let billingRequest = payment.goCardlessBillingRequest;
 
@@ -145,11 +150,6 @@ exports.createCancelBooking = async ({
       await t.rollback();
       return { status: false, message: "Payment cancellation failed. Aborting." };
     }
-
-    // if (creditAmountToIssue <= 0) {
-    //   await t.rollback();
-    //   return { status: false, message: "No credits to issue. Aborting cancellation." };
-    // }
 
     /// --------------------------------------------------
     // Always create/update Credits (0 allowed)

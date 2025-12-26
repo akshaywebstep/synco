@@ -160,7 +160,7 @@ exports.getDashboardStats = async (
       where: {
         ...bookingWhere,
         bookingType: "free",
-        status: "pending",
+        // status: "pending",
       },
     });
 
