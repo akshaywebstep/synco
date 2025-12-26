@@ -140,6 +140,7 @@ async function createAccessPaySuiteCustomer(queryParams) {
 
   return handleResponse(res);
 }
+
 function calculateDaysDifference(fromDate, toDate) {
   const start = new Date(fromDate);
   const end = new Date(toDate);
@@ -167,7 +168,38 @@ function calculateDaysDifference(fromDate, toDate) {
 //     headers,
 //   });
 
-//   return handleResponse(res);
+//   const responseData = await res.json();
+
+//   // ✅ APS validation error handling
+//   if (!res.ok && responseData?.Detail) {
+//     const detail = responseData.Detail;
+
+//     // Try to extract date from APS message (DD/MM/YYYY)
+//     const match = detail.match(/(\d{2}\/\d{2}\/\d{4})/);
+
+//     if (match) {
+//       const earliestDateStr = match[1]; // 12/01/2026
+//       const [day, month, year] = earliestDateStr.split("/");
+//       const earliestDate = new Date(`${year}-${month}-${day}`);
+
+//       const today = new Date();
+//       today.setHours(0, 0, 0, 0);
+
+//       const daysAfter = calculateDaysDifference(today, earliestDate);
+
+//       throw new Error(
+//         `Start date is too early. Please select a date at least ${daysAfter} day(s) from today (${earliestDateStr}).`
+//       );
+//     }
+
+//     // Fallback APS message
+//     throw new Error(detail);
+//   }
+
+//   return {
+//     status: true,
+//     data: responseData,
+//   };
 // }
 async function createContract(customerId, queryParams) {
   const { clientCode } = await getCredentials();
@@ -185,36 +217,40 @@ async function createContract(customerId, queryParams) {
 
   const responseData = await res.json();
 
-  // ✅ APS validation error handling
-  if (!res.ok && responseData?.Detail) {
-    const detail = responseData.Detail;
-
-    // Try to extract date from APS message (DD/MM/YYYY)
-    const match = detail.match(/(\d{2}\/\d{2}\/\d{4})/);
-
-    if (match) {
-      const earliestDateStr = match[1]; // 12/01/2026
-      const [day, month, year] = earliestDateStr.split("/");
-      const earliestDate = new Date(`${year}-${month}-${day}`);
-
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const daysAfter = calculateDaysDifference(today, earliestDate);
-
-      throw new Error(
-        `Start date is too early. Please select a date at least ${daysAfter} day(s) from today (${earliestDateStr}).`
-      );
-    }
-
-    // Fallback APS message
-    throw new Error(detail);
+  // Generic APS error handling only
+  if (!res.ok) {
+    throw new Error(
+      responseData?.Detail ||
+      responseData?.Message ||
+      "Access PaySuite: Contract creation failed"
+    );
   }
 
   return {
     status: true,
     data: responseData,
   };
+}
+
+// ================================
+// 4. Cancel Contract (query params)
+// ================================
+async function cancelContract(contractId, queryParams = {}) {
+  const { clientCode } = await getCredentials();
+  const headers = await buildHeaders();
+
+  const queryString = new URLSearchParams(queryParams).toString();
+  const url = `${BASE_URL}/api/v3/client/${clientCode}/contract/${contractId}/cancel?${queryString}`;
+
+  if (DEBUG) console.log("Cancelling contract:", url);
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+  });
+  if (DEBUG) console.log("Cancelling contract response:", res);
+
+  return handleResponse(res);
 }
 
 // ================================
@@ -229,6 +265,7 @@ module.exports = {
   createSchedule,
   createAccessPaySuiteCustomer,
   createContract,
+  cancelContract,
 };
 
 // {

@@ -478,14 +478,15 @@ exports.createBooking = async (data, options) => {
           if (!customerId)
             throw new Error("Access PaySuite: Customer ID missing");
 
-          const normalizedStartDate = normalizeContractStartDate(
-            data.startDate,
-            matchedSchedule
-          );
+          // const normalizedStartDate = normalizeContractStartDate(
+          //   data.startDate,
+          //   matchedSchedule
+          // );
+          const contractStartDate = calculateContractStartDate(18);
 
           const contractPayload = {
             scheduleName: matchedSchedule.Name,
-            start: normalizedStartDate,
+            start: contractStartDate,
             isGiftAid: false,
             terminationType: paymentPlan.duration
               ? "Fixed term"
@@ -493,9 +494,10 @@ exports.createBooking = async (data, options) => {
             atTheEnd: "Switch to further notice",
           };
           if (paymentPlan.duration) {
-            const start = new Date(data.startDate);
+            const start = new Date(contractStartDate);
             const end = new Date(start);
             end.setMonth(end.getMonth() + Number(paymentPlan.duration));
+
             contractPayload.TerminationDate = end.toISOString().split("T")[0];
           }
 

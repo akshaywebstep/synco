@@ -33,7 +33,7 @@ exports.createCancelBooking = async (req, res) => {
     // Call service specifically for membership cancellation
     const result = await CancelBookingService.createCancelBooking({
       bookingId: payload.bookingId,
-      bookingType: "membership", // fixed for membership
+      bookingType: "membership", 
       cancelReason: payload.cancelReason || null,
       additionalNote: payload.additionalNote || null,
       cancelDate: payload.cancelDate,
