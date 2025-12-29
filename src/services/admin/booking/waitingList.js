@@ -351,13 +351,12 @@ exports.getWaitingList = async (filters = {}) => {
     const adminWhere = {};
     // let allowedAdminIds = [];
     const allowedAdminIds = Array.isArray(filters.bookedBy)
-      ? filters.bookedBy.map(Number)
+      ? filters.bookedBy.map(Number).filter(Boolean)
       : [];
-    // if (filters.bookedBy !== undefined) {
-    //   allowedAdminIds = Array.isArray(filters.bookedBy)
-    //     ? filters.bookedBy.map(Number)
-    //     : [Number(filters.bookedBy)];
-    // }
+
+    if (!allowedAdminIds.length) {
+      throw new Error("Access denied: no allowed admins");
+    }
     if (filters.bookedBy) {
       // Ensure bookedBy is always an array
       const bookedByArray = Array.isArray(filters.bookedBy)
@@ -422,23 +421,23 @@ exports.getWaitingList = async (filters = {}) => {
     }
     const whereClause = {
       [Op.and]: [
-        // status filter
         Sequelize.where(
           Sequelize.fn("LOWER", Sequelize.col("Booking.status")),
           { [Op.in]: statusFilter.map((s) => s.toLowerCase()) }
         ),
 
-        // 🔐 ACCESS CONTROL (FINAL & CORRECT)
+        // 🔐 FINAL ACCESS CONTROL
         {
           [Op.or]: [
-            // ✅ Admin-created bookings
+            // Admin / Agent bookings
             {
               bookedBy: { [Op.in]: allowedAdminIds },
             },
 
-            // ✅ Website bookings (bookedBy = NULL)
+            // Website bookings → venue owner
             {
               bookedBy: null,
+              source: "website",
               "$classSchedule.venue.createdBy$": {
                 [Op.in]: allowedAdminIds,
               },

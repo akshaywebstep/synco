@@ -341,47 +341,35 @@ exports.createBooking = async (req, res) => {
 exports.getAllWaitingListBookings = async (req, res) => {
   console.debug("🔹 getAllWaitingListBookings called with query:", req.query);
   try {
-    const bookedBy = req.admin?.id;
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(
-      req.admin.id,
-      true
-    );
+    const role = req.admin?.role?.toLowerCase();
+    const adminId = req.admin.id;
+
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId, true);
     const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+    const childAdminIds = (mainSuperAdminResult?.admins || []).map((a) => a.id);
 
-    const filters = {
-      ...req.query,
-    };
+    const filters = { ...req.query };
 
-    // ✅ Resolve bookedBy filter safely
-    const bookedByQuery = req.query.bookedBy;
-
-    // CASE 1: bookedBy explicitly sent (can be string, csv, or array)
-    if (
-      bookedByQuery !== undefined &&
-      bookedByQuery !== null &&
-      bookedByQuery !== ""
-    ) {
-      if (Array.isArray(bookedByQuery)) {
-        filters.bookedBy = bookedByQuery.map(Number).filter(Boolean);
-      } else {
-        filters.bookedBy = bookedByQuery.split(",").map(Number).filter(Boolean);
-      }
+    // ----------------------------------
+    // bookedBy explicitly provided
+    // ----------------------------------
+    if (req.query.bookedBy) {
+      filters.bookedBy = req.query.bookedBy
+        .split(",")
+        .map(Number)
+        .filter(Boolean);
     }
 
-    // CASE 2: bookedBy NOT sent → default behaviour
+    // ----------------------------------
+    // Role-based default access
+    // ----------------------------------
     else {
-      // Super Admin → self + child admins
-      if (req.admin?.role?.toLowerCase() === "super admin") {
-        const childAdminIds = (mainSuperAdminResult?.admins || []).map(
-          (a) => a.id
-        );
-
-        filters.bookedBy = [req.admin.id, ...childAdminIds];
-      }
-
-      // Normal Admin / Agent → only self
-      else {
-        filters.bookedBy = [req.admin.id];
+      if (role === "super admin") {
+        filters.bookedBy = [adminId, ...childAdminIds];
+      } else if (role === "admin") {
+        filters.bookedBy = [adminId, superAdminId].filter(Boolean);
+      } else {
+        filters.bookedBy = [adminId]; // agent
       }
     }
 

@@ -20,8 +20,12 @@ const axios = require("axios");
 const bcrypt = require("bcrypt");
 const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
-const { createSchedule, getSchedules, createAccessPaySuiteCustomer,
-  createContract, } = require("../../../utils/payment/accessPaySuit/accesPaySuit");
+const {
+  createSchedule,
+  getSchedules,
+  createAccessPaySuiteCustomer,
+  createContract,
+} = require("../../../utils/payment/accessPaySuit/accesPaySuit");
 const {
   createCustomer,
   removeCustomer,
@@ -65,7 +69,9 @@ function normalizeContractStartDate(requestedStartDate, matchedSchedule) {
         (scheduleStart.getTime() - requested.getTime()) / (1000 * 60 * 60 * 24)
       );
       throw new Error(
-        `Start date must be on or after ${matchedSchedule.Start.split("T")[0]} (${diffScheduleDays} day(s) later)`
+        `Start date must be on or after ${
+          matchedSchedule.Start.split("T")[0]
+        } (${diffScheduleDays} day(s) later)`
       );
     }
   }
@@ -83,9 +89,7 @@ function findMatchingSchedule(schedules) {
   if (!Array.isArray(schedules)) return null;
 
   return schedules.find(
-    (s) =>
-      s.Name &&
-      s.Name.trim().toLowerCase() === "default schedule"
+    (s) => s.Name && s.Name.trim().toLowerCase() === "default schedule"
   );
 }
 
@@ -407,37 +411,56 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
 //   }
 // };
 
-exports.getBookingById = async (id, adminId, superAdminId) => {
-  console.log("🔍 Function getBookingById called with params:", {
+exports.getBookingById = async (
+  id,
+  { role, adminId, superAdminId, childAdminIds }
+) => {
+  console.log("🔍 getBookingById params:", {
     id,
+    role,
     adminId,
+    superAdminId,
+    childAdminIds,
   });
 
   const whereClause = { id };
-  console.log("🧩 Initial whereClause:", whereClause);
 
-  // Only apply bookedBy filter if adminId is valid
-  const adminIds = Array.isArray(adminId)
-    ? adminId.filter(id => !isNaN(Number(id)))
-    : !isNaN(Number(adminId))
-      ? [Number(adminId)]
-      : [];
-
-  if (adminIds.length) {
+  // ---------------- SUPER ADMIN ----------------
+  if (role === "super admin") {
     whereClause[Op.or] = [
-      // 1️⃣ Booked by admin/agent
-      { bookedBy: { [Op.in]: adminIds } },
-
-      // 2️⃣ Website booking → venue owner
+      {
+        bookedBy: { [Op.in]: [adminId, ...childAdminIds] },
+      },
       {
         bookedBy: null,
+        source: "website",
+        "$classSchedule.venue.createdBy$": adminId,
+      },
+    ];
+  }
+
+  // ---------------- ADMIN ----------------
+  else if (role === "admin") {
+    whereClause[Op.or] = [
+      {
+        bookedBy: { [Op.in]: [adminId, superAdminId].filter(Boolean) },
+      },
+      {
+        bookedBy: null,
+        source: "website",
         "$classSchedule.venue.createdBy$": {
-          [Op.in]: adminIds,
+          [Op.in]: [adminId, superAdminId].filter(Boolean),
         },
       },
     ];
   }
 
+  // ---------------- AGENT ----------------
+  else {
+    whereClause.bookedBy = adminId;
+  }
+
+  console.log("🚀 Final whereClause:", JSON.stringify(whereClause, null, 2));
   try {
     console.log("🚀 Fetching booking from DB with whereClause:", whereClause);
 
@@ -507,7 +530,7 @@ exports.getBookingById = async (id, adminId, superAdminId) => {
         paymentGroups = await PaymentGroup.findAll({
           where: {
             id: { [Op.in]: paymentGroupIds },
-            createdBy: { [Op.in]: adminIds },
+            createdBy: { [Op.in]: adminId },
           },
           include: [
             {
@@ -542,28 +565,28 @@ exports.getBookingById = async (id, adminId, superAdminId) => {
 
     const termGroups = termGroupIds.length
       ? await TermGroup.findAll({
-        where: { id: termGroupIds, createdBy: creatorId },
-      })
+          where: { id: termGroupIds, createdBy: creatorId },
+        })
       : [];
 
     const terms = termGroupIds.length
       ? await Term.findAll({
-        where: {
-          termGroupId: { [Op.in]: termGroupIds },
-          createdBy: creatorId,
-        },
-        attributes: [
-          "id",
-          "termName",
-          "day",
-          "startDate",
-          "endDate",
-          "termGroupId",
-          "exclusionDates",
-          "totalSessions",
-          "sessionsMap",
-        ],
-      })
+          where: {
+            termGroupId: { [Op.in]: termGroupIds },
+            createdBy: creatorId,
+          },
+          attributes: [
+            "id",
+            "termName",
+            "day",
+            "startDate",
+            "endDate",
+            "termGroupId",
+            "exclusionDates",
+            "totalSessions",
+            "sessionsMap",
+          ],
+        })
       : [];
 
     // Parse the terms safely
@@ -744,7 +767,11 @@ exports.updateBooking = async (payload, adminId, id) => {
     }
 
     // 🔹 Set isConvertedToMembership automatically
-    if (wasTrial && (booking.paymentPlanId || booking.serviceType?.toLowerCase().includes("membership"))) {
+    if (
+      wasTrial &&
+      (booking.paymentPlanId ||
+        booking.serviceType?.toLowerCase().includes("membership"))
+    ) {
       booking.isConvertedToMembership = true;
     }
 
@@ -879,7 +906,8 @@ exports.updateBooking = async (payload, adminId, id) => {
         const firstStudentId = booking.students?.[0]?.id;
 
         if (paymentType === "accesspaysuite") {
-          if (DEBUG) console.log("🔁 Processing Access PaySuite recurring payment");
+          if (DEBUG)
+            console.log("🔁 Processing Access PaySuite recurring payment");
 
           const schedulesRes = await getSchedules();
           if (!schedulesRes.status) {
@@ -888,7 +916,7 @@ exports.updateBooking = async (payload, adminId, id) => {
 
           const services = schedulesRes.data?.Services || [];
           const schedules = services.flatMap(
-            service => service.Schedules || []
+            (service) => service.Schedules || []
           );
 
           let matchedSchedule = findMatchingSchedule(schedules, paymentPlan);
@@ -907,8 +935,11 @@ exports.updateBooking = async (payload, adminId, id) => {
             email: payload.payment?.email || payload.parents?.[0]?.parentEmail,
             title: "Mr",
             customerRef: `BOOK-${booking.id}-${Date.now()}`, // ✅ unique reference
-            firstName: payload.payment?.firstName || payload.parents?.[0]?.parentFirstName,
-            surname: payload.payment?.lastName || payload.parents?.[0]?.parentLastName,
+            firstName:
+              payload.payment?.firstName ||
+              payload.parents?.[0]?.parentFirstName,
+            surname:
+              payload.payment?.lastName || payload.parents?.[0]?.parentLastName,
             line1: payload.payment?.addressLine1 || "N/A",
             postCode: payload.payment?.postalCode || "N/A",
             accountNumber: payload.payment?.account_number,
@@ -918,7 +949,9 @@ exports.updateBooking = async (payload, adminId, id) => {
               `${payload.parents?.[0]?.parentFirstName} ${payload.parents?.[0]?.parentLastName}`,
           };
 
-          const customerRes = await createAccessPaySuiteCustomer(customerPayload);
+          const customerRes = await createAccessPaySuiteCustomer(
+            customerPayload
+          );
           if (!customerRes.status)
             throw new Error("Access PaySuite: Customer creation failed");
 
@@ -962,8 +995,7 @@ exports.updateBooking = async (payload, adminId, id) => {
           };
 
           paymentStatusFromGateway = "active";
-        }
-        else if (paymentType === "bank") {
+        } else if (paymentType === "bank") {
           // ⚠️ Fixed bug: replaced 'data' references with 'payload'
           const customerPayload = {
             email:
@@ -984,13 +1016,14 @@ exports.updateBooking = async (payload, adminId, id) => {
           if (!createCustomerRes.status)
             throw new Error(
               createCustomerRes.message ||
-              "Failed to create GoCardless customer."
+                "Failed to create GoCardless customer."
             );
 
           const billingRequestPayload = {
             customerId: createCustomerRes.customer.id,
-            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-              }`,
+            description: `${venue?.name || "Venue"} - ${
+              classSchedule?.className || "Class"
+            }`,
             amount: price,
             scheme: "faster_payments",
             currency: "GBP",
@@ -1010,7 +1043,7 @@ exports.updateBooking = async (payload, adminId, id) => {
             await removeCustomer(createCustomerRes.customer.id);
             throw new Error(
               createBillingRequestRes.message ||
-              "Failed to create billing request."
+                "Failed to create billing request."
             );
           }
         }
@@ -1029,8 +1062,9 @@ exports.updateBooking = async (payload, adminId, id) => {
             amount: paymentPlan.price,
             paymentStatus: paymentStatusFromGateway,
             merchantRef,
-            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-              }`,
+            description: `${venue?.name || "Venue"} - ${
+              classSchedule?.className || "Class"
+            }`,
           },
           { transaction: t }
         );
