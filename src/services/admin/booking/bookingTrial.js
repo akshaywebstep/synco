@@ -8,6 +8,7 @@ const {
   Venue,
   PaymentPlan,
   Admin,
+  AdminRole,
 } = require("../../../models");
 const DEBUG = process.env.DEBUG === "true";
 
@@ -62,7 +63,18 @@ exports.createBooking = async (data, options) => {
 
       if (DEBUG)
         console.log("🔍 [DEBUG] Generated hashed password for parent account");
+      // 🔹 Fetch Parent role
+      const parentRole = await AdminRole.findOne({
+        where: { role: "Parents" }, // ✅ correct column
+        transaction: t,
+      });
+      if (DEBUG) console.log("🔍 [DEBUG] Extracted parent role:", parentRole);
 
+      if (!parentRole) {
+        throw new Error("Parent role not found in admin_roles table");
+      }
+
+      const parentRoleId = parentRole.id;
       const [admin, created] = await Admin.findOrCreate({
         where: { email },
         defaults: {
@@ -71,7 +83,7 @@ exports.createBooking = async (data, options) => {
           phoneNumber: firstParent.parentPhoneNumber || "",
           email,
           password: hashedPassword,
-          roleId: 9,
+          roleId: parentRoleId,
           status: "active",
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -110,6 +122,14 @@ exports.createBooking = async (data, options) => {
           console.log("🔍 [DEBUG] bookedByAdminId set to:", bookedByAdminId);
       }
     }
+    // 🔹 Determine bookedBy & source values
+    let bookedBy = adminId || null;
+    let bookingSource = source || null;
+
+    if (source === "open") {
+      bookedBy = null; // ✅ bookedBy must be NULL
+      bookingSource = "website"; // ✅ source saved as website
+    }
 
     // Step 1: Create Booking
     const booking = await Booking.create(
@@ -125,7 +145,9 @@ exports.createBooking = async (data, options) => {
         attempt: 1,
         classTime: data.classTime,
         status: data.status || "active",
-        bookedBy: source === "open" ? bookedByAdminId : adminId,
+        // bookedBy: source === "website" ? bookedByAdminId : adminId,
+        bookedBy, // ✅ NULL for open booking
+        source: bookingSource, // ✅ website for open booking
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -191,7 +213,7 @@ exports.createBooking = async (data, options) => {
       }
     }
 
-    // Step 4: Emergency Contact
+    // Step 4: Emergency Contact optional
     if (
       data.emergency &&
       data.emergency.emergencyFirstName &&
@@ -273,20 +295,23 @@ exports.getAllBookings = async (filters = {}) => {
     const accessControl =
       allowedAdminIds.length > 0
         ? {
-          [Op.or]: [
-            // booked by admin/agent
-            { bookedBy: { [Op.in]: allowedAdminIds } },
-
-            // booked from website → venue owner
-            {
-              bookedBy: null,
-              "$classSchedule.venue.createdBy$": {
-                [Op.in]: allowedAdminIds,
+            [Op.or]: [
+              // 1️⃣ Admin / Agent bookings
+              {
+                bookedBy: { [Op.in]: allowedAdminIds },
               },
-            },
-          ],
-        }
-        : {}; // 👈 NO FILTER when bookedBy not passed
+
+              // 2️⃣ Website bookings → ONLY for owned venues
+              {
+                bookedBy: null,
+                source: "website",
+                "$classSchedule.venue.createdBy$": {
+                  [Op.in]: allowedAdminIds,
+                },
+              },
+            ],
+          }
+        : {};
 
     if (filters.dateBooked) {
       const start = new Date(filters.dateBooked + " 00:00:00");
@@ -410,7 +435,7 @@ exports.getAllBookings = async (filters = {}) => {
           if (typeof venue.paymentPlanId === "string") {
             try {
               paymentPlanIds = JSON.parse(venue.paymentPlanId);
-            } catch { }
+            } catch {}
           } else if (Array.isArray(venue.paymentPlanId)) {
             paymentPlanIds = venue.paymentPlanId;
           }
@@ -437,12 +462,12 @@ exports.getAllBookings = async (filters = {}) => {
           venue: booking.classSchedule?.venue || null, // ✅ include venue per trial
           ...(booking.bookedByAdmin
             ? {
-              [booking.bookedByAdmin.role?.name === "Admin"
-                ? "bookedByAdmin"
-                : booking.bookedByAdmin.role?.name === "Agent"
+                [booking.bookedByAdmin.role?.name === "Admin"
+                  ? "bookedByAdmin"
+                  : booking.bookedByAdmin.role?.name === "Agent"
                   ? "bookedByAgent"
                   : "bookedByOther"]: booking.bookedByAdmin,
-            }
+              }
             : { bookedBy: null }),
         };
       })
@@ -455,8 +480,9 @@ exports.getAllBookings = async (filters = {}) => {
 
       finalBookings = parsedBookings.filter((booking) =>
         booking.students.some((s) => {
-          const fullName = `${s.studentFirstName || ""} ${s.studentLastName || ""
-            }`.toLowerCase();
+          const fullName = `${s.studentFirstName || ""} ${
+            s.studentLastName || ""
+          }`.toLowerCase();
           return fullName.includes(keyword);
         })
       );

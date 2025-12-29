@@ -13,11 +13,16 @@ const {
   Admin,
   CancelBooking,
   BookingPayment,
+  AdminRole,
   AppConfig,
 } = require("../../../models");
 const { sequelize } = require("../../../models");
-const { createSchedule, getSchedules, createAccessPaySuiteCustomer,
-  createContract, } = require("../../../utils/payment/accessPaySuit/accesPaySuit");
+const {
+  createSchedule,
+  getSchedules,
+  createAccessPaySuiteCustomer,
+  createContract,
+} = require("../../../utils/payment/accessPaySuit/accesPaySuit");
 const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
 
@@ -45,9 +50,7 @@ function normalizeContractStartDate(requestedStartDate, matchedSchedule) {
   tomorrow.setHours(0, 0, 0, 0);
 
   if (requested < tomorrow) {
-    throw new Error(
-      "Start date must be from tomorrow onwards"
-    );
+    throw new Error("Start date must be from tomorrow onwards");
   }
 
   // Rule 2: must respect schedule minimum start date (APS rule)
@@ -75,9 +78,7 @@ function findMatchingSchedule(schedules) {
   if (!Array.isArray(schedules)) return null;
 
   return schedules.find(
-    (s) =>
-      s.Name &&
-      s.Name.trim().toLowerCase() === "default schedule"
+    (s) => s.Name && s.Name.trim().toLowerCase() === "default schedule"
   );
 }
 const DEBUG = process.env.DEBUG === "true";
@@ -131,7 +132,6 @@ async function updateBookingStats() {
       message: "Waiting list expiration check completed.",
       data: debugData,
     };
-
   } catch (error) {
     return {
       status: false,
@@ -425,7 +425,7 @@ exports.getWaitingList = async (filters = {}) => {
         // status filter
         Sequelize.where(
           Sequelize.fn("LOWER", Sequelize.col("Booking.status")),
-          { [Op.in]: statusFilter.map(s => s.toLowerCase()) }
+          { [Op.in]: statusFilter.map((s) => s.toLowerCase()) }
         ),
 
         // 🔐 ACCESS CONTROL (FINAL & CORRECT)
@@ -584,23 +584,23 @@ exports.getWaitingList = async (filters = {}) => {
     const avgInterest =
       allInterests.length > 0
         ? (
-          allInterests.reduce((a, b) => a + b, 0) / allInterests.length
-        ).toFixed(2)
+            allInterests.reduce((a, b) => a + b, 0) / allInterests.length
+          ).toFixed(2)
         : 0;
 
     // Avg. days waiting (currentDate - createdAt)
     const avgDaysWaiting =
       parsedBookings.length > 0
         ? (
-          parsedBookings.reduce((sum, b) => {
-            const created = new Date(b.createdAt);
-            const now = new Date();
-            const diffDays = Math.floor(
-              (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)
-            );
-            return sum + diffDays;
-          }, 0) / parsedBookings.length
-        ).toFixed(0)
+            parsedBookings.reduce((sum, b) => {
+              const created = new Date(b.createdAt);
+              const now = new Date();
+              const diffDays = Math.floor(
+                (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)
+              );
+              return sum + diffDays;
+            }, 0) / parsedBookings.length
+          ).toFixed(0)
         : 0;
 
     // Top Referrer (admin with most bookings)
@@ -665,18 +665,20 @@ exports.createBooking = async (data, options) => {
   const t = await sequelize.transaction();
 
   try {
-    const adminId = options?.adminId;
-    const source = options?.source;
+    const adminId = options?.adminId || null;
+    const source = options?.source === "website" ? "website" : "admin";
     const leadId = options?.leadId || null;
+
+    let bookedBy = source === "website" ? null : adminId;
+
+    if (source === "website" && !adminId) {
+      throw new Error("Admin ID is required for website booking");
+    }
 
     if (DEBUG) {
       console.log("🔍 [DEBUG] Extracted adminId:", adminId);
       console.log("🔍 [DEBUG] Extracted source:", source);
       console.log("🔍 [DEBUG] Extracted leadId:", leadId);
-    }
-
-    if (source !== "open" && !adminId) {
-      throw new Error("Admin ID is required for bookedBy");
     }
 
     // 🔍 Fetch the actual class schedule record
@@ -729,6 +731,18 @@ exports.createBooking = async (data, options) => {
 
       if (DEBUG)
         console.log("🔍 [DEBUG] Generated hashed password for parent account");
+      // 🔹 Fetch Parent role
+      const parentRole = await AdminRole.findOne({
+        where: { role: "Parents" }, // ✅ correct column
+        transaction: t,
+      });
+      if (DEBUG) console.log("🔍 [DEBUG] Extracted parent role:", parentRole);
+
+      if (!parentRole) {
+        throw new Error("Parent role not found in admin_roles table");
+      }
+
+      const parentRoleId = parentRole.id;
 
       const [admin, created] = await Admin.findOrCreate({
         where: { email },
@@ -788,17 +802,15 @@ exports.createBooking = async (data, options) => {
         totalStudents: data.totalStudents,
         startDate: data.startDate,
         classScheduleId: data.classScheduleId,
-        bookingType:
-          bookingStatus === "waiting list"
-            ? "waiting list"
-            : data.paymentPlanId
-              ? "paid"
-              : "free",
+        bookingType: "waiting list",
         className: data.className,
         classTime: data.classTime,
         // keyInformation: data.keyInformation,
         status: bookingStatus,
-        bookedBy: source === "open" ? bookedByAdminId : adminId,
+        // bookedBy: source === "open" ? bookedByAdminId : adminId,
+        bookedBy, // ✅ NULL for website
+        source, // ✅ "website" or "admin"
+
         interest: data.interest,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -880,9 +892,9 @@ exports.createBooking = async (data, options) => {
         {
           studentId: firstStudent.id,
           emergencyFirstName: data.emergency.emergencyFirstName,
-          emergencyLastName: data.emergency.emergencyLastName,
+          emergencyLastName: data.emergency.emergencyLastName || "",
           emergencyPhoneNumber: data.emergency.emergencyPhoneNumber,
-          emergencyRelation: data.emergency.emergencyRelation,
+          emergencyRelation: data.emergency.emergencyRelation || "",
           createdAt: new Date(),
           updatedAt: new Date(),
         },
@@ -1551,7 +1563,9 @@ exports.convertToMembership = async (data, options) => {
 
           const billingRequestPayload = {
             customerId: createCustomerRes.customer.id,
-            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"}`,
+            description: `${venue?.name || "Venue"} - ${
+              classSchedule?.className || "Class"
+            }`,
             amount: price,
             scheme: "faster_payments",
             currency: "GBP",
@@ -1560,7 +1574,9 @@ exports.convertToMembership = async (data, options) => {
             fallbackEnabled: true,
           };
 
-          const createBillingRequestRes = await createBillingRequest(billingRequestPayload);
+          const createBillingRequestRes = await createBillingRequest(
+            billingRequestPayload
+          );
           if (!createBillingRequestRes.status) {
             await removeCustomer(createCustomerRes.customer.id);
             throw new Error(createBillingRequestRes.message);
@@ -1583,9 +1599,9 @@ exports.convertToMembership = async (data, options) => {
           };
 
           paymentStatusFromGateway = "pending";
-        }
-        else if (paymentType === "accesspaysuite") {
-          if (DEBUG) console.log("🔁 Processing Access PaySuite recurring payment");
+        } else if (paymentType === "accesspaysuite") {
+          if (DEBUG)
+            console.log("🔁 Processing Access PaySuite recurring payment");
 
           const schedulesRes = await getSchedules();
           if (!schedulesRes.status) {
@@ -1594,7 +1610,7 @@ exports.convertToMembership = async (data, options) => {
 
           const services = schedulesRes.data?.Services || [];
           const schedules = services.flatMap(
-            service => service.Schedules || []
+            (service) => service.Schedules || []
           );
 
           let matchedSchedule = findMatchingSchedule(schedules, paymentPlan);
@@ -1626,7 +1642,9 @@ exports.convertToMembership = async (data, options) => {
               `${data.parents?.[0]?.parentFirstName} ${data.parents?.[0]?.parentLastName}`,
           };
 
-          const customerRes = await createAccessPaySuiteCustomer(customerPayload);
+          const customerRes = await createAccessPaySuiteCustomer(
+            customerPayload
+          );
           if (!customerRes.status)
             throw new Error("Access PaySuite: Customer creation failed");
 
@@ -1704,7 +1722,8 @@ exports.convertToMembership = async (data, options) => {
               gatewayResponse?.transaction?.merchantRef || merchantRef,
             description:
               gatewayResponse?.transaction?.description ||
-              `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+              `${venue?.name || "Venue"} - ${
+                classSchedule?.className || "Class"
               }`,
             commerceType: "ECOM",
             gatewayResponse,

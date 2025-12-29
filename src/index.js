@@ -14,12 +14,18 @@ app.use(cors());
 
 // ⚙️ Practically remove payload limit (1GB+)
 app.use(bodyParser.json({ limit: "1000mb" }));
-app.use(bodyParser.urlencoded({ limit: "1000mb", extended: true, parameterLimit: 1000000 }));
+app.use(
+  bodyParser.urlencoded({
+    limit: "1000mb",
+    extended: true,
+    parameterLimit: 1000000,
+  })
+);
 
 // ✅ Serve static files from /uploads
 app.use("/uploads", express.static("uploads"));
 
-app.use("/api", require("./routes/website"));
+app.use("/api/open", require("./routes/open")); // Public routes
 
 // ✅ Auth & Profile
 app.use("/api/admin/auth", require("./routes/admin/authRoutes")); // Login, Logout, etc.

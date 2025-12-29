@@ -48,7 +48,7 @@ exports.createBooking = async (req, res) => {
       "classScheduleId",
       "students",
       "parents",
-      "emergency",
+      // "emergency",
     ],
   });
   if (!isValid) {
@@ -111,24 +111,29 @@ exports.createBooking = async (req, res) => {
     }
 
     // ✅ Validate emergency contact
-    const emergency = req.body.emergency || {};
-    if (!emergency.emergencyFirstName) {
-      return res.status(400).json({
-        status: false,
-        message: "Emergency contact first name is required.",
-      });
-    }
-    if (!emergency.emergencyLastName) {
-      return res.status(400).json({
-        status: false,
-        message: "Emergency contact last name is required.",
-      });
-    }
-    if (!emergency.emergencyPhoneNumber) {
-      return res.status(400).json({
-        status: false,
-        message: "Emergency contact phone number is required.",
-      });
+    // ✅ Validate emergency contact
+    // ✅ Emergency contact is OPTIONAL
+    const emergency = req.body.emergency;
+
+    if (emergency) {
+      if (!emergency.emergencyFirstName) {
+        return res.status(400).json({
+          status: false,
+          message: "Emergency contact first name is required.",
+        });
+      }
+      if (!emergency.emergencyLastName) {
+        return res.status(400).json({
+          status: false,
+          message: "Emergency contact last name is required.",
+        });
+      }
+      if (!emergency.emergencyPhoneNumber) {
+        return res.status(400).json({
+          status: false,
+          message: "Emergency contact phone number is required.",
+        });
+      }
     }
 
     student.className = classData.className;
@@ -341,13 +346,13 @@ exports.createBooking = async (req, res) => {
 
           const studentsHtml = students.length
             ? students
-              .map(
-                (s) =>
-                  `<p style="margin:0; font-size:13px; color:#5F5F6D;">
+                .map(
+                  (s) =>
+                    `<p style="margin:0; font-size:13px; color:#5F5F6D;">
              ${s.studentFirstName} ${s.studentLastName}
            </p>`
-              )
-              .join("")
+                )
+                .join("")
             : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
 
           let finalHtml = htmlTemplate
@@ -468,10 +473,7 @@ exports.getAllBookFreeTrials = async (req, res) => {
       if (Array.isArray(bookedByQuery)) {
         filters.bookedBy = bookedByQuery.map(Number).filter(Boolean);
       } else {
-        filters.bookedBy = bookedByQuery
-          .split(",")
-          .map(Number)
-          .filter(Boolean);
+        filters.bookedBy = bookedByQuery.split(",").map(Number).filter(Boolean);
       }
     }
 
@@ -483,10 +485,7 @@ exports.getAllBookFreeTrials = async (req, res) => {
           (a) => a.id
         );
 
-        filters.bookedBy = [
-          req.admin.id,
-          ...childAdminIds,
-        ];
+        filters.bookedBy = [req.admin.id, ...childAdminIds];
       }
 
       // Normal Admin / Agent → only self
@@ -541,7 +540,7 @@ exports.getBookFreeTrialDetails = async (req, res) => {
   const bookedBy = req.admin?.id;
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
-  
+
   try {
     // const result = await BookingTrialService.getBookingById(id);
     const result = await BookingTrialService.getBookingById(
