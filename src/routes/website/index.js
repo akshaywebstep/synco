@@ -8,7 +8,7 @@ router.use("/find-class", require("./findAClass/findClassRoutes"));
 router.use("/book-free-trials", require("./booking/bookFreeTrialsRoutes"));
 
 // Waiting List Module Base Routes
-router.use("/waiting-list", require("./waitingListRoutes"));
+router.use("/waiting-list", require("./booking/waitingListRoutes"));
 
 // Book Membership Modle Base Routes
 router.use("/book-membership", require("./bookingMembershipRoutes"));

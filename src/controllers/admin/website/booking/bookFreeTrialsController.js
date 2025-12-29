@@ -232,8 +232,6 @@ exports.createBooking = async (req, res) => {
 
     const result = await BookingTrialService.createBooking(formData, {
       source: req.source,
-      adminId: req.admin?.id,
-      adminFirstName: req.admin?.firstName || "Unknown",
       leadId,
     });
 

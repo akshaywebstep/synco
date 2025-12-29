@@ -93,6 +93,37 @@ async function createSchedule(scheduleData) {
   return handleResponse(res);
 }
 
+// async function getSchedules() {
+//   try {
+//     const { clientCode } = await getCredentials();
+//     const headers = await buildHeaders();
+
+//     const response = await axios.get(
+//       `${BASE_URL}/api/v3/client/${clientCode}/schedules`,
+//       { headers }
+//     );
+
+//     if (DEBUG) {
+//       console.log("APS Schedules response:", JSON.stringify(response.data));
+//     }
+
+//     return {
+//       status: true,
+//       data: response.data,
+//     };
+//   } catch (error) {
+//     console.error("APS getSchedules error:", error.response?.data || error.message);
+
+//     return {
+//       status: false,
+//       error: error.response?.data || error.message,
+//     };
+//   }
+// }
+
+// ================================
+// 2. Create Customer (query params)
+// ================================
 async function getSchedules() {
   try {
     const { clientCode } = await getCredentials();
@@ -114,32 +145,45 @@ async function getSchedules() {
   } catch (error) {
     console.error("APS getSchedules error:", error.response?.data || error.message);
 
+    // Extract a user-friendly message from error.response.data or fallback to error.message
+    let errorMessage = "Unknown error occurred";
+    if (error.response?.data) {
+      // Sometimes API errors might have 'message' field or other details
+      if (typeof error.response.data === "string") {
+        errorMessage = error.response.data;
+      } else if (error.response.data.message) {
+        errorMessage = error.response.data.message;
+      } else {
+        // fallback stringify the whole object if no message field
+        errorMessage = JSON.stringify(error.response.data);
+      }
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+
     return {
       status: false,
-      error: error.response?.data || error.message,
+      message: errorMessage,
     };
   }
 }
 
-// ================================
-// 2. Create Customer (query params)
-// ================================
-async function createAccessPaySuiteCustomer(queryParams) {
-  const { clientCode } = await getCredentials();
-  const headers = await buildHeaders();
+// async function createAccessPaySuiteCustomer(queryParams) {
+//   const { clientCode } = await getCredentials();
+//   const headers = await buildHeaders();
 
-  const queryString = new URLSearchParams(queryParams).toString();
-  const url = `${BASE_URL}/api/v3/client/${clientCode}/customer?${queryString}`;
+//   const queryString = new URLSearchParams(queryParams).toString();
+//   const url = `${BASE_URL}/api/v3/client/${clientCode}/customer?${queryString}`;
 
-  if (DEBUG) console.log("Creating customer URL:", url);
+//   if (DEBUG) console.log("Creating customer URL:", url);
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers,
-  });
+//   const res = await fetch(url, {
+//     method: "POST",
+//     headers,
+//   });
 
-  return handleResponse(res);
-}
+//   return handleResponse(res);
+// }
 
 // ================================
 // 3. Create Contract (query params)
@@ -191,40 +235,139 @@ async function createAccessPaySuiteCustomer(queryParams) {
 //     data: responseData,
 //   };
 // }
-async function createContract(customerId, queryParams) {
-  const { clientCode } = await getCredentials();
-  const headers = await buildHeaders();
 
-  const queryString = new URLSearchParams(queryParams).toString();
-  const url = `${BASE_URL}/api/v3/client/${clientCode}/customer/${customerId}/contract?${queryString}`;
+async function createAccessPaySuiteCustomer(queryParams) {
+  try {
+    const { clientCode } = await getCredentials();
+    const headers = await buildHeaders();
 
-  if (DEBUG) console.log("Creating contract URL:", url);
+    const queryString = new URLSearchParams(queryParams).toString();
+    const url = `${BASE_URL}/api/v3/client/${clientCode}/customer?${queryString}`;
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers,
-  });
+    if (DEBUG) console.log("Creating customer URL:", url);
 
-  const responseData = await res.json();
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+    });
 
-  // Generic APS error handling only
-  if (!res.ok) {
-    throw new Error(
-      responseData?.Detail ||
-      responseData?.Message ||
-      "Access PaySuite: Contract creation failed"
-    );
+    if (!res.ok) {
+      // Try to extract error message from response body
+      let errorData;
+      try {
+        errorData = await res.json();
+      } catch {
+        // If response is not json
+        errorData = await res.text();
+      }
+
+      let errorMessage = "Gateway error occurred";
+      if (errorData) {
+        if (typeof errorData === "string") {
+          errorMessage = errorData;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        } else {
+          errorMessage = JSON.stringify(errorData);
+        }
+      }
+
+      return {
+        status: false,
+        message: errorMessage,
+      };
+    }
+
+    // If response is ok, handle it normally
+    return handleResponse(res);
+
+  } catch (error) {
+    // Network or unexpected error
+    return {
+      status: false,
+      message: error.message || "Unexpected error occurred",
+    };
   }
-
-  return {
-    status: true,
-    data: responseData,
-  };
 }
+
+// async function createContract(customerId, queryParams) {
+//   const { clientCode } = await getCredentials();
+//   const headers = await buildHeaders();
+
+//   const queryString = new URLSearchParams(queryParams).toString();
+//   const url = `${BASE_URL}/api/v3/client/${clientCode}/customer/${customerId}/contract?${queryString}`;
+
+//   if (DEBUG) console.log("Creating contract URL:", url);
+
+//   const res = await fetch(url, {
+//     method: "POST",
+//     headers,
+//   });
+
+//   const responseData = await res.json();
+
+//   // Generic APS error handling only
+//   if (!res.ok) {
+//     throw new Error(
+//       responseData?.Detail ||
+//       responseData?.Message ||
+//       "Access PaySuite: Contract creation failed"
+//     );
+//   }
+
+//   return {
+//     status: true,
+//     data: responseData,
+//   };
+// }
 
 // ================================
 // 4. Cancel Contract (query params)
 // ================================
+
+async function createContract(customerId, queryParams) {
+  try {
+    const { clientCode } = await getCredentials();
+    const headers = await buildHeaders();
+
+    const queryString = new URLSearchParams(queryParams).toString();
+    const url = `${BASE_URL}/api/v3/client/${clientCode}/customer/${customerId}/contract?${queryString}`;
+
+    if (DEBUG) console.log("Creating contract URL:", url);
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+    });
+
+    const responseData = await res.json();
+
+    if (!res.ok) {
+      // Extract error message from known keys or fallback generic
+      const errorMessage =
+        responseData?.Detail ||
+        responseData?.Message ||
+        "Access PaySuite: Contract creation failed";
+
+      return {
+        status: false,
+        message: errorMessage,
+      };
+    }
+
+    return {
+      status: true,
+      data: responseData,
+    };
+  } catch (error) {
+    // Network or unexpected error
+    return {
+      status: false,
+      message: error.message || "Unexpected error occurred",
+    };
+  }
+}
+
 async function cancelContract(contractId, queryParams = {}) {
   const { clientCode } = await getCredentials();
   const headers = await buildHeaders();

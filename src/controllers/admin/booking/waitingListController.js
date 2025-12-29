@@ -343,28 +343,43 @@ exports.getAllWaitingListBookings = async (req, res) => {
       ...req.query,
     };
 
-    // ✅ Apply bookedBy filter
-    if (req.query.bookedBy) {
-      let bookedByParam = req.query.bookedBy;
+    // ✅ Resolve bookedBy filter safely
+    const bookedByQuery = req.query.bookedBy;
 
-      // If multiple query params → array
-      if (Array.isArray(bookedByParam)) {
-        filters.bookedBy = bookedByParam.map(Number);
-
-        // If single param → string
+    // CASE 1: bookedBy explicitly sent (can be string, csv, or array)
+    if (
+      bookedByQuery !== undefined &&
+      bookedByQuery !== null &&
+      bookedByQuery !== ""
+    ) {
+      if (Array.isArray(bookedByQuery)) {
+        filters.bookedBy = bookedByQuery.map(Number).filter(Boolean);
       } else {
-        filters.bookedBy = bookedByParam.split(",").map(Number);
+        filters.bookedBy = bookedByQuery
+          .split(",")
+          .map(Number)
+          .filter(Boolean);
+      }
+    }
+
+    // CASE 2: bookedBy NOT sent → default behaviour
+    else {
+      // Super Admin → self + child admins
+      if (req.admin?.role?.toLowerCase() === "super admin") {
+        const childAdminIds = (mainSuperAdminResult?.admins || []).map(
+          (a) => a.id
+        );
+
+        filters.bookedBy = [
+          req.admin.id,
+          ...childAdminIds,
+        ];
       }
 
-    } else if (req.admin?.role?.toLowerCase() === "super admin") {
-
-      filters.bookedBy = (mainSuperAdminResult?.admins || [])
-        .map((a) => a.id);
-
-    } else {
-
-      filters.bookedBy = [req.admin.id];
-
+      // Normal Admin / Agent → only self
+      else {
+        filters.bookedBy = [req.admin.id];
+      }
     }
 
     const result = await BookingTrialService.getWaitingList(filters);
