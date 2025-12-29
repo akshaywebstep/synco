@@ -541,7 +541,7 @@ exports.getBookFreeTrialDetails = async (req, res) => {
   const bookedBy = req.admin?.id;
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
-
+  
   try {
     // const result = await BookingTrialService.getBookingById(id);
     const result = await BookingTrialService.getBookingById(

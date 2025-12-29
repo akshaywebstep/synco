@@ -425,12 +425,17 @@ exports.getBookingById = async (id, adminId, superAdminId) => {
 
   if (adminIds.length) {
     whereClause[Op.or] = [
+      // 1️⃣ Booked by admin/agent
       { bookedBy: { [Op.in]: adminIds } },
-      { bookedBy: null },
+
+      // 2️⃣ Website booking → venue owner
+      {
+        bookedBy: null,
+        "$classSchedule.venue.createdBy$": {
+          [Op.in]: adminIds,
+        },
+      },
     ];
-    console.log("✅ Added bookedBy filter to whereClause (include null bookedBy):", whereClause);
-  } else {
-    console.log("⚠️ No valid adminIds provided — bookedBy filter not applied");
   }
 
   try {
@@ -456,8 +461,8 @@ exports.getBookingById = async (id, adminId, superAdminId) => {
         {
           model: ClassSchedule,
           as: "classSchedule",
-          required: false,
-          include: [{ model: Venue, as: "venue", required: false }],
+          required: true,
+          include: [{ model: Venue, as: "venue", required: true }],
         },
         {
           model: Admin,

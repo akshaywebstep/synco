@@ -251,18 +251,42 @@ exports.getAllBookings = async (filters = {}) => {
     if (filters.venueId) trialWhere.venueId = filters.venueId;
     if (filters.trialDate) trialWhere.trialDate = filters.trialDate;
     if (filters.status) trialWhere.status = filters.status;
-    if (filters.bookedBy) {
-      const bookedByArray = Array.isArray(filters.bookedBy)
-        ? filters.bookedBy
-        : [filters.bookedBy];
+    // if (filters.bookedBy) {
+    //   const bookedByArray = Array.isArray(filters.bookedBy)
+    //     ? filters.bookedBy
+    //     : [filters.bookedBy];
 
-      // trialWhere.bookedBy = { [Op.in]: bookedByArray };
-      trialWhere[Op.or] = [
-        { bookedBy: { [Op.in]: bookedByArray } },
-        { bookedBy: null },
-      ];
+    //   trialWhere.bookedBy = { [Op.in]: bookedByArray };
+    //   trialWhere[Op.or] = [
+    //     { bookedBy: { [Op.in]: bookedByArray } },
+    //     { bookedBy: null },
+    //   ];
 
+    // }
+    let allowedAdminIds = [];
+
+    if (filters.bookedBy !== undefined) {
+      allowedAdminIds = Array.isArray(filters.bookedBy)
+        ? filters.bookedBy.map(Number)
+        : [Number(filters.bookedBy)];
     }
+    const accessControl =
+      allowedAdminIds.length > 0
+        ? {
+          [Op.or]: [
+            // booked by admin/agent
+            { bookedBy: { [Op.in]: allowedAdminIds } },
+
+            // booked from website → venue owner
+            {
+              bookedBy: null,
+              "$classSchedule.venue.createdBy$": {
+                [Op.in]: allowedAdminIds,
+              },
+            },
+          ],
+        }
+        : {}; // 👈 NO FILTER when bookedBy not passed
 
     if (filters.dateBooked) {
       const start = new Date(filters.dateBooked + " 00:00:00");
@@ -299,8 +323,10 @@ exports.getAllBookings = async (filters = {}) => {
     const bookings = await Booking.findAll({
       order: [["id", "DESC"]],
       where: {
-        ...trialWhere, // spread the filters correctly
+        bookingType: "free",
         serviceType: "weekly class trial",
+        ...trialWhere,
+        ...accessControl, // ✅ applied only if bookedBy filter exists
       },
       include: [
         {
