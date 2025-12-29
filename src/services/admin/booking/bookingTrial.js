@@ -292,26 +292,69 @@ exports.getAllBookings = async (filters = {}) => {
         ? filters.bookedBy.map(Number)
         : [Number(filters.bookedBy)];
     }
-    const accessControl =
-      allowedAdminIds.length > 0
-        ? {
-            [Op.or]: [
-              // 1️⃣ Admin / Agent bookings
-              {
-                bookedBy: { [Op.in]: allowedAdminIds },
-              },
+    // ----------------------------
+    // ✅ ACCESS CONTROL
+    // ----------------------------
+    let accessControl = {};
 
-              // 2️⃣ Website bookings → ONLY for owned venues
-              {
-                bookedBy: null,
-                source: "website",
-                "$classSchedule.venue.createdBy$": {
-                  [Op.in]: allowedAdminIds,
-                },
+    if (filters.bookedBy && filters.bookedBy.adminIds?.length > 0) {
+      const { type, adminIds } = filters.bookedBy;
+
+      // ------------------------------------
+      // SUPER ADMIN
+      // ------------------------------------
+      if (type === "super_admin") {
+        accessControl = {
+          [Op.or]: [
+            // 1️⃣ Admin bookings → self + child admins
+            {
+              bookedBy: { [Op.in]: adminIds },
+            },
+
+            // 2️⃣ Website bookings → ONLY venues created by THIS super admin
+            {
+              bookedBy: null,
+              source: "website",
+              "$classSchedule.venue.createdBy$": {
+                [Op.in]: adminIds,
               },
-            ],
-          }
-        : {};
+            },
+          ],
+        };
+      }
+
+      // ------------------------------------
+      // ADMIN
+      // ------------------------------------
+      else if (type === "admin") {
+        accessControl = {
+          [Op.or]: [
+            // 1️⃣ Admin bookings → self + super admin
+            {
+              bookedBy: { [Op.in]: adminIds },
+            },
+
+            // 2️⃣ Website bookings → admin venues + super admin venues
+            {
+              bookedBy: null,
+              source: "website",
+              "$classSchedule.venue.createdBy$": {
+                [Op.in]: adminIds,
+              },
+            },
+          ],
+        };
+      }
+
+      // ------------------------------------
+      // AGENT
+      // ------------------------------------
+      else {
+        accessControl = {
+          bookedBy: { [Op.in]: adminIds },
+        };
+      }
+    }
 
     if (filters.dateBooked) {
       const start = new Date(filters.dateBooked + " 00:00:00");

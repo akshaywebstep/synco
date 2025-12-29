@@ -463,8 +463,11 @@ exports.getAllBookFreeTrials = async (req, res) => {
   try {
     // ✅ Resolve bookedBy filter safely
     const bookedByQuery = req.query.bookedBy;
+    const role = req.admin?.role?.toLowerCase();
 
-    // CASE 1: bookedBy explicitly sent (can be string, csv, or array)
+    // ----------------------------------
+    // CASE 1: bookedBy explicitly sent
+    // ----------------------------------
     if (
       bookedByQuery !== undefined &&
       bookedByQuery !== null &&
@@ -477,20 +480,38 @@ exports.getAllBookFreeTrials = async (req, res) => {
       }
     }
 
-    // CASE 2: bookedBy NOT sent → default behaviour
+    // ----------------------------------
+    // CASE 2: bookedBy NOT sent → role-based default
+    // ----------------------------------
     else {
-      // Super Admin → self + child admins
-      if (req.admin?.role?.toLowerCase() === "super admin") {
+      // ✅ SUPER ADMIN → self + child admins + website
+      if (role === "super admin") {
         const childAdminIds = (mainSuperAdminResult?.admins || []).map(
           (a) => a.id
         );
 
-        filters.bookedBy = [req.admin.id, ...childAdminIds];
+        filters.bookedBy = {
+          type: "super_admin",
+          adminIds: [req.admin.id, ...childAdminIds],
+        };
       }
 
-      // Normal Admin / Agent → only self
+      // ✅ ADMIN → self + super admin + website
+      else if (role === "admin") {
+        filters.bookedBy = {
+          type: "admin",
+          adminIds: [req.admin.id, mainSuperAdminResult?.superAdmin?.id].filter(
+            Boolean
+          ),
+        };
+      }
+
+      // ✅ AGENT → only self
       else {
-        filters.bookedBy = [req.admin.id];
+        filters.bookedBy = {
+          type: "agent",
+          adminIds: [req.admin.id],
+        };
       }
     }
 
