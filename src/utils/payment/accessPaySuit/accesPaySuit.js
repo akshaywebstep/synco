@@ -469,7 +469,7 @@ async function reactivateContract(contractId, reactivateData) {
     const { clientCode } = await getCredentials();
     const headers = await buildHeaders();
 
-    const url = `${BASE_URL}/api/v3/client/${clientCode}/contract/${contractId}/patch/reactivate`;
+    const url = `${BASE_URL}/api/v3/client/${clientCode}/contract/${contractId}/reactivate`;
 
     if (DEBUG) {
       console.log("🔓 Reactivating contract");

@@ -154,7 +154,7 @@ exports.createFreezeBooking = async ({
 exports.reactivateBooking = async (bookingId, reactivateOn = null, additionalNote = null) => {
   const t = await sequelize.transaction();
   try {
-    // 1. Find active freeze record for booking
+    // 1. Find active freeze record
     const freezeRecord = await FreezeBooking.findOne({
       where: {
         bookingId,
@@ -163,15 +163,10 @@ exports.reactivateBooking = async (bookingId, reactivateOn = null, additionalNot
       transaction: t,
     });
 
-    // 2. Fetch booking with payment info (BookingPayment)
+    // 2. Fetch booking + payment
     const booking = await Booking.findByPk(bookingId, {
       transaction: t,
-      include: [
-        {
-          model: BookingPayment,
-          as: "payments",
-        },
-      ],
+      include: [{ model: BookingPayment, as: "payments" }],
     });
 
     if (!booking) {
@@ -179,27 +174,35 @@ exports.reactivateBooking = async (bookingId, reactivateOn = null, additionalNot
       return { status: false, message: "Booking not found." };
     }
 
-    const bookingPayment = booking.payments && booking.payments.length > 0 ? booking.payments[0] : null;
-
+    const bookingPayment = booking.payments?.[0];
     if (!bookingPayment) {
       await t.rollback();
       return { status: false, message: "Booking payment not found." };
     }
 
+    // 3. Count students for capacity handling
+    const studentCount = await BookingStudentMeta.count({
+      where: { bookingTrialId: bookingId },
+      transaction: t,
+    });
+
+    if (studentCount === 0) {
+      await t.rollback();
+      return { status: false, message: "No students found for this booking." };
+    }
+
     const paymentType = bookingPayment.paymentType;
 
-    // Parse gatewayResponse for contractId
+    // 4. Parse gateway response safely
     let gatewayResponse = bookingPayment.gatewayResponse;
     if (typeof gatewayResponse === "string") {
       try {
         gatewayResponse = JSON.parse(gatewayResponse);
-      } catch (e) {
-        console.warn("Invalid JSON in gatewayResponse", e);
+      } catch {
         gatewayResponse = {};
       }
     }
 
-    // contractId extraction robust for APS
     const contractId =
       bookingPayment.contractId ||
       gatewayResponse?.contract?.Id ||
@@ -208,17 +211,16 @@ exports.reactivateBooking = async (bookingId, reactivateOn = null, additionalNot
       gatewayResponse?.contract_id ||
       null;
 
-    // 3. If paymentType is AccessPaySuite, call APS reactivation API
+    /**
+     * =========================================================
+     * APS PAYMENT REACTIVATION
+     * =========================================================
+     */
     if (paymentType === "accesspaysuite") {
       if (!contractId) {
         await t.rollback();
-        return {
-          status: false,
-          message: "Contract ID not found in payment gateway response.",
-        };
+        return { status: false, message: "Contract ID not found." };
       }
-
-      if (DEBUG) console.log("🔄 Reactivating APS contract:", contractId);
 
       const apsResult = await reactivateContract(contractId, {
         reactivateOn,
@@ -230,112 +232,92 @@ exports.reactivateBooking = async (bookingId, reactivateOn = null, additionalNot
         return { status: false, message: apsResult.message || "APS reactivation failed." };
       }
 
-      // Update booking status and additional note
+      // Capacity handling for cancelled bookings
+      if (booking.status === "cancelled") {
+        const classSchedule = await ClassSchedule.findByPk(
+          booking.classScheduleId,
+          { transaction: t, lock: t.LOCK.UPDATE }
+        );
+
+        if (!classSchedule || classSchedule.capacity < studentCount) {
+          await t.rollback();
+          return {
+            status: false,
+            message: "Insufficient capacity to reactivate booking.",
+          };
+        }
+
+        await classSchedule.decrement("capacity", {
+          by: studentCount,
+          transaction: t,
+        });
+      }
+
       await booking.update(
         { status: "active", additionalNote: additionalNote || null },
         { transaction: t }
       );
 
-      // Remove freeze record if present
       if (freezeRecord) {
         await freezeRecord.destroy({ transaction: t });
       }
 
       await t.commit();
-
-      // Fetch updated booking with associations
-      const updatedBooking = await Booking.findByPk(bookingId, {
-        include: [
-          {
-            model: ClassSchedule,
-            as: "classSchedule",
-            required: true,
-            include: [{ model: Venue, as: "venue" }],
-          },
-          {
-            model: BookingStudentMeta,
-            as: "students",
-            include: [
-              { model: BookingParentMeta, as: "parents" },
-              { model: BookingEmergencyMeta, as: "emergencyContacts" },
-            ],
-          },
-        ],
-      });
-
-      return {
-        status: true,
-        message: "Booking reactivated successfully via AccessPaySuite.",
-        data: updatedBooking,
-      };
     }
 
-    // 4. For other payment types (e.g., bank), apply local reactivation logic
+    /**
+     * =========================================================
+     * NON-APS (BANK / MANUAL) REACTIVATION
+     * =========================================================
+     */
+    else {
+      if (booking.status === "cancelled") {
+        const classSchedule = await ClassSchedule.findByPk(
+          booking.classScheduleId,
+          { transaction: t, lock: t.LOCK.UPDATE }
+        );
 
-    // If booking is cancelled, check class capacity before reactivating
-    if (booking.status === "cancelled") {
-      const classSchedule = await ClassSchedule.findByPk(booking.classScheduleId, {
-        transaction: t,
-      });
+        if (!classSchedule) {
+          await t.rollback();
+          return { status: false, message: "Class schedule not found." };
+        }
 
-      if (!classSchedule) {
-        await t.rollback();
-        return { status: false, message: "Class schedule not found." };
+        if (classSchedule.capacity < studentCount) {
+          await t.rollback();
+          return {
+            status: false,
+            message: `Only ${classSchedule.capacity} seats available, ${studentCount} required.`,
+          };
+        }
+
+        await classSchedule.decrement("capacity", {
+          by: studentCount,
+          transaction: t,
+        });
       }
 
-      if (classSchedule.capacity === 0) {
-        await t.rollback();
-        return {
-          status: false,
-          message: "This class has no available capacity.",
-        };
-      }
-
-      const allowedStatuses = ["pending", "active", "attended", "frozen"];
-
-      const usedCapacityCount = await Booking.count({
-        where: {
-          classScheduleId: booking.classScheduleId,
-          status: allowedStatuses,
+      await booking.update(
+        {
+          status: "active",
+          additionalNote: additionalNote || null,
+          ...(reactivateOn && { reactivateOn }),
         },
-        transaction: t,
-      });
+        { transaction: t }
+      );
 
-      if (usedCapacityCount >= classSchedule.capacity) {
-        await t.rollback();
-        return {
-          status: false,
-          message: "Class is already full. No capacity available.",
-        };
+      if (freezeRecord) {
+        await freezeRecord.destroy({ transaction: t });
       }
+
+      await t.commit();
     }
 
-    // Prepare update data for booking
-    const updatedData = {
-      status: "active",
-      additionalNote: additionalNote || null,
-    };
-
-    if (reactivateOn) {
-      updatedData.reactivateOn = reactivateOn;
-    }
-
-    await booking.update(updatedData, { transaction: t });
-
-    // Delete freeze record if it exists
-    if (freezeRecord) {
-      await freezeRecord.destroy({ transaction: t });
-    }
-
-    await t.commit();
-
-    // Fetch updated booking with associations
+    // 5. Return updated booking
     const updatedBooking = await Booking.findByPk(bookingId, {
       include: [
         {
           model: ClassSchedule,
           as: "classSchedule",
-          required: true,
           include: [{ model: Venue, as: "venue" }],
         },
         {
@@ -356,7 +338,7 @@ exports.reactivateBooking = async (bookingId, reactivateOn = null, additionalNot
     };
   } catch (error) {
     await t.rollback();
-    console.error("❌ reactivateBooking Service Error:", error);
+    console.error("❌ reactivateBooking Error:", error);
     return { status: false, message: error.message };
   }
 };
