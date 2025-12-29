@@ -243,6 +243,147 @@ async function cancelContract(contractId, queryParams = {}) {
   return handleResponse(res);
 }
 
+// 5. Freeze Contract (temporary pause)
+// ================================
+async function freezeContract(contractId, freezeData) {
+  try {
+    const { clientCode } = await getCredentials();
+    const headers = await buildHeaders();
+
+    const url = `${BASE_URL}/api/v3/client/${clientCode}/contract/${contractId}/patch/freeze`;
+
+    if (DEBUG) {
+      console.log("🔒 Freezing contract");
+      console.log("Contract ID:", contractId);
+      console.log("Freeze payload:", JSON.stringify(freezeData));
+      console.log("Freeze URL:", url);
+    }
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(freezeData),
+    });
+
+    const rawText = await res.text();
+    let data;
+
+    try {
+      data = rawText ? JSON.parse(rawText) : null;
+    } catch {
+      data = rawText;
+    }
+
+    /* ❌ APS Error Handling */
+    if (!res.ok) {
+      let errorMessage =
+        data?.Detail ||
+        data?.Message ||
+        "Unable to freeze membership at this time.";
+
+      // 🎯 APS specific error mapping
+      if (
+        res.status === 400 &&
+        (data?.Detail?.includes("No previous version") ||
+          data?.ErrorCode === 4)
+      ) {
+        errorMessage =
+          "This membership has not started yet. You can freeze the membership only after the contract becomes active.";
+      }
+
+      if (DEBUG) {
+        console.error("❌ APS Freeze Error:", res.status, data);
+      }
+
+      return {
+        status: false,
+        message: errorMessage,
+      };
+    }
+
+    // ✅ Success
+    return {
+      status: true,
+      message: "Membership frozen successfully.",
+      data,
+    };
+  } catch (error) {
+    console.error("❌ freezeContract Exception:", error);
+
+    return {
+      status: false,
+      message:
+        error.message ||
+        "Unexpected error occurred while freezing membership.",
+    };
+  }
+}
+// ================================
+// 6. Reactivate Contract (unfreeze/reactivate membership)
+// ================================
+async function reactivateContract(contractId, reactivateData) {
+  try {
+    const { clientCode } = await getCredentials();
+    const headers = await buildHeaders();
+
+    const url = `${BASE_URL}/api/v3/client/${clientCode}/contract/${contractId}/patch/reactivate`;
+
+    if (DEBUG) {
+      console.log("🔓 Reactivating contract");
+      console.log("Contract ID:", contractId);
+      console.log("Reactivate payload:", JSON.stringify(reactivateData));
+      console.log("Reactivate URL:", url);
+    }
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(reactivateData),
+    });
+
+    const rawText = await res.text();
+    let data;
+
+    try {
+      data = rawText ? JSON.parse(rawText) : null;
+    } catch {
+      data = rawText;
+    }
+
+    if (!res.ok) {
+      let errorMessage =
+        data?.Detail ||
+        data?.Message ||
+        "Unable to reactivate membership at this time.";
+
+      if (DEBUG) {
+        console.error("❌ APS Reactivate Error:", res.status, data);
+      }
+
+      return {
+        status: false,
+        message: errorMessage,
+      };
+    }
+
+    // ✅ Success
+    return {
+      status: true,
+      message: "Membership reactivated successfully.",
+      data,
+    };
+  } catch (error) {
+    console.error("❌ reactivateContract Exception:", error);
+
+    return {
+      status: false,
+      message:
+        error.message ||
+        "Unexpected error occurred while reactivating membership.",
+    };
+  }
+}
+
 // ================================
 // Full Flow: Schedule → Customer → Contract
 // ================================
@@ -256,6 +397,8 @@ module.exports = {
   createAccessPaySuiteCustomer,
   createContract,
   cancelContract,
+  freezeContract,
+  reactivateContract,
 };
 
 // {

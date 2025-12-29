@@ -177,6 +177,120 @@ async function updateBookingStats() {
     };
   }
 }
+async function autoSyncFreezeBilling() {
+  const logs = [];
+
+  try {
+    const freezeBookings = await FreezeBooking.findAll({
+      include: [
+        {
+          model: Booking,
+          as: "booking", // 🔥 REQUIRED ALIAS FIX
+          include: [
+            {
+              model: BookingPayment,
+              as: "payments", // keep only if this alias exists
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!freezeBookings.length) {
+      return { status: true, message: "No freeze records to process" };
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (const freeze of freezeBookings) {
+      const booking = freeze.booking;
+      if (!booking) continue;
+
+      const payment = booking.payments?.[0] || null;
+
+      const freezeStart = new Date(freeze.freezeStartDate);
+      const reactivateOn = new Date(freeze.reactivateOn);
+
+      const actionLog = {
+        bookingId: booking.id,
+        actions: [],
+      };
+
+      /* -------- FREEZE -------- */
+      if (freezeStart <= today && booking.status !== "frozen") {
+        await booking.update({ status: "frozen" });
+        actionLog.actions.push("booking → frozen");
+
+        if (payment?.paymentType === "accesspaysuite") {
+          const gateway =
+            typeof payment.gatewayResponse === "string"
+              ? JSON.parse(payment.gatewayResponse)
+              : payment.gatewayResponse || {};
+
+          await payment.update({
+            paymentStatus: "paused",
+            gatewayResponse: {
+              ...gateway,
+              freeze: {
+                status: "frozen",
+                from: freeze.freezeStartDate,
+                reason: freeze.reasonForFreezing || null,
+              },
+            },
+          });
+
+          actionLog.actions.push("APS payment → paused");
+        }
+      }
+
+      /* ------ REACTIVATE ------ */
+      if (reactivateOn <= today) {
+        await booking.update({ status: "active" });
+        actionLog.actions.push("booking → active");
+
+        if (payment?.paymentType === "accesspaysuite") {
+          const gateway =
+            typeof payment.gatewayResponse === "string"
+              ? JSON.parse(payment.gatewayResponse)
+              : payment.gatewayResponse || {};
+
+          await payment.update({
+            paymentStatus: "active",
+            gatewayResponse: {
+              ...gateway,
+              freeze: {
+                ...(gateway.freeze || {}),
+                status: "reactivated",
+                reactivatedOn: today,
+              },
+            },
+          });
+
+          actionLog.actions.push("APS payment → active");
+        }
+
+        await freeze.destroy();
+        actionLog.actions.push("freeze record removed");
+      }
+
+      logs.push(actionLog);
+    }
+
+    return {
+      status: true,
+      message: "Auto-sync billing completed",
+      data: logs,
+    };
+  } catch (error) {
+    console.error("❌ autoSyncFreezeBilling error:", error);
+    return {
+      status: false,
+      message: "Auto-sync failed",
+      error: error.message,
+    };
+  }
+}
 
 exports.createBooking = async (data, options) => {
   const t = await sequelize.transaction();
@@ -607,7 +721,7 @@ exports.createBooking = async (data, options) => {
 };
 
 exports.getAllBookingsWithStats = async (filters = {}) => {
-  await updateBookingStats();
+  await autoSyncFreezeBilling();
 
   try {
     // const whereBooking = { bookingType: "paid" };
@@ -833,7 +947,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
                 : payment.gatewayResponse;
           }
         } catch (e) {
-          console.error("Invalid gatewayResponse JSON", e);
+          console.error("❌ Invalid gatewayResponse JSON", e);
         }
 
         try {
@@ -1062,7 +1176,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
 };
 
 exports.getActiveMembershipBookings = async (filters = {}) => {
-  await updateBookingStats();
+  await autoSyncFreezeBilling();
 
   try {
     console.log("🔹 Service start: getActiveMembershipBookings");
