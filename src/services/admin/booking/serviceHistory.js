@@ -418,20 +418,17 @@ exports.getBookingById = async (id, adminId, superAdminId) => {
 
   // Only apply bookedBy filter if adminId is valid
   const adminIds = Array.isArray(adminId)
-    ? adminId.filter((id) => {
-      const isValid = !isNaN(Number(id));
-      console.log(`🧮 Checking adminId: ${id} → valid: ${isValid}`);
-      return isValid;
-    })
+    ? adminId.filter(id => !isNaN(Number(id)))
     : !isNaN(Number(adminId))
       ? [Number(adminId)]
       : [];
 
-  console.log("📋 Valid adminIds array after filtering:", adminIds);
-
   if (adminIds.length) {
-    whereClause.bookedBy = { [Op.in]: adminIds };
-    console.log("✅ Added bookedBy filter to whereClause:", whereClause);
+    whereClause[Op.or] = [
+      { bookedBy: { [Op.in]: adminIds } },
+      { bookedBy: null },
+    ];
+    console.log("✅ Added bookedBy filter to whereClause (include null bookedBy):", whereClause);
   } else {
     console.log("⚠️ No valid adminIds provided — bookedBy filter not applied");
   }
