@@ -81,9 +81,18 @@ exports.createCancelBooking = async ({
           };
         }
 
-        const apsResponse = await cancelContract(contractId, {
+        // const apsResponse = await cancelContract(contractId, {
+        //   reason: cancelReason || "Membership cancelled",
+        // });
+        const apsCancelParams = {
           reason: cancelReason || "Membership cancelled",
-        });
+        };
+
+        if (cancellationType === "scheduled" && cancelDate) {
+          apsCancelParams.cancelOn = cancelDate; // YYYY-MM-DD
+        }
+
+        const apsResponse = await cancelContract(contractId, apsCancelParams);
 
         if (!apsResponse?.status) {
           await t.rollback();
