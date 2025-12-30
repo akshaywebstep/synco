@@ -21,7 +21,7 @@ const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "waiting_list";
 
-// Create Book a Free Trial
+// Create Waiting List
 exports.createBooking = async (req, res) => {
   if (DEBUG) console.log("📥 Received booking request");
   const formData = req.body;
@@ -42,7 +42,7 @@ exports.createBooking = async (req, res) => {
       "startDate",
       "students", // array, validate inside loop
       "parents", // array, validate inside loop
-      "emergency", // object, validate inside
+      // "emergency", // object, validate inside
     ],
   });
 
@@ -91,20 +91,20 @@ exports.createBooking = async (req, res) => {
   }
 
   // Validate emergency
-  const { isValid: isEmergencyValid, error: emergencyError } = validateFormData(
-    formData.emergency,
-    {
-      requiredFields: [
-        "emergencyFirstName",
-        "emergencyLastName",
-        "emergencyPhoneNumber",
-        "emergencyRelation",
-      ],
-    }
-  );
-  if (!isEmergencyValid) {
-    return res.status(400).json({ status: false, ...emergencyError });
-  }
+  // const { isValid: isEmergencyValid, error: emergencyError } = validateFormData(
+  //   formData.emergency,
+  //   {
+  //     requiredFields: [
+  //       "emergencyFirstName",
+  //       "emergencyLastName",
+  //       "emergencyPhoneNumber",
+  //       "emergencyRelation",
+  //     ],
+  //   }
+  // );
+  // if (!isEmergencyValid) {
+  //   return res.status(400).json({ status: false, ...emergencyError });
+  // }
 
   if (DEBUG) console.log("📍 Setting class metadata...");
   formData.venueId = classData.venueId;
@@ -138,17 +138,28 @@ exports.createBooking = async (req, res) => {
       });
     }
 
-    const emergency = formData.emergency;
-    if (
-      !emergency ||
-      !emergency.emergencyFirstName ||
-      !emergency.emergencyPhoneNumber
-    ) {
-      return res.status(400).json({
-        status: false,
-        message:
-          "A valid emergency contact (first name and phone) is required.",
-      });
+    // ✅ Emergency contact is OPTIONAL
+    const emergency = req.body.emergency;
+
+    if (emergency) {
+      if (!emergency.emergencyFirstName) {
+        return res.status(400).json({
+          status: false,
+          message: "Emergency contact first name is required.",
+        });
+      }
+      if (!emergency.emergencyLastName) {
+        return res.status(400).json({
+          status: false,
+          message: "Emergency contact last name is required.",
+        });
+      }
+      if (!emergency.emergencyPhoneNumber) {
+        return res.status(400).json({
+          status: false,
+          message: "Emergency contact phone number is required.",
+        });
+      }
     }
 
     student.className = classData.className;
@@ -224,8 +235,6 @@ exports.createBooking = async (req, res) => {
 
     const booking = result.data.booking;
     const studentId = result.data.studentId;
-    const studentFirstName = result.data.studentFirstName;
-    const studentLastName = result.data.studentLastName;
 
     // Send confirmation email to parents
     const parentMetas = await BookingParentMeta.findAll({
@@ -252,13 +261,13 @@ exports.createBooking = async (req, res) => {
         });
         const studentsHtml = students.length
           ? students
-            .map(
-              (s) =>
-                `<p style="margin:0; font-size:13px; color:#5F5F6D;">
+              .map(
+                (s) =>
+                  `<p style="margin:0; font-size:13px; color:#5F5F6D;">
              ${s.studentFirstName} ${s.studentLastName}
            </p>`
-            )
-            .join("")
+              )
+              .join("")
           : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
 
         for (const recipient of recipients) {
@@ -332,53 +341,35 @@ exports.createBooking = async (req, res) => {
 exports.getAllWaitingListBookings = async (req, res) => {
   console.debug("🔹 getAllWaitingListBookings called with query:", req.query);
   try {
-    const bookedBy = req.admin?.id;
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(
-      req.admin.id,
-      true
-    );
+    const role = req.admin?.role?.toLowerCase();
+    const adminId = req.admin.id;
+
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId, true);
     const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+    const childAdminIds = (mainSuperAdminResult?.admins || []).map((a) => a.id);
 
-    const filters = {
-      ...req.query,
-    };
+    const filters = { ...req.query };
 
-    // ✅ Resolve bookedBy filter safely
-    const bookedByQuery = req.query.bookedBy;
-
-    // CASE 1: bookedBy explicitly sent (can be string, csv, or array)
-    if (
-      bookedByQuery !== undefined &&
-      bookedByQuery !== null &&
-      bookedByQuery !== ""
-    ) {
-      if (Array.isArray(bookedByQuery)) {
-        filters.bookedBy = bookedByQuery.map(Number).filter(Boolean);
-      } else {
-        filters.bookedBy = bookedByQuery
-          .split(",")
-          .map(Number)
-          .filter(Boolean);
-      }
+    // ----------------------------------
+    // bookedBy explicitly provided
+    // ----------------------------------
+    if (req.query.bookedBy) {
+      filters.bookedBy = req.query.bookedBy
+        .split(",")
+        .map(Number)
+        .filter(Boolean);
     }
 
-    // CASE 2: bookedBy NOT sent → default behaviour
+    // ----------------------------------
+    // Role-based default access
+    // ----------------------------------
     else {
-      // Super Admin → self + child admins
-      if (req.admin?.role?.toLowerCase() === "super admin") {
-        const childAdminIds = (mainSuperAdminResult?.admins || []).map(
-          (a) => a.id
-        );
-
-        filters.bookedBy = [
-          req.admin.id,
-          ...childAdminIds,
-        ];
-      }
-
-      // Normal Admin / Agent → only self
-      else {
-        filters.bookedBy = [req.admin.id];
+      if (role === "super admin") {
+        filters.bookedBy = [adminId, ...childAdminIds];
+      } else if (role === "admin") {
+        filters.bookedBy = [adminId, superAdminId].filter(Boolean);
+      } else {
+        filters.bookedBy = [adminId]; // agent
       }
     }
 
@@ -816,7 +807,8 @@ exports.convertToMembership = async (req, res) => {
       subject,
     } = await emailModel.getEmailConfig(PANEL, "book-paid-trial");
 
-    if (DEBUG) console.log("📧 Email config loaded:", { configStatus, subject });
+    if (DEBUG)
+      console.log("📧 Email config loaded:", { configStatus, subject });
 
     if (!configStatus || !htmlTemplate) {
       console.warn("⚠️ Email not sent: missing template for book-membership");
@@ -840,21 +832,30 @@ exports.convertToMembership = async (req, res) => {
             // ✅ Generate HTML list of all students
             const studentsHtml = allStudents.length
               ? allStudents
-                .map(
-                  (s) =>
-                    `<p style="margin:0; font-size:13px; color:#5F5F6D;">${s.studentFirstName} ${s.studentLastName}</p>`
-                )
-                .join("")
+                  .map(
+                    (s) =>
+                      `<p style="margin:0; font-size:13px; color:#5F5F6D;">${s.studentFirstName} ${s.studentLastName}</p>`
+                  )
+                  .join("")
               : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
 
             // ✅ Replace placeholders in template
             const htmlBody = htmlTemplate
-              .replace(/{{parentName}}/g, `${p.parentFirstName} ${p.parentLastName}`)
+              .replace(
+                /{{parentName}}/g,
+                `${p.parentFirstName} ${p.parentLastName}`
+              )
               .replace(/{{studentsHtml}}/g, studentsHtml)
               .replace(/{{venueName}}/g, venueName)
               .replace(/{{className}}/g, classData.className || "N/A")
-              .replace(/{{classTime}}/g, `${classData.startTime} - ${classData.endTime}`)
-              .replace(/{{startDate}}/g, booking?.trialDate || formData.startDate)
+              .replace(
+                /{{classTime}}/g,
+                `${classData.startTime} - ${classData.endTime}`
+              )
+              .replace(
+                /{{startDate}}/g,
+                booking?.trialDate || formData.startDate
+              )
               .replace(/{{parentEmail}}/g, p.parentEmail || "")
               .replace(/{{parentPassword}}/g, "Synco123")
               .replace(/{{appName}}/g, "Synco")
@@ -875,7 +876,10 @@ exports.convertToMembership = async (req, res) => {
 
             if (DEBUG) console.log(`✅ Email sent to ${p.parentEmail}`);
           } catch (err) {
-            console.error(`❌ Failed to send email to ${p.parentEmail}:`, err.message);
+            console.error(
+              `❌ Failed to send email to ${p.parentEmail}:`,
+              err.message
+            );
           }
         }
       }

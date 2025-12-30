@@ -2,25 +2,21 @@ const { logActivity } = require("../../../../utils/admin/activityLogger");
 const {
   getAllVenuesWithClasses,
   getClassById,
-  getAllVenues,
   // getAllTermsForListing,
-} = require("../../../../services/admin/website/findClass/listingAllVenuesAndClasses");
+} = require("../../../../services/admin/open/findClass/listingAllVenuesAndClasses");
 
-const ClassScheduleService = require("../../../../services/admin/website/findClass/listingAllVenuesAndClasses");
 const axios = require("axios");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "website";
 const MODULE = "find-class";
 
-// ✅ Safe boolean parsing
-const parseBoolean = (value) => {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "string") return value.toLowerCase() === "true";
-  return false;
-};
 async function getCoordinatesFrompostal_code(postal_code) {
-  if (!postal_code || typeof postal_code !== "string" || postal_code.trim().length < 3) {
+  if (
+    !postal_code ||
+    typeof postal_code !== "string" ||
+    postal_code.trim().length < 3
+  ) {
     console.warn("⚠️ Invalid postal_code:", postal_code);
     return null;
   }
@@ -63,13 +59,7 @@ async function getCoordinatesFrompostal_code(postal_code) {
 
 exports.findAClassListing = async (req, res) => {
   try {
-    const {
-      lat,
-      lng,
-      range,
-      postal_code,
-      venueName,
-    } = req.query;
+    const { lat, lng, range, postal_code, venueName } = req.query;
 
     const DEFAULT_LAT = -27.4756;
     const DEFAULT_LNG = 153.02;
@@ -93,7 +83,9 @@ exports.findAClassListing = async (req, res) => {
 
     // ✅ Override coords using postal code
     if (postal_code) {
-      const postal_codeCoords = await getCoordinatesFrompostal_code(postal_code);
+      const postal_codeCoords = await getCoordinatesFrompostal_code(
+        postal_code
+      );
 
       if (postal_codeCoords) {
         userLatitude = postal_codeCoords.latitude;
@@ -114,7 +106,6 @@ exports.findAClassListing = async (req, res) => {
       message: "Class listings fetched successfully.",
       data: result.data,
     });
-
   } catch (error) {
     console.error("❌ findAClassListing Error:", error);
     await logActivity(
@@ -163,31 +154,3 @@ exports.getClassScheduleById = async (req, res) => {
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };
-
-// // ✅ Get All Venues
-// exports.getAllVenues = async (req, res) => {
-//   try {
-//     const result = await getAllVenues();
-
-//     await logActivity(req, PANEL, MODULE, "list", result, result.status);
-
-//     if (!result.status) {
-//       return res.status(500).json({
-//         status: false,
-//         message: result.message || "Failed to fetch venues.",
-//       });
-//     }
-
-//     return res.status(200).json({
-//       status: true,
-//       message: "Venues fetched successfully.",
-//       data: result.data,
-//     });
-//   } catch (error) {
-//     console.error("❌ Get All Venues Controller Error:", error.message);
-//     return res.status(500).json({
-//       status: false,
-//       message: "Server error while fetching venues.",
-//     });
-//   }
-// };

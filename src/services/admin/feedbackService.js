@@ -109,15 +109,15 @@ exports.createFeedbackById = async (feedbackData, transaction = null) => {
 
         classScheduleId:
           serviceType === "holiday camp" ||
-          serviceType === "one to one" ||
-          serviceType === "birthday party"
+            serviceType === "one to one" ||
+            serviceType === "birthday party"
             ? null
             : classScheduleId,
 
         venueId:
           serviceType === "holiday camp" ||
-          serviceType === "one to one" ||
-          serviceType === "birthday party"
+            serviceType === "one to one" ||
+            serviceType === "birthday party"
             ? null
             : venueId,
 
@@ -151,105 +151,38 @@ exports.createFeedbackById = async (feedbackData, transaction = null) => {
   }
 };
 
-exports.getAllFeedbacks = async (adminId, superAdminId) => {
-  if (!adminId || isNaN(Number(adminId))) {
+exports.getAllFeedbacks = async (createdBy) => {
+  if (!createdBy || isNaN(Number(createdBy))) {
     return {
       status: false,
-      message: "No valid Admin or SuperAdmin.",
+      message: "Invalid admin",
       data: {},
     };
   }
 
   try {
-    let whereCondition = {};
-
-    // 🔐 SUPER ADMIN → all feedbacks
-    if (superAdminId && Number(adminId) === Number(superAdminId)) {
-      whereCondition = {};
-    }
-    // 🔐 NORMAL ADMIN → own + super admin feedbacks
-    else {
-      whereCondition = {
-        createdBy: {
-          [Op.in]: [Number(adminId), Number(superAdminId)],
-        },
-      };
-    }
-
     const feedbacks = await Feedback.findAll({
-      where: whereCondition,
+      where: { createdBy: Number(createdBy) },
       include: [
-        {
-          model: Booking,
-          as: "booking",
-          attributes: ["id", "status"],
-          required: false,
-        },
-        {
-          model: OneToOneBooking,
-          as: "oneToOneBooking",
-          // attributes: ["id", "status","addres"],
-          required: false,
-        },
-        {
-          model: BirthdayPartyBooking,
-          as: "birthdayPartyBooking",
-          // attributes: ["id", "status"],
-          required: false,
-        },
-        {
-          model: HolidayBooking,
-          as: "holidayBooking",
-          attributes: ["id", "status"],
-          required: false,
-        },
-        {
-          model: ClassSchedule,
-          as: "classSchedule",
-          // attributes: ["id", "className", "startTime", "endTime"],
-          required: false,
-        },
-        {
-          model: HolidayClassSchedule,
-          as: "holidayClassSchedule",
-          // attributes: ["id", "startDate", "endDate"],
-          required: false,
-        },
-        {
-          model: Venue,
-          as: "venue",
-          attributes: ["id", "name"],
-          required: false,
-        },
-        {
-          model: HolidayVenue,
-          as: "holidayVenue",
-          attributes: ["id", "name"],
-          required: false,
-        },
-        {
-          model: Admin,
-          as: "creator",
-          attributes: ["id", "firstName", "lastName"],
-        },
-        {
-          model: Admin,
-          as: "assignedAgent",
-          attributes: ["id", "firstName", "lastName"],
-        },
+        { model: Booking, as: "booking", attributes: ["id", "status"], required: false },
+        { model: OneToOneBooking, as: "oneToOneBooking", required: false },
+        { model: BirthdayPartyBooking, as: "birthdayPartyBooking", required: false },
+        { model: HolidayBooking, as: "holidayBooking", attributes: ["id", "status"], required: false },
+        { model: ClassSchedule, as: "classSchedule", required: false },
+        { model: HolidayClassSchedule, as: "holidayClassSchedule", required: false },
+        { model: Venue, as: "venue", attributes: ["id", "name"], required: false },
+        { model: HolidayVenue, as: "holidayVenue", attributes: ["id", "name"], required: false },
+        { model: Admin, as: "creator", attributes: ["id", "firstName", "lastName"] },
+        { model: Admin, as: "assignedAgent", attributes: ["id", "firstName", "lastName"] },
       ],
       order: [["createdAt", "DESC"]],
     });
 
-    // 🔹 GROUP STRICTLY BY ENUM VALUES
+    // 🔹 GROUP BY serviceType (SAFE ENUM GROUPING)
     const groupedFeedbacks = feedbacks.reduce(
       (acc, feedback) => {
         const type = feedback.serviceType;
-
-        if (!acc[type]) {
-          acc[type] = [];
-        }
-
+        if (!acc[type]) acc[type] = [];
         acc[type].push(feedback);
         return acc;
       },
@@ -276,29 +209,23 @@ exports.getAllFeedbacks = async (adminId, superAdminId) => {
   }
 };
 
-exports.getFeedbackById = async (feedbackId, adminId, superAdminId) => {
+exports.getFeedbackById = async (feedbackId, createdBy) => {
+  if (!createdBy || isNaN(Number(createdBy))) {
+    return {
+      status: false,
+      message: "Invalid Admin ",
+    };
+  }
   if (!feedbackId || isNaN(Number(feedbackId))) {
     return {
       status: false,
-      message: "Invalid feedback ID",
+      message: "Invalid feedback",
     };
   }
 
   try {
-    let whereCondition = {
-      id: Number(feedbackId),
-    };
-
-    // 🔐 SUPER ADMIN → access all
-    if (!(superAdminId && Number(adminId) === Number(superAdminId))) {
-      // 🔐 NORMAL ADMIN → own + super admin feedbacks
-      whereCondition.createdBy = {
-        [Op.in]: [Number(adminId), Number(superAdminId)],
-      };
-    }
-
     const feedback = await Feedback.findOne({
-      where: whereCondition,
+      where: { id, createdBy: Number(createdBy) },
       include: [
         {
           model: Booking,

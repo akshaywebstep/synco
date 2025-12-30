@@ -114,14 +114,12 @@ exports.createFeedback = async (req, res) => {
 
 exports.getAllFeedbacks = async (req, res) => {
   try {
-    const adminId = req.admin?.id;
+    const createdBy = req.admin?.id;
 
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
-    const superAdminId =
-      mainSuperAdminResult?.superAdmin?.id ?? null;
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
     const result = await FeedbackService.getAllFeedbacks(
-      adminId,
       superAdminId
     );
 
@@ -146,7 +144,7 @@ exports.getAllFeedbacks = async (req, res) => {
 exports.getFeedbackById = async (req, res) => {
   try {
     const { id } = req.params;
-    const adminId = req.admin?.id;
+    const createdBy = req.admin?.id;
 
     if (!adminId) {
       return res.status(401).json({
@@ -155,13 +153,11 @@ exports.getFeedbackById = async (req, res) => {
       });
     }
 
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
-    const superAdminId =
-      mainSuperAdminResult?.superAdmin?.id ?? null;
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
     const result = await FeedbackService.getFeedbackById(
       id,
-      adminId,
       superAdminId
     );
 

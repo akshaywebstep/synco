@@ -5,12 +5,12 @@ const router = express.Router();
 router.use("/find-class", require("./findAClass/findClassRoutes"));
 
 // Book Free Trials Module Base Routes
-router.use("/book-free-trials", require("./booking/bookFreeTrialsRoutes"));
+router.use("/book-free-trial", require("./booking/bookFreeTrialsRoutes"));
 
 // Waiting List Module Base Routes
 router.use("/waiting-list", require("./booking/waitingListRoutes"));
 
 // Book Membership Modle Base Routes
-router.use("/book-membership", require("./bookingMembershipRoutes"));
+router.use("/book-membership", require("./booking/bookingMembershipRoutes"));
 
 module.exports = router;

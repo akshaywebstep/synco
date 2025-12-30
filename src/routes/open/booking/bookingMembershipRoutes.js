@@ -4,11 +4,11 @@ const openParam = require("../../../middleware/open");
 
 const {
   createBooking
-} = require("../../../controllers/admin/website/booking/bookFreeTrialsController");
+} = require("../../../controllers/admin/booking/bookingMembershipController");
 
 // ✅ Create a new free trial booking
 router.post(
-  "/create",
+  "/",
   openParam,
   createBooking
 );

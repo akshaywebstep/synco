@@ -111,23 +111,20 @@ exports.getAccountProfile = async (req, res) => {
   // const adminId = req.admin?.id;
   if (DEBUG) console.log(`🔍 Fetching free trial booking ID: ${id}`);
 
-  let bookedBy;
-  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id, true);
-  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+  const role = req.admin?.role?.toLowerCase();
+  const adminId = req.admin.id;
 
-  if (req.admin?.role?.toLowerCase() === 'super admin') {
-    const admins = mainSuperAdminResult?.admins || [];
-    bookedBy = [
-      req.admin.id,               // ✅ include super admin
-      ...admins.map(a => a.id)
-    ];
-  } else {
-    bookedBy = [req.admin.id];
-  }
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId, true);
+  const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+  const childAdminIds = (mainSuperAdminResult?.admins || []).map((a) => a.id);
 
   try {
-    // const result = await BookingTrialService.getBookingById(id);
-    const result = await BookingTrialService.getBookingById(id, bookedBy, superAdminId); // ✅ pass adminId
+    const result = await BookingTrialService.getBookingById(id, {
+      role,
+      adminId,
+      superAdminId,
+      childAdminIds,
+    });
 
     if (!result.status) {
       return res.status(404).json({ status: false, message: result.message });
@@ -265,10 +262,7 @@ exports.updateBooking = async (req, res) => {
         const firstParent = parentMetas[0];
 
         if (!firstParent || !firstParent.parentEmail) {
-          console.log(
-            "⚠️ First parent missing email. Skipping student:",
-            sId
-          );
+          console.log("⚠️ First parent missing email. Skipping student:", sId);
           continue;
         }
 
@@ -280,11 +274,11 @@ exports.updateBooking = async (req, res) => {
         // Build HTML list
         const studentsHtml = allStudents.length
           ? allStudents
-            .map(
-              (s) =>
-                `<p style="margin:0; font-size:13px; color:#5F5F6D;">${s.studentFirstName} ${s.studentLastName}</p>`
-            )
-            .join("")
+              .map(
+                (s) =>
+                  `<p style="margin:0; font-size:13px; color:#5F5F6D;">${s.studentFirstName} ${s.studentLastName}</p>`
+              )
+              .join("")
           : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
 
         console.log("Generated studentsHtml length:", studentsHtml.length);
