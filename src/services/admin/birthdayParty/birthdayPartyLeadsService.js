@@ -2023,23 +2023,37 @@ exports.getAllBirthdayPartyAnalytics = async (
 
     const whereLead = {}; // ✅ initialize first
 
-    // ✅ Super Admin logic
-    if (superAdminId === adminId) {
-      // Super admin — include all leads created by self or managed admins
+    // ===============================
+    // ROLE-BASED DATA SCOPING
+    // ===============================
+
+    // 🟣 CASE 1: Logged-in user is SUPER ADMIN
+    // superAdminId === adminId means "I am the super admin"
+    if (superAdminId && adminId && superAdminId === adminId) {
       const managedAdmins = await Admin.findAll({
-        where: { superAdminId },
+        where: {
+          superAdminId: superAdminId // 🔒 only admins under THIS super admin
+        },
         attributes: ["id"],
       });
 
-      const adminIds = managedAdmins.map((a) => a.id);
-      adminIds.push(superAdminId);
+      const adminIds = managedAdmins.map(a => a.id);
 
-      whereLead.createdBy = { [Op.in]: adminIds };
-    } else if (superAdminId && adminId) {
-      // 🟢 Admin → fetch own + super admin’s leads
-      whereLead.createdBy = { [Op.in]: [adminId, superAdminId] };
-    } else {
-      // 🟢 Fallback (in case no superAdminId found)
+      whereLead.createdBy = {
+        [Op.in]: [superAdminId, ...adminIds] // ✅ self + own admins only
+      };
+    }
+
+    // 🟢 CASE 2: Logged-in user is ADMIN
+    // admin belongs to a super admin
+    else if (superAdminId && adminId) {
+      whereLead.createdBy = {
+        [Op.in]: [adminId, superAdminId] // ✅ self + their super admin only
+      };
+    }
+
+    // 🔵 CASE 3: Safety fallback (should rarely happen)
+    else {
       whereLead.createdBy = adminId;
     }
     // 🗓️ Define date ranges dynamically based on filterType
@@ -2081,7 +2095,7 @@ exports.getAllBirthdayPartyAnalytics = async (
     };
     const whereLastMonth = {
       ...whereLead,
-      createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
+      createdAt: { [Op.between]: [startDate, endDate] },
     };
 
     // ✅ Total Leads (scoped to the lead owners determined by whereLead)
@@ -2111,7 +2125,7 @@ exports.getAllBirthdayPartyAnalytics = async (
     const salesLastMonth = await BirthdayPartyBooking.count({
       where: {
         status: "active",
-        createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
+        createdAt: { [Op.between]: [startDate, endDate] },
       },
       include: [
         {
@@ -2180,7 +2194,7 @@ exports.getAllBirthdayPartyAnalytics = async (
         },
       ],
       where: {
-        createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
+        createdAt: { [Op.between]: [startDate, endDate] },
       },
       raw: true,
     });
@@ -2192,12 +2206,7 @@ exports.getAllBirthdayPartyAnalytics = async (
     const sourceBreakdown = await BirthdayPartyLead.findAll({
       where: {
         ...whereLead,
-        createdAt: {
-          [Op.between]: [
-            moment().startOf("year").toDate(),
-            moment().endOf("year").toDate()
-          ]
-        }
+        createdAt: { [Op.between]: [startDate, endDate] }
       }
 
     });
@@ -2206,12 +2215,7 @@ exports.getAllBirthdayPartyAnalytics = async (
     const topAgents = await BirthdayPartyLead.findAll({
       where: {
         ...whereLead,
-        createdAt: {
-          [Op.between]: [
-            moment().startOf("year").toDate(),
-            moment().endOf("year").toDate(),
-          ],
-        },
+        createdAt: { [Op.between]: [startDate, endDate] }
       }, // ✅ filter by same createdBy logic
       attributes: ["createdBy", [fn("COUNT", col("createdBy")), "leadCount"]],
       include: [
@@ -2231,38 +2235,20 @@ exports.getAllBirthdayPartyAnalytics = async (
       bookings: 0,
     }));
     // ✅ One-to-One Students (monthly trend — show all months)
+    // Example for BirthdayPartyBooking monthly trend
     const monthlyStudentsRaw = await BirthdayPartyBooking.findAll({
       attributes: [
-        [
-          fn("DATE_FORMAT", col("BirthdayPartyBooking.createdAt"), "%M"),
-          "month",
-        ], // e.g. "October"
-        [fn("COUNT", col("BirthdayPartyBooking.id")), "bookings"], // total bookings
-        [fn("COUNT", fn("DISTINCT", col("students.id"))), "students"], // unique students linked to those bookings
+        [fn("DATE_FORMAT", col("BirthdayPartyBooking.createdAt"), "%M"), "month"],
+        [fn("COUNT", col("BirthdayPartyBooking.id")), "bookings"],
+        [fn("COUNT", fn("DISTINCT", col("students.id"))), "students"],
       ],
       include: [
-        {
-          model: BirthdayPartyStudent,
-          as: "students",
-          attributes: [],
-          required: true,
-        },
-        {
-          model: BirthdayPartyLead,
-          as: "lead", // ✅ ensure association name matches your model
-          attributes: [],
-          where: whereLead, // ✅ filter by lead.createdBy
-          required: true,
-        },
+        { model: BirthdayPartyStudent, as: "students", attributes: [], required: true },
+        { model: BirthdayPartyLead, as: "lead", attributes: [], where: whereLead, required: true },
       ],
       where: {
         status: { [Op.in]: ["pending", "active"] },
-        createdAt: {
-          [Op.between]: [
-            moment().startOf("year").toDate(),
-            moment().endOf("year").toDate(),
-          ],
-        },
+        createdAt: { [Op.between]: [startDate, endDate] }, // ✅ Use dynamic filter
       },
       group: [fn("MONTH", col("BirthdayPartyBooking.createdAt"))],
       order: [[fn("MONTH", col("BirthdayPartyBooking.createdAt")), "ASC"]],
@@ -2446,6 +2432,7 @@ exports.getAllBirthdayPartyAnalytics = async (
     });
 
     // ✅ Revenue by Package (Current Month)
+    // Example: revenue for current filter
     const revenueByPackageRaw = await BirthdayPartyPayment.findAll({
       attributes: [
         [col("booking->lead.packageInterest"), "packageName"],
@@ -2454,16 +2441,14 @@ exports.getAllBirthdayPartyAnalytics = async (
       include: [
         {
           model: BirthdayPartyBooking,
-          as: "booking", // must match your BirthdayPartyPayment association
+          as: "booking",
           attributes: [],
           include: [
             {
               model: BirthdayPartyLead,
-              as: "lead", // must match your BirthdayPartyBooking association alias
+              as: "lead",
               attributes: [],
-              where: {
-                packageInterest: { [Op.in]: ["Gold", "Silver"] },
-              },
+              where: { packageInterest: { [Op.in]: ["Gold", "Silver"] }, ...whereLead },
               required: true,
             },
           ],
@@ -2471,7 +2456,7 @@ exports.getAllBirthdayPartyAnalytics = async (
         },
       ],
       where: {
-        createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
+        createdAt: { [Op.between]: [startDate, endDate] }, // ✅ Apply dynamic filterType
       },
       group: ["booking->lead.packageInterest"],
       raw: true,
@@ -2503,7 +2488,7 @@ exports.getAllBirthdayPartyAnalytics = async (
         },
       ],
       where: {
-        createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
+        createdAt: { [Op.between]: [startDate, endDate] },
       },
       group: ["booking->lead.packageInterest"],
       raw: true,

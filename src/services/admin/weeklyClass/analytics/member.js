@@ -479,16 +479,14 @@ function calculateDashboardStats(filteredBookings) {
         prev.year(),
         prev.month()
       ),
-      average: Number(
+      average: Math.min(
         (
-          (calculateMonthlyRevenue(filteredBookings, year, month) +
-            calculateMonthlyRevenue(
-              filteredBookings,
-              prev.year(),
-              prev.month()
-            )) / 2
-        ).toFixed(2)
+          calculateMonthlyRevenue(filteredBookings, year, month) +
+          calculateMonthlyRevenue(filteredBookings, prev.year(), prev.month())
+        ) / 2,
+        100
       ),
+
     },
 
     averageMonthlyFee: {
@@ -560,16 +558,32 @@ function applyDashboardFilters(bookings, filter = {}) {
   return bookings.filter(b => {
     let valid = true;
 
-    /* ================= AGE FILTER ================= */
+    /* ================= AGE FILTER (DYNAMIC + ALL AGES) ================= */
     if (valid && filter.age) {
-      if (filter.age === "under18") {
-        valid = b.students?.some(s => Number(s.age) < 18);
-      } else if (filter.age === "18-25") {
-        valid = b.students?.some(
-          s => Number(s.age) >= 18 && Number(s.age) <= 25
-        );
-      } else if (filter.age === "allAges") {
+
+      // ✅ Case 1: "all" → do NOT filter
+      if (filter.age === "all") {
         valid = true;
+      }
+
+      // ✅ Case 2: dynamic range
+      else if (typeof filter.age === "object") {
+        const { min, max } = filter.age;
+
+        // If both missing → treat as ALL
+        if (min == null && max == null) {
+          valid = true;
+        } else {
+          valid = b.students?.some(s => {
+            const age = Number(s.age);
+            if (isNaN(age)) return false;
+
+            if (min != null && age < min) return false;
+            if (max != null && age > max) return false;
+
+            return true;
+          });
+        }
       }
     }
 

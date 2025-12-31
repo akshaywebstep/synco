@@ -2208,8 +2208,45 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
 // };
 
 // Get All One-to-One Analytics
+const getDateRangeByFilter = (filterType) => {
+  switch (filterType) {
+    case "thisMonth":
+      return {
+        startDate: moment().startOf("month").toDate(),
+        endDate: moment().endOf("month").toDate(),
+      };
+
+    case "lastMonth":
+      return {
+        startDate: moment().subtract(1, "month").startOf("month").toDate(),
+        endDate: moment().subtract(1, "month").endOf("month").toDate(),
+      };
+
+    case "last3Months":
+      return {
+        startDate: moment().subtract(3, "months").startOf("day").toDate(),
+        endDate: moment().endOf("day").toDate(),
+      };
+
+    case "last6Months":
+      return {
+        startDate: moment().subtract(6, "months").startOf("day").toDate(),
+        endDate: moment().endOf("day").toDate(),
+      };
+
+    case "thisYear":
+      return {
+        startDate: moment().startOf("year").toDate(),
+        endDate: moment().endOf("year").toDate(),
+      };
+
+    default:
+      throw new Error("Invalid filterType");
+  }
+};
 exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
   try {
+
     const currentYear = moment().year();
     const lastYear = currentYear - 1;
 
@@ -2257,50 +2294,22 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
       whereLead.createdBy = adminId;
     }
     // 🗓️ Define date ranges dynamically based on filterType
-    let startDate, endDate;
 
-    if (filterType === "thisMonth") {
-      startDate = moment().startOf("month").toDate();
-      endDate = moment().endOf("month").toDate();
-    } else if (filterType === "lastMonth") {
-      startDate = moment().subtract(1, "month").startOf("month").toDate();
-      endDate = moment().subtract(1, "month").endOf("month").toDate();
-    } else if (filterType === "last3Months") {
-      startDate = moment().subtract(3, "months").startOf("month").toDate();
-      endDate = moment().endOf("month").toDate();
-    } else if (filterType === "last6Months") {
-      startDate = moment().subtract(6, "months").startOf("month").toDate();
-      endDate = moment().endOf("month").toDate();
-    } else {
-      throw new Error(
-        "Invalid filterType. Use thisMonth | lastMonth | last3Months | last6Months"
-      );
-    }
+    const { startDate, endDate } = getDateRangeByFilter(filterType);
 
-    // 🗓️ Define date ranges
-    const startOfThisMonth = moment().startOf("month").toDate();
-    const endOfThisMonth = moment().endOf("month").toDate();
-    const startOfLastMonth = moment()
-      .subtract(1, "month")
-      .startOf("month")
-      .toDate();
-    const endOfLastMonth = moment()
-      .subtract(1, "month")
-      .endOf("month")
-      .toDate();
+    const startOfLastMonth = moment(startDate).subtract(1, "month").toDate();
+    const endOfLastMonth = moment(endDate).subtract(1, "month").toDate();
 
-    const whereThisMonth = {
-      ...whereLead, // includes createdBy: adminId OR createdBy: { [Op.in]: adminIds } for superAdmin
-      createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
-    };
     const whereLastMonth = {
       ...whereLead,
       createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
     };
-
     // ✅ Total Leads (scoped to the lead owners determined by whereLead)
     const totalLeadsThisMonth = await oneToOneLeads.count({
-      where: whereThisMonth,
+      where: {
+        ...whereLead,
+        createdAt: { [Op.between]: [startDate, endDate] },
+      },
     });
     const totalLeadsLastMonth = await oneToOneLeads.count({
       where: whereLastMonth,
@@ -2309,7 +2318,7 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
     const salesThisMonth = await OneToOneBooking.count({
       where: {
         status: "active",
-        createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
+        createdAt: { [Op.between]: [startDate, endDate] },
       },
       include: [
         {
@@ -2369,7 +2378,7 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
         },
       ],
       where: {
-        createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
+        createdAt: { [Op.between]: [startDate, endDate] },
       },
       raw: true,
     });
@@ -2406,12 +2415,7 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
     const sourceBreakdown = await oneToOneLeads.findAll({
       where: {
         ...whereLead,
-        createdAt: {
-          [Op.between]: [
-            moment().startOf("year").toDate(),
-            moment().endOf("year").toDate()
-          ]
-        }
+        createdAt: { [Op.between]: [startDate, endDate] }
       }
 
     });
@@ -2420,12 +2424,7 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
     const topAgents = await oneToOneLeads.findAll({
       where: {
         ...whereLead,
-        createdAt: {
-          [Op.between]: [
-            moment().startOf("year").toDate(),
-            moment().endOf("year").toDate(),
-          ],
-        },
+        createdAt: { [Op.between]: [startDate, endDate] }
       }, // ✅ filter by same createdBy logic
       attributes: ["createdBy", [fn("COUNT", col("createdBy")), "leadCount"]],
       include: [
@@ -2471,12 +2470,7 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
       ],
       where: {
         status: { [Op.in]: ["pending", "active"] },
-        createdAt: {
-          [Op.between]: [
-            moment().startOf("year").toDate(),
-            moment().endOf("year").toDate(),
-          ],
-        },
+        createdAt: { [Op.between]: [startDate, endDate] },
       },
       group: [fn("MONTH", col("OneToOneBooking.createdAt"))],
       order: [[fn("MONTH", col("OneToOneBooking.createdAt")), "ASC"]],
@@ -2587,6 +2581,7 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
       where: {
         ...whereLead, // ✅ add lead.createdBy filter here
         packageInterest: { [Op.in]: ["Gold", "Silver"] },
+        createdAt: { [Op.between]: [startDate, endDate] },
       },
       group: ["packageInterest"],
       raw: true,
@@ -2613,12 +2608,7 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
     // ✅ Renewal Breakdown (Gold, Silver, Platinum)
     const renewalBreakdownRaw = await OneToOneBooking.findAll({
       where: {
-        createdAt: {
-          [Op.between]: [
-            moment().startOf("year").toDate(),
-            moment().endOf("year").toDate()
-          ]
-        }
+        createdAt: { [Op.between]: [startDate, endDate] }
       },
       attributes: [
         [col("lead.packageInterest"), "packageName"], // join with lead’s package
@@ -2685,7 +2675,7 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
         },
       ],
       where: {
-        createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
+        createdAt: { [Op.between]: [startDate, endDate] }
       },
       group: ["booking->lead.packageInterest"],
       raw: true,
@@ -2761,12 +2751,7 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
       where: {
         ...whereLead,
         source: { [Op.ne]: null },
-        createdAt: {
-          [Op.between]: [
-            moment().startOf("year").toDate(),
-            moment().endOf("year").toDate()
-          ]
-        }
+        createdAt: { [Op.between]: [startDate, endDate] },
       }
 
     });
@@ -2814,9 +2799,13 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
           required: true,
         },
       ],
+      where: {
+        createdAt: { [Op.between]: [startDate, endDate] },
+      },
       group: ["age", "gender"],
       order: [[literal("count"), "DESC"]],
       raw: true,
+
     });
 
     // 🧠 Format data for frontend (progress bar UI)
