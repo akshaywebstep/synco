@@ -458,7 +458,7 @@ exports.getAllBirthdayPartyLeads = async (
       data: formattedData,
     };
   } catch (error) {
-    console.error("❌ Error fetching oneToOne leads:", error);
+    console.error("❌ Error fetching birthdayParty leads:", error);
     return { status: false, message: error.message };
   }
 };
@@ -736,14 +736,14 @@ exports.getAllBirthdayPartyLeadsSales = async (
       return `${val >= 0 ? "+" : ""}${val}%`;
     };
 
-    const totalRevenueThisMonth = await OneToOnePayment.sum("amount", {
+    const totalRevenueThisMonth = await BirthdayPartyPayment.sum("amount", {
       where: {
         paymentStatus: "paid",
         createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
       },
     });
 
-    const totalRevenueLastMonth = await OneToOnePayment.sum("amount", {
+    const totalRevenueLastMonth = await BirthdayPartyPayment.sum("amount", {
       where: {
         paymentStatus: "paid",
         createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
@@ -751,15 +751,15 @@ exports.getAllBirthdayPartyLeadsSales = async (
     });
 
     const getSourceRevenue = async (packageInterest, start, end) => {
-      return await OneToOnePayment.sum("amount", {
+      return await BirthdayPartyPayment.sum("amount", {
         include: [
           {
-            model: OneToOneBooking,
+            model: BirthdayPartyBooking,
             as: "booking",
             required: true,
             include: [
               {
-                model: oneToOneLeads,
+                model: BirthdayPartyLead,
                 as: "lead",
                 required: true,
                 where: {
@@ -782,10 +782,10 @@ exports.getAllBirthdayPartyLeadsSales = async (
     const goldLastMonth = await getSourceRevenue("gold", startOfLastMonth, endOfLastMonth);
     const silverThisMonth = await getSourceRevenue("silver", startOfThisMonth, endOfThisMonth);
     const silverLastMonth = await getSourceRevenue("silver", startOfLastMonth, endOfLastMonth);
-    const topSalesAgent = await oneToOneLeads.findOne({
+    const topSalesAgent = await BirthdayPartyLead.findOne({
       attributes: [
         "createdBy",
-        [sequelize.fn("COUNT", sequelize.col("oneToOneLeads.id")), "leadCount"],
+        [sequelize.fn("COUNT", sequelize.col("BirthdayPartyLead.id")), "leadCount"],
       ],
       where: {
         status: "active",
@@ -841,7 +841,7 @@ exports.getAllBirthdayPartyLeadsSales = async (
       data: formattedData,
     };
   } catch (error) {
-    console.error("❌ Error fetching oneToOne leads:", error);
+    console.error("❌ Error fetching birthdayparty leads:", error);
     return { status: false, message: error.message };
   }
 };
@@ -1355,7 +1355,7 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
       data: formattedData,
     };
   } catch (error) {
-    console.error("❌ Error fetching oneToOne leads:", error);
+    console.error("❌ Error fetching birthdayParty leads:", error);
     return { status: false, message: error.message };
   }
 };

@@ -620,3 +620,217 @@ const getMonthlyReport = async (filters) => {
 };
 
 module.exports = { getMonthlyReport };
+
+
+
+
+// services/admin/monthlyClass.js
+
+const moment = require("moment");
+const { Op } = require("sequelize");
+
+const {
+  Booking,
+  BookingStudentMeta,
+  BookingParentMeta,
+  BookingEmergencyMeta,
+  ClassSchedule,
+  Venue,
+  Lead,
+  BookingPayment,
+  PaymentPlan,
+  Admin,
+} = require("../../../../models");
+
+// / Helper
+
+const VALID_MEMBER_STATUSES = ["active", "attended", "expired"];
+const PAID_TYPE = "paid";
+
+// TOTAL MEMBERS (Current Year)
+function calculateTotalMembers(bookings, year) {
+  const uniqueStudents = new Set();
+
+  bookings.forEach(b => {
+    if (
+      b.bookingType !== PAID_TYPE ||
+      !VALID_MEMBER_STATUSES.includes(b.status)
+    ) return;
+
+    if (moment(b.createdAt).year() !== year) return;
+
+    (b.students || []).forEach(s => uniqueStudents.add(s.id));
+  });
+
+  return uniqueStudents.size;
+}
+// 2️⃣ MONTHLY REVENUE (Current / Previous / Average)
+function calculateMonthlyRevenue(bookings, year, month) {
+  return bookings.reduce((sum, b) => {
+    if (
+      b.bookingType === PAID_TYPE &&
+      VALID_MEMBER_STATUSES.includes(b.status) &&
+      moment(b.createdAt).year() === year &&
+      moment(b.createdAt).month() === month
+    ) {
+      sum += (Number(b.paymentPlan?.price) || 0) * (b.students?.length || 0);
+    }
+    return sum;
+  }, 0);
+}
+
+// 3️⃣ AVERAGE MONTHLY FEE
+function calculateAverageMonthlyFee(bookings, year, month) {
+  let total = 0;
+  let count = 0;
+
+  bookings.forEach(b => {
+    if (
+      b.bookingType === PAID_TYPE &&
+      VALID_MEMBER_STATUSES.includes(b.status) &&
+      moment(b.createdAt).year() === year &&
+      moment(b.createdAt).month() === month &&
+      b.paymentPlan?.price
+    ) {
+      total += Number(b.paymentPlan.price);
+      count++;
+    }
+  });
+
+  return count ? total / count : 0;
+}
+// 4️⃣ AVERAGE LIFE CYCLE (Duration → Months)
+function calculateAverageLifeCycle(bookings, year, month) {
+  let totalMonths = 0;
+  let count = 0;
+
+  bookings.forEach(b => {
+    if (
+      b.bookingType === PAID_TYPE &&
+      VALID_MEMBER_STATUSES.includes(b.status) &&
+      moment(b.createdAt).year() === year &&
+      moment(b.createdAt).month() === month &&
+      b.paymentPlan
+    ) {
+      totalMonths += convertDurationToMonths(b.paymentPlan);
+      count++;
+    }
+  });
+
+  return count ? totalMonths / count : 0;
+}
+
+// 5️⃣ NEW STUDENTS (Paid Only)
+function calculateNewStudents(bookings, year, month) {
+  let count = 0;
+
+  bookings.forEach(b => {
+    if (
+      b.bookingType !== PAID_TYPE ||
+      !VALID_MEMBER_STATUSES.includes(b.status)
+    ) return;
+
+    (b.students || []).forEach(s => {
+      if (
+        moment(s.createdAt).year() === year &&
+        moment(s.createdAt).month() === month
+      ) {
+        count++;
+      }
+    });
+  });
+
+  return count;
+}
+// 6️⃣ RETENTION (Correct & Industry Standard)
+function calculateRetention(bookings, year, month) {
+  const start = moment().year(year).month(month).startOf("month");
+  const end = start.clone().endOf("month");
+
+  const startStudents = new Set();
+  const endStudents = new Set();
+  const newStudents = new Set();
+
+  bookings.forEach(b => {
+    if (
+      b.bookingType !== PAID_TYPE ||
+      !VALID_MEMBER_STATUSES.includes(b.status)
+    ) return;
+
+    (b.students || []).forEach(s => {
+      const created = moment(s.createdAt);
+
+      if (created.isBefore(start)) startStudents.add(s.id);
+      if (created.isSameOrBefore(end)) endStudents.add(s.id);
+      if (created.isBetween(start, end, null, "[]")) newStudents.add(s.id);
+    });
+  });
+
+  if (startStudents.size === 0) return 0;
+
+  const retained =
+    endStudents.size - newStudents.size;
+
+  return Number(((retained / startStudents.size) * 100).toFixed(2));
+}
+// 7️⃣ COMBINED DASHBOARD CALCULATOR (USE THIS)
+function calculateDashboardStats(bookings) {
+  const now = moment();
+
+  const year = now.year();
+  const month = now.month();
+
+  const prevMonth = now.clone().subtract(1, "month");
+  const prevYear = prevMonth.year();
+  const prevMonthIndex = prevMonth.month();
+
+  return {
+    totalMembers: calculateTotalMembers(bookings, year),
+
+    monthlyRevenue: {
+      current: calculateMonthlyRevenue(bookings, year, month),
+      previous: calculateMonthlyRevenue(bookings, prevYear, prevMonthIndex),
+      average:
+        (calculateMonthlyRevenue(bookings, year, month) +
+          calculateMonthlyRevenue(bookings, prevYear, prevMonthIndex)) / 2,
+    },
+
+    averageMonthlyFee: {
+      current: calculateAverageMonthlyFee(bookings, year, month),
+      previous: calculateAverageMonthlyFee(bookings, prevYear, prevMonthIndex),
+      average:
+        (calculateAverageMonthlyFee(bookings, year, month) +
+          calculateAverageMonthlyFee(bookings, prevYear, prevMonthIndex)) / 2,
+    },
+
+    averageLifeCycle: {
+      current: calculateAverageLifeCycle(bookings, year, month),
+      previous: calculateAverageLifeCycle(bookings, prevYear, prevMonthIndex),
+      average:
+        (calculateAverageLifeCycle(bookings, year, month) +
+          calculateAverageLifeCycle(bookings, prevYear, prevMonthIndex)) / 2,
+    },
+
+    newStudents: {
+      current: calculateNewStudents(bookings, year, month),
+      previous: calculateNewStudents(bookings, prevYear, prevMonthIndex),
+      average:
+        (calculateNewStudents(bookings, year, month) +
+          calculateNewStudents(bookings, prevYear, prevMonthIndex)) / 2,
+    },
+
+    retention: calculateRetention(bookings, year, month),
+  };
+}
+const dashboardStats = calculateDashboardStats(bookings);
+
+return {
+  status: true,
+  message: "Monthly class report generated successfully.",
+  data: {
+    yealyGrouped,
+    overallSales,
+    dashboardStats,
+    allVenues: Array.from(usedVenues.values()),
+  },
+};

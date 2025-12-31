@@ -1,6 +1,4 @@
 // services/admin/monthlyClass.js
-
-// services/admin/monthlyClass.js
 const moment = require("moment");
 const { Op } = require("sequelize");
 
@@ -211,9 +209,15 @@ function groupBookingsByYearMonth(bookings, filter) {
             students: b.students?.length || 0,
           });
         } else {
+          // Update existing plan's students count
           existingPlan.students += b.students?.length || 0;
         }
       }
+
+      // filteredBookings.push(b);
+      if (valid) {
+  filteredBookings.push(b);
+}
 
       // Student filter
       if (filter.student?.name?.trim()) {
@@ -484,16 +488,7 @@ const getMonthlyReport = async (filters) => {
     const { adminId, superAdminId } = filters;
 
     // ✅ Initialize where conditions
-    // const whereBooking = { bookingType: "paid" };
-    const whereBooking = {
-      bookingType: {
-        [Op.in]: ["paid", "waiting list"],
-      },
-      status: {
-        [Op.in]: ["active", "cancelled", "expired"],
-      },
-    };
-
+    const whereBooking = { bookingType: "paid" };
     const whereVenue = {};
     const whereSchedule = {};
     const whereLead = {};
@@ -528,6 +523,7 @@ const getMonthlyReport = async (filters) => {
       whereSchedule.createdBy = { [Op.in]: [adminId, superAdminId] };
       whereBooking.bookedBy = { [Op.in]: [adminId, superAdminId] };
     }
+
     // ✅ Fetch all bookings
     const bookingsRaw = await Booking.findAll({
       order: [["id", "DESC"]],
@@ -536,11 +532,11 @@ const getMonthlyReport = async (filters) => {
         {
           model: BookingStudentMeta,
           as: "students",
-          // include: [
-          //   { model: BookingParentMeta, as: "parents", required: false },
-          //   { model: BookingEmergencyMeta, as: "emergencyContacts", required: false },
-          // ],
-          // required: false,
+          include: [
+            { model: BookingParentMeta, as: "parents", required: false },
+            { model: BookingEmergencyMeta, as: "emergencyContacts", required: false },
+          ],
+          required: false,
         },
         {
           model: ClassSchedule,
@@ -622,42 +618,3 @@ const getMonthlyReport = async (filters) => {
 };
 
 module.exports = { getMonthlyReport };
-
-// const moment = require("moment");
-// const { Op } = require("sequelize");
-
-// const {
-//   Booking,
-//   BookingStudentMeta,
-//   BookingParentMeta,
-//   BookingEmergencyMeta,
-//   ClassSchedule,
-//   Venue,
-//   Lead,
-//   BookingPayment,
-//   PaymentPlan,
-//   Admin,
-// } = require("../../../../models");
-
-// // / Helper
-
-// const VALID_MEMBER_STATUSES = ["active", "attended", "expired"];
-// const PAID_TYPE = "paid";
-
-// // TOTAL MEMBERS (Current Year)
-// function calculateTotalMembers(bookings, year) {
-//   const uniqueStudents = new Set();
-
-//   bookings.forEach(b => {
-//     if (
-//       b.bookingType !== PAID_TYPE ||
-//       !VALID_MEMBER_STATUSES.includes(b.status)
-//     ) return;
-
-//     if (moment(b.createdAt).year() !== year) return;
-
-//     (b.students || []).forEach(s => uniqueStudents.add(s.id));
-//   });
-
-//   return uniqueStudents.size;
-// }
