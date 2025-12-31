@@ -1232,7 +1232,7 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
 
     const silverThisMonth = await getSourceRevenue("silver", startOfThisMonth, endOfThisMonth);
     const silverLastMonth = await getSourceRevenue("silver", startOfLastMonth, endOfLastMonth);
-    
+
     const topSalesAgent = await BirthdayPartyLead.findOne({
       attributes: [
         "createdBy",
@@ -2523,19 +2523,29 @@ exports.getAllBirthdayPartyAnalytics = async (
         : 0;
       const lastRevenue = last ? parseFloat(last.totalRevenue || 0) : 0;
 
-      const growth =
+      const revenueGrowth =
         lastRevenue > 0
           ? (((currentRevenue - lastRevenue) / lastRevenue) * 100).toFixed(2)
-          : currentRevenue > 0
-            ? 100
-            : 0;
+          : 0;
+
+      const lastRevenueGrowth =
+        lastRevenue > 0
+          ? (((lastRevenue - currentRevenue) / lastRevenue) * 100).toFixed(2)
+          : 0;
+
+      const count =
+        lastRevenue > currentRevenue
+          ? lastRevenue - currentRevenue
+          : currentRevenue - lastRevenue;
 
       return {
         name: pkgName,
         currentRevenue,
-        lastRevenue,
-        revenueGrowth: parseFloat(growth),
+        revenueGrowth: Number(revenueGrowth),
+        lastRevenueGrowth: Number(lastRevenueGrowth),
+        // count
       };
+
     });
     // ✅ Marketing Channel Performance
     const marketChannelRaw = await BirthdayPartyLead.findAll({
@@ -2719,6 +2729,45 @@ exports.getAllBirthdayPartyAnalytics = async (
     const revenueSilverLastMonth =
       revenueByPackage.find(p => p.name === "Silver")?.lastRevenue || 0;
 
+    const getAverageBirthdayChildAge = async (startDate, endDate, leadFilter) => {
+      const avgAgeRaw = await BirthdayPartyStudent.findOne({
+        attributes: [[fn("AVG", col("BirthdayPartyStudent.age")), "avgAge"]],
+        include: [
+          {
+            model: BirthdayPartyBooking,
+            as: "booking",
+            attributes: [],
+            include: [
+              {
+                model: BirthdayPartyLead,
+                as: "lead",
+                attributes: [],
+                where: leadFilter,
+                required: true
+              }
+            ],
+            required: true
+          }
+        ],
+        where: {
+          createdAt: { [Op.between]: [startDate, endDate] }
+        },
+        raw: true
+      });
+
+      return avgAgeRaw?.avgAge ? Math.round(parseFloat(avgAgeRaw.avgAge)) : 0;
+    };
+    const averageBirthdayChildAge = await getAverageBirthdayChildAge(
+      moment().startOf("year").toDate(),
+      moment().endOf("year").toDate(),
+      whereLead
+    );
+
+    const averageBirthdayChildAgeLastYear = await getAverageBirthdayChildAge(
+      moment().subtract(1, "year").startOf("year").toDate(),
+      moment().subtract(1, "year").endOf("year").toDate(),
+      whereLead
+    );
     // ✅ Final Structured Response (matches Figma)
     return {
       status: true,
@@ -2761,7 +2810,11 @@ exports.getAllBirthdayPartyAnalytics = async (
           packageBackground: packageBackground || [],
           renewalBreakdown: renewalBreakdown || [],
           packageBreakdown: formattedPackages || [],
-          revenueByPackage: revenueByPackage || []
+          revenueByPackage: revenueByPackage || [],
+          averageBirthdayChild: {
+            value: averageBirthdayChildAge,
+            label: `${averageBirthdayChildAge} Years`
+          },
 
         },
         lastYear: {
@@ -2782,12 +2835,6 @@ exports.getAllBirthdayPartyAnalytics = async (
             lastYearMarketChannelPerformance,
             defaultCountBreakdown(["Flyer", "Online", "Referral"])
           ),
-
-          // sourceBreakdown: defaultCountBreakdown([
-          //   "Flyer",
-          //   "Online",
-          //   "Referral"
-          // ]),
           sourceBreakdown: useOrDefault(
             lastYearSourceBreakdown,
             defaultCountBreakdown(["Flyer", "Online", "Referral"])
@@ -2827,7 +2874,11 @@ exports.getAllBirthdayPartyAnalytics = async (
 
           packageBreakdown: defaultCountBreakdown(["Gold", "Silver"]),
 
-          revenueByPackage: defaultRevenueByPackage(["Gold", "Silver"])
+          revenueByPackage: defaultRevenueByPackage(["Gold", "Silver"]),
+          averageBirthdayChild: {
+            value: averageBirthdayChildAgeLastYear,
+            label: `${averageBirthdayChildAgeLastYear} Years`
+          },
         }
 
       }

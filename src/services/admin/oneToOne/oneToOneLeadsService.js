@@ -2210,846 +2210,850 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
 // Get All One-to-One Analytics
 exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType) => {
   try {
-      const currentYear = moment().year();
-      const lastYear = currentYear - 1;
-  
-      const defaultMonthlyStudents = () =>
-        Array.from({ length: 12 }, (_, i) => ({
-          month: moment().month(i).format("MMMM"),
-          students: 0,
-          bookings: 0
-        }));
-  
-      const defaultCountBreakdown = (names = []) =>
-        names.map(name => ({
-          name,
-          count: 0,
-          percentage: 0
-        }));
-  
-      const defaultRevenueByPackage = (names = []) =>
-        names.map(name => ({
-          name,
-          currentRevenue: 0,
-          lastRevenue: 0,
-          revenueGrowth: 0
-        }));
-  
-      const whereLead = {}; // ✅ initialize first
-  
-      // ✅ Super Admin logic
-      if (superAdminId === adminId) {
-        // Super admin — include all leads created by self or managed admins
-        const managedAdmins = await Admin.findAll({
-          where: { superAdminId },
-          attributes: ["id"],
-        });
-  
-        const adminIds = managedAdmins.map((a) => a.id);
-        adminIds.push(superAdminId);
-  
-        whereLead.createdBy = { [Op.in]: adminIds };
-      } else if (superAdminId && adminId) {
-        // 🟢 Admin → fetch own + super admin’s leads
-        whereLead.createdBy = { [Op.in]: [adminId, superAdminId] };
-      } else {
-        // 🟢 Fallback (in case no superAdminId found)
-        whereLead.createdBy = adminId;
-      }
-      // 🗓️ Define date ranges dynamically based on filterType
-      let startDate, endDate;
-  
-      if (filterType === "thisMonth") {
-        startDate = moment().startOf("month").toDate();
-        endDate = moment().endOf("month").toDate();
-      } else if (filterType === "lastMonth") {
-        startDate = moment().subtract(1, "month").startOf("month").toDate();
-        endDate = moment().subtract(1, "month").endOf("month").toDate();
-      } else if (filterType === "last3Months") {
-        startDate = moment().subtract(3, "months").startOf("month").toDate();
-        endDate = moment().endOf("month").toDate();
-      } else if (filterType === "last6Months") {
-        startDate = moment().subtract(6, "months").startOf("month").toDate();
-        endDate = moment().endOf("month").toDate();
-      } else {
-        throw new Error(
-          "Invalid filterType. Use thisMonth | lastMonth | last3Months | last6Months"
-        );
-      }
-  
-      // 🗓️ Define date ranges
-      const startOfThisMonth = moment().startOf("month").toDate();
-      const endOfThisMonth = moment().endOf("month").toDate();
-      const startOfLastMonth = moment()
-        .subtract(1, "month")
-        .startOf("month")
-        .toDate();
-      const endOfLastMonth = moment()
-        .subtract(1, "month")
-        .endOf("month")
-        .toDate();
-  
-      const whereThisMonth = {
-        ...whereLead, // includes createdBy: adminId OR createdBy: { [Op.in]: adminIds } for superAdmin
-        createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
-      };
-      const whereLastMonth = {
-        ...whereLead,
-        createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
-      };
-  
-      // ✅ Total Leads (scoped to the lead owners determined by whereLead)
-      const totalLeadsThisMonth = await oneToOneLeads.count({
-        where: whereThisMonth,
-      });
-      const totalLeadsLastMonth = await oneToOneLeads.count({
-        where: whereLastMonth,
-      });
-      // ✅ Number of Sales (active bookings only)
-      const salesThisMonth = await OneToOneBooking.count({
-        where: {
-          status: "active",
-          createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
-        },
-        include: [
-          {
-            model: oneToOneLeads,
-            as: "lead", // 👈 make sure alias matches your association
-            attributes: [],
-            where: whereLead, // ✅ filter by lead.createdBy (admin or superAdmin scope)
-            required: true,
-          },
-        ],
-      });
-  
-      const salesLastMonth = await OneToOneBooking.count({
-        where: {
-          status: "active",
-          createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
-        },
-        include: [
-          {
-            model: oneToOneLeads,
-            as: "lead",
-            attributes: [],
-            where: whereLead, // ✅ same filtering logic
-            required: true,
-          },
-        ],
-      });
-  
-      // ✅ Conversion Rate
-      const conversionThisMonth =
-        totalLeadsThisMonth > 0
-          ? ((salesThisMonth / totalLeadsThisMonth) * 100).toFixed(2)
-          : "0.00";
-      const conversionLastMonth =
-        totalLeadsLastMonth > 0
-          ? ((salesLastMonth / totalLeadsLastMonth) * 100).toFixed(2)
-          : "0.00";
-  
-      // ✅ Revenue Generated (based on lead.createdBy)
-      const paymentsThisMonth = await OneToOnePayment.findAll({
-        attributes: [[fn("SUM", col("OneToOnePayment.amount")), "total"]],
-        include: [
-          {
-            model: OneToOneBooking,
-            as: "booking", // 👈 must match your association
-            attributes: [],
-            include: [
-              {
-                model: oneToOneLeads,
-                as: "lead",
-                attributes: [],
-                where: whereLead, // ✅ filter by lead.createdBy (admin/superAdmin scope)
-                required: true,
-              },
-            ],
-            required: true,
-          },
-        ],
-        where: {
-          createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
-        },
-        raw: true,
-      });
-  
-      const paymentsLastMonth = await OneToOnePayment.findAll({
-        attributes: [[fn("SUM", col("OneToOnePayment.amount")), "total"]],
-        include: [
-          {
-            model: OneToOneBooking,
-            as: "booking",
-            attributes: [],
-            include: [
-              {
-                model: oneToOneLeads,
-                as: "lead",
-                attributes: [],
-                where: whereLead, // ✅ same filtering logic for last month
-                required: true,
-              },
-            ],
-            required: true,
-          },
-        ],
-        where: {
-          createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
-        },
-        raw: true,
-      });
-  
-      const revenueThisMonth = paymentsThisMonth[0]?.total || 0;
-      const revenueLastMonth = paymentsLastMonth[0]?.total || 0;
-  
-      // ✅ Source Breakdown (Marketing)
-      const sourceBreakdown = await oneToOneLeads.findAll({
-        where: {
-          ...whereLead,
-          createdAt: {
-            [Op.between]: [
-              moment().startOf("year").toDate(),
-              moment().endOf("year").toDate()
-            ]
-          }
-        }
-  
-      });
-  
-      // ✅ Top Agents
-      const topAgents = await oneToOneLeads.findAll({
-        where: {
-          ...whereLead,
-          createdAt: {
-            [Op.between]: [
-              moment().startOf("year").toDate(),
-              moment().endOf("year").toDate(),
-            ],
-          },
-        }, // ✅ filter by same createdBy logic
-        attributes: ["createdBy", [fn("COUNT", col("createdBy")), "leadCount"]],
-        include: [
-          {
-            model: Admin,
-            as: "creator",
-            attributes: ["id", "firstName", "lastName", "profile"], // ✅ include profile pic
-          },
-        ],
-        group: ["createdBy", "creator.id"], // ✅ include all group fields
-        order: [[literal("leadCount"), "DESC"]],
-      });
-      // 🧠 Generate all 12 months (Jan → Dec)
-      const allMonths = Array.from({ length: 12 }, (_, i) => ({
+    const currentYear = moment().year();
+    const lastYear = currentYear - 1;
+
+    const defaultMonthlyStudents = () =>
+      Array.from({ length: 12 }, (_, i) => ({
         month: moment().month(i).format("MMMM"),
         students: 0,
-        bookings: 0,
+        bookings: 0
       }));
-      // ✅ One-to-One Students (monthly trend — show all months)
-      const monthlyStudentsRaw = await OneToOneBooking.findAll({
-        attributes: [
-          [
-            fn("DATE_FORMAT", col("OneToOneBooking.createdAt"), "%M"),
-            "month",
-          ], // e.g. "October"
-          [fn("COUNT", col("OneToOneBooking.id")), "bookings"], // total bookings
-          [fn("COUNT", fn("DISTINCT", col("students.id"))), "students"], // unique students linked to those bookings
-        ],
-        include: [
-          {
-            model: OneToOneStudent,
-            as: "students",
-            attributes: [],
-            required: true,
-          },
-          {
-            model: oneToOneLeads,
-            as: "lead", // ✅ ensure association name matches your model
-            attributes: [],
-            where: whereLead, // ✅ filter by lead.createdBy
-            required: true,
-          },
-        ],
-        where: {
-          status: { [Op.in]: ["pending", "active"] },
-          createdAt: {
-            [Op.between]: [
-              moment().startOf("year").toDate(),
-              moment().endOf("year").toDate(),
-            ],
-          },
-        },
-        group: [fn("MONTH", col("OneToOneBooking.createdAt"))],
-        order: [[fn("MONTH", col("OneToOneBooking.createdAt")), "ASC"]],
-        raw: true,
-      });
-  
-      const lastYearMonthlyStudentsRaw = await OneToOneBooking.findAll({
-        attributes: [
-          [fn("DATE_FORMAT", col("OneToOneBooking.createdAt"), "%M"), "month"],
-          [fn("COUNT", col("OneToOneBooking.id")), "bookings"],
-          [fn("COUNT", fn("DISTINCT", col("students.id"))), "students"],
-        ],
-        include: [
-          {
-            model: OneToOneStudent,
-            as: "students",
-            attributes: [],
-            required: true,
-          },
-          {
-            model: oneToOneLeads,
-            as: "lead",
-            attributes: [],
-            where: whereLead,
-            required: true,
-          },
-        ],
-        where: {
-          status: { [Op.in]: ["pending", "active"] },
-          createdAt: {
-            [Op.between]: [
-              moment().subtract(1, "year").startOf("year").toDate(),
-              moment().subtract(1, "year").endOf("year").toDate(),
-            ],
-          },
-        },
-        group: [fn("MONTH", col("OneToOneBooking.createdAt"))],
-        order: [[fn("MONTH", col("OneToOneBooking.createdAt")), "ASC"]],
-        raw: true,
-      });
-      const lastYearMonthlyStudents = allMonths.map((m) => {
-        const found = lastYearMonthlyStudentsRaw.find(
-          (r) => r.month === m.month
-        );
-  
-        return {
-          month: m.month,
-          students: found ? parseInt(found.students, 10) : 0,
-          bookings: found ? parseInt(found.bookings, 10) : 0
-        };
-      });
-      const lastYearMarketChannelRaw = await oneToOneLeads.findAll({
-        attributes: ["source", [fn("COUNT", col("source")), "count"]],
-        where: {
-          ...whereLead,
-          source: { [Op.ne]: null },
-          createdAt: {
-            [Op.between]: [
-              moment().subtract(1, "year").startOf("year").toDate(),
-              moment().subtract(1, "year").endOf("year").toDate()
-            ]
-          }
-        },
-        group: ["source"],
-        raw: true
-      });
-  
-      const lastYearTotalSources = lastYearMarketChannelRaw.reduce(
-        (sum, s) => sum + parseInt(s.count, 10),
-        0
-      );
-      const lastYearSourceBreakdown = lastYearMarketChannelRaw.map(s => ({
-        name: s.source,
-        count: parseInt(s.count, 10),
+
+    const defaultCountBreakdown = (names = []) =>
+      names.map(name => ({
+        name,
+        count: 0,
         percentage: 0
-      }))
-  
-      const lastYearMarketChannelPerformance = lastYearMarketChannelRaw.map((s) => {
-        const count = parseInt(s.count, 10);
-        const percentage =
-          lastYearTotalSources > 0
-            ? ((count / lastYearTotalSources) * 100).toFixed(2)
-            : 0;
-  
-        return {
-          name: s.source,
-          count,
-          percentage: parseFloat(percentage)
-        };
-      });
-  
-      // 🧩 Merge DB results into allMonths
-      const monthlyStudents = allMonths.map((m) => {
-        const found = monthlyStudentsRaw.find((r) => r.month === m.month);
-        return {
-          month: m.month,
-          students: found ? parseInt(found.students, 10) : 0,
-          bookings: found ? parseInt(found.bookings, 10) : 0,
-        };
-      });
-  
-      // ✅ Package Breakdown (filtered by lead.createdBy)
-      const packageBreakdown = await oneToOneLeads.findAll({
-        attributes: [
-          ["packageInterest", "packageName"], // e.g., Gold / Silver / 
-          [fn("COUNT", col("packageInterest")), "count"],
-        ],
-        where: {
-          ...whereLead, // ✅ add lead.createdBy filter here
-          packageInterest: { [Op.in]: ["Gold", "Silver"] },
-        },
-        group: ["packageInterest"],
-        raw: true,
-      });
-  
-      // 🧮 Total Count (for percentages)
-      const totalPackages = packageBreakdown.reduce(
-        (sum, pkg) => sum + parseInt(pkg.count, 10),
-        0
-      );
-  
-      // 🧠 Format data for frontend donut chart
-      const formattedPackages = packageBreakdown.map((pkg) => {
-        const count = parseInt(pkg.count, 10);
-        const percentage =
-          totalPackages > 0 ? ((count / totalPackages) * 100).toFixed(2) : 0;
-        return {
-          name: pkg.packageName, // Gold / Silver / Platinum
-          value: parseFloat((count / 1000).toFixed(3)), // e.g. 1.235 (mock scaling)
-          percentage: parseFloat(percentage), // e.g. 25.00
-        };
-      });
-  
-      // ✅ Renewal Breakdown (Gold, Silver, Platinum)
-      const renewalBreakdownRaw = await OneToOneBooking.findAll({
-        where: {
-          createdAt: {
-            [Op.between]: [
-              moment().startOf("year").toDate(),
-              moment().endOf("year").toDate()
-            ]
-          }
-        },
-        attributes: [
-          [col("lead.packageInterest"), "packageName"], // join with lead’s package
-          [fn("COUNT", col("OneToOneBooking.id")), "count"],
-        ],
-        include: [
-          {
-            model: oneToOneLeads,
-            as: "lead", // 👈 must match association alias in OneToOneBooking model
-            attributes: [],
-            where: {
-              packageInterest: { [Op.in]: ["Gold", "Silver"] },
-            },
-            required: true,
-          },
-        ],
-        group: ["lead.packageInterest"],
-        raw: true,
-      });
-  
-      // 🧮 Calculate total renewals
-      const totalRenewals = renewalBreakdownRaw.reduce(
-        (sum, r) => sum + parseInt(r.count, 10),
-        0
-      );
-  
-      // 🧠 Format for frontend (progress bar chart)
-      const renewalBreakdown = ["Gold", "Silver"].map((pkgName) => {
-        const found = renewalBreakdownRaw.find((r) => r.packageName === pkgName);
-        const count = found ? parseInt(found.count, 10) : 0;
-        const percentage =
-          totalRenewals > 0 ? ((count / totalRenewals) * 100).toFixed(2) : 0;
-  
-        return {
-          name: pkgName,
-          count,
-          percentage: parseFloat(percentage),
-        };
-      });
-  
-      // ✅ Revenue by Package (Current Month)
-      const revenueByPackageRaw = await OneToOnePayment.findAll({
-        attributes: [
-          [col("booking->lead.packageInterest"), "packageName"],
-          [fn("SUM", col("OneToOnePayment.amount")), "totalRevenue"],
-        ],
-        include: [
-          {
-            model: OneToOneBooking,
-            as: "booking", // must match your OneToOnePayment association
-            attributes: [],
-            include: [
-              {
-                model: oneToOneLeads,
-                as: "lead", // must match your OneToOneBooking association alias
-                attributes: [],
-                where: {
-                  packageInterest: { [Op.in]: ["Gold", "Silver"] },
-                },
-                required: true,
-              },
-            ],
-            required: true,
-          },
-        ],
-        where: {
-          createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
-        },
-        group: ["booking->lead.packageInterest"],
-        raw: true,
-      });
-  
-      // ✅ Revenue by Package (Last Month)
-      const revenueByPackageLastMonth = await OneToOnePayment.findAll({
-        attributes: [
-          [col("booking->lead.packageInterest"), "packageName"],
-          [fn("SUM", col("OneToOnePayment.amount")), "totalRevenue"],
-        ],
-        include: [
-          {
-            model: OneToOneBooking,
-            as: "booking",
-            attributes: [],
-            include: [
-              {
-                model: oneToOneLeads,
-                as: "lead",
-                attributes: [],
-                where: {
-                  packageInterest: { [Op.in]: ["Gold", "Silver"] },
-                },
-                required: true,
-              },
-            ],
-            required: true,
-          },
-        ],
-        where: {
-          createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
-        },
-        group: ["booking->lead.packageInterest"],
-        raw: true,
-      });
-  
-      // 🧮 Combine and calculate growth %
-      const revenueByPackage = ["Gold", "Silver"].map((pkgName) => {
-        const current = revenueByPackageRaw.find(
-          (r) => r.packageName === pkgName
-        );
-        const last = revenueByPackageLastMonth.find(
-          (r) => r.packageName === pkgName
-        );
-  
-        const currentRevenue = current
-          ? parseFloat(current.totalRevenue || 0)
-          : 0;
-        const lastRevenue = last ? parseFloat(last.totalRevenue || 0) : 0;
-  
-        const growth =
-          lastRevenue > 0
-            ? (((currentRevenue - lastRevenue) / lastRevenue) * 100).toFixed(2)
-            : currentRevenue > 0
-              ? 100
-              : 0;
-  
-        return {
-          name: pkgName,
-          currentRevenue,
-          lastRevenue,
-          revenueGrowth: parseFloat(growth),
-        };
-      });
-      // ✅ Marketing Channel Performance
-      const marketChannelRaw = await oneToOneLeads.findAll({
-        attributes: ["source", [fn("COUNT", col("source")), "count"]],
-        where: {
-          ...whereLead,
-          source: { [Op.ne]: null },
-          createdAt: {
-            [Op.between]: [
-              moment().startOf("year").toDate(),
-              moment().endOf("year").toDate()
-            ]
-          }
-        }
-  
-      });
-  
-      // 🧮 Calculate total leads for percentage
-      const totalSources = marketChannelRaw.reduce(
-        (sum, s) => sum + parseInt(s.count, 10),
-        0
-      );
-  
-      // 🧠 Format data for frontend (progress bar UI)
-      const marketChannelPerformance = marketChannelRaw.map((s) => {
-        const count = parseInt(s.count, 10);
-        const percentage =
-          totalSources > 0 ? ((count / totalSources) * 100).toFixed(2) : 0;
-  
-        return {
-          name: s.source, // e.g. "Facebook"
-          count, // e.g. 23456
-          percentage: parseFloat(percentage), // e.g. 50.00
-        };
-      });
-  
-      // 🎉 Calculate Party Booking performance (by age and gender)
-      const partyBookingRaw = await OneToOneStudent.findAll({
-        attributes: [
-          "age",
-          "gender",
-          [fn("COUNT", col("OneToOneStudent.id")), "count"],
-        ],
-        include: [
-          {
-            model: OneToOneBooking,
-            as: "booking",
-            attributes: [],
-            include: [
-              {
-                model: oneToOneLeads,
-                as: "lead",
-                attributes: [],
-                where: { ...whereLead }, // ✅ filter by lead.createdBy (scope)
-                required: true,
-              },
-            ],
-            required: true,
-          },
-        ],
-        group: ["age", "gender"],
-        order: [[literal("count"), "DESC"]],
-        raw: true,
-      });
-  
-      // 🧠 Format data for frontend (progress bar UI)
-      const totalBookings = partyBookingRaw.reduce(
-        (sum, s) => sum + parseInt(s.count, 10),
-        0
-      );
-  
-      // 2️⃣ Group by Age
-      const byAgeMap = {};
-      partyBookingRaw.forEach((s) => {
-        const age = s.age || "Unknown";
-        const count = parseInt(s.count, 10);
-        byAgeMap[age] = (byAgeMap[age] || 0) + count;
-      });
-  
-      const byAge = Object.entries(byAgeMap).map(([age, count]) => ({
-        name: age.toString(),
-        count,
-        percentage:
-          totalBookings > 0
-            ? parseFloat(((count / totalBookings) * 100).toFixed(2))
-            : 0,
       }));
-  
-      // 3️⃣ Group by Gender
-      const byGenderMap = {};
-      partyBookingRaw.forEach((s) => {
-        const gender = s.gender || "Unknown";
-        const count = parseInt(s.count, 10);
-        byGenderMap[gender] = (byGenderMap[gender] || 0) + count;
-      });
-  
-      const byGender = Object.entries(byGenderMap).map(([gender, count]) => ({
-        name: gender,
-        count,
-        percentage:
-          totalBookings > 0
-            ? parseFloat(((count / totalBookings) * 100).toFixed(2))
-            : 0,
+
+    const defaultRevenueByPackage = (names = []) =>
+      names.map(name => ({
+        name,
+        currentRevenue: 0,
+        lastRevenue: 0,
+        revenueGrowth: 0
       }));
-  
-      // 4️⃣ By Total
-      const byTotal = [
-        {
-          name: "Total",
-          count: totalBookings,
-          percentage: 100.0,
-        },
-      ];
-  
-      // ✅ Final structured output
-      const partyBooking = [
-        {
-          byAge,
-          byGender,
-          byTotal,
-        },
-      ];
-  
-      // Example mapping rule
-      // ==========================================
-      // PACKAGE BACKGROUND (Growth + Revenue)
-      // ==========================================
-  
-      // 1️⃣ Growth = lead count (packageBreakdown)
-      const growth = ["Gold", "Silver"].map(pkgName => {
-        const found = packageBreakdown.find(p => p.packageName === pkgName);
-        const count = found ? parseInt(found.count) : 0;
-        const percentage =
-          totalPackages > 0 ? parseFloat(((count / totalPackages) * 100).toFixed(2)) : 0;
-  
-        return {
-          name: pkgName,
-          count,
-          percentage
-        };
-      }).filter(item => item.count > 0); // remove empty ones
-  
-      // 2️⃣ Revenue = revenueByPackage (from payment totals)
-      const totalRevenue = revenueByPackage.reduce(
-        (sum, p) => sum + p.currentRevenue,
-        0
-      );
-  
-      const revenue = ["Gold", "Silver"].map(pkgName => {
-        const found = revenueByPackage.find(
-          r => r.name?.toLowerCase() === pkgName.toLowerCase()
-        );
-  
-        const count = found?.currentRevenue ?? 0;
-        const percentage =
-          totalRevenue > 0
-            ? Number(((count / totalRevenue) * 100).toFixed(2))
-            : 0;
-  
-        return { name: pkgName, count, percentage };
+
+    const whereLead = {}; // ✅ initialize first
+
+    // ✅ Super Admin logic
+    if (superAdminId === adminId) {
+      // Super admin — include all leads created by self or managed admins
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id"],
       });
-  
-      // 3️⃣ Final output
-      const packageBackground = [
-        { growth },
-        { revenue }
-      ];
-      // ===============================
-      // PACKAGE REVENUE (SUMMARY)
-      // ===============================
-  
-      const revenueGoldThisMonth =
-        revenueByPackage.find(p => p.name === "Gold")?.currentRevenue || 0;
-  
-      const revenueGoldLastMonth =
-        revenueByPackage.find(p => p.name === "Gold")?.lastRevenue || 0;
-  
-      const revenueSilverThisMonth =
-        revenueByPackage.find(p => p.name === "Silver")?.currentRevenue || 0;
-  
-      const revenueSilverLastMonth =
-        revenueByPackage.find(p => p.name === "Silver")?.lastRevenue || 0;
-  
-      // ✅ Final Structured Response (matches Figma)
-      return {
-        status: true,
-        message: "Fetched One-to-One analytics successfully.",
-        summary: {
-          totalLeads: {
-            thisMonth: totalLeadsThisMonth,
-            previousMonth: totalLeadsLastMonth,
-          },
-          numberOfSales: {
-            thisMonth: salesThisMonth,
-            previousMonth: salesLastMonth,
-          },
-          conversionRate: {
-            thisMonth: `${conversionThisMonth}%`,
-            previousMonth: `${conversionLastMonth}%`,
-          },
-          revenueGenerated: {
-            thisMonth: revenueThisMonth,
-            previousMonth: revenueLastMonth,
-          },
-          revenueGoldPackage: {
-            thisMonth: revenueGoldThisMonth,
-            previousMonth: revenueGoldLastMonth,
-          },
-          revenueSilverPackage: {
-            thisMonth: revenueSilverThisMonth,
-            previousMonth: revenueSilverLastMonth,
-          }
-        },
-  
-        charts: {
-          currentYear: {
-            year: currentYear,
-            monthlyStudents: monthlyStudents || [],
-            marketChannelPerformance: marketChannelPerformance || [],
-            sourceBreakdown: sourceBreakdown || [],
-            topAgents: topAgents || [],
-            partyBooking: partyBooking || [],
-            packageBackground: packageBackground || [],
-            renewalBreakdown: renewalBreakdown || [],
-            packageBreakdown: formattedPackages || [],
-            revenueByPackage: revenueByPackage || []
-  
-          },
-          lastYear: {
-            year: lastYear,
-  
-            // monthlyStudents: defaultMonthlyStudents(),
-            monthlyStudents: useOrDefault(
-              lastYearMonthlyStudents,
-              defaultMonthlyStudents()
-            ),
-  
-            // marketChannelPerformance: defaultCountBreakdown([
-            //   "Flyer",
-            //   "Online",
-            //   "Referral"
-            // ]),
-            marketChannelPerformance: useOrDefault(
-              lastYearMarketChannelPerformance,
-              defaultCountBreakdown(["Flyer", "Online", "Referral"])
-            ),
-  
-            // sourceBreakdown: defaultCountBreakdown([
-            //   "Flyer",
-            //   "Online",
-            //   "Referral"
-            // ]),
-            sourceBreakdown: useOrDefault(
-              lastYearSourceBreakdown,
-              defaultCountBreakdown(["Flyer", "Online", "Referral"])
-            ),
-            topAgents: [
-              {
-                createdBy: null,
-                leadCount: 0,
-                creator: {}
-              }
-            ],
-  
-            partyBooking: [
-              {
-                byAge: [],
-                byGender: defaultCountBreakdown(["male", "female", "other"]),
-                byTotal: [
-                  {
-                    name: "Total",
-                    count: 0,
-                    percentage: 100
-                  }
-                ]
-              }
-            ],
-  
-            packageBackground: [
-              {
-                growth: defaultCountBreakdown(["Gold", "Silver"])
-              },
-              {
-                revenue: defaultCountBreakdown(["Gold", "Silver"])
-              }
-            ],
-  
-            renewalBreakdown: defaultCountBreakdown(["Gold", "Silver"]),
-  
-            packageBreakdown: defaultCountBreakdown(["Gold", "Silver"]),
-  
-            revenueByPackage: defaultRevenueByPackage(["Gold", "Silver"])
-          }
-  
-        }
-      };
-    } catch (error) {
-      console.error("❌ Error fetching One-to-One analytics:", error);
-      return { status: false, message: error.message };
+
+      const adminIds = managedAdmins.map((a) => a.id);
+      adminIds.push(superAdminId);
+
+      whereLead.createdBy = { [Op.in]: adminIds };
+    } else if (superAdminId && adminId) {
+      // 🟢 Admin → fetch own + super admin’s leads
+      whereLead.createdBy = { [Op.in]: [adminId, superAdminId] };
+    } else {
+      // 🟢 Fallback (in case no superAdminId found)
+      whereLead.createdBy = adminId;
     }
+    // 🗓️ Define date ranges dynamically based on filterType
+    let startDate, endDate;
+
+    if (filterType === "thisMonth") {
+      startDate = moment().startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+    } else if (filterType === "lastMonth") {
+      startDate = moment().subtract(1, "month").startOf("month").toDate();
+      endDate = moment().subtract(1, "month").endOf("month").toDate();
+    } else if (filterType === "last3Months") {
+      startDate = moment().subtract(3, "months").startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+    } else if (filterType === "last6Months") {
+      startDate = moment().subtract(6, "months").startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+    } else {
+      throw new Error(
+        "Invalid filterType. Use thisMonth | lastMonth | last3Months | last6Months"
+      );
+    }
+
+    // 🗓️ Define date ranges
+    const startOfThisMonth = moment().startOf("month").toDate();
+    const endOfThisMonth = moment().endOf("month").toDate();
+    const startOfLastMonth = moment()
+      .subtract(1, "month")
+      .startOf("month")
+      .toDate();
+    const endOfLastMonth = moment()
+      .subtract(1, "month")
+      .endOf("month")
+      .toDate();
+
+    const whereThisMonth = {
+      ...whereLead, // includes createdBy: adminId OR createdBy: { [Op.in]: adminIds } for superAdmin
+      createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
+    };
+    const whereLastMonth = {
+      ...whereLead,
+      createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
+    };
+
+    // ✅ Total Leads (scoped to the lead owners determined by whereLead)
+    const totalLeadsThisMonth = await oneToOneLeads.count({
+      where: whereThisMonth,
+    });
+    const totalLeadsLastMonth = await oneToOneLeads.count({
+      where: whereLastMonth,
+    });
+    // ✅ Number of Sales (active bookings only)
+    const salesThisMonth = await OneToOneBooking.count({
+      where: {
+        status: "active",
+        createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
+      },
+      include: [
+        {
+          model: oneToOneLeads,
+          as: "lead", // 👈 make sure alias matches your association
+          attributes: [],
+          where: whereLead, // ✅ filter by lead.createdBy (admin or superAdmin scope)
+          required: true,
+        },
+      ],
+    });
+
+    const salesLastMonth = await OneToOneBooking.count({
+      where: {
+        status: "active",
+        createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
+      },
+      include: [
+        {
+          model: oneToOneLeads,
+          as: "lead",
+          attributes: [],
+          where: whereLead, // ✅ same filtering logic
+          required: true,
+        },
+      ],
+    });
+
+    // ✅ Conversion Rate
+    const conversionThisMonth =
+      totalLeadsThisMonth > 0
+        ? ((salesThisMonth / totalLeadsThisMonth) * 100).toFixed(2)
+        : "0.00";
+    const conversionLastMonth =
+      totalLeadsLastMonth > 0
+        ? ((salesLastMonth / totalLeadsLastMonth) * 100).toFixed(2)
+        : "0.00";
+
+    // ✅ Revenue Generated (based on lead.createdBy)
+    const paymentsThisMonth = await OneToOnePayment.findAll({
+      attributes: [[fn("SUM", col("OneToOnePayment.amount")), "total"]],
+      include: [
+        {
+          model: OneToOneBooking,
+          as: "booking", // 👈 must match your association
+          attributes: [],
+          include: [
+            {
+              model: oneToOneLeads,
+              as: "lead",
+              attributes: [],
+              where: whereLead, // ✅ filter by lead.createdBy (admin/superAdmin scope)
+              required: true,
+            },
+          ],
+          required: true,
+        },
+      ],
+      where: {
+        createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
+      },
+      raw: true,
+    });
+
+    const paymentsLastMonth = await OneToOnePayment.findAll({
+      attributes: [[fn("SUM", col("OneToOnePayment.amount")), "total"]],
+      include: [
+        {
+          model: OneToOneBooking,
+          as: "booking",
+          attributes: [],
+          include: [
+            {
+              model: oneToOneLeads,
+              as: "lead",
+              attributes: [],
+              where: whereLead, // ✅ same filtering logic for last month
+              required: true,
+            },
+          ],
+          required: true,
+        },
+      ],
+      where: {
+        createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
+      },
+      raw: true,
+    });
+
+    const revenueThisMonth = paymentsThisMonth[0]?.total || 0;
+    const revenueLastMonth = paymentsLastMonth[0]?.total || 0;
+
+    // ✅ Source Breakdown (Marketing)
+    const sourceBreakdown = await oneToOneLeads.findAll({
+      where: {
+        ...whereLead,
+        createdAt: {
+          [Op.between]: [
+            moment().startOf("year").toDate(),
+            moment().endOf("year").toDate()
+          ]
+        }
+      }
+
+    });
+
+    // ✅ Top Agents
+    const topAgents = await oneToOneLeads.findAll({
+      where: {
+        ...whereLead,
+        createdAt: {
+          [Op.between]: [
+            moment().startOf("year").toDate(),
+            moment().endOf("year").toDate(),
+          ],
+        },
+      }, // ✅ filter by same createdBy logic
+      attributes: ["createdBy", [fn("COUNT", col("createdBy")), "leadCount"]],
+      include: [
+        {
+          model: Admin,
+          as: "creator",
+          attributes: ["id", "firstName", "lastName", "profile"], // ✅ include profile pic
+        },
+      ],
+      group: ["createdBy", "creator.id"], // ✅ include all group fields
+      order: [[literal("leadCount"), "DESC"]],
+    });
+    // 🧠 Generate all 12 months (Jan → Dec)
+    const allMonths = Array.from({ length: 12 }, (_, i) => ({
+      month: moment().month(i).format("MMMM"),
+      students: 0,
+      bookings: 0,
+    }));
+    // ✅ One-to-One Students (monthly trend — show all months)
+    const monthlyStudentsRaw = await OneToOneBooking.findAll({
+      attributes: [
+        [
+          fn("DATE_FORMAT", col("OneToOneBooking.createdAt"), "%M"),
+          "month",
+        ], // e.g. "October"
+        [fn("COUNT", col("OneToOneBooking.id")), "bookings"], // total bookings
+        [fn("COUNT", fn("DISTINCT", col("students.id"))), "students"], // unique students linked to those bookings
+      ],
+      include: [
+        {
+          model: OneToOneStudent,
+          as: "students",
+          attributes: [],
+          required: true,
+        },
+        {
+          model: oneToOneLeads,
+          as: "lead", // ✅ ensure association name matches your model
+          attributes: [],
+          where: whereLead, // ✅ filter by lead.createdBy
+          required: true,
+        },
+      ],
+      where: {
+        status: { [Op.in]: ["pending", "active"] },
+        createdAt: {
+          [Op.between]: [
+            moment().startOf("year").toDate(),
+            moment().endOf("year").toDate(),
+          ],
+        },
+      },
+      group: [fn("MONTH", col("OneToOneBooking.createdAt"))],
+      order: [[fn("MONTH", col("OneToOneBooking.createdAt")), "ASC"]],
+      raw: true,
+    });
+
+    const lastYearMonthlyStudentsRaw = await OneToOneBooking.findAll({
+      attributes: [
+        [fn("DATE_FORMAT", col("OneToOneBooking.createdAt"), "%M"), "month"],
+        [fn("COUNT", col("OneToOneBooking.id")), "bookings"],
+        [fn("COUNT", fn("DISTINCT", col("students.id"))), "students"],
+      ],
+      include: [
+        {
+          model: OneToOneStudent,
+          as: "students",
+          attributes: [],
+          required: true,
+        },
+        {
+          model: oneToOneLeads,
+          as: "lead",
+          attributes: [],
+          where: whereLead,
+          required: true,
+        },
+      ],
+      where: {
+        status: { [Op.in]: ["pending", "active"] },
+        createdAt: {
+          [Op.between]: [
+            moment().subtract(1, "year").startOf("year").toDate(),
+            moment().subtract(1, "year").endOf("year").toDate(),
+          ],
+        },
+      },
+      group: [fn("MONTH", col("OneToOneBooking.createdAt"))],
+      order: [[fn("MONTH", col("OneToOneBooking.createdAt")), "ASC"]],
+      raw: true,
+    });
+    const lastYearMonthlyStudents = allMonths.map((m) => {
+      const found = lastYearMonthlyStudentsRaw.find(
+        (r) => r.month === m.month
+      );
+
+      return {
+        month: m.month,
+        students: found ? parseInt(found.students, 10) : 0,
+        bookings: found ? parseInt(found.bookings, 10) : 0
+      };
+    });
+    const lastYearMarketChannelRaw = await oneToOneLeads.findAll({
+      attributes: ["source", [fn("COUNT", col("source")), "count"]],
+      where: {
+        ...whereLead,
+        source: { [Op.ne]: null },
+        createdAt: {
+          [Op.between]: [
+            moment().subtract(1, "year").startOf("year").toDate(),
+            moment().subtract(1, "year").endOf("year").toDate()
+          ]
+        }
+      },
+      group: ["source"],
+      raw: true
+    });
+
+    const lastYearTotalSources = lastYearMarketChannelRaw.reduce(
+      (sum, s) => sum + parseInt(s.count, 10),
+      0
+    );
+    const lastYearSourceBreakdown = lastYearMarketChannelRaw.map(s => ({
+      name: s.source,
+      count: parseInt(s.count, 10),
+      percentage: 0
+    }))
+
+    const lastYearMarketChannelPerformance = lastYearMarketChannelRaw.map((s) => {
+      const count = parseInt(s.count, 10);
+      const percentage =
+        lastYearTotalSources > 0
+          ? ((count / lastYearTotalSources) * 100).toFixed(2)
+          : 0;
+
+      return {
+        name: s.source,
+        count,
+        percentage: parseFloat(percentage)
+      };
+    });
+
+    // 🧩 Merge DB results into allMonths
+    const monthlyStudents = allMonths.map((m) => {
+      const found = monthlyStudentsRaw.find((r) => r.month === m.month);
+      return {
+        month: m.month,
+        students: found ? parseInt(found.students, 10) : 0,
+        bookings: found ? parseInt(found.bookings, 10) : 0,
+      };
+    });
+
+    // ✅ Package Breakdown (filtered by lead.createdBy)
+    const packageBreakdown = await oneToOneLeads.findAll({
+      attributes: [
+        ["packageInterest", "packageName"], // e.g., Gold / Silver / 
+        [fn("COUNT", col("packageInterest")), "count"],
+      ],
+      where: {
+        ...whereLead, // ✅ add lead.createdBy filter here
+        packageInterest: { [Op.in]: ["Gold", "Silver"] },
+      },
+      group: ["packageInterest"],
+      raw: true,
+    });
+
+    // 🧮 Total Count (for percentages)
+    const totalPackages = packageBreakdown.reduce(
+      (sum, pkg) => sum + parseInt(pkg.count, 10),
+      0
+    );
+
+    // 🧠 Format data for frontend donut chart
+    const formattedPackages = packageBreakdown.map((pkg) => {
+      const count = parseInt(pkg.count, 10);
+      const percentage =
+        totalPackages > 0 ? ((count / totalPackages) * 100).toFixed(2) : 0;
+      return {
+        name: pkg.packageName, // Gold / Silver / Platinum
+        value: parseFloat((count / 1000).toFixed(3)), // e.g. 1.235 (mock scaling)
+        percentage: parseFloat(percentage), // e.g. 25.00
+      };
+    });
+
+    // ✅ Renewal Breakdown (Gold, Silver, Platinum)
+    const renewalBreakdownRaw = await OneToOneBooking.findAll({
+      where: {
+        createdAt: {
+          [Op.between]: [
+            moment().startOf("year").toDate(),
+            moment().endOf("year").toDate()
+          ]
+        }
+      },
+      attributes: [
+        [col("lead.packageInterest"), "packageName"], // join with lead’s package
+        [fn("COUNT", col("OneToOneBooking.id")), "count"],
+      ],
+      include: [
+        {
+          model: oneToOneLeads,
+          as: "lead", // 👈 must match association alias in OneToOneBooking model
+          attributes: [],
+          where: {
+            packageInterest: { [Op.in]: ["Gold", "Silver"] },
+          },
+          required: true,
+        },
+      ],
+      group: ["lead.packageInterest"],
+      raw: true,
+    });
+
+    // 🧮 Calculate total renewals
+    const totalRenewals = renewalBreakdownRaw.reduce(
+      (sum, r) => sum + parseInt(r.count, 10),
+      0
+    );
+
+    // 🧠 Format for frontend (progress bar chart)
+    const renewalBreakdown = ["Gold", "Silver"].map((pkgName) => {
+      const found = renewalBreakdownRaw.find((r) => r.packageName === pkgName);
+      const count = found ? parseInt(found.count, 10) : 0;
+      const percentage =
+        totalRenewals > 0 ? ((count / totalRenewals) * 100).toFixed(2) : 0;
+
+      return {
+        name: pkgName,
+        count,
+        percentage: parseFloat(percentage),
+      };
+    });
+
+    // ✅ Revenue by Package (Current Month)
+    const revenueByPackageRaw = await OneToOnePayment.findAll({
+      attributes: [
+        [col("booking->lead.packageInterest"), "packageName"],
+        [fn("SUM", col("OneToOnePayment.amount")), "totalRevenue"],
+      ],
+      include: [
+        {
+          model: OneToOneBooking,
+          as: "booking", // must match your OneToOnePayment association
+          attributes: [],
+          include: [
+            {
+              model: oneToOneLeads,
+              as: "lead", // must match your OneToOneBooking association alias
+              attributes: [],
+              where: {
+                packageInterest: { [Op.in]: ["Gold", "Silver"] },
+              },
+              required: true,
+            },
+          ],
+          required: true,
+        },
+      ],
+      where: {
+        createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
+      },
+      group: ["booking->lead.packageInterest"],
+      raw: true,
+    });
+
+    // ✅ Revenue by Package (Last Month)
+    const revenueByPackageLastMonth = await OneToOnePayment.findAll({
+      attributes: [
+        [col("booking->lead.packageInterest"), "packageName"],
+        [fn("SUM", col("OneToOnePayment.amount")), "totalRevenue"],
+      ],
+      include: [
+        {
+          model: OneToOneBooking,
+          as: "booking",
+          attributes: [],
+          include: [
+            {
+              model: oneToOneLeads,
+              as: "lead",
+              attributes: [],
+              where: {
+                packageInterest: { [Op.in]: ["Gold", "Silver"] },
+              },
+              required: true,
+            },
+          ],
+          required: true,
+        },
+      ],
+      where: {
+        createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
+      },
+      group: ["booking->lead.packageInterest"],
+      raw: true,
+    });
+
+    // 🧮 Combine and calculate growth %
+    const revenueByPackage = ["Gold", "Silver"].map((pkgName) => {
+      const current = revenueByPackageRaw.find(r => r.packageName === pkgName);
+      const last = revenueByPackageLastMonth.find(r => r.packageName === pkgName);
+
+      const currentRevenue = current ? parseFloat(current.totalRevenue || 0) : 0;
+      const lastRevenue = last ? parseFloat(last.totalRevenue || 0) : 0;
+
+      // Current growth = growth from last month to current month
+      const revenueGrowth =
+        lastRevenue > 0
+          ? parseFloat((((currentRevenue - lastRevenue) / lastRevenue) * 100).toFixed(2))
+          : currentRevenue > 0
+            ? 100
+            : -100;
+
+      // Last growth = negative of current growth if currentRevenue is 0 (for symmetry)
+      const lastRevenueGrowth =
+        currentRevenue > 0
+          ? parseFloat((((lastRevenue - currentRevenue) / currentRevenue) * 100).toFixed(2))
+          : lastRevenue > 0
+            ? 100
+            : -100;
+
+      return {
+        name: pkgName,
+        currentRevenue,
+        revenueGrowth,
+        lastRevenueGrowth,
+      };
+    });
+
+    // ✅ Marketing Channel Performance
+    const marketChannelRaw = await oneToOneLeads.findAll({
+      attributes: ["source", [fn("COUNT", col("source")), "count"]],
+      where: {
+        ...whereLead,
+        source: { [Op.ne]: null },
+        createdAt: {
+          [Op.between]: [
+            moment().startOf("year").toDate(),
+            moment().endOf("year").toDate()
+          ]
+        }
+      }
+
+    });
+
+    // 🧮 Calculate total leads for percentage
+    const totalSources = marketChannelRaw.reduce(
+      (sum, s) => sum + parseInt(s.count, 10),
+      0
+    );
+
+    // 🧠 Format data for frontend (progress bar UI)
+    const marketChannelPerformance = marketChannelRaw.map((s) => {
+      const count = parseInt(s.count, 10);
+      const percentage =
+        totalSources > 0 ? ((count / totalSources) * 100).toFixed(2) : 0;
+
+      return {
+        name: s.source, // e.g. "Facebook"
+        count, // e.g. 23456
+        percentage: parseFloat(percentage), // e.g. 50.00
+      };
+    });
+
+    // 🎉 Calculate Party Booking performance (by age and gender)
+    const partyBookingRaw = await OneToOneStudent.findAll({
+      attributes: [
+        "age",
+        "gender",
+        [fn("COUNT", col("OneToOneStudent.id")), "count"],
+      ],
+      include: [
+        {
+          model: OneToOneBooking,
+          as: "booking",
+          attributes: [],
+          include: [
+            {
+              model: oneToOneLeads,
+              as: "lead",
+              attributes: [],
+              where: { ...whereLead }, // ✅ filter by lead.createdBy (scope)
+              required: true,
+            },
+          ],
+          required: true,
+        },
+      ],
+      group: ["age", "gender"],
+      order: [[literal("count"), "DESC"]],
+      raw: true,
+    });
+
+    // 🧠 Format data for frontend (progress bar UI)
+    const totalBookings = partyBookingRaw.reduce(
+      (sum, s) => sum + parseInt(s.count, 10),
+      0
+    );
+
+    // 2️⃣ Group by Age
+    const byAgeMap = {};
+    partyBookingRaw.forEach((s) => {
+      const age = s.age || "Unknown";
+      const count = parseInt(s.count, 10);
+      byAgeMap[age] = (byAgeMap[age] || 0) + count;
+    });
+
+    const byAge = Object.entries(byAgeMap).map(([age, count]) => ({
+      name: age.toString(),
+      count,
+      percentage:
+        totalBookings > 0
+          ? parseFloat(((count / totalBookings) * 100).toFixed(2))
+          : 0,
+    }));
+
+    // 3️⃣ Group by Gender
+    const byGenderMap = {};
+    partyBookingRaw.forEach((s) => {
+      const gender = s.gender || "Unknown";
+      const count = parseInt(s.count, 10);
+      byGenderMap[gender] = (byGenderMap[gender] || 0) + count;
+    });
+
+    const byGender = Object.entries(byGenderMap).map(([gender, count]) => ({
+      name: gender,
+      count,
+      percentage:
+        totalBookings > 0
+          ? parseFloat(((count / totalBookings) * 100).toFixed(2))
+          : 0,
+    }));
+
+    // 4️⃣ By Total
+    const byTotal = [
+      {
+        name: "Total",
+        count: totalBookings,
+        percentage: 100.0,
+      },
+    ];
+
+    // ✅ Final structured output
+    const partyBooking = [
+      {
+        byAge,
+        byGender,
+        byTotal,
+      },
+    ];
+
+    // Example mapping rule
+    // ==========================================
+    // PACKAGE BACKGROUND (Growth + Revenue)
+    // ==========================================
+
+    // 1️⃣ Growth = lead count (packageBreakdown)
+    const growth = ["Gold", "Silver"].map(pkgName => {
+      const found = packageBreakdown.find(p => p.packageName === pkgName);
+      const count = found ? parseInt(found.count) : 0;
+      const percentage =
+        totalPackages > 0 ? parseFloat(((count / totalPackages) * 100).toFixed(2)) : 0;
+
+      return {
+        name: pkgName,
+        count,
+        percentage
+      };
+    }).filter(item => item.count > 0); // remove empty ones
+
+    // 2️⃣ Revenue = revenueByPackage (from payment totals)
+    const totalRevenue = revenueByPackage.reduce(
+      (sum, p) => sum + p.currentRevenue,
+      0
+    );
+
+    const revenue = ["Gold", "Silver"].map(pkgName => {
+      const found = revenueByPackage.find(
+        r => r.name?.toLowerCase() === pkgName.toLowerCase()
+      );
+
+      const count = found?.currentRevenue ?? 0;
+      const percentage =
+        totalRevenue > 0
+          ? Number(((count / totalRevenue) * 100).toFixed(2))
+          : 0;
+
+      return { name: pkgName, count, percentage };
+    });
+
+    // 3️⃣ Final output
+    const packageBackground = [
+      { growth },
+      { revenue }
+    ];
+    // ===============================
+    // PACKAGE REVENUE (SUMMARY)
+    // ===============================
+
+    const revenueGoldThisMonth =
+      revenueByPackage.find(p => p.name === "Gold")?.currentRevenue || 0;
+
+    const revenueGoldLastMonth =
+      revenueByPackage.find(p => p.name === "Gold")?.lastRevenue || 0;
+
+    const revenueSilverThisMonth =
+      revenueByPackage.find(p => p.name === "Silver")?.currentRevenue || 0;
+
+    const revenueSilverLastMonth =
+      revenueByPackage.find(p => p.name === "Silver")?.lastRevenue || 0;
+
+    // ✅ Final Structured Response (matches Figma)
+    return {
+      status: true,
+      message: "Fetched One-to-One analytics successfully.",
+      summary: {
+        totalLeads: {
+          thisMonth: totalLeadsThisMonth,
+          previousMonth: totalLeadsLastMonth,
+        },
+        numberOfSales: {
+          thisMonth: salesThisMonth,
+          previousMonth: salesLastMonth,
+        },
+        conversionRate: {
+          thisMonth: `${conversionThisMonth}%`,
+          previousMonth: `${conversionLastMonth}%`,
+        },
+        revenueGenerated: {
+          thisMonth: revenueThisMonth,
+          previousMonth: revenueLastMonth,
+        },
+        revenueGoldPackage: {
+          thisMonth: revenueGoldThisMonth,
+          previousMonth: revenueGoldLastMonth,
+        },
+        revenueSilverPackage: {
+          thisMonth: revenueSilverThisMonth,
+          previousMonth: revenueSilverLastMonth,
+        }
+      },
+
+      charts: {
+        currentYear: {
+          year: currentYear,
+          monthlyStudents: monthlyStudents || [],
+          marketChannelPerformance: marketChannelPerformance || [],
+          sourceBreakdown: sourceBreakdown || [],
+          topAgents: topAgents || [],
+          partyBooking: partyBooking || [],
+          packageBackground: packageBackground || [],
+          renewalBreakdown: renewalBreakdown || [],
+          packageBreakdown: formattedPackages || [],
+          revenueByPackage: revenueByPackage || []
+
+        },
+        lastYear: {
+          year: lastYear,
+
+          // monthlyStudents: defaultMonthlyStudents(),
+          monthlyStudents: useOrDefault(
+            lastYearMonthlyStudents,
+            defaultMonthlyStudents()
+          ),
+
+          // marketChannelPerformance: defaultCountBreakdown([
+          //   "Flyer",
+          //   "Online",
+          //   "Referral"
+          // ]),
+          marketChannelPerformance: useOrDefault(
+            lastYearMarketChannelPerformance,
+            defaultCountBreakdown(["Flyer", "Online", "Referral"])
+          ),
+
+          // sourceBreakdown: defaultCountBreakdown([
+          //   "Flyer",
+          //   "Online",
+          //   "Referral"
+          // ]),
+          sourceBreakdown: useOrDefault(
+            lastYearSourceBreakdown,
+            defaultCountBreakdown(["Flyer", "Online", "Referral"])
+          ),
+          topAgents: [
+            {
+              createdBy: null,
+              leadCount: 0,
+              creator: {}
+            }
+          ],
+
+          partyBooking: [
+            {
+              byAge: [],
+              byGender: defaultCountBreakdown(["male", "female", "other"]),
+              byTotal: [
+                {
+                  name: "Total",
+                  count: 0,
+                  percentage: 100
+                }
+              ]
+            }
+          ],
+
+          packageBackground: [
+            {
+              growth: defaultCountBreakdown(["Gold", "Silver"])
+            },
+            {
+              revenue: defaultCountBreakdown(["Gold", "Silver"])
+            }
+          ],
+
+          renewalBreakdown: defaultCountBreakdown(["Gold", "Silver"]),
+
+          packageBreakdown: defaultCountBreakdown(["Gold", "Silver"]),
+
+          revenueByPackage: defaultRevenueByPackage(["Gold", "Silver"])
+        }
+
+      }
+    };
+  } catch (error) {
+    console.error("❌ Error fetching One-to-One analytics:", error);
+    return { status: false, message: error.message };
+  }
 };
 
 exports.sendEmailToFirstParentWithBooking = async (leadIds = []) => {
