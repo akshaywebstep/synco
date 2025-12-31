@@ -14,6 +14,15 @@ const stripePromise = require("../../../utils/payment/pay360/stripe");
 const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
 const moment = require("moment");
+const useOrDefault = (data, fallback) =>
+  Array.isArray(data) && data.length > 0 ? data : fallback;
+
+// Helper to calculate percentage change average
+function calculateAverage(current, previous) {
+  if (previous === 0 && current === 0) return 0;
+  if (previous === 0) return 100; // or +Infinity, decide how to handle no previous data
+  return Math.round(((current - previous) / previous) * 100);
+}
 // ✅ Create
 exports.createBirthdayPartyLeads = async (data) => {
   try {
@@ -292,21 +301,91 @@ exports.getAllBirthdayPartyLeads = async (
     } else {
       whereSummary.createdBy = { [Op.in]: [adminId, superAdminId] };
     }
+    // In your existing function, after filters and data fetching, replace the summary block with:
 
-    const totalLeads = await BirthdayPartyLead.count({ where: whereSummary });
+    // Dates
+    const startOfThisYear = moment().startOf("year").toDate();
+    const endOfThisYear = moment().endOf("year").toDate();
 
-    const startOfMonth = moment().startOf("month").toDate();
-    const endOfMonth = moment().endOf("month").toDate();
+    const startOfLastYear = moment().subtract(1, "year").startOf("year").toDate();
+    const endOfLastYear = moment().subtract(1, "year").endOf("year").toDate();
 
-    const newLeads = await BirthdayPartyLead.count({
+    const startOfThisMonth = moment().startOf("month").toDate();
+    const endOfThisMonth = moment().endOf("month").toDate();
+
+    const startOfLastMonth = moment().subtract(1, "month").startOf("month").toDate();
+    const endOfLastMonth = moment().subtract(1, "month").endOf("month").toDate();
+
+    // Base where for leads
+    const baseWhere = { status: "pending" };
+    if (superAdminId && superAdminId === adminId) {
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id"],
+      });
+      const adminIds = managedAdmins.map((a) => a.id);
+      adminIds.push(superAdminId);
+      baseWhere.createdBy = { [Op.in]: adminIds };
+    } else {
+      baseWhere.createdBy = { [Op.in]: [adminId, superAdminId] };
+    }
+
+    // 1. totalLeads: leads WITHOUT booking in current year
+    const totalLeadsThisYear = await BirthdayPartyLead.count({
       where: {
-        ...whereSummary,
-        createdAt: { [Op.between]: [startOfMonth, endOfMonth] },
+        ...baseWhere,
+        createdAt: { [Op.between]: [startOfThisYear, endOfThisYear] },
+      },
+      include: [
+        {
+          model: BirthdayPartyBooking,
+          as: "booking",
+          required: false,
+          where: { id: null }, // no booking
+        },
+      ],
+    });
+
+    const totalLeadsLastYear = await BirthdayPartyLead.count({
+      where: {
+        ...baseWhere,
+        createdAt: { [Op.between]: [startOfLastYear, endOfLastYear] },
+      },
+      include: [
+        {
+          model: BirthdayPartyBooking,
+          as: "booking",
+          required: false,
+          where: { id: null }, // no booking
+        },
+      ],
+    });
+
+    const totalLeadsAverage = calculateAverage(totalLeadsThisYear, totalLeadsLastYear);
+
+    // 2. newLeads: leads created THIS MONTH, average change from last month
+    const newLeadsThisMonth = await BirthdayPartyLead.count({
+      where: {
+        ...baseWhere,
+        createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
       },
     });
 
-    const leadsWithBookings = await BirthdayPartyLead.count({
-      where: whereSummary,
+    const newLeadsLastMonth = await BirthdayPartyLead.count({
+      where: {
+        ...baseWhere,
+        createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
+      },
+    });
+
+    const newLeadsAverage = calculateAverage(newLeadsThisMonth, newLeadsLastMonth);
+
+    // 3. leadsWithBookings: leads WITH booking in current year, average from last year
+    const leadsWithBookingsThisYear = await BirthdayPartyLead.count({
+      where: {
+        ...baseWhere,
+        createdAt: { [Op.between]: [startOfThisYear, endOfThisYear] },
+      },
       include: [
         {
           model: BirthdayPartyBooking,
@@ -317,8 +396,26 @@ exports.getAllBirthdayPartyLeads = async (
       ],
     });
 
+    const leadsWithBookingsLastYear = await BirthdayPartyLead.count({
+      where: {
+        ...baseWhere,
+        createdAt: { [Op.between]: [startOfLastYear, endOfLastYear] },
+      },
+      include: [
+        {
+          model: BirthdayPartyBooking,
+          as: "booking",
+          required: true,
+          where: { status: "pending" },
+        },
+      ],
+    });
+
+    const leadsWithBookingsAverage = calculateAverage(leadsWithBookingsThisYear, leadsWithBookingsLastYear);
+
+    // 4. sourceOfBookings (grouped, no date filter here but you can add if needed)
     const sourceCount = await BirthdayPartyLead.findAll({
-      where: whereSummary,
+      where: baseWhere,
       attributes: [
         "source",
         [sequelize.fn("COUNT", sequelize.col("source")), "count"],
@@ -326,28 +423,38 @@ exports.getAllBirthdayPartyLeads = async (
       group: ["source"],
     });
 
+    const summary = {
+      totalLeads: {
+        count: totalLeadsThisYear,
+        average: totalLeadsAverage > 0 ? `+${totalLeadsAverage}%` : `${totalLeadsAverage}%`,
+      },
+      newLeads: {
+        count: newLeadsThisMonth,
+        average: newLeadsAverage > 0 ? `+${newLeadsAverage}%` : `${newLeadsAverage}%`,
+      },
+      leadsWithBookings: {
+        count: leadsWithBookingsThisYear,
+        average: leadsWithBookingsAverage > 0 ? `+${leadsWithBookingsAverage}%` : `${leadsWithBookingsAverage}%`,
+      },
+      sourceOfBookings: sourceCount.map((src) => ({
+        source: src.source,
+        count: Number(src.get("count")),
+      })),
+    };
+    // Return with proper message if no leads after filtering
     if (!filteredLeads.length) {
       return {
         status: true,
         message: "No leads found for the selected filters.",
-        summary: {
-          totalLeads,
-          newLeads,
-          leadsWithBookings,
-          sourceOfBookings: sourceCount,
-        },
+        summary,
+        data: [],
       };
     }
 
     return {
       status: true,
       message: "Fetched birthday party leads successfully.",
-      summary: {
-        totalLeads,
-        newLeads,
-        leadsWithBookings,
-        sourceOfBookings: sourceCount,
-      },
+      summary,
       data: formattedData,
     };
   } catch (error) {
@@ -355,7 +462,6 @@ exports.getAllBirthdayPartyLeads = async (
     return { status: false, message: error.message };
   }
 };
-
 // Get All Sales
 exports.getAllBirthdayPartyLeadsSales = async (
   superAdminId,
@@ -618,118 +724,120 @@ exports.getAllBirthdayPartyLeadsSales = async (
       })
     );
 
-    // ✅ Summary (only active)
-    const totalLeads = await BirthdayPartyLead.count({
+    const startOfThisMonth = moment().startOf("month").toDate();
+    const endOfThisMonth = moment().endOf("month").toDate();
+
+    const startOfLastMonth = moment().subtract(1, "month").startOf("month").toDate();
+    const endOfLastMonth = moment().subtract(1, "month").endOf("month").toDate();
+
+    const percent = (curr, prev) => {
+      if (!prev) return "+100%";
+      const val = Math.round(((curr - prev) / prev) * 100);
+      return `${val >= 0 ? "+" : ""}${val}%`;
+    };
+
+    const totalRevenueThisMonth = await OneToOnePayment.sum("amount", {
       where: {
-        createdBy: whereLead.createdBy,   // <-- ONLY CHANGE
-        status: "active",
+        paymentStatus: "paid",
+        createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
       },
     });
 
-    const startOfMonth = moment().startOf("month").toDate();
-    const endOfMonth = moment().endOf("month").toDate();
-
-    const newLeads = await BirthdayPartyLead.count({
+    const totalRevenueLastMonth = await OneToOnePayment.sum("amount", {
       where: {
-        createdBy: whereLead.createdBy,   // <-- ONLY CHANGE
-        status: "active",
-        createdAt: { [Op.between]: [startOfMonth, endOfMonth] },
+        paymentStatus: "paid",
+        createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
       },
     });
 
-    const leadsWithBookings = await BirthdayPartyLead.count({
-      where: {
-        createdBy: whereLead.createdBy,   // <-- ONLY CHANGE
-        status: "active",
-      },
-      include: [
-        {
-          model: BirthdayPartyBooking,
-          as: "booking",
-          required: true,
-          where: { status: "active" },
+    const getSourceRevenue = async (packageInterest, start, end) => {
+      return await OneToOnePayment.sum("amount", {
+        include: [
+          {
+            model: OneToOneBooking,
+            as: "booking",
+            required: true,
+            include: [
+              {
+                model: oneToOneLeads,
+                as: "lead",
+                required: true,
+                where: {
+                  packageInterest, // gold / silver
+                  createdAt: {
+                    [Op.between]: [start, end], // ✅ DATE FILTER HERE
+                  },
+                },
+              },
+            ],
+          },
+        ],
+        where: {
+          paymentStatus: "paid", // ✅ only successful payments
         },
-      ],
-    });
+      });
+    };
 
-    const sourceCount = await BirthdayPartyLead.findAll({
-      where: {
-        createdBy: whereLead.createdBy,   // <-- ONLY CHANGE
-        status: "active",
-      },
+    const goldThisMonth = await getSourceRevenue("gold", startOfThisMonth, endOfThisMonth);
+    const goldLastMonth = await getSourceRevenue("gold", startOfLastMonth, endOfLastMonth);
+    const silverThisMonth = await getSourceRevenue("silver", startOfThisMonth, endOfThisMonth);
+    const silverLastMonth = await getSourceRevenue("silver", startOfLastMonth, endOfLastMonth);
+    const topSalesAgent = await oneToOneLeads.findOne({
       attributes: [
-        "source",
-        [sequelize.fn("COUNT", sequelize.col("source")), "count"],
+        "createdBy",
+        [sequelize.fn("COUNT", sequelize.col("oneToOneLeads.id")), "leadCount"],
       ],
-      group: ["source"],
-    });
-
-    const topSalesAgentData = await BirthdayPartyLead.findOne({
-      where: { status: "active" },
+      where: {
+        status: "active",
+      },
       include: [
-        {
-          model: BirthdayPartyBooking,
-          as: "booking",
-          required: true,
-          where: { status: "active" },
-          attributes: [],
-        },
         {
           model: Admin,
           as: "creator",
           attributes: ["firstName", "lastName"],
         },
       ],
-      attributes: [
-        "createdBy",
-        [fn("COUNT", col("BirthdayPartyLead.id")), "leadCount"],
-      ],
-      group: [
-        "createdBy",
-        "creator.id",
-        "creator.firstName",
-        "creator.lastName",
-      ],
-      order: [[literal("leadCount"), "DESC"]],
-      raw: false,
+      group: ["createdBy", "creator.id"],
+      order: [[sequelize.literal("leadCount"), "DESC"]],
+      subQuery: false,
     });
+    const topAgent = topSalesAgent
+      ? {
+        name: `${topSalesAgent.creator.firstName} ${topSalesAgent.creator.lastName}`,
+        totalLeads: Number(topSalesAgent.get("leadCount")),
+      }
+      : null;
+    const summary = {
+      totalRevenue: {
+        amount: Number(totalRevenueThisMonth || 0),
+        percentage: percent(totalRevenueThisMonth || 0, totalRevenueLastMonth || 0),
+      },
+      goldPackageRevenue: {
+        amount: Number(goldThisMonth || 0),
+        percentage: percent(goldThisMonth || 0, goldLastMonth || 0),
+      },
+      silverPackageRevenue: {
+        amount: Number(silverThisMonth || 0),
+        percentage: percent(silverThisMonth || 0, silverLastMonth || 0),
+      },
+      topSalesAgent: topAgent,
+    };
 
-    // ✅ Properly format the response object
-    const topSalesAgent =
-      topSalesAgentData && topSalesAgentData.creator
-        ? {
-          firstName: topSalesAgentData.creator.firstName,
-          lastName: topSalesAgentData.creator.lastName,
-        }
-        : null;
-
-    console.log({ topSalesAgent });
+    // console.log({ topSalesAgent });
 
     // ✅ Final Response
     if (!filteredLeads.length) {
       return {
         status: true,
         message: "No leads found for the selected filters.",
-        summary: {
-          totalLeads,
-          newLeads,
-          leadsWithBookings,
-          sourceOfBookings: sourceCount,
-          topSalesAgent,
-        },
+        summary,
       };
     }
 
     return {
       status: true,
       message: "Fetched Birthday party leads successfully.",
-      summary: {
-        totalLeads,
-        newLeads,
-        leadsWithBookings,
-        sourceOfBookings: sourceCount,
-        topSalesAgent,
-      },
+      summary,
       data: formattedData,
     };
   } catch (error) {
@@ -1065,84 +1173,106 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
     );
 
     // ✅ Summary (only pending)
-    const totalLeads = await BirthdayPartyLead.count({
-      where: { createdBy: whereLead.createdBy },   // <-- ONLY CHANGE
-    });
+    const startOfThisMonth = moment().startOf("month").toDate();
+    const endOfThisMonth = moment().endOf("month").toDate();
 
-    const startOfMonth = moment().startOf("month").toDate();
-    const endOfMonth = moment().endOf("month").toDate();
+    const startOfLastMonth = moment().subtract(1, "month").startOf("month").toDate();
+    const endOfLastMonth = moment().subtract(1, "month").endOf("month").toDate();
 
-    const newLeads = await BirthdayPartyLead.count({
+    const percent = (curr, prev) => {
+      if (!prev) return "+100%";
+      const val = Math.round(((curr - prev) / prev) * 100);
+      return `${val >= 0 ? "+" : ""}${val}%`;
+    };
+
+    const totalRevenueThisMonth = await BirthdayPartyPayment.sum("amount", {
       where: {
-        createdBy: whereLead.createdBy,            // <-- ONLY CHANGE
-        status: "active",
-        createdAt: { [Op.between]: [startOfMonth, endOfMonth] },
+        paymentStatus: "paid",
+        createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
       },
     });
 
-    const leadsWithBookings = await BirthdayPartyLead.count({
-      where: { createdBy: whereLead.createdBy },   // <-- ONLY CHANGE
-      include: [
-        {
-          model: BirthdayPartyBooking,
-          as: "booking",
-          required: true,
-          where: { status: "active" },
-        },
-      ],
+    const totalRevenueLastMonth = await BirthdayPartyPayment.sum("amount", {
+      where: {
+        paymentStatus: "paid",
+        createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
+      },
     });
 
-    const sourceCount = await BirthdayPartyLead.findAll({
-      where: { createdBy: whereLead.createdBy },   // <-- ONLY CHANGE
+    const getSourceRevenue = async (packageInterest, start, end) => {
+      return await BirthdayPartyPayment.sum("amount", {
+        include: [
+          {
+            model: BirthdayPartyBooking,
+            as: "booking",
+            required: true,
+            include: [
+              {
+                model: BirthdayPartyLead,
+                as: "lead",
+                required: true,
+                where: {
+                  packageInterest, // gold / silver
+                  createdAt: {
+                    [Op.between]: [start, end], // ✅ DATE FILTER HERE
+                  },
+                },
+              },
+            ],
+          },
+        ],
+        where: {
+          paymentStatus: "paid", // ✅ only successful payments
+        },
+      });
+    };
+
+    const goldThisMonth = await getSourceRevenue("gold", startOfThisMonth, endOfThisMonth);
+    const goldLastMonth = await getSourceRevenue("gold", startOfLastMonth, endOfLastMonth);
+
+    const silverThisMonth = await getSourceRevenue("silver", startOfThisMonth, endOfThisMonth);
+    const silverLastMonth = await getSourceRevenue("silver", startOfLastMonth, endOfLastMonth);
+    
+    const topSalesAgent = await BirthdayPartyLead.findOne({
       attributes: [
-        "source",
-        [sequelize.fn("COUNT", sequelize.col("source")), "count"],
+        "createdBy",
+        [sequelize.fn("COUNT", sequelize.col("BirthdayPartyLead.id")), "leadCount"],
       ],
-      group: ["source"],
-    });
-
-    const topSalesAgentData = await BirthdayPartyLead.findOne({
-      where: { status: "active" },
+      where: {
+        status: "active",
+      },
       include: [
-        {
-          model: BirthdayPartyBooking,
-          as: "booking",
-          required: true,
-          where: { status: "active" },
-          attributes: [],
-        },
         {
           model: Admin,
           as: "creator",
           attributes: ["firstName", "lastName"],
         },
       ],
-      attributes: [
-        "createdBy",
-        [fn("COUNT", col("BirthdayPartyLead.id")), "leadCount"],
-      ],
-      group: [
-        "createdBy",
-        "creator.id",
-        "creator.firstName",
-        "creator.lastName",
-      ],
-      order: [[literal("leadCount"), "DESC"]],
-      raw: false,
+      group: ["createdBy", "creator.id"],
+      order: [[sequelize.literal("leadCount"), "DESC"]],
+      subQuery: false,
     });
-
-    // ✅ Properly format the response object
-    const topSalesAgent =
-      topSalesAgentData && topSalesAgentData.creator
-        ? {
-          firstName: topSalesAgentData.creator.firstName,
-          lastName: topSalesAgentData.creator.lastName,
-        }
-        : null;
-
-    console.log({
-      topSalesAgent,
-    });
+    const topAgent = topSalesAgent
+      ? {
+        name: `${topSalesAgent.creator.firstName} ${topSalesAgent.creator.lastName}`,
+        totalLeads: Number(topSalesAgent.get("leadCount")),
+      }
+      : null;
+    const summary = {
+      totalRevenue: {
+        amount: Number(totalRevenueThisMonth || 0),
+        percentage: percent(totalRevenueThisMonth || 0, totalRevenueLastMonth || 0),
+      },
+      goldPackageRevenue: {
+        amount: Number(goldThisMonth || 0),
+        percentage: percent(goldThisMonth || 0, goldLastMonth || 0),
+      },
+      silverPackageRevenue: {
+        amount: Number(silverThisMonth || 0),
+        percentage: percent(silverThisMonth || 0, silverLastMonth || 0),
+      },
+      topSalesAgent: topAgent,
+    };
 
     // ✅ Agent List (super admin + managed admins)
     let agentList = [];
@@ -1209,13 +1339,7 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
       return {
         status: true,
         message: "No birthday party leads found for the selected filters.",
-        summary: {
-          totalLeads,
-          newLeads,
-          leadsWithBookings,
-          sourceOfBookings: sourceCount,
-          topSalesAgent,
-        },
+        summary,
         agentList,
         coachList,
         data: [],
@@ -1225,13 +1349,7 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
     return {
       status: true,
       message: "Fetched Birthday Party leads successfully.",
-      summary: {
-        totalLeads,
-        newLeads,
-        leadsWithBookings,
-        sourceOfBookings: sourceCount,
-        topSalesAgent,
-      },
+      summary,
       agentList,
       coachList,
       data: formattedData,
@@ -1626,6 +1744,9 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
     // ======================================================
     // 🚨 EMERGENCY DETAILS (STRICT VALIDATION)
     // ======================================================
+    // ======================================================
+    // 🚨 EMERGENCY DETAILS (STRICT VALIDATION)
+    // ======================================================
     if (updateData?.emergencyDetails) {
       const e = updateData.emergencyDetails;
 
@@ -1636,44 +1757,50 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
           transaction: t,
         });
 
-        if (existingEmergency) {
-          await existingEmergency.update(
-            {
-              emergencyFirstName: e.emergencyFirstName ?? existingEmergency.emergencyFirstName,
-              emergencyLastName: e.emergencyLastName ?? existingEmergency.emergencyLastName,
-              emergencyPhoneNumber: e.emergencyPhoneNumber ?? existingEmergency.emergencyPhoneNumber,
-              emergencyRelation: e.emergencyRelation ?? existingEmergency.emergencyRelation,
-            },
-            { transaction: t }
-          );
+        if (!existingEmergency) {
+          await t.rollback();
+          return { status: false, message: "Emergency contact not found." };
         }
-        return; // skip creation section
-      }
 
-      // ---------- CREATE (STRICT: DO NOT SAVE EMPTY) ----------
-      const requiredEmergency = [
-        "emergencyFirstName",
-        "emergencyLastName",
-        "emergencyPhoneNumber",
-        "emergencyRelation",
-        "studentId"
-      ];
-      const missing = requiredEmergency.filter(f => !e[f] || String(e[f]).trim() === "");
-      if (missing.length > 0) {
-        await t.rollback();
-        return { status: false, message: `Missing required fields: ${missing.join(", ")}` };
-      }
+        await existingEmergency.update(
+          {
+            emergencyFirstName: e.emergencyFirstName ?? existingEmergency.emergencyFirstName,
+            emergencyLastName: e.emergencyLastName ?? existingEmergency.emergencyLastName,
+            emergencyPhoneNumber: e.emergencyPhoneNumber ?? existingEmergency.emergencyPhoneNumber,
+            emergencyRelation: e.emergencyRelation ?? existingEmergency.emergencyRelation,
+          },
+          { transaction: t }
+        );
+      } else {
+        // ---------- CREATE ----------
+        const requiredEmergency = [
+          "emergencyFirstName",
+          "emergencyLastName",
+          "emergencyPhoneNumber",
+          "emergencyRelation",
+          "studentId"
+        ];
 
-      await BirthdayPartyEmergency.create(
-        {
-          studentId: e.studentId,
-          emergencyFirstName: e.emergencyFirstName,
-          emergencyLastName: e.emergencyLastName,
-          emergencyPhoneNumber: e.emergencyPhoneNumber,
-          emergencyRelation: e.emergencyRelation,
-        },
-        { transaction: t }
-      );
+        const missing = requiredEmergency.filter(
+          f => !e[f] || String(e[f]).trim() === ""
+        );
+
+        if (missing.length > 0) {
+          await t.rollback();
+          return { status: false, message: `Missing required fields: ${missing.join(", ")}` };
+        }
+
+        await BirthdayPartyEmergency.create(
+          {
+            studentId: e.studentId,
+            emergencyFirstName: e.emergencyFirstName,
+            emergencyLastName: e.emergencyLastName,
+            emergencyPhoneNumber: e.emergencyPhoneNumber,
+            emergencyRelation: e.emergencyRelation,
+          },
+          { transaction: t }
+        );
+      }
     }
 
     await t.commit();
@@ -1862,13 +1989,38 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
 //   }
 // };
 
-// Get All One-to-One Analytics
+// Get All Birthday Party Analytics
 exports.getAllBirthdayPartyAnalytics = async (
   superAdminId,
   adminId,
   filterType
 ) => {
   try {
+    const currentYear = moment().year();
+    const lastYear = currentYear - 1;
+
+    const defaultMonthlyStudents = () =>
+      Array.from({ length: 12 }, (_, i) => ({
+        month: moment().month(i).format("MMMM"),
+        students: 0,
+        bookings: 0
+      }));
+
+    const defaultCountBreakdown = (names = []) =>
+      names.map(name => ({
+        name,
+        count: 0,
+        percentage: 0
+      }));
+
+    const defaultRevenueByPackage = (names = []) =>
+      names.map(name => ({
+        name,
+        currentRevenue: 0,
+        lastRevenue: 0,
+        revenueGrowth: 0
+      }));
+
     const whereLead = {}; // ✅ initialize first
 
     // ✅ Super Admin logic
@@ -2036,83 +2188,31 @@ exports.getAllBirthdayPartyAnalytics = async (
     const revenueThisMonth = paymentsThisMonth[0]?.total || 0;
     const revenueLastMonth = paymentsLastMonth[0]?.total || 0;
 
-    // ✅ Fetch revenue by package (THIS MONTH)
-    // const revenueThisMonthRaw = await BirthdayPartyPayment.findAll({
-    //   attributes: [
-    //     [col("booking.lead.packageInterest"), "packageName"],
-    //     [fn("SUM", col("BirthdayPartyPayment.amount")), "totalRevenue"],
-    //   ],
-    //   include: [
-    //     {
-    //       model: BirthdayPartyBooking,
-    //       as: "booking",
-    //       attributes: [],
-    //       include: [
-    //         {
-    //           model: BirthdayPartyLead,
-    //           as: "lead",
-    //           attributes: [],
-    //           where: {
-    //             ...whereLead, // ✅ filter by lead.createdBy (admin or superAdmin)
-    //             packageInterest: { [Op.in]: packages },
-    //           },
-    //           required: true,
-    //         },
-    //       ],
-    //       required: true,
-    //     },
-    //   ],
-    //   where: {
-    //     createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
-    //   },
-    //   group: ["booking.lead.packageInterest"],
-    //   raw: true,
-    // });
-
-    // // ✅ Fetch revenue by package (LAST MONTH)
-    // const revenueLastMonthRaw = await BirthdayPartyPayment.findAll({
-    //   attributes: [
-    //     [col("booking.lead.packageInterest"), "packageName"],
-    //     [fn("SUM", col("BirthdayPartyPayment.amount")), "totalRevenue"],
-    //   ],
-    //   include: [
-    //     {
-    //       model: BirthdayPartyBooking,
-    //       as: "booking",
-    //       attributes: [],
-    //       include: [
-    //         {
-    //           model: BirthdayPartyLead,
-    //           as: "lead",
-    //           attributes: [],
-    //           where: {
-    //             ...whereLead, // ✅ same filter for last month
-    //             packageInterest: { [Op.in]: packages },
-    //           },
-    //           required: true,
-    //         },
-    //       ],
-    //       required: true,
-    //     },
-    //   ],
-    //   where: {
-    //     createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
-    //   },
-    //   group: ["booking.lead.packageInterest"],
-    //   raw: true,
-    // });
-
     // ✅ Source Breakdown (Marketing)
     const sourceBreakdown = await BirthdayPartyLead.findAll({
-      where: whereLead, // ✅ filter by createdBy (admin or superAdmin scope)
-      attributes: ["source", [fn("COUNT", col("source")), "count"]],
-      group: ["source"],
-      raw: true,
+      where: {
+        ...whereLead,
+        createdAt: {
+          [Op.between]: [
+            moment().startOf("year").toDate(),
+            moment().endOf("year").toDate()
+          ]
+        }
+      }
+
     });
 
     // ✅ Top Agents
     const topAgents = await BirthdayPartyLead.findAll({
-      where: whereLead, // ✅ filter by same createdBy logic
+      where: {
+        ...whereLead,
+        createdAt: {
+          [Op.between]: [
+            moment().startOf("year").toDate(),
+            moment().endOf("year").toDate(),
+          ],
+        },
+      }, // ✅ filter by same createdBy logic
       attributes: ["createdBy", [fn("COUNT", col("createdBy")), "leadCount"]],
       include: [
         {
@@ -2124,7 +2224,12 @@ exports.getAllBirthdayPartyAnalytics = async (
       group: ["createdBy", "creator.id"], // ✅ include all group fields
       order: [[literal("leadCount"), "DESC"]],
     });
-
+    // 🧠 Generate all 12 months (Jan → Dec)
+    const allMonths = Array.from({ length: 12 }, (_, i) => ({
+      month: moment().month(i).format("MMMM"),
+      students: 0,
+      bookings: 0,
+    }));
     // ✅ One-to-One Students (monthly trend — show all months)
     const monthlyStudentsRaw = await BirthdayPartyBooking.findAll({
       attributes: [
@@ -2164,12 +2269,90 @@ exports.getAllBirthdayPartyAnalytics = async (
       raw: true,
     });
 
-    // 🧠 Generate all 12 months (Jan → Dec)
-    const allMonths = Array.from({ length: 12 }, (_, i) => ({
-      month: moment().month(i).format("MMMM"),
-      students: 0,
-      bookings: 0,
-    }));
+    const lastYearMonthlyStudentsRaw = await BirthdayPartyBooking.findAll({
+      attributes: [
+        [fn("DATE_FORMAT", col("BirthdayPartyBooking.createdAt"), "%M"), "month"],
+        [fn("COUNT", col("BirthdayPartyBooking.id")), "bookings"],
+        [fn("COUNT", fn("DISTINCT", col("students.id"))), "students"],
+      ],
+      include: [
+        {
+          model: BirthdayPartyStudent,
+          as: "students",
+          attributes: [],
+          required: true,
+        },
+        {
+          model: BirthdayPartyLead,
+          as: "lead",
+          attributes: [],
+          where: whereLead,
+          required: true,
+        },
+      ],
+      where: {
+        status: { [Op.in]: ["pending", "active"] },
+        createdAt: {
+          [Op.between]: [
+            moment().subtract(1, "year").startOf("year").toDate(),
+            moment().subtract(1, "year").endOf("year").toDate(),
+          ],
+        },
+      },
+      group: [fn("MONTH", col("BirthdayPartyBooking.createdAt"))],
+      order: [[fn("MONTH", col("BirthdayPartyBooking.createdAt")), "ASC"]],
+      raw: true,
+    });
+    const lastYearMonthlyStudents = allMonths.map((m) => {
+      const found = lastYearMonthlyStudentsRaw.find(
+        (r) => r.month === m.month
+      );
+
+      return {
+        month: m.month,
+        students: found ? parseInt(found.students, 10) : 0,
+        bookings: found ? parseInt(found.bookings, 10) : 0
+      };
+    });
+    const lastYearMarketChannelRaw = await BirthdayPartyLead.findAll({
+      attributes: ["source", [fn("COUNT", col("source")), "count"]],
+      where: {
+        ...whereLead,
+        source: { [Op.ne]: null },
+        createdAt: {
+          [Op.between]: [
+            moment().subtract(1, "year").startOf("year").toDate(),
+            moment().subtract(1, "year").endOf("year").toDate()
+          ]
+        }
+      },
+      group: ["source"],
+      raw: true
+    });
+
+    const lastYearTotalSources = lastYearMarketChannelRaw.reduce(
+      (sum, s) => sum + parseInt(s.count, 10),
+      0
+    );
+    const lastYearSourceBreakdown = lastYearMarketChannelRaw.map(s => ({
+      name: s.source,
+      count: parseInt(s.count, 10),
+      percentage: 0
+    }))
+
+    const lastYearMarketChannelPerformance = lastYearMarketChannelRaw.map((s) => {
+      const count = parseInt(s.count, 10);
+      const percentage =
+        lastYearTotalSources > 0
+          ? ((count / lastYearTotalSources) * 100).toFixed(2)
+          : 0;
+
+      return {
+        name: s.source,
+        count,
+        percentage: parseFloat(percentage)
+      };
+    });
 
     // 🧩 Merge DB results into allMonths
     const monthlyStudents = allMonths.map((m) => {
@@ -2215,6 +2398,14 @@ exports.getAllBirthdayPartyAnalytics = async (
 
     // ✅ Renewal Breakdown (Gold, Silver, Platinum)
     const renewalBreakdownRaw = await BirthdayPartyBooking.findAll({
+      where: {
+        createdAt: {
+          [Op.between]: [
+            moment().startOf("year").toDate(),
+            moment().endOf("year").toDate()
+          ]
+        }
+      },
       attributes: [
         [col("lead.packageInterest"), "packageName"], // join with lead’s package
         [fn("COUNT", col("BirthdayPartyBooking.id")), "count"],
@@ -2350,11 +2541,16 @@ exports.getAllBirthdayPartyAnalytics = async (
     const marketChannelRaw = await BirthdayPartyLead.findAll({
       attributes: ["source", [fn("COUNT", col("source")), "count"]],
       where: {
-        ...whereLead, // ✅ filter by createdBy (admin or superAdmin scope)
-        source: { [Op.ne]: null }, // exclude null sources
-      },
-      group: ["source"],
-      raw: true,
+        ...whereLead,
+        source: { [Op.ne]: null },
+        createdAt: {
+          [Op.between]: [
+            moment().startOf("year").toDate(),
+            moment().endOf("year").toDate()
+          ]
+        }
+      }
+
     });
 
     // 🧮 Calculate total leads for percentage
@@ -2489,23 +2685,39 @@ exports.getAllBirthdayPartyAnalytics = async (
     );
 
     const revenue = ["Gold", "Silver"].map(pkgName => {
-      const found = revenueByPackage.find(r => r.name === pkgName);
-      const count = found ? found.currentRevenue : 0;
-      const percentage =
-        totalRevenue > 0 ? parseFloat(((count / totalRevenue) * 100).toFixed(2)) : 0;
+      const found = revenueByPackage.find(
+        r => r.name?.toLowerCase() === pkgName.toLowerCase()
+      );
 
-      return {
-        name: pkgName,
-        count,
-        percentage
-      };
-    }).filter(item => item.count > 0);
+      const count = found?.currentRevenue ?? 0;
+      const percentage =
+        totalRevenue > 0
+          ? Number(((count / totalRevenue) * 100).toFixed(2))
+          : 0;
+
+      return { name: pkgName, count, percentage };
+    });
 
     // 3️⃣ Final output
     const packageBackground = [
       { growth },
       { revenue }
     ];
+    // ===============================
+    // PACKAGE REVENUE (SUMMARY)
+    // ===============================
+
+    const revenueGoldThisMonth =
+      revenueByPackage.find(p => p.name === "Gold")?.currentRevenue || 0;
+
+    const revenueGoldLastMonth =
+      revenueByPackage.find(p => p.name === "Gold")?.lastRevenue || 0;
+
+    const revenueSilverThisMonth =
+      revenueByPackage.find(p => p.name === "Silver")?.currentRevenue || 0;
+
+    const revenueSilverLastMonth =
+      revenueByPackage.find(p => p.name === "Silver")?.lastRevenue || 0;
 
     // ✅ Final Structured Response (matches Figma)
     return {
@@ -2528,23 +2740,97 @@ exports.getAllBirthdayPartyAnalytics = async (
           thisMonth: revenueThisMonth,
           previousMonth: revenueLastMonth,
         },
-        // revenueThisMonthRaw: {
-        //   thisMonth: revenueThisMonthRaw,
-        //   previousMonth: revenueLastMonthRaw,
-        // },
+        revenueGoldPackage: {
+          thisMonth: revenueGoldThisMonth,
+          previousMonth: revenueGoldLastMonth,
+        },
+        revenueSilverPackage: {
+          thisMonth: revenueSilverThisMonth,
+          previousMonth: revenueSilverLastMonth,
+        }
       },
+
       charts: {
-        monthlyStudents, // for line chart
-        // revenueByPackage, // donut chart
-        marketChannelPerformance,
-        sourceBreakdown, // marketing channels
-        topAgents, // top agents
-        partyBooking,
-        packageBackground,
-        renewalBreakdown, // renewal chart
-        packageBreakdown: formattedPackages,
-        revenueByPackage,
-      },
+        currentYear: {
+          year: currentYear,
+          monthlyStudents: monthlyStudents || [],
+          marketChannelPerformance: marketChannelPerformance || [],
+          sourceBreakdown: sourceBreakdown || [],
+          topAgents: topAgents || [],
+          partyBooking: partyBooking || [],
+          packageBackground: packageBackground || [],
+          renewalBreakdown: renewalBreakdown || [],
+          packageBreakdown: formattedPackages || [],
+          revenueByPackage: revenueByPackage || []
+
+        },
+        lastYear: {
+          year: lastYear,
+
+          // monthlyStudents: defaultMonthlyStudents(),
+          monthlyStudents: useOrDefault(
+            lastYearMonthlyStudents,
+            defaultMonthlyStudents()
+          ),
+
+          // marketChannelPerformance: defaultCountBreakdown([
+          //   "Flyer",
+          //   "Online",
+          //   "Referral"
+          // ]),
+          marketChannelPerformance: useOrDefault(
+            lastYearMarketChannelPerformance,
+            defaultCountBreakdown(["Flyer", "Online", "Referral"])
+          ),
+
+          // sourceBreakdown: defaultCountBreakdown([
+          //   "Flyer",
+          //   "Online",
+          //   "Referral"
+          // ]),
+          sourceBreakdown: useOrDefault(
+            lastYearSourceBreakdown,
+            defaultCountBreakdown(["Flyer", "Online", "Referral"])
+          ),
+          topAgents: [
+            {
+              createdBy: null,
+              leadCount: 0,
+              creator: {}
+            }
+          ],
+
+          partyBooking: [
+            {
+              byAge: [],
+              byGender: defaultCountBreakdown(["male", "female", "other"]),
+              byTotal: [
+                {
+                  name: "Total",
+                  count: 0,
+                  percentage: 100
+                }
+              ]
+            }
+          ],
+
+          packageBackground: [
+            {
+              growth: defaultCountBreakdown(["Gold", "Silver"])
+            },
+            {
+              revenue: defaultCountBreakdown(["Gold", "Silver"])
+            }
+          ],
+
+          renewalBreakdown: defaultCountBreakdown(["Gold", "Silver"]),
+
+          packageBreakdown: defaultCountBreakdown(["Gold", "Silver"]),
+
+          revenueByPackage: defaultRevenueByPackage(["Gold", "Silver"])
+        }
+
+      }
     };
   } catch (error) {
     console.error("❌ Error fetching One-to-One analytics:", error);

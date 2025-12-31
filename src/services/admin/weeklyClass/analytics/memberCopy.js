@@ -1,6 +1,4 @@
 // services/admin/monthlyClass.js
-
-// services/admin/monthlyClass.js
 const moment = require("moment");
 const { Op } = require("sequelize");
 
@@ -622,42 +620,3 @@ const getMonthlyReport = async (filters) => {
 };
 
 module.exports = { getMonthlyReport };
-
-// const moment = require("moment");
-// const { Op } = require("sequelize");
-
-// const {
-//   Booking,
-//   BookingStudentMeta,
-//   BookingParentMeta,
-//   BookingEmergencyMeta,
-//   ClassSchedule,
-//   Venue,
-//   Lead,
-//   BookingPayment,
-//   PaymentPlan,
-//   Admin,
-// } = require("../../../../models");
-
-// // / Helper
-
-// const VALID_MEMBER_STATUSES = ["active", "attended", "expired"];
-// const PAID_TYPE = "paid";
-
-// // TOTAL MEMBERS (Current Year)
-// function calculateTotalMembers(bookings, year) {
-//   const uniqueStudents = new Set();
-
-//   bookings.forEach(b => {
-//     if (
-//       b.bookingType !== PAID_TYPE ||
-//       !VALID_MEMBER_STATUSES.includes(b.status)
-//     ) return;
-
-//     if (moment(b.createdAt).year() !== year) return;
-
-//     (b.students || []).forEach(s => uniqueStudents.add(s.id));
-//   });
-
-//   return uniqueStudents.size;
-// }

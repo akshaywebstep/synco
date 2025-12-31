@@ -67,7 +67,7 @@ router.delete("/session-plan-birthdayParty/delete/:id", authMiddleware, permissi
 router.delete(
   "/session-plan-birthdayParty/:id/level/:levelKey",
   authMiddleware,
-  permissionMiddleware("session-plan-birthdayParty", "view -listing"),
+  permissionMiddleware("session-plan-birthdayParty", "view-listing"),
   deleteSessionPlanConfigLevel
 );
 
