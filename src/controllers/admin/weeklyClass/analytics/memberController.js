@@ -47,7 +47,9 @@ exports.getMonthlyReport = async (req, res) => {
     adminId,
     superAdminId,
     student: { name: req.query.studentName?.trim() || "" },
-    venue: { name: req.query.venueName?.trim() || "" },
+    venue: {
+      name: (req.query.venueName || req.query.venue || "").trim(),
+    },
     paymentPlan: {
       interval: req.query.paymentPlanInterval?.trim() || "",
       duration: Number(req.query.paymentPlanDuration) || 0,
@@ -65,7 +67,16 @@ exports.getMonthlyReport = async (req, res) => {
 
   try {
     // Pass filters (if any) from query params to service
-    const reportResult = await memberAnalytics.getMonthlyReport(filters);
+    const reportResult = await memberAnalytics.getMonthlyReport({
+      adminId,
+      superAdminId,
+      filter: {
+        venue: filters.venue,
+        venueId: filters.venueId,
+        age: filters.age,
+        period: filters.period,
+      },
+    });
 
     if (!reportResult.status) {
       const errorMsg =

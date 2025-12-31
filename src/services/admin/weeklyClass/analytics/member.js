@@ -1,618 +1,711 @@
-// services/admin/monthlyClass.js
 const moment = require("moment");
 const { Op } = require("sequelize");
 
 const {
   Booking,
   BookingStudentMeta,
-  BookingParentMeta,
-  BookingEmergencyMeta,
-  ClassSchedule,
-  Venue,
-  Lead,
   BookingPayment,
   PaymentPlan,
   Admin,
+  Lead,
+  Venue,
 } = require("../../../../models");
 
-// Helper functions
-function totalRevenueSum(bookings) {
+/* ================= CONSTANTS ================= */
+const VALID_MEMBER_STATUSES = ["active", "attended", "cancelled"];
+const PAID_TYPE = "paid";
+const usedVenues = new Map();
+/* ================= HELPERS ================= */
+function getBookingEndDate(booking) {
+  if (!booking.paymentPlan) return null;
+
+  const start = moment(booking.createdAt);
+  const months = convertPlanToMonths(booking.paymentPlan);
+
+  return start.clone().add(months, "months");
+}
+
+function convertPlanToMonths(paymentPlan) {
+  if (!paymentPlan || !paymentPlan.interval || !paymentPlan.duration) return 0;
+
+  const interval = paymentPlan.interval.toLowerCase();
+  const duration = Number(paymentPlan.duration);
+
+  switch (interval) {
+    case "month":
+      return duration;
+
+    case "quarter":
+      return duration * 3;
+
+    case "year":
+      return duration * 12;
+
+    default:
+      return 0;
+  }
+}
+
+/* ================= METRICS ================= */
+
+// 1️⃣ TOTAL MEMBERS (CURRENT YEAR)
+function calculateTotalMembersForPeriod(bookings, year, month) {
+  const students = new Set();
+
+  bookings.forEach(b => {
+    if (b.bookingType !== PAID_TYPE) return;
+    if (!VALID_MEMBER_STATUSES.includes(b.status)) return;
+    if (
+      moment(b.createdAt).year() !== year ||
+      moment(b.createdAt).month() !== month
+    ) return;
+
+    (b.students || []).forEach(s => students.add(s.id));
+  });
+
+  return students.size;
+}
+// 2️⃣ MONTHLY REVENUE
+function calculateMonthlyRevenue(bookings, year, month) {
   return bookings.reduce((sum, b) => {
-    if (b.paymentPlan && Array.isArray(b.students)) {
-      sum += Number(b.paymentPlan.price || 0) * b.students.length;
+    if (
+      b.bookingType === PAID_TYPE &&
+      VALID_MEMBER_STATUSES.includes(b.status) &&
+      moment(b.createdAt).year() === year &&
+      moment(b.createdAt).month() === month
+    ) {
+      sum += (Number(b.paymentPlan?.price) || 0) * (b.students?.length || 0);
     }
     return sum;
   }, 0);
 }
 
-function totalUnpaidRevenueSum(bookings) {
-  return bookings
-    .filter(b => b.bookingType !== "paid" && b.paymentPlan && Array.isArray(b.students))
-    .reduce((sum, b) => {
-      sum += Number(b.paymentPlan.price || 0) * b.students.length;
-      return sum;
-    }, 0);
+// 3️⃣ AVERAGE MONTHLY FEE
+function calculateAverageMonthlyFee(bookings, year, month) {
+  let total = 0;
+  let count = 0;
+
+  bookings.forEach(b => {
+    if (
+      b.bookingType === PAID_TYPE &&
+      VALID_MEMBER_STATUSES.includes(b.status) &&
+      moment(b.createdAt).year() === year &&
+      moment(b.createdAt).month() === month &&
+      b.paymentPlan?.price
+    ) {
+      total += Number(b.paymentPlan.price);
+      count++;
+    }
+  });
+
+  return count ? Number((total / count).toFixed(2)) : 0;
 }
 
-// function totalPaidRevenueSum(bookings) {
-//   return bookings
-function totalPaidRevenueSum(bookings) {
-  return bookings
-    .filter(b => b.bookingType === "paid" && b.paymentPlan && Array.isArray(b.students))
-    .reduce((sum, b) => {
-      sum += Number(b.paymentPlan.price || 0) * b.students.length;
-      return sum;
-    }, 0);
+// 4️⃣ AVERAGE LIFE CYCLE (MONTHS)
+function calculateAverageLifeCycle(bookings, year, month) {
+  let totalMonths = 0;
+  let count = 0;
+
+  bookings.forEach(b => {
+    if (b.bookingType !== PAID_TYPE) return;
+    if (!VALID_MEMBER_STATUSES.includes(b.status)) return;
+    if (moment(b.createdAt).year() !== year) return;
+    if (moment(b.createdAt).month() !== month) return;
+    if (!b.paymentPlan) return;
+
+    const months = convertPlanToMonths(b.paymentPlan);
+    if (!months) return;
+
+    totalMonths += months;
+    count++;
+  });
+
+  return count ? Number((totalMonths / count).toFixed(2)) : 0;
 }
 
-function countPaidBookings(bookings) {
-  return bookings.filter((b) => b.bookingType === "paid").length;
+// 5️⃣ NEW STUDENTS
+function calculateNewStudents(bookings, year, month) {
+  let count = 0;
+
+  bookings.forEach(b => {
+    if (b.bookingType !== PAID_TYPE) return;
+    if (!VALID_MEMBER_STATUSES.includes(b.status)) return;
+
+    (b.students || []).forEach(s => {
+      if (
+        moment(s.createdAt).year() === year &&
+        moment(s.createdAt).month() === month
+      ) {
+        count++;
+      }
+    });
+  });
+
+  return count;
 }
 
-function calcPercentageDiff(currentStats, lastStats, isYear = false) {
-  if (!lastStats) {
-    return {
-      percent: 0,
-      color: "gray",
-      message: "No previous data",
-      ...(isYear
-        ? { currentYearStats: currentStats, lastYearStats: null }
-        : { currentMonthStats: currentStats, lastMonthStats: null }),
-    };
+// 6️⃣ RETENTION (FIXED – REAL SUBSCRIPTION LOGIC)
+function calculateRetentionForMonth(bookings, year, month) {
+  const monthStart = moment().year(year).month(month).startOf("month");
+  const monthEnd = monthStart.clone().endOf("month");
+
+  const startActiveStudents = new Set();
+  const endActiveStudents = new Set();
+
+  bookings.forEach(b => {
+    if (b.bookingType !== PAID_TYPE) return;
+    if (!VALID_MEMBER_STATUSES.includes(b.status)) return;
+    if (!b.paymentPlan) return;
+
+    const bookingStart = moment(b.createdAt);
+    const bookingEnd = getBookingEndDate(b);
+
+    if (!bookingEnd) return;
+
+    (b.students || []).forEach(s => {
+      // Active at START of month
+      if (
+        bookingStart.isSameOrBefore(monthStart) &&
+        bookingEnd.isAfter(monthStart)
+      ) {
+        startActiveStudents.add(s.id);
+      }
+
+      // Active at END of month
+      if (
+        bookingStart.isSameOrBefore(monthEnd) &&
+        bookingEnd.isAfter(monthEnd)
+      ) {
+        endActiveStudents.add(s.id);
+      }
+    });
+  });
+
+  if (!startActiveStudents.size) return 0;
+
+  // retained = students active at start AND end
+  let retained = 0;
+  startActiveStudents.forEach(id => {
+    if (endActiveStudents.has(id)) retained++;
+  });
+
+  return Number(((retained / startActiveStudents.size) * 100).toFixed(2));
+}
+function calculateActiveMembersForMonth(bookings, year, month) {
+  const monthStart = moment().year(year).month(month).startOf("month");
+  const monthEnd = monthStart.clone().endOf("month");
+
+  const students = new Set();
+
+  bookings.forEach(b => {
+    if (b.bookingType !== PAID_TYPE) return;
+    if (!VALID_MEMBER_STATUSES.includes(b.status)) return;
+    if (!b.paymentPlan) return;
+
+    const bookingStart = moment(b.createdAt);
+    const bookingEnd = getBookingEndDate(b);
+
+    if (!bookingEnd) return;
+
+    // Booking must cover the month
+    if (
+      bookingStart.isSameOrBefore(monthEnd) &&
+      bookingEnd.isSameOrAfter(monthStart)
+    ) {
+      (b.students || []).forEach(s => students.add(s.id));
+    }
+  });
+
+  return students.size;
+}
+
+// Duration of membership
+function calculateMembershipDurationBreakdown(bookings) {
+  const buckets = {
+    "1-2 Months": 0,
+    "3-4 Months": 0,
+    "5-6 Months": 0,
+    "7-8 Months": 0,
+    "9-10 Months": 0,
+    "11-12 Months": 0,
+  };
+
+  let total = 0;
+
+  bookings.forEach(b => {
+    if (b.bookingType !== PAID_TYPE) return;
+    if (!VALID_MEMBER_STATUSES.includes(b.status)) return;
+    if (!b.paymentPlan) return;
+
+    const months = convertPlanToMonths(b.paymentPlan);
+    if (!months) return;
+
+    total++;
+
+    if (months <= 2) buckets["1-2 Months"]++;
+    else if (months <= 4) buckets["3-4 Months"]++;
+    else if (months <= 6) buckets["5-6 Months"]++;
+    else if (months <= 8) buckets["7-8 Months"]++;
+    else if (months <= 10) buckets["9-10 Months"]++;
+    else if (months >= 11) buckets["11-12 Months"]++;
+  });
+
+  // Convert to percentages
+  return Object.entries(buckets).map(([label, count]) => ({
+    label,
+    percentage: total ? Number(((count / total) * 100).toFixed(1)) : 0,
+  }));
+}
+
+// 7️⃣ ENROLLED STUDENTS BY AGE
+function calculateEnrolledByAge(bookings) {
+  const ageCounts = {};
+  let total = 0;
+
+  bookings.forEach(b => {
+    if (b.bookingType !== PAID_TYPE) return;
+    if (!VALID_MEMBER_STATUSES.includes(b.status)) return;
+
+    (b.students || []).forEach(s => {
+      if (s.age) {
+        ageCounts[s.age] = (ageCounts[s.age] || 0) + 1;
+        total++;
+      }
+    });
+  });
+
+  // Convert to array with count and percentage
+  return Object.entries(ageCounts)
+    .sort((a, b) => Number(a[0]) - Number(b[0])) // Sort by age ascending
+    .map(([age, count]) => ({
+      label: `${age} Years`,
+      count,
+      percentage: total ? Number(((count / total) * 100).toFixed(2)) : 0,
+    }));
+}
+
+// 8️⃣ ENROLLED STUDENTS BY GENDER
+function calculateEnrolledByGender(bookings) {
+  const genderCounts = { male: 0, female: 0, other: 0 };
+  let total = 0;
+
+  bookings.forEach(b => {
+    if (b.bookingType !== PAID_TYPE) return;
+    if (!VALID_MEMBER_STATUSES.includes(b.status)) return;
+
+    (b.students || []).forEach(s => {
+      if (s.gender) {
+        const genderKey = s.gender.toLowerCase();
+        if (!genderCounts.hasOwnProperty(genderKey)) {
+          genderCounts[genderKey] = 0; // For unexpected genders
+        }
+        genderCounts[genderKey]++;
+        total++;
+      }
+    });
+  });
+
+  return Object.entries(genderCounts).map(([gender, count]) => ({
+    label: gender.charAt(0).toUpperCase() + gender.slice(1),
+    count,
+    percentage: total ? Number(((count / total) * 100).toFixed(2)) : 0,
+  }));
+}
+
+// Members plan
+function calculatePlanUsageAndRevenue(bookings) {
+  const planMap = {};
+  let totalMembers = 0;
+  let totalRevenue = 0;
+
+  bookings.forEach(b => {
+    if (b.bookingType !== PAID_TYPE) return;
+    if (!VALID_MEMBER_STATUSES.includes(b.status)) return;
+    if (!b.paymentPlan || !b.paymentPlan.title) return;
+
+    const title = b.paymentPlan.title;
+    const price = Number(b.paymentPlan.price) || 0;
+    const studentCount = b.students?.length || 0;
+    const revenue = price * studentCount;
+
+    if (!planMap[title]) {
+      planMap[title] = {
+        title,
+        members: 0,
+        revenue: 0,
+      };
+    }
+
+    planMap[title].members += studentCount;
+    planMap[title].revenue += revenue;
+
+    totalMembers += studentCount;
+    totalRevenue += revenue;
+  });
+
+  return Object.values(planMap).map(plan => ({
+    title: plan.title,
+
+    // MEMBERS DATA (for donut)
+    members: {
+      count: plan.members,
+      percentage: totalMembers
+        ? Number(((plan.members / totalMembers) * 100).toFixed(1))
+        : 0,
+    },
+
+    // REVENUE DATA
+    revenue: {
+      amount: plan.revenue,
+      percentage: totalRevenue
+        ? Number(((plan.revenue / totalRevenue) * 100).toFixed(1))
+        : 0,
+    },
+  }));
+}
+
+function calculateMembershipSource(bookings) {
+  const sourceMap = {};
+  let totalBookings = 0;
+
+  bookings.forEach(b => {
+    if (b.bookingType !== PAID_TYPE) return;
+    if (!VALID_MEMBER_STATUSES.includes(b.status)) return;
+
+    // ✅ booking must have leadId
+    if (!b.leadId || !b.lead) return;
+
+    const source = b.lead.status
+      ? b.lead.status.trim().toLowerCase()
+      : "others";
+
+    if (!sourceMap[source]) {
+      sourceMap[source] = 0;
+    }
+
+    // ✅ 1 booking = 1 count
+    sourceMap[source] += 1;
+    totalBookings += 1;
+  });
+
+  return Object.entries(sourceMap).map(([source, count]) => ({
+    label: source.charAt(0).toUpperCase() + source.slice(1),
+    count,
+    percentage: totalBookings
+      ? Number(((count / totalBookings) * 100).toFixed(1))
+      : 0,
+  }));
+}
+
+function generateMembersComparisonGraph(bookings) {
+  const now = moment();
+  const currentYear = now.year();
+  const previousYear = currentYear - 1;
+
+  const labels = moment.monthsShort(); // ["Jan","Feb",...]
+  const currentYearData = [];
+  const previousYearData = [];
+
+  for (let month = 0; month < 12; month++) {
+    currentYearData.push(
+      calculateActiveMembersForMonth(bookings, currentYear, month)
+    );
+
+    previousYearData.push(
+      calculateActiveMembersForMonth(bookings, previousYear, month)
+    );
   }
 
-  const current = currentStats.totalRevenue;
-  const last = lastStats.totalRevenue;
-
-  if (last === 0 && current === 0)
-    return { percent: 0, color: "gray", message: "No change" };
-
-  const diff = ((current - last) / last) * 100;
   return {
-    percent: Math.abs(diff.toFixed(2)),
-    color: diff >= 0 ? "green" : "red",
-    message:
-      diff >= 0
-        ? `Increased by ${Math.abs(diff.toFixed(2))}%`
-        : `Decreased by ${Math.abs(diff.toFixed(2))}%`,
-    ...(isYear
-      ? { currentYearStats: currentStats, lastYearStats: lastStats }
-      : { currentMonthStats: currentStats, lastMonthStats: lastStats }),
+    labels,
+    series: [
+      {
+        name: `${currentYear} Members`,
+        data: currentYearData,
+      },
+      {
+        name: `${previousYear} Members`,
+        data: previousYearData,
+      },
+    ],
   };
 }
 
-function convertDurationToMonths(paymentPlan) {
-  if (!paymentPlan) return 0;
-  const interval = (paymentPlan.interval || "").toLowerCase();
-  const duration = Number(paymentPlan.duration || 0);
-  switch (interval) {
-    case "year":
-      return duration * 12;
-    case "quarter":
-      return duration * 3;
-    default:
-      return duration;
-  }
-}
+/* ================= DASHBOARD ================= */
 
-function generateDurationRanges(maxMonths = 24, step = 2) {
-  const ranges = [];
-  for (let start = 1; start <= maxMonths; start += step) {
-    const end = start + step - 1;
-    ranges.push({
-      label: `${start}-${end} Months`,
-      min: start,
-      max: end,
-      bookings: 0,
-    });
-  }
-  return ranges;
-}
+function calculateDashboardStats(filteredBookings) {
+  const now = moment();
+  const year = now.year();
+  const month = now.month();
+  const prev = now.clone().subtract(1, "month");
 
-function calculateDurationOfMembership(bookings) {
-  const ranges = generateDurationRanges(24, 2); // generates ranges like 1-2, 3-4, ..., 23-24
-
-  bookings.forEach((b) => {
-    const months = convertDurationToMonths(b.paymentPlan);
-    const range = ranges.find((r) => months >= r.min && months <= r.max);
-    if (range) {
-      range.bookings += 1;
-      range.students = (range.students || 0) + (b.students?.length || 0);
-    }
-  });
-
-  const result = {};
-  ranges.forEach((r) => {
-    if (r.bookings > 0) {
-      result[r.label] = {
-        bookings: r.bookings,
-        students: r.students || 0,
-      };
-    }
-  });
-
-  return result;
-}
-
-const usedVenues = new Map();
-
-// Group bookings by Year → Month
-function groupBookingsByYearMonth(bookings, filter) {
-  if (!bookings || bookings.length === 0) return {};
-
-  bookings.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-
-  const startDate = moment(bookings[0].createdAt).startOf("month");
-  const endDate = moment(bookings[bookings.length - 1].createdAt).endOf(
-    "month"
+  const retentionCurrent = calculateRetentionForMonth(
+    filteredBookings,
+    year,
+    month
   );
 
-  const grouped = {};
-  let current = startDate.clone();
+  const retentionPrevious = calculateRetentionForMonth(
+    filteredBookings,
+    prev.year(),
+    prev.month()
+  );
 
-  while (current.isSameOrBefore(endDate, "month")) {
-    const yearKey = current.format("YYYY");
-    const monthKey = current.format("MM");
+  const totalMembersCurrent = calculateTotalMembersForPeriod(
+    filteredBookings,
+    year,
+    month
+  );
 
-    const monthBookings = bookings.filter((b) =>
-      moment(b.createdAt).isBetween(
-        current.clone().startOf("month"),
-        current.clone().endOf("month"),
-        null,
-        "[]"
-      )
-    );
+  const totalMembersPrevious = calculateTotalMembersForPeriod(
+    filteredBookings,
+    prev.year(),
+    prev.month()
+  );
 
-    const durationOfMembership = calculateDurationOfMembership(monthBookings);
+  return {
+    totalMembers: {
+      current: totalMembersCurrent,
+      previous: totalMembersPrevious,
+      average: Number(
+        ((totalMembersCurrent + totalMembersPrevious) / 2).toFixed(2)
+      ),
+    },
 
-    const totalRevenue = totalRevenueSum(monthBookings);
-    const totalPaidRevenue = totalPaidRevenueSum(monthBookings);
-    const totalUnpaidRevenue = totalUnpaidRevenueSum(monthBookings);
-    const bookingCount = monthBookings.length;
-    const paidBookingCount = countPaidBookings(monthBookings);
-    const unpaidBookingCount = bookingCount - paidBookingCount;
+    monthlyRevenue: {
+      current: calculateMonthlyRevenue(filteredBookings, year, month),
+      previous: calculateMonthlyRevenue(
+        filteredBookings,
+        prev.year(),
+        prev.month()
+      ),
+      average: Number(
+        (
+          (calculateMonthlyRevenue(filteredBookings, year, month) +
+            calculateMonthlyRevenue(
+              filteredBookings,
+              prev.year(),
+              prev.month()
+            )) / 2
+        ).toFixed(2)
+      ),
+    },
 
-    const totalSales = {
-      totalRevenue,
-      totalPaidRevenue,
-      totalUnpaidRevenue,
-      bookingCount,
-      paidBookingCount,
-      unpaidBookingCount,
-    };
+    averageMonthlyFee: {
+      current: calculateAverageMonthlyFee(filteredBookings, year, month),
+      previous: calculateAverageMonthlyFee(
+        filteredBookings,
+        prev.year(),
+        prev.month()
+      ),
+      average: Number(
+        (
+          (calculateAverageMonthlyFee(filteredBookings, year, month) +
+            calculateAverageMonthlyFee(
+              filteredBookings,
+              prev.year(),
+              prev.month()
+            )) / 2
+        ).toFixed(2)
+      ),
+    },
 
-    // const agents = [];
-    const agents = {};
-    const filteredBookings = [];
-    const newStudents = [];
-    const enrolledStudents = { byAge: {}, byGender: {} };
-    const paymentPlansTrend = [];
-    monthBookings.forEach((b) => {
-      let valid = true;
+    averageLifeCycle: {
+      current: calculateAverageLifeCycle(filteredBookings, year, month),
+      previous: calculateAverageLifeCycle(
+        filteredBookings,
+        prev.year(),
+        prev.month()
+      ),
+      average: Number(
+        (
+          (calculateAverageLifeCycle(filteredBookings, year, month) +
+            calculateAverageLifeCycle(
+              filteredBookings,
+              prev.year(),
+              prev.month()
+            )) / 2
+        ).toFixed(2)
+      ),
+    },
 
-      if (b.paymentPlan) {
-        // Check if this paymentPlan.id already exists in paymentPlansTrend
-        const existingPlan = paymentPlansTrend.find(
-          (p) => p.id === b.paymentPlan.id
-        );
+    newStudents: {
+      current: calculateNewStudents(filteredBookings, year, month),
+      previous: calculateNewStudents(
+        filteredBookings,
+        prev.year(),
+        prev.month()
+      ),
+      average: Number(
+        (
+          (calculateNewStudents(filteredBookings, year, month) +
+            calculateNewStudents(
+              filteredBookings,
+              prev.year(),
+              prev.month()
+            )) / 2
+        ).toFixed(2)
+      ),
+    },
 
-        if (!existingPlan) {
-          // Push new plan
-          paymentPlansTrend.push({
-            id: b.paymentPlan.id,
-            title: b.paymentPlan.title,
-            price: b.paymentPlan.price,
-            priceLesson: b.paymentPlan.priceLesson,
-            interval: b.paymentPlan.interval,
-            duration: b.paymentPlan.duration,
-            joiningFee: b.paymentPlan.joiningFee,
-            students: b.students?.length || 0,
-          });
-        } else {
-          // Update existing plan's students count
-          existingPlan.students += b.students?.length || 0;
-        }
-      }
-
-      // filteredBookings.push(b);
-      if (valid) {
-  filteredBookings.push(b);
+    retention: {
+      current: retentionCurrent,
+      previous: retentionPrevious,
+      average: Number(((retentionCurrent + retentionPrevious) / 2).toFixed(2)),
+    },
+  };
 }
 
-      // Student filter
-      if (filter.student?.name?.trim()) {
-        const search = filter.student.name.trim().toLowerCase();
-        valid =
-          b.students?.some(
-            (s) =>
-              (s.studentFirstName || "").toLowerCase().includes(search) ||
-              (s.studentLastName || "").toLowerCase().includes(search)
-          ) || false;
-      }
+function applyDashboardFilters(bookings, filter = {}) {
+  return bookings.filter(b => {
+    let valid = true;
 
-      // Venue filter
-      if (valid && filter.venue?.name?.trim()) {
+    /* ================= AGE FILTER ================= */
+    if (valid && filter.age) {
+      if (filter.age === "under18") {
+        valid = b.students?.some(s => Number(s.age) < 18);
+      } else if (filter.age === "18-25") {
+        valid = b.students?.some(
+          s => Number(s.age) >= 18 && Number(s.age) <= 25
+        );
+      } else if (filter.age === "allAges") {
+        valid = true;
+      }
+    }
+
+    /* ================= VENUE FILTER ================= */
+    /* ================= VENUE FILTER ================= */
+    if (valid) {
+      if (filter.venueId) {
+        valid = b.venue?.id === filter.venueId;
+      }
+      else if (filter.venue?.name?.trim()) {
         const search = filter.venue.name.trim().toLowerCase();
-        valid = (b.classSchedule?.venue?.name || "").toLowerCase() === search;
+        valid = (b.venue?.name || "").toLowerCase() === search;
       }
-
-      // ✅ New Age Filter
-      if (valid && filter.age) {
-        if (filter.age === "under18") {
-          valid = b.students?.some((s) => Number(s.age) < 18);
-        } else if (filter.age === "18-25") {
-          valid = b.students?.some((s) => Number(s.age) >= 18 && Number(s.age) <= 25);
-        } else if (filter.age === "allAges") {
-          valid = true; // show all
-        }
-      }
-
-      if (!valid) return; // skip this booking if age doesn't match
-
-      // ✅ New Date Period Filter
-      if (valid && filter.period) {
-        const now = moment();
-        if (filter.period === "thisMonth") {
-          valid = b.createdAt && moment(b.createdAt).isSame(now, "month");
-        } else if (filter.period === "thisQuarter") {
-          valid = b.createdAt && moment(b.createdAt).quarter() === now.quarter();
-        } else if (filter.period === "thisYear") {
-          valid = b.createdAt && moment(b.createdAt).isSame(now, "year");
-        }
-      }
-
-      // PaymentPlan filter
-      if (
-        valid &&
-        filter.paymentPlan?.interval?.trim() &&
-        filter.paymentPlan.duration > 0
-      ) {
-        const searchInterval = filter.paymentPlan.interval.trim().toLowerCase();
-        const searchDuration = Number(filter.paymentPlan.duration);
-        const interval = (b.paymentPlan?.interval || "").toLowerCase();
-        const duration = Number(b.paymentPlan?.duration || 0);
-        valid = interval === searchInterval && duration === searchDuration;
-      }
-
-      // Admin filter
-      if (valid && filter.admin?.name?.trim()) {
-        const search = filter.admin.name.trim().toLowerCase();
-        const firstName = (b.bookedByAdmin?.firstName || "").toLowerCase();
-        const lastName = (b.bookedByAdmin?.lastName || "").toLowerCase();
-        valid = firstName.includes(search) || lastName.includes(search);
-      }
-
-      // if (valid) filteredBookings.push(b);
-      if (valid) {
-        filteredBookings.push(b);
-      }
-
-      // Collect venue if it exists
-      const venue = b.classSchedule?.venue;
-      if (venue && venue.id) {
-        usedVenues.set(venue.id, { id: venue.id, name: venue.name });
-      }
-
-      // Students
-      // b.students.forEach((s) => {
-      (b.students || []).forEach((s) => {
-        const studentCreatedAt = moment(s.createdAt);
-        if (
-          studentCreatedAt.month() === current.month() &&
-          studentCreatedAt.year() === current.year()
-        )
-          newStudents.push(s);
-
-        if (s.dateOfBirth) {
-          const age = moment().diff(moment(s.dateOfBirth), "years");
-          enrolledStudents.byAge[age] = (enrolledStudents.byAge[age] || 0) + 1;
-        }
-
-        const gender = (s.gender || "other").toLowerCase();
-        enrolledStudents.byGender[gender] =
-          (enrolledStudents.byGender[gender] || 0) + 1;
-      });
-
-      // Agents
-      const admin = b.bookedByAdmin;
-      if (!admin) return;
-      const price = Number(b.paymentPlan?.price || 0);
-      if (!agents[admin.id])
-        agents[admin.id] = {
-          id: admin.id,
-          name: `${admin.firstName} ${admin.lastName}`,
-          totalSales: {
-            totalRevenue: 0,
-            totalPaidRevenue: 0,
-            totalUnpaidRevenue: 0,
-            bookingCount: 0,
-            paidBookingCount: 0,
-            unpaidBookingCount: 0,
-          },
-        };
-
-      const newStudentsCount = b.students.filter((student) => {
-        const studentCreatedAt = moment(student.createdAt);
-        return (
-          studentCreatedAt.month() === current.month() &&
-          studentCreatedAt.year() === current.year()
-        );
-      }).length;
-
-      agents[admin.id].totalSales.bookingCount += 1;
-      agents[admin.id].totalSales.totalRevenue += price * newStudentsCount;
-      if (b.bookingType === "paid") {
-        agents[admin.id].totalSales.totalPaidRevenue +=
-          price * newStudentsCount;
-        agents[admin.id].totalSales.paidBookingCount += 1;
-      } else {
-        agents[admin.id].totalSales.totalUnpaidRevenue +=
-          price * newStudentsCount;
-        agents[admin.id].totalSales.unpaidBookingCount += 1;
-      }
-    });
-
-    const topAgents = Object.values(agents).sort(
-      (a, b) => b.totalSales.totalRevenue - a.totalSales.totalRevenue
-    );
-
-    // ─────────────────────────────────────────────
-    // Ensure YEAR is initialized
-    // ─────────────────────────────────────────────
-    if (!grouped[yearKey]) {
-      grouped[yearKey] = {
-        monthlyGrouped: {},
-        yearSourceSummary: { referral: 0, facebook: 0, others: 0 },
-      };
     }
 
-    // ─────────────────────────────────────────────
-    // Ensure MONTH is initialized
-    // ─────────────────────────────────────────────
-    if (!grouped[yearKey].monthlyGrouped[monthKey]) {
-      grouped[yearKey].monthlyGrouped[monthKey] = {};
+    /* ================= PERIOD FILTER ================= */
+    if (valid && filter.period) {
+      const now = moment();
+
+      if (filter.period === "thisMonth") {
+        valid =
+          moment(b.createdAt).isSameOrAfter(now.clone().startOf("month")) &&
+          moment(b.createdAt).isSameOrBefore(now.clone().endOf("month"));
+      }
+
+      else if (filter.period === "thisQuarter") {
+        valid =
+          moment(b.createdAt).isSameOrAfter(now.clone().startOf("quarter")) &&
+          moment(b.createdAt).isSameOrBefore(now.clone().endOf("quarter"));
+      }
+
+      else if (filter.period === "thisYear") {
+        valid =
+          moment(b.createdAt).isSameOrAfter(now.clone().startOf("year")) &&
+          moment(b.createdAt).isSameOrBefore(now.clone().endOf("year"));
+      }
     }
 
-    // Calculate membership sources for this month
-    const monthSource = sourceOfMembership(filteredBookings);
-
-    // Add monthly values → yearly totals
-    grouped[yearKey].yearSourceSummary.referral += monthSource.referral;
-    grouped[yearKey].yearSourceSummary.facebook += monthSource.facebook;
-    grouped[yearKey].yearSourceSummary.others += monthSource.others;
-
-    // Save month-level grouping
-    grouped[yearKey].monthlyGrouped[monthKey] = {
-      ...grouped[yearKey].monthlyGrouped[monthKey],
-      bookings: filteredBookings,
-      sourceOfMembership: monthSource,   // ← added correctly
-      totalSales,
-      topAgents,
-      salesTrend: {},
-      newStudents,
-      durationOfMembership,
-      enrolledStudents,
-      paymentPlansTrend,
-    };
-
-    current.add(1, "month");
-  }
-
-  // Month-over-month trends
-  Object.keys(grouped).forEach((yearKey) => {
-    const months = Object.keys(grouped[yearKey].monthlyGrouped).sort();
-    months.forEach((monthKey, i) => {
-      const monthData = grouped[yearKey].monthlyGrouped[monthKey];
-      if (i === 0) {
-        monthData.salesTrend = calcPercentageDiff(monthData.totalSales, null);
-        monthData.topAgents = monthData.topAgents.map((agent) => {
-          const { totalSales, ...rest } = agent;
-          return { ...rest, salesTrend: calcPercentageDiff(totalSales, null) };
-        });
-      } else {
-        const lastMonthKey = months[i - 1];
-        const lastMonthData = grouped[yearKey].monthlyGrouped[lastMonthKey];
-        monthData.salesTrend = calcPercentageDiff(
-          monthData.totalSales,
-          lastMonthData.totalSales
-        );
-        monthData.topAgents = monthData.topAgents.map((agent) => {
-          const prev = lastMonthData.topAgents.find((a) => a.id === agent.id);
-          const { totalSales, ...rest } = agent;
-          return {
-            ...rest,
-            salesTrend: calcPercentageDiff(
-              agent.totalSales,
-              prev ? prev.totalSales : null
-            ),
-          };
-        });
-      }
-      delete monthData.totalSales;
-    });
-
-    // Yearly salesTrend
-    const yearTotal = {
-      totalRevenue: 0,
-      totalPaidRevenue: 0,
-      totalUnpaidRevenue: 0,
-      bookingCount: 0,
-      paidBookingCount: 0,
-      unpaidBookingCount: 0,
-    };
-    const lastYearTotal =
-      grouped[String(Number(yearKey) - 1)]?.yearlyTotal || null;
-
-    Object.values(grouped[yearKey].monthlyGrouped).forEach((m) => {
-      const monthStats = m.salesTrend.currentMonthStats;
-      yearTotal.totalRevenue += monthStats.totalRevenue;
-      yearTotal.totalPaidRevenue += monthStats.totalPaidRevenue;
-      yearTotal.totalUnpaidRevenue += monthStats.totalUnpaidRevenue;
-      yearTotal.bookingCount += monthStats.bookingCount;
-      yearTotal.paidBookingCount += monthStats.paidBookingCount;
-      yearTotal.unpaidBookingCount += monthStats.unpaidBookingCount;
-    });
-
-    grouped[yearKey].salesTrend = calcPercentageDiff(
-      yearTotal,
-      lastYearTotal,
-      true
-    );
+    return valid;
   });
-
-  return grouped;
 }
 
-function sourceOfMembership(bookings = []) {
-  const stats = { referral: 0, facebook: 0, others: 0 };
+/* ================= MAIN SERVICE ================= */
 
-  bookings.forEach((b) => {
-    const status = b?.lead?.status?.toLowerCase();
-    if (!status) return;
-
-    if (status === "referall" || status === "referral") {
-      stats.referral++;
-    } else if (status === "facebook") {
-      stats.facebook++;
-    } else {
-      stats.others++;
-    }
-  });
-
-  return stats;
-}
-
-// Main Report
 const getMonthlyReport = async (filters) => {
   try {
     const { adminId, superAdminId } = filters;
 
-    // ✅ Initialize where conditions
-    const whereBooking = { bookingType: "paid" };
-    const whereVenue = {};
-    const whereSchedule = {};
-    const whereLead = {};
-    // venueId & classScheduleId
-    if (filters.venueId) {
-      // numeric compare
-      whereVenue.id = Number(filters.venueId);
-    }
-    if (filters.classScheduleId) {
-      whereSchedule.id = Number(filters.classScheduleId);
-    }
+    const whereBooking = {
+      bookingType: { [Op.in]: ["paid", "waiting list"] },
+      status: { [Op.in]: ["active", "cancelled", "expired"] },
+    };
 
-    // ✅ Access Control Logic
     if (superAdminId && superAdminId === adminId) {
-      // ✅ Super Admin — include leads/venues/schedules created by self or managed admins
-      const managedAdmins = await Admin.findAll({
+      const admins = await Admin.findAll({
         where: { superAdminId },
         attributes: ["id"],
       });
 
-      const adminIds = managedAdmins.map((a) => a.id);
-      adminIds.push(superAdminId); // include self
-
-      whereLead.createdBy = { [Op.in]: adminIds };
-      whereVenue.createdBy = { [Op.in]: adminIds };
-      whereSchedule.createdBy = { [Op.in]: adminIds };
-      whereBooking.bookedBy = { [Op.in]: adminIds };
+      whereBooking.bookedBy = {
+        [Op.in]: admins.map(a => a.id).concat(superAdminId),
+      };
     } else {
-      // ✅ Normal Admin — include own + super admin’s records
-      whereLead.createdBy = { [Op.in]: [adminId, superAdminId] };
-      whereVenue.createdBy = { [Op.in]: [adminId, superAdminId] };
-      whereSchedule.createdBy = { [Op.in]: [adminId, superAdminId] };
       whereBooking.bookedBy = { [Op.in]: [adminId, superAdminId] };
     }
 
-    // ✅ Fetch all bookings
-    const bookingsRaw = await Booking.findAll({
-      order: [["id", "DESC"]],
-      where: whereBooking,
-      include: [
-        {
-          model: BookingStudentMeta,
-          as: "students",
-          include: [
-            { model: BookingParentMeta, as: "parents", required: false },
-            { model: BookingEmergencyMeta, as: "emergencyContacts", required: false },
-          ],
-          required: false,
-        },
-        {
-          model: ClassSchedule,
-          as: "classSchedule",
-          required: false,
-          where: whereSchedule,
-          include: [
-            { model: Venue, as: "venue", required: false, where: whereVenue },
-          ],
-        },
-        { model: BookingPayment, as: "payments", required: false },
-        { model: PaymentPlan, as: "paymentPlan", required: false },
-        {
-          model: Admin,
-          as: "bookedByAdmin",
-          attributes: [
-            "id",
-            "firstName",
-            "lastName",
-            "email",
-            "roleId",
-            "status",
-            "profile",
-          ],
-          required: false,
-        },
-        {
-          model: Lead,
-          as: "lead",
-          required: false,
-          where: whereLead,
-        },
-      ],
-    });
+    const bookings = (
+      await Booking.findAll({
+        where: whereBooking,
+        include: [
+          { model: BookingStudentMeta, as: "students" },
+          { model: BookingPayment, as: "payments", required: false },
+          { model: PaymentPlan, as: "paymentPlan", required: false },
+          {
+            model: Lead,
+            as: "lead",
+            attributes: ["id", "status"],
+            required: false,
+          },
+          {
+            model: Venue,           // ✅ JOIN VENUE
+            as: "venue",
+            attributes: ["id", "name"],
+            required: false,
+          },
+        ],
+        order: [["id", "DESC"]],
+      })
+    ).map(b => b.get({ plain: true }));
+    // ✅ COLLECT ALL VENUES
+    const allVenues = Array.from(
+      new Map(
+        bookings
+          .filter(b => b.venue)
+          .map(b => [b.venue.id, b.venue.name])
+      )
+    ).map(([id, name]) => ({ id, name }));
 
-    // 🔥 THIS LINE FIXES 80% ISSUES
-    const bookings = bookingsRaw.map(b => b.get({ plain: true }));
+    const { filter } = filters;
 
-    // ✅ Group by year and month
-    const yealyGrouped = groupBookingsByYearMonth(bookings, filters, usedVenues);
+    const filteredBookings = applyDashboardFilters(bookings, filter);
 
-    // ✅ Overall Sales
-    const overallSales = {
-      totalRevenue: 0,
-      totalPaidRevenue: 0,
-      totalUnpaidRevenue: 0,
-      bookingCount: 0,
-      paidBookingCount: 0,
-      unpaidBookingCount: 0,
-    };
+    // ✅ NOW SAFE
+    const planUsageAndRevenue =
+      calculatePlanUsageAndRevenue(filteredBookings);
 
-    Object.values(yealyGrouped).forEach((year) => {
-      Object.values(year.monthlyGrouped).forEach((month) => {
-        const s = month.salesTrend.currentMonthStats;
-        overallSales.totalRevenue += s.totalRevenue;
-        overallSales.totalPaidRevenue += s.totalPaidRevenue;
-        overallSales.totalUnpaidRevenue += s.totalUnpaidRevenue;
-        overallSales.bookingCount += s.bookingCount;
-        overallSales.paidBookingCount += s.paidBookingCount;
-        overallSales.unpaidBookingCount += s.unpaidBookingCount;
-      });
-    });
+    const membershipSource =
+      calculateMembershipSource(filteredBookings);
 
     return {
       status: true,
-      message: "Monthly class report generated successfully.",
-      data: { yealyGrouped, overallSales, allVenues: Array.from(usedVenues.values()) },
+      message: "Dashboard summary generated successfully.",
+      data: {
+        summary: calculateDashboardStats(filteredBookings)
+        ,
+        graph: {
+          membersComparison: generateMembersComparisonGraph(filteredBookings),
+        },
+        durationOfMemberships: calculateMembershipDurationBreakdown(filteredBookings),
+        enrolledStudents: {
+          byAge: calculateEnrolledByAge(filteredBookings),
+          byGender: calculateEnrolledByGender(filteredBookings),
+        },
+        plansOverview: planUsageAndRevenue,
+        membershipSource,
+        allVenues, // ✅ Add this to response
+      },
     };
   } catch (error) {
-    console.error("❌ Sequelize Error:", error);
+    console.error("❌ Dashboard Summary Error:", error);
     return {
       status: false,
       message:
         error?.parent?.sqlMessage ||
         error?.message ||
-        "Error occurred while generating monthly class report.",
+        "Error generating dashboard summary.",
     };
   }
 };
