@@ -6,6 +6,7 @@ const { logActivity } = require("../../../../utils/admin/activityLogger");
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "weekly-class";
+const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
 
 // ✅ Generate Weekly Class Report
 exports.getMonthlyReport = async (req, res) => {
@@ -25,9 +26,13 @@ exports.getMonthlyReport = async (req, res) => {
       duration: Number(req.query.paymentPlanDuration) || 0,
     },
     admin: { name: req.query.agentName?.trim() || '' },
-    age: req.query.age || "allAges",
-    period: req.query.period || "",
-    venueId: req.query.venueId ? Number(req.query.venueId) : null,
+    dashboardFilters: {
+      venueId: req.query.venueId ? Number(req.query.venueId) : null,
+      classScheduleId: req.query.classScheduleId
+        ? Number(req.query.classScheduleId)
+        : null,
+      period: req.query.period || "",
+    },
   };
 
   if (DEBUG) {
@@ -35,6 +40,49 @@ exports.getMonthlyReport = async (req, res) => {
   }
 
   try {
+    // -------------------------
+    // Resolve role-based bookedBy filter
+    // -------------------------
+    const role = req.admin?.role?.toLowerCase();
+
+    // Get main super admin + children
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id, true);
+
+    if (!req.query.bookedBy) {
+      if (role === "super admin") {
+        const childAdminIds = (mainSuperAdminResult?.admins || []).map(a => a.id);
+
+        filters.bookedBy = {
+          type: "super_admin",
+          adminIds: [req.admin.id, ...childAdminIds],
+        };
+      } else if (role === "admin") {
+        filters.bookedBy = {
+          type: "admin",
+          adminIds: [
+            req.admin.id,
+            mainSuperAdminResult?.superAdmin?.id,
+          ].filter(Boolean),
+        };
+      } else {
+        filters.bookedBy = {
+          type: "agent",
+          adminIds: [req.admin.id],
+        };
+      }
+    } else {
+      // If bookedBy explicitly sent in query (optional)
+      const bookedByQuery = req.query.bookedBy;
+      if (Array.isArray(bookedByQuery)) {
+        filters.bookedBy = bookedByQuery.map(Number).filter(Boolean);
+      } else {
+        filters.bookedBy = bookedByQuery.split(",").map(Number).filter(Boolean);
+      }
+    }
+
+    if (DEBUG) {
+      console.log("🔧 Final Filters Object:", JSON.stringify(filters, null, 2));
+    }
     // Pass filters (if any) from query params to service
     const reportResult = await freeTrialAnalytics.getMonthlyReport(filters);
 

@@ -267,24 +267,12 @@ exports.getAllBookings = async (filters = {}) => {
     const trialWhere = {};
     const venueWhere = {};
 
-    // Filter by bookingType = 'free' only
     trialWhere.bookingType = "free";
 
     if (filters.venueId) trialWhere.venueId = filters.venueId;
     if (filters.trialDate) trialWhere.trialDate = filters.trialDate;
     if (filters.status) trialWhere.status = filters.status;
-    // if (filters.bookedBy) {
-    //   const bookedByArray = Array.isArray(filters.bookedBy)
-    //     ? filters.bookedBy
-    //     : [filters.bookedBy];
-
-    //   trialWhere.bookedBy = { [Op.in]: bookedByArray };
-    //   trialWhere[Op.or] = [
-    //     { bookedBy: { [Op.in]: bookedByArray } },
-    //     { bookedBy: null },
-    //   ];
-
-    // }
+   
     let allowedAdminIds = [];
 
     if (filters.bookedBy !== undefined) {

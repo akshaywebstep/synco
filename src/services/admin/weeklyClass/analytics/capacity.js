@@ -2,6 +2,9 @@ const { Op, Sequelize } = require("sequelize");
 const moment = require("moment");
 const { Booking, ClassSchedule, Venue, PaymentPlan, Admin, BookingStudentMeta } = require("../../../../models");
 
+const startDate = moment().subtract(1, "year").startOf("year").toDate();
+const endDate = moment().endOf("year").toDate();
+
 function applyVenueFilter(where, filters) {
     if (filters?.venueId) {
         where.venueId = filters.venueId;
@@ -49,7 +52,7 @@ async function getOccupiedSpaces(periodStart, periodEnd, adminIds, filters = {})
                 as: "booking",
                 required: true,
                 where: {
-                    status: { [Op.in]: ["active", "not_attended", "attended", "pending"] },
+                    status: { [Op.in]: ["active", "not attended", "attended", "pending"] },
                     bookedBy: { [Op.in]: adminIds },
                     ...(periodStart && periodEnd ? { createdAt: { [Op.between]: [periodStart, periodEnd] } } : {})
                 },
@@ -120,10 +123,7 @@ async function getCapacityMonthWise(superAdminId, filters, adminId) {
         where: {
             createdBy: { [Op.in]: adminIds },
             createdAt: {
-                [Op.between]: [
-                    moment().startOf("month").toDate(),
-                    moment().endOf("month").toDate(),
-                ],
+                [Op.between]: [startDate, endDate],
             },
         },
         attributes: ["capacity", "createdAt"],

@@ -14,7 +14,6 @@ const {
 /* ================= CONSTANTS ================= */
 const VALID_MEMBER_STATUSES = ["active", "attended", "cancelled"];
 const PAID_TYPE = "paid";
-const usedVenues = new Map();
 /* ================= HELPERS ================= */
 function getBookingEndDate(booking) {
   if (!booking.paymentPlan) return null;
@@ -44,6 +43,23 @@ function convertPlanToMonths(paymentPlan) {
     default:
       return 0;
   }
+}
+function calculateMembersCreatedInMonth(bookings, year, month) {
+  const students = new Set();
+
+  bookings.forEach(b => {
+    if (b.bookingType !== PAID_TYPE) return;
+    if (!VALID_MEMBER_STATUSES.includes(b.status)) return;
+
+    if (
+      moment(b.createdAt).year() === year &&
+      moment(b.createdAt).month() === month
+    ) {
+      (b.students || []).forEach(s => students.add(s.id));
+    }
+  });
+
+  return students.size;
 }
 
 /* ================= METRICS ================= */
@@ -191,33 +207,33 @@ function calculateRetentionForMonth(bookings, year, month) {
 
   return Number(((retained / startActiveStudents.size) * 100).toFixed(2));
 }
-function calculateActiveMembersForMonth(bookings, year, month) {
-  const monthStart = moment().year(year).month(month).startOf("month");
-  const monthEnd = monthStart.clone().endOf("month");
+// function calculateActiveMembersForMonth(bookings, year, month) {
+//   const monthStart = moment().year(year).month(month).startOf("month");
+//   const monthEnd = monthStart.clone().endOf("month");
 
-  const students = new Set();
+//   const students = new Set();
 
-  bookings.forEach(b => {
-    if (b.bookingType !== PAID_TYPE) return;
-    if (!VALID_MEMBER_STATUSES.includes(b.status)) return;
-    if (!b.paymentPlan) return;
+//   bookings.forEach(b => {
+//     if (b.bookingType !== PAID_TYPE) return;
+//     if (!VALID_MEMBER_STATUSES.includes(b.status)) return;
+//     if (!b.paymentPlan) return;
 
-    const bookingStart = moment(b.createdAt);
-    const bookingEnd = getBookingEndDate(b);
+//     const bookingStart = moment(b.createdAt);
+//     const bookingEnd = getBookingEndDate(b);
 
-    if (!bookingEnd) return;
+//     if (!bookingEnd) return;
 
-    // Booking must cover the month
-    if (
-      bookingStart.isSameOrBefore(monthEnd) &&
-      bookingEnd.isSameOrAfter(monthStart)
-    ) {
-      (b.students || []).forEach(s => students.add(s.id));
-    }
-  });
+//     // Booking must cover the month
+//     if (
+//       bookingStart.isSameOrBefore(monthEnd) &&
+//       bookingEnd.isSameOrAfter(monthStart)
+//     ) {
+//       (b.students || []).forEach(s => students.add(s.id));
+//     }
+//   });
 
-  return students.size;
-}
+//   return students.size;
+// }
 
 // Duration of membership
 function calculateMembershipDurationBreakdown(bookings) {
@@ -402,31 +418,25 @@ function generateMembersComparisonGraph(bookings) {
   const currentYear = now.year();
   const previousYear = currentYear - 1;
 
-  const labels = moment.monthsShort(); // ["Jan","Feb",...]
+  const labels = moment.monthsShort();
   const currentYearData = [];
   const previousYearData = [];
 
   for (let month = 0; month < 12; month++) {
     currentYearData.push(
-      calculateActiveMembersForMonth(bookings, currentYear, month)
+      calculateMembersCreatedInMonth(bookings, currentYear, month)
     );
 
     previousYearData.push(
-      calculateActiveMembersForMonth(bookings, previousYear, month)
+      calculateMembersCreatedInMonth(bookings, previousYear, month)
     );
   }
 
   return {
     labels,
     series: [
-      {
-        name: `${currentYear} Members`,
-        data: currentYearData,
-      },
-      {
-        name: `${previousYear} Members`,
-        data: previousYearData,
-      },
+      { name: `${currentYear} Members`, data: currentYearData },
+      { name: `${previousYear} Members`, data: previousYearData },
     ],
   };
 }
