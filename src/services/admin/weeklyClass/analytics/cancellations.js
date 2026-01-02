@@ -420,153 +420,220 @@ async function getReactivatedMembership(superAdminId, adminId, filters = {}) {
 /* ---------------------------------------------------
    👶 6️⃣ Total New Students — via BookingStudentMeta
 --------------------------------------------------- */
+/* ---------------------------------------------------
+   👶 6️⃣ Total New Students — via BookingStudentMeta
+   Only active bookings, counted per year
+--------------------------------------------------- */
 async function getTotalNewStudents(superAdminId, adminId, filters = {}) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
-    const startDate = moment().startOf("month").toDate();
-    const endDate = moment().endOf("month").toDate();
 
-    whereBooking.createdAt = { [Op.between]: [startDate, endDate] };
+    // Only consider active bookings
+    whereBooking.status = "active";
 
-    const bookings = await Booking.findAll({
-        where: whereBooking,
+    const currentYear = new Date().getFullYear();
+    const lastYear = currentYear - 1;
+
+    // Helper to count students per year
+    const countStudentsByYear = async (year) => {
+        const start = new Date(year, 0, 1); // Jan 1
+        const end = new Date(year, 11, 31, 23, 59, 59); // Dec 31
+
+        const bookings = await Booking.findAll({
+            where: {
+                ...whereBooking,
+                createdAt: { [Op.between]: [start, end] },
+            },
+            include: [
+                {
+                    model: BookingStudentMeta,
+                    as: "students",
+                    attributes: ["id"],
+                },
+            ],
+        });
+
+        // Sum students per booking
+        return bookings.reduce((sum, b) => sum + (b.students?.length || 0), 0);
+    };
+
+    const [thisYearTotal, lastYearTotal] = await Promise.all([
+        countStudentsByYear(currentYear),
+        countStudentsByYear(lastYear),
+    ]);
+
+    // Calculate change
+    const change =
+        lastYearTotal === 0
+            ? thisYearTotal === 0
+                ? "0%"
+                : "+100%"
+            : `${(((thisYearTotal - lastYearTotal) / lastYearTotal) * 100).toFixed(2)}%`;
+
+    return {
+        thisYear: thisYearTotal,
+        lastYear: lastYearTotal,
+        change,
+    };
+}
+
+// Example usage
+// getTotalNewStudents(1, 2, {})
+//     .then(result => console.log(JSON.stringify(result, null, 4)))
+//     .catch(err => console.error(err));
+
+/* ---------------------------------------------------
+   ❌ 7️⃣ Monthly Cancellations & Reasons — current year
+--------------------------------------------------- */
+/* ---------------------------------------------------
+   ❌ Cancellation Reasons — current year summary only
+--------------------------------------------------- */
+async function getCancellationReasons(superAdminId, adminId, filters = {}) {
+    const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
+    const currentYear = moment().year();
+
+    // Fetch all cancelled bookings for the current year
+    const cancellationsThisYear = await CancelBooking.findAll({
+        where: {
+            createdAt: {
+                [Op.between]: [
+                    moment().year(currentYear).startOf("year").toDate(),
+                    moment().year(currentYear).endOf("year").toDate(),
+                ],
+            },
+        },
         include: [
             {
-                model: BookingStudentMeta,
-                as: "students",
-                attributes: ["id"],
+                model: Booking,
+                as: "booking",
+                where: {
+                    ...whereBooking,
+                    status: "cancelled",
+                },
+                attributes: ["id"], // no need for cancellationReason here
             },
         ],
     });
 
-    const totalStudents = bookings.reduce(
-        (sum, b) => sum + (b.students?.length || 0),
-        0
-    );
+    // Aggregate cancellation reasons from CancelBooking table
+    const reasonCounts = {};
+    cancellationsThisYear.forEach(c => {
+        const reason = c.cancelReason || "Other";
+        reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
+    });
 
-    return totalStudents;
-}
+    const totalCancellations = cancellationsThisYear.length;
 
-async function getMonthlyCancellations(superAdminId, adminId, filters) {
-    const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
-
-    const currentYear = moment().year();
-    const years = [currentYear - 1, currentYear];
-
-    const chart = {};
-
-    for (const year of years) {
-        const results = [];
-
-        for (let monthIndex = 0; monthIndex < 12; monthIndex++) {
-            const start = moment()
-                .year(year)
-                .month(monthIndex)
-                .startOf("month")
-                .toDate();
-
-            const end = moment()
-                .year(year)
-                .month(monthIndex)
-                .endOf("month")
-                .toDate();
-
-            const cancelled = await CancelBooking.count({
-                where: {
-                    createdAt: { [Op.between]: [start, end] }, // ✅ FIX
-                },
-                include: [
-                    {
-                        model: Booking,
-                        as: "booking", // ⚠️ must match association
-                        where: {
-                            ...whereBooking,
-                            status: "cancelled",
-                        },
-                        attributes: [],
-                    },
-                ],
-                distinct: true,
-                col: "bookingId", // ✅ avoid double counting
-            });
-
-            results.push({
-                month: MONTHS[monthIndex],
-                cancelled,
-            });
-        }
-
-        chart[year] = results;
-    }
-
-    // 📌 Current vs Last Month (based on cancellation date)
-    const currentMonthIndex = moment().month();
-    const thisMonth = chart[currentYear][currentMonthIndex].cancelled;
-
-    const lastMonth =
-        currentMonthIndex === 0
-            ? chart[currentYear - 1][11].cancelled
-            : chart[currentYear][currentMonthIndex - 1].cancelled;
-
-    let change = 0;
-    if (lastMonth === 0) {
-        change = thisMonth > 0 ? 100 : 0;
-    } else {
-        change = ((thisMonth - lastMonth) / lastMonth) * 100;
-    }
+    const reasons = Object.entries(reasonCounts).map(([reason, count]) => ({
+        reason,
+        count,
+        percentage: totalCancellations ? parseFloat(((count / totalCancellations) * 100).toFixed(2)) : 0,
+    }));
 
     return {
-        // thisMonth: thisMonth.toString(),
-        // lastMonth: lastMonth.toString(),
-        change: `${change.toFixed(2)}%`,
-        chart,
+        total: totalCancellations,
+        reasons,
     };
 }
+
+// Example usage
+// getCancellationReasons(1, 2, {})
+//     .then(result => console.log(JSON.stringify(result, null, 4)))
+//     .catch(err => console.error(err));
+
+// Example usage
+// getMonthlyCancellations(1, 2, {})
+//     .then(result => console.log(JSON.stringify(result, null, 4)))
+//     .catch(err => console.error(err));
 
 /* ---------------------------------------------------
    ❗ 7️⃣ Cancellation Reasons — Grouped (Count + %)
 --------------------------------------------------- */
-async function getCancellationReason(superAdminId, adminId, filters = {}) {
+/* ---------------------------------------------------
+   ❌ 7️⃣ Monthly Cancellations & Reasons — current year
+   cancellationReason is in CancelBooking table
+--------------------------------------------------- */
+async function getMonthlyCancellations(superAdminId, adminId, filters = {}) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
+    const currentYear = moment().year();
 
-    whereBooking.status = "cancelled";
+    const chart = [];
 
-    const { studentInclude } = await applyGlobalFilters(whereBooking, filters);
+    // Loop through months
+    for (let monthIndex = 0; monthIndex < 12; monthIndex++) {
+        const start = moment().year(currentYear).month(monthIndex).startOf("month").toDate();
+        const end = moment().year(currentYear).month(monthIndex).endOf("month").toDate();
 
-    const cancelledBookings = await Booking.findAll({
-        where: whereBooking,
-        attributes: ["id"],
-        include: [studentInclude],
-        raw: true,
-    });
+        const cancelled = await CancelBooking.count({
+            where: {
+                createdAt: { [Op.between]: [start, end] },
+            },
+            include: [
+                {
+                    model: Booking,
+                    as: "booking",
+                    where: {
+                        ...whereBooking,
+                        status: "cancelled",
+                    },
+                    attributes: [], // no need
+                },
+            ],
+        });
 
-    if (!cancelledBookings.length) {
-        return { total: 0, reasons: [] };
+        chart.push({
+            month: MONTHS[monthIndex],
+            cancelled,
+        });
     }
 
-    const bookingIds = cancelledBookings.map(b => b.id);
+    // Current vs Last Month change
+    const currentMonthIndex = moment().month();
+    const thisMonth = chart[currentMonthIndex].cancelled;
+    const lastMonth = currentMonthIndex === 0 ? chart[11].cancelled : chart[currentMonthIndex - 1].cancelled;
 
-    const cancelEntries = await CancelBooking.findAll({
-        where: { bookingId: { [Op.in]: bookingIds } },
-        attributes: ["cancelReason"],
-        raw: true,
+    const change = lastMonth === 0 ? (thisMonth > 0 ? 100 : 0) : ((thisMonth - lastMonth) / lastMonth) * 100;
+
+    // Cancellation reasons for current year
+    const cancellationsThisYear = await CancelBooking.findAll({
+        where: {
+            createdAt: {
+                [Op.between]: [
+                    moment().year(currentYear).startOf("year").toDate(),
+                    moment().year(currentYear).endOf("year").toDate(),
+                ],
+            },
+        },
     });
 
-    const total = cancelEntries.length;
-
+    // Aggregate reasons
     const reasonCounts = {};
-    cancelEntries.forEach(e => {
-        const r = e.cancelReason || "Unknown";
-        reasonCounts[r] = (reasonCounts[r] || 0) + 1;
+    cancellationsThisYear.forEach(c => {
+        const reason = c.cancelReason || "Other";
+        reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
     });
 
-    const reasons = Object.keys(reasonCounts).map(r => ({
-        reason: r,
-        count: reasonCounts[r],
-        percentage: parseFloat(((reasonCounts[r] / total) * 100).toFixed(2))
+    const totalCancellations = cancellationsThisYear.length;
+
+    const reasons = Object.entries(reasonCounts).map(([reason, count]) => ({
+        reason,
+        count,
+        percentage: totalCancellations ? parseFloat(((count / totalCancellations) * 100).toFixed(2)) : 0,
     }));
 
-    return { total, reasons };
+    return {
+        change: `${change.toFixed(2)}%`,
+        chart,
+        cancellationReasons: {
+            total: totalCancellations,
+            reasons,
+        },
+    };
 }
+
+// Example usage
+getMonthlyCancellations(1, 2, {})
+    .then(result => console.log(JSON.stringify(result, null, 4)))
+    .catch(err => console.error(err));
 
 /* ---------------------------------------------------
    👶 8️⃣ Cancelled Students — By Age & By Gender
@@ -756,10 +823,10 @@ async function getWeeklyClassPerformance(superAdminId, adminId, filters) {
         getMonthlyRevenueLostComparison(filters, superAdminId, adminId),
         getAvgMembershipTenure(filters, superAdminId, adminId),
         getReactivatedMembership(filters, superAdminId, adminId),
-        calculateMetric((s, a, offset) => getTotalNewStudents(s, a, filters, offset), superAdminId, adminId),
+        getTotalNewStudents(filters, superAdminId, adminId),
 
         getMonthlyCancellations(superAdminId, adminId, filters),
-        getCancellationReason(superAdminId, adminId, filters),
+        getCancellationReasons(superAdminId, adminId, filters),
         getCancellStudentByAgeAndByGender(superAdminId, adminId, filters),
         getMostCancelledMembershipPlans(superAdminId, adminId, filters),
         getAllVenuesUsedInCancelled(superAdminId, adminId, filters),

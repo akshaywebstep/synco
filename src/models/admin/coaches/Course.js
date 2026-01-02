@@ -58,7 +58,7 @@ const Course = sequelize.define(
             comment: "Is course compulsory",
         },
         setReminderEvery: {
-            type: DataTypes.INTEGER.UNSIGNED,
+             type: DataTypes.STRING,
             allowNull: true,
             comment: "Reminder will start once user has completed course.",
         },
