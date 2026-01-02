@@ -202,15 +202,23 @@ async function getBookingAttendanceAnalytics(superAdminId, filters = {}, adminId
     const usedVenueIds = [...new Set(bookings.map(b => b.venue?.id).filter(Boolean))];
 
     // Always define allVenues
-    const allVenues = await Venue.findAll({
-        attributes: ["id", "name", "createdBy"],
-        order: [["name", "ASC"]],
-    });
+    let allVenues = [];
+    if (usedVenueIds.length > 0) {
+        allVenues = await Venue.findAll({
+            where: { id: usedVenueIds },
+            attributes: ["id", "name", "createdBy"],
+            order: [["name", "ASC"]]
+        });
+    }
     const usedClassScheduleIds = [...new Set(bookings.map(b => b.classSchedule?.id).filter(Boolean))];
-    const allClasses = await ClassSchedule.findAll({
-        attributes: ["id", "className", "createdBy"],
-        order: [["className", "ASC"]],
-    });
+    let allClasses = [];
+    if (usedClassScheduleIds.length > 0) {
+        allClasses = await ClassSchedule.findAll({
+            where: { id: usedClassScheduleIds },
+            attributes: ["id", "className", "createdBy"],
+            order: [["className", "ASC"]]
+        });
+    }
 
     // 🔹 Best month per year
     let bestMonthPrev = { month: null, rate: 0 };
