@@ -1312,10 +1312,6 @@ exports.holidayCampsReports = async (superAdminId, adminId, filterType) => {
     // Date ranges
     //----------------------------------------
     const now = new Date();
-    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
-
     //----------------------------------------
     // 1) TOTAL REVENUE
     //----------------------------------------

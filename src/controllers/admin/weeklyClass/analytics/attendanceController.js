@@ -29,6 +29,7 @@ exports.getMonthlyReport = async (req, res) => {
       bookedBy: req.query.bookedBy || null,
       createdBy: req.query.createdBy || null,
       venueId: req.query.venueId || null,
+      classScheduleId: req.query.classScheduleId || null,
     };
 
     if (DEBUG) {
