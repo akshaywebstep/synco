@@ -306,6 +306,7 @@ exports.updateCourse = async (req, res) => {
     }
 
     // 5️⃣ Parse & Update Modules
+    // 5️⃣ Parse & Update Modules
     if (formData.modules) {
       if (DEBUG_MODE) console.log("📦 Processing modules...");
 
@@ -317,17 +318,27 @@ exports.updateCourse = async (req, res) => {
       for (let i = 0; i < modules.length; i++) {
         const moduleIndex = i + 1;
         const moduleKey = `uploadFilesModule_${moduleIndex}`;
-
-        modules[i].uploadFiles = modules[i].uploadFiles || [];
-
         const moduleFiles = groupedFiles[moduleKey] || [];
 
-        if (DEBUG_MODE)
-          console.log(
-            `📁 Module ${moduleIndex} Files:`,
-            moduleFiles.length
-          );
+        // 🧠 STEP 1: Normalize uploadFiles from payload
+        const payloadFiles = Array.isArray(modules[i].uploadFiles)
+          ? modules[i].uploadFiles
+          : [];
 
+        // 🧹 STEP 2: Keep ONLY payload-existing files
+        // (Removed files = missing from payload)
+        const cleanedFiles = payloadFiles.filter(
+          (file) => file.isExisting === true && file.url
+        );
+
+        if (DEBUG_MODE) {
+          console.log(
+            `🧹 Module ${moduleIndex} kept existing files:`,
+            cleanedFiles.length
+          );
+        }
+
+        // 🆕 STEP 3: Append newly uploaded files
         for (const file of moduleFiles) {
           const url = await uploadFileAndGetUrl(
             file,
@@ -336,16 +347,24 @@ exports.updateCourse = async (req, res) => {
             `module_${moduleIndex}`
           );
 
-          modules[i].uploadFiles.push({
+          cleanedFiles.push({
             originalName: file.originalname,
             mimeType: file.mimetype,
             size: file.size,
             url,
+            isExisting: false,
           });
 
-          if (DEBUG_MODE)
-            console.log(`✅ Module ${moduleIndex} File Uploaded:`, url);
+          if (DEBUG_MODE) {
+            console.log(
+              `✅ Module ${moduleIndex} New File Appended:`,
+              url
+            );
+          }
         }
+
+        // ✅ STEP 4: Assign final uploadFiles
+        modules[i].uploadFiles = cleanedFiles;
       }
 
       formData.modules = modules;
@@ -355,7 +374,7 @@ exports.updateCourse = async (req, res) => {
     if (DEBUG_MODE) console.log("🧮 Normalizing field types...");
 
     if (formData.duration)
-      formData.duration = Number(formData.duration);
+      formData.duration = (formData.duration);
 
     if (formData.reTakeCourse !== undefined)
       formData.reTakeCourse = Number(formData.reTakeCourse);
@@ -364,14 +383,10 @@ exports.updateCourse = async (req, res) => {
       formData.passingConditionValue = Number(formData.passingConditionValue);
 
     if (formData.setReminderEvery)
-      formData.setReminderEvery = Number(formData.setReminderEvery);
+      formData.setReminderEvery = (formData.setReminderEvery);
 
     if (formData.isCompulsory !== undefined)
       formData.isCompulsory = formData.isCompulsory === "true";
-
-    // if (formData.questions && typeof formData.questions === "string") {
-    //   formData.questions = JSON.parse(formData.questions);
-    // }
 
     if (DEBUG_MODE) console.log("🧹 Normalized Data:", formData);
 
