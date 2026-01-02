@@ -56,14 +56,17 @@ exports.getMonthlyReport = async (req, res) => {
     adminId,
     superAdminId,
     student: { name: req.query.studentName?.trim() || "" },
-    venue: { name: req.query.venueName?.trim() || "" },
-    venueId: req.query.venueId ? Number(req.query.venueId) : null,
+    venue: {
+      name: (req.query.venueName || req.query.venue || "").trim(),
+    },
     paymentPlan: {
       interval: req.query.paymentPlanInterval?.trim() || "",
       duration: Number(req.query.paymentPlanDuration) || 0,
     },
     admin: { name: req.query.agentName?.trim() || "" },
-     age: req.query.age || "allAges",
+    venueId: req.query.venueId ? Number(req.query.venueId) : null,
+    classScheduleId: req.query.classScheduleId ? Number(req.query.classScheduleId) : null,
+    age: req.query.age || "allAges",
     period: req.query.period || "",
   };
 
@@ -75,7 +78,16 @@ exports.getMonthlyReport = async (req, res) => {
     // ✅ [Step 5] Call report service
     // if (DEBUG)
     //   console.log("📞 Calling saleTrialAnalytics.getMonthlyReport()...");
-    const reportResult = await saleTrialAnalytics.getMonthlyReport(filters);
+    const reportResult = await saleTrialAnalytics.getMonthlyReport({
+      adminId,
+      superAdminId,
+      filter: {
+        venue: filters.venue,
+        venueId: filters.venueId,
+        age: filters.age,
+        period: filters.period,
+      },
+    });;
 
     // if (DEBUG) {
     //   console.log("📊 [Step 6] Service Response Received:");
