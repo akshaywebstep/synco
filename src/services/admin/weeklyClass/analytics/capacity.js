@@ -226,11 +226,8 @@ async function getCapacityByVenue(superAdminId, filters, adminId) {
     const adminIds = await getAdminFilter(superAdminId, adminId);
 
     // 2️⃣ Build WHERE clause for ClassSchedule
-    const where = {
-        createdBy: { [Op.in]: adminIds },
-    };
+    const where = { createdBy: { [Op.in]: adminIds } };
 
-    // Optional: Filter only current month's schedules
     if (filters?.period === "thisMonth") {
         const start = moment().startOf("month").toDate();
         const end = moment().endOf("month").toDate();
@@ -244,7 +241,7 @@ async function getCapacityByVenue(superAdminId, filters, adminId) {
                 model: ClassSchedule,
                 as: "classSchedules",
                 where,
-                attributes: [], // we only need SUM(capacity), not each record
+                attributes: [], // we only need SUM(capacity)
             },
         ],
         attributes: [
@@ -258,15 +255,19 @@ async function getCapacityByVenue(superAdminId, filters, adminId) {
     });
 
     // 4️⃣ Calculate total capacity across all venues
-    const totalCapacity = venues.reduce(
+    const totalCapacityAllVenues = venues.reduce(
         (sum, v) => sum + Number(v.getDataValue("totalCapacity") || 0),
         0
     );
 
-    // 5️⃣ Format result for frontend
+    // 5️⃣ Map each venue with percentage relative to total capacity
     const result = venues.map((v) => {
         const total = Number(v.getDataValue("totalCapacity")) || 0;
-        const percentage = totalCapacity ? ((total / totalCapacity) * 100).toFixed(0) : 0;
+
+        // 🔹 Percentage relative to total across all venues
+        const percentage = totalCapacityAllVenues
+            ? ((total / totalCapacityAllVenues) * 100).toFixed(0)
+            : 0;
 
         const venueName = v.area || v.address || "Unknown Venue";
 
@@ -279,7 +280,7 @@ async function getCapacityByVenue(superAdminId, filters, adminId) {
         };
     });
 
-    // 6️⃣ Sort and limit to top 5 venues
+    // 6️⃣ Sort descending by percentage and limit to top 5
     return result.sort((a, b) => b.value - a.value).slice(0, 5);
 }
 
@@ -449,63 +450,77 @@ async function membershipPlans(superAdminId, filters, adminId) {
 async function capacityByClass(superAdminId, filters, adminId) {
     const adminIds = await getAdminFilter(superAdminId, adminId);
 
-    const where = {
-        bookedBy: { [Op.in]: adminIds },
-        classScheduleId: { [Op.ne]: null },
-    };
-    applyVenueFilter(where, filters);
+    // 1️⃣ Build WHERE clause for ClassSchedule
+    const scheduleWhere = { createdBy: { [Op.in]: adminIds } };
+    applyVenueFilter(scheduleWhere, filters);
 
     if (filters?.period === "thisMonth") {
         const start = moment().startOf("month").toDate();
         const end = moment().endOf("month").toDate();
-        where.createdAt = { [Op.between]: [start, end] };
+        scheduleWhere.createdAt = { [Op.between]: [start, end] };
     }
 
-    const classes = await Booking.findAll({
-        where,
+    // 2️⃣ Query all classes with total bookings (LEFT JOIN)
+    const classes = await ClassSchedule.findAll({
+        where: scheduleWhere,
         attributes: [
-            "classScheduleId",
-            [Booking.sequelize.fn("COUNT", Booking.sequelize.col("Booking.id")), "usedCount"],
+            "id",
+            "className",
+            "capacity",
+            [Sequelize.fn("COUNT", Sequelize.col("booking.id")), "usedCount"] // Use correct alias
         ],
         include: [
             {
-                model: ClassSchedule,
-                as: "classSchedule",
-                attributes: ["id", "className", "capacity"],
-            },
+                model: Booking,
+                as: "booking", // ✅ Must match model association
+                attributes: [],
+                where: {
+                    bookedBy: { [Op.in]: adminIds },
+                    ...(filters?.period === "thisMonth" && {
+                        createdAt: {
+                            [Op.between]: [
+                                moment().startOf("month").toDate(),
+                                moment().endOf("month").toDate()
+                            ]
+                        }
+                    }),
+                },
+                required: false, // LEFT JOIN
+            }
         ],
-        group: [
-            "classScheduleId",
-            "classSchedule.id",
-            "classSchedule.className",
-            "classSchedule.capacity",
-        ],
-        order: [[Booking.sequelize.literal("usedCount"), "DESC"]],
+        group: ["ClassSchedule.id"],
+        order: [[Sequelize.literal("usedCount"), "DESC"]],
     });
 
-    // 2️⃣ Apply filters
-    const filteredClasses = classes.filter(c => applyFilters(c, filters));
+    // 3️⃣ Filter classes if needed
+    const filteredClasses = classes.filter(c => (c.capacity || 0) > 0);
 
-    // 3️⃣ Map to final result
-    const result = filteredClasses
-        .filter(c => (c.classSchedule?.capacity || 0) > 0)
-        .map((c) => {
-            const capacity = c.classSchedule.capacity;
-            const usedCount = Number(c.getDataValue("usedCount"));
-            const percentageUsed = (usedCount / capacity) * 100;
+    // 4️⃣ Compute total capacity for percentage calculation
+    const totalCapacityAll = filteredClasses.reduce(
+        (sum, c) => sum + (c.capacity || 0),
+        0
+    );
 
-            return {
-                classScheduleId: c.classScheduleId,
-                className: c.classSchedule?.className || "N/A",
-                capacity,
-                usedCount: Number(usedCount.toFixed(3)),
-                percentageUsed: `${percentageUsed.toFixed(2)}%`,
-            };
-        })
-        .sort((a, b) => parseFloat(b.percentageUsed) - parseFloat(a.percentageUsed))
-        .slice(0, 5);
+    // 5️⃣ Map to final result with percentage relative to total capacity
+    const result = filteredClasses.map(c => {
+        const capacity = c.capacity;
+        const usedCount = Number(c.getDataValue("usedCount") || 0);
+        const percentageUsed = totalCapacityAll
+            ? ((capacity / totalCapacityAll) * 100).toFixed(0)
+            : 0;
 
-    return result; // top 5 classes
+        return {
+            classScheduleId: c.id,
+            className: c.className || "N/A",
+            capacity,
+            usedCount,
+            percentageUsed: `${percentageUsed}%`,
+            value: Number(percentageUsed)
+        };
+    });
+
+    // 6️⃣ Sort descending by percentage and limit top 5
+    return result.sort((a, b) => b.value - a.value).slice(0, 5);
 }
 
 // 🔹 Main: capacity dashboard summary
@@ -547,7 +562,7 @@ async function getCapacityWidgets(superAdminId, filters, adminId) {
         totalCapacity: {
             count: totalCapacity,
             change: `${pctChange(totalCapacity, totalCapacity * 0.9)}%`,
-            vsPrev: totalCapacity * 0.9,
+             vsPrev: Number((totalCapacity * 0.9).toFixed(0)),
         },
         occupancy: {
             count: `£${revenueCurrent.toLocaleString()}`,
