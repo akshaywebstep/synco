@@ -185,10 +185,8 @@ exports.getCourseById = async (courseId, adminId, superAdminId) => {
       modules: parseJSONSafe(data.modules, []),
       questions: parseJSONSafe(data.questions, []),
       notifiedUsers: parseJSONSafe(data.notifiedUsers, []),
-      duration: Number(data.duration),
       reTakeCourse: Number(data.reTakeCourse),
       passingConditionValue: Number(data.passingConditionValue),
-      setReminderEvery: Number(data.setReminderEvery),
       isCompulsory: Boolean(data.isCompulsory),
     };
 
@@ -288,13 +286,12 @@ exports.deleteCourse = async (courseId, deletedBy) => {
       }
     }
 
-    /* ---------- MODULE FILES (FIXED) ---------- */
+    /* ---------- MODULE FILES ---------- */
     let modules = data.modules;
 
     if (typeof modules === "string") {
       try {
         modules = JSON.parse(modules);
-        if (DEBUG) console.log("📦 Modules parsed from string");
       } catch {
         modules = [];
       }
@@ -304,7 +301,7 @@ exports.deleteCourse = async (courseId, deletedBy) => {
       for (const module of modules) {
         if (Array.isArray(module.uploadFiles)) {
           for (const file of module.uploadFiles) {
-            if (file.url) {
+            if (file?.url) {
               const filePath = getFTPPathFromUrl(file.url);
               if (filePath) {
                 if (DEBUG) console.log("🧹 Deleting module file:", filePath);
@@ -320,12 +317,11 @@ exports.deleteCourse = async (courseId, deletedBy) => {
     if (DEBUG) console.log("✅ FTP cleanup completed");
 
     /* ---------- SOFT DELETE ---------- */
-    await course.update({
-      deletedAt: new Date(),
-      deletedBy,
-    });
+    // save who deleted
+    await course.update({ deletedBy });
 
-    await course.reload(); // 🔥 FIXED
+    // soft delete (sets deletedAt)
+    await course.destroy();
 
     if (DEBUG) console.log("✅ Course soft deleted");
 
@@ -335,7 +331,7 @@ exports.deleteCourse = async (courseId, deletedBy) => {
       data: course,
     };
   } catch (error) {
-    console.error("❌ Sequelize Error in deleteCourse:", error);
+    console.error("❌ Error in deleteCourse:", error);
     return {
       status: false,
       message:
