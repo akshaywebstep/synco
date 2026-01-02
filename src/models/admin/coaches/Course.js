@@ -38,7 +38,7 @@ const Course = sequelize.define(
 
         // Step 4: Settings
         duration: {
-            type: DataTypes.INTEGER.UNSIGNED,
+            type: DataTypes.STRING,
             allowNull: true,
             comment: "Duration of the course in minutes",
         },

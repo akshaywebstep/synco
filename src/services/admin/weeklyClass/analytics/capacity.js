@@ -285,18 +285,28 @@ async function getCapacityByVenue(superAdminId, filters, adminId) {
 
 function applyFilters(bookingStudent, filter) {
     let valid = true;
+    // 🔹 Define dynamic age groups (numeric code → min/max age)
+    const AGE_GROUPS = {
+        1: { min: 0, max: 17 },     // under 18
+        2: { min: 18, max: 25 },    // 18–25
+        3: { min: 26, max: 40 },    // 26–40
+        4: { min: 41 },             // 41+
+        5: "all"                    // all ages
+    };
 
-    // Age filter
-    if (valid && filter.age) {
-        valid = bookingStudent.age != null; // only continue if age exists
-        if (valid) {
-            if (filter.age === "under18") {
-                valid = Number(bookingStudent.age) < 18;
-            } else if (filter.age === "18-25") {
-                valid = Number(bookingStudent.age) >= 18 && Number(bookingStudent.age) <= 25;
-            } else if (filter.age === "allAges") {
-                valid = true;
-            }
+    // 🔹 Age filter using numeric code
+    if (valid && filter.age != null) {
+        const age = Number(bookingStudent.age);
+        if (isNaN(age)) return false; // safeguard
+
+        const group = AGE_GROUPS[filter.age]; // get age range for code
+
+        if (!group || group === "all") {
+            valid = true; // code = 5 → all ages
+        } else {
+            const { min, max } = group;
+            if (min != null && age < min) valid = false;
+            if (max != null && age > max) valid = false;
         }
     }
 

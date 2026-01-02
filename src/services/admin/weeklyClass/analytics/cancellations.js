@@ -11,6 +11,13 @@ const {
     Admin,
 } = require("../../../../models");
 
+function getYearRange(year) {
+    return {
+        start: moment().year(year).startOf("year").toDate(),
+        end: moment().year(year).endOf("year").toDate(),
+    };
+}
+
 function getMonthRange(monthOffset = 0) {
     const start = moment().startOf("month").add(monthOffset, "months").toDate();
     const end = moment().endOf("month").add(monthOffset, "months").toDate();
@@ -106,134 +113,309 @@ async function getAllVenuesUsedInCancelled(superAdminId, adminId, filters = {}) 
 }
 
 /* ---------------------------------------------------
-   🧮 Correct RTC Count — count bookings with status = "request_to_cancel"
+   🧮 Correct RTC Count — based on CancelBooking.createdAt
 --------------------------------------------------- */
-async function getTotalRTCs(superAdminId, adminId, filters, monthOffset = 0) {
+async function getTotalRTCs(superAdminId, adminId, filters, year) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
+    const { start, end } = getYearRange(year);
 
-    const { start, end } = getMonthRange(monthOffset);
-
-    whereBooking.status = "request_to_cancel";
-    whereBooking.createdAt = { [Op.between]: [start, end] };
-
-    // Apply age filter only
-    const { studentInclude } = await applyGlobalFilters(whereBooking, filters);
-
-    return await Booking.count({
-        where: whereBooking,
-        include: [studentInclude],
+    return await CancelBooking.count({
+        where: {
+            createdAt: { [Op.between]: [start, end] },
+        },
+        include: [
+            {
+                model: Booking,
+                as: "booking", // must match association
+                where: {
+                    ...whereBooking,
+                    status: "request_to_cancel",
+                },
+                attributes: [],
+            },
+        ],
         distinct: true,
-        col: "id"   // ❗ must NOT be Booking.id
+        col: "bookingId",
     });
+}
 
+async function getRTCYearComparison(superAdminId, adminId, filters) {
+    const currentYear = moment().year();
+    const previousYear = currentYear - 1;
+
+    const [thisYear, lastYearCount] = await Promise.all([
+        getTotalRTCs(superAdminId, adminId, filters, currentYear),
+        getTotalRTCs(superAdminId, adminId, filters, previousYear),
+    ]);
+
+    const change =
+        lastYearCount === 0
+            ? thisYear === 0
+                ? "0%"
+                : "+100%"
+            : `${(((thisYear - lastYearCount) / lastYearCount) * 100).toFixed(2)}%`;
+
+    return {
+        thisYear,
+        lastYear: lastYearCount,
+        change,
+    };
 }
 
 /* ---------------------------------------------------
    ❌ 2️⃣ Total Cancellations — from CancelBooking table
 --------------------------------------------------- */
-async function getTotalCancelled(superAdminId, adminId, filters = {}) {
+/* ---------------------------------------------------
+   ❌ Total Cancellations — based on CancelBooking.createdAt
+--------------------------------------------------- */
+async function getTotalCancelled(superAdminId, adminId, filters, year) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
+    const { start, end } = getYearRange(year);
 
-    whereBooking.status = "cancelled";
-
-    const { studentInclude } = await applyGlobalFilters(whereBooking, filters);
-
-    // ⭐ FIX: use findAll + group instead of count()
-    const rows = await Booking.findAll({
-        where: whereBooking,
-        include: [studentInclude],
-        attributes: ["id"],
-        group: ["Booking.id"],
-        raw: true
+    return await CancelBooking.count({
+        where: {
+            createdAt: { [Op.between]: [start, end] },
+        },
+        include: [
+            {
+                model: Booking,
+                as: "booking",
+                where: {
+                    ...whereBooking,
+                    status: "cancelled",
+                },
+                attributes: [],
+            },
+        ],
+        distinct: true,
+        col: "bookingId",
     });
+}
 
-    return rows.length;
+async function getTotalCancelledYearComparison(superAdminId, adminId, filters) {
+    const currentYear = moment().year();
+    const previousYear = currentYear - 1;
+
+    const [thisYear, lastYearCount] = await Promise.all([
+        getTotalCancelled(superAdminId, adminId, filters, currentYear),
+        getTotalCancelled(superAdminId, adminId, filters, previousYear),
+    ]);
+
+    const change =
+        lastYearCount === 0
+            ? thisYear === 0
+                ? "0%"
+                : "+100%"
+            : `${(((thisYear - lastYearCount) / lastYearCount) * 100).toFixed(2)}%`;
+
+    return {
+        thisYear,
+        lastYear: lastYearCount,
+        change,
+    };
 }
 
 /* ---------------------------------------------------
    💸 3️⃣ Monthly Revenue Lost — from cancelled bookings
+   Only includes bookings that have a PaymentPlan
 --------------------------------------------------- */
-async function getMonthlyRevenueLost(superAdminId, adminId, filters = {}) {
+async function getMonthlyRevenueLost(superAdminId, adminId, filters, monthOffset = 0) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
-    const startDate = moment().startOf("month").toDate();
-    const endDate = moment().endOf("month").toDate();
+    const { start, end } = getMonthRange(monthOffset);
 
-    // ✅ Get cancelled bookings accessible to this admin/superAdmin
-    const bookings = await Booking.findAll({
+    const rows = await CancelBooking.findAll({
         where: {
-            ...whereBooking,
-            status: "cancelled",
-            createdAt: { [Op.between]: [startDate, endDate] },
+            createdAt: { [Op.between]: [start, end] }, // cancellation date
         },
-        attributes: ["id", "paymentPlanId"],
         include: [
             {
-                model: PaymentPlan,
-                as: "paymentPlan",
-                attributes: ["price"],
+                model: Booking,
+                as: "booking",
+                where: {
+                    ...whereBooking,
+                    status: "cancelled",
+                    paymentPlanId: { [Op.ne]: null }, // only bookings with paymentPlanId
+                },
+                attributes: ["id", "paymentPlanId"],
+                include: [
+                    {
+                        model: PaymentPlan,
+                        as: "paymentPlan",
+                        attributes: ["id", "price"], // include id & price
+                    },
+                ],
             },
         ],
     });
 
-    // 💰 Calculate total lost revenue
-    const totalLost = bookings.reduce((sum, b) => {
-        const price = b.paymentPlan?.price || 0;
-        return sum + price;
-    }, 0);
+    // Only include rows where paymentPlan exists
+    const cancelledWithPlan = rows
+        .filter(row => row.booking?.paymentPlan) // ignore bookings without a payment plan
+        .map(row => ({
+            bookingId: row.booking.id,
+            paymentPlanId: row.booking.paymentPlan.id,
+            price: row.booking.paymentPlan.price || 0,
+        }));
 
-    return parseFloat(totalLost.toFixed(2));
+    const totalLost = cancelledWithPlan.reduce((sum, item) => sum + item.price, 0);
+
+    return {
+        totalLost: parseFloat(totalLost.toFixed(2)),
+        cancelledPaymentPlans: cancelledWithPlan,
+    };
 }
+
+async function getMonthlyRevenueLostComparison(superAdminId, adminId, filters) {
+    const [thisMonthData, lastMonthData] = await Promise.all([
+        getMonthlyRevenueLost(superAdminId, adminId, filters, 0),
+        getMonthlyRevenueLost(superAdminId, adminId, filters, -1),
+    ]);
+
+    const change =
+        lastMonthData.totalLost === 0
+            ? thisMonthData.totalLost === 0
+                ? "0%"
+                : "+100%"
+            : `${(((thisMonthData.totalLost - lastMonthData.totalLost) / lastMonthData.totalLost) * 100).toFixed(2)}%`;
+
+    // ✅ Format response like your example
+    return {
+        monthlyRevenueLost: {
+            thisMonth: {
+                totalLost: thisMonthData.totalLost,
+            },
+            lastMonth: {
+                totalLost: lastMonthData.totalLost,
+            },
+            change,
+        },
+    };
+}
+
+// Properly call the function and log the result
+// getMonthlyRevenueLostComparison(1, 2, {})
+//     .then(result => console.log(JSON.stringify(result, null, 4)))
+//     .catch(err => console.error(err));
 
 /* ---------------------------------------------------
    🧾 4️⃣ Average Membership Tenure — via PaymentPlan
+   Only considers cancelled bookings, grouped by year
 --------------------------------------------------- */
 async function getAvgMembershipTenure(superAdminId, adminId, filters = {}) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
-    whereBooking.paymentPlanId = { [Op.not]: null };
+    whereBooking.paymentPlanId = { [Op.not]: null }; // only bookings with paymentPlan
 
-    const bookings = await Booking.findAll({
-        where: whereBooking,
+    const currentYear = new Date().getFullYear();
+    const lastYear = currentYear - 1;
+
+    // Fetch cancelled bookings
+    const cancelledBookings = await CancelBooking.findAll({
         include: [
             {
-                model: PaymentPlan,
-                as: "paymentPlan",
-                attributes: ["duration"], // duration in months
+                model: Booking,
+                as: "booking",
+                where: {
+                    ...whereBooking,
+                    status: "cancelled",
+                },
+                attributes: ["id", "paymentPlanId"],
+                include: [
+                    {
+                        model: PaymentPlan,
+                        as: "paymentPlan",
+                        attributes: ["duration"], // duration in months
+                    },
+                ],
             },
         ],
     });
 
-    const durations = bookings
-        .map((b) => b.paymentPlan?.duration || 0)
-        .filter((d) => d > 0);
+    // Helper to calculate average
+    const calcAvg = (bookings) => {
+        const durations = bookings
+            .map(b => b.booking?.paymentPlan?.duration || 0)
+            .filter(d => d > 0);
+        if (durations.length === 0) return 0;
+        return parseFloat((durations.reduce((a, b) => a + b, 0) / durations.length).toFixed(1));
+    };
 
-    const avgTenure =
-        durations.length > 0
-            ? parseFloat(
-                (
-                    durations.reduce((a, b) => a + b, 0) / durations.length
-                ).toFixed(1)
-            )
-            : 0;
+    // Split bookings by year of cancellation
+    const thisYearBookings = cancelledBookings.filter(b => b.createdAt.getFullYear() === currentYear);
+    const lastYearBookings = cancelledBookings.filter(b => b.createdAt.getFullYear() === lastYear);
 
-    return avgTenure;
+    const thisYearAvg = calcAvg(thisYearBookings);
+    const lastYearAvg = calcAvg(lastYearBookings);
+
+    // Calculate change
+    const change =
+        lastYearAvg === 0
+            ? thisYearAvg === 0
+                ? "0%"
+                : "+100%"
+            : `${(((thisYearAvg - lastYearAvg) / lastYearAvg) * 100).toFixed(2)}%`;
+
+    return {
+        thisYear: thisYearAvg,
+        lastYear: lastYearAvg,
+        change,
+
+    };
 }
+
+// Example usage
+// getAvgMembershipTenure(1, 2, {})
+//     .then(result => console.log(JSON.stringify(result, null, 4)))
+//     .catch(err => console.error(err));
 
 /* ---------------------------------------------------
    🧊 5️⃣ Reactivated Memberships — reactivate = true AND status = active
+   Count reactivated memberships per year
 --------------------------------------------------- */
 async function getReactivatedMembership(superAdminId, adminId, filters = {}) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
 
-    const reactivatedCount = await Booking.count({
-        where: {
-            ...whereBooking,
-            reactivate: "true",       // new field
-            status: "active",         // active status required
-        },
-    });
+    const currentYear = new Date().getFullYear();
+    const lastYear = currentYear - 1;
 
-    return reactivatedCount;
+    // Helper to count reactivated bookings by year
+    const countByYear = async (year) => {
+        const start = new Date(year, 0, 1); // Jan 1
+        const end = new Date(year, 11, 31, 23, 59, 59); // Dec 31
+        return await Booking.count({
+            where: {
+                ...whereBooking,
+                reactivate: "true",
+                status: "active",
+                createdAt: { [Op.between]: [start, end] },
+            },
+        });
+    };
+
+    const [thisYearCount, lastYearCount] = await Promise.all([
+        countByYear(currentYear),
+        countByYear(lastYear),
+    ]);
+
+    // Calculate change
+    const change =
+        lastYearCount === 0
+            ? thisYearCount === 0
+                ? "0%"
+                : "+100%"
+            : `${(((thisYearCount - lastYearCount) / lastYearCount) * 100).toFixed(2)}%`;
+
+    return {
+        thisYear: thisYearCount,
+        lastYear: lastYearCount,
+        change,
+
+    };
 }
+
+// Example usage
+// getReactivatedMembership(1, 2, {})
+//     .then(result => console.log(JSON.stringify(result, null, 4)))
+//     .catch(err => console.error(err));
 
 /* ---------------------------------------------------
    👶 6️⃣ Total New Students — via BookingStudentMeta
@@ -267,36 +449,65 @@ async function getTotalNewStudents(superAdminId, adminId, filters = {}) {
 async function getMonthlyCancellations(superAdminId, adminId, filters) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
 
-    const results = [];
+    const currentYear = moment().year();
+    const years = [currentYear - 1, currentYear];
 
-    for (let i = 0; i < 12; i++) {
-        const start = moment().month(i).startOf("month").toDate();
-        const end = moment().month(i).endOf("month").toDate();
+    const chart = {};
 
-        // Count total cancellations for the month
-        const cancelled = await Booking.count({
-            where: {
-                ...whereBooking,
-                status: "cancelled",
-                createdAt: { [Op.between]: [start, end] },
-            },
-        });
+    for (const year of years) {
+        const results = [];
 
-        results.push({
-            month: MONTHS[i],
-            cancelled,
-        });
+        for (let monthIndex = 0; monthIndex < 12; monthIndex++) {
+            const start = moment()
+                .year(year)
+                .month(monthIndex)
+                .startOf("month")
+                .toDate();
+
+            const end = moment()
+                .year(year)
+                .month(monthIndex)
+                .endOf("month")
+                .toDate();
+
+            const cancelled = await CancelBooking.count({
+                where: {
+                    createdAt: { [Op.between]: [start, end] }, // ✅ FIX
+                },
+                include: [
+                    {
+                        model: Booking,
+                        as: "booking", // ⚠️ must match association
+                        where: {
+                            ...whereBooking,
+                            status: "cancelled",
+                        },
+                        attributes: [],
+                    },
+                ],
+                distinct: true,
+                col: "bookingId", // ✅ avoid double counting
+            });
+
+            results.push({
+                month: MONTHS[monthIndex],
+                cancelled,
+            });
+        }
+
+        chart[year] = results;
     }
 
-    // ⭐ Current + last month stats
+    // 📌 Current vs Last Month (based on cancellation date)
     const currentMonthIndex = moment().month();
-    const lastMonthIndex = currentMonthIndex - 1 < 0 ? 0 : currentMonthIndex - 1;
+    const thisMonth = chart[currentYear][currentMonthIndex].cancelled;
 
-    const thisMonth = results[currentMonthIndex].cancelled;
-    const lastMonth = results[lastMonthIndex].cancelled;
+    const lastMonth =
+        currentMonthIndex === 0
+            ? chart[currentYear - 1][11].cancelled
+            : chart[currentYear][currentMonthIndex - 1].cancelled;
 
     let change = 0;
-
     if (lastMonth === 0) {
         change = thisMonth > 0 ? 100 : 0;
     } else {
@@ -304,10 +515,10 @@ async function getMonthlyCancellations(superAdminId, adminId, filters) {
     }
 
     return {
-        thisMonth: thisMonth.toString(),
-        lastMonth: lastMonth.toString(),
+        // thisMonth: thisMonth.toString(),
+        // lastMonth: lastMonth.toString(),
         change: `${change.toFixed(2)}%`,
-        monthly: results, // Full Jan–Dec dataset
+        chart,
     };
 }
 
@@ -540,11 +751,11 @@ async function getWeeklyClassPerformance(superAdminId, adminId, filters) {
         mostCancelledPlans,
         allVenues,
     ] = await Promise.all([
-        calculateMetric((s, a, offset) => getTotalRTCs(s, a, filters, offset), superAdminId, adminId),
-        calculateMetric((s, a, offset) => getTotalCancelled(s, a, filters, offset), superAdminId, adminId),
-        calculateMetric((s, a, offset) => getMonthlyRevenueLost(s, a, filters, offset), superAdminId, adminId),
-        calculateMetric((s, a, offset) => getAvgMembershipTenure(s, a, filters, offset), superAdminId, adminId),
-        calculateMetric((s, a, offset) => getReactivatedMembership(s, a, filters, offset), superAdminId, adminId),
+        getRTCYearComparison(superAdminId, adminId, filters),
+        getTotalCancelledYearComparison(superAdminId, adminId, filters),
+        getMonthlyRevenueLostComparison(filters, superAdminId, adminId),
+        getAvgMembershipTenure(filters, superAdminId, adminId),
+        getReactivatedMembership(filters, superAdminId, adminId),
         calculateMetric((s, a, offset) => getTotalNewStudents(s, a, filters, offset), superAdminId, adminId),
 
         getMonthlyCancellations(superAdminId, adminId, filters),
