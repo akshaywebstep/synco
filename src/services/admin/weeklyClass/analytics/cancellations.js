@@ -26,27 +26,6 @@ function getMonthRange(monthOffset = 0) {
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-function pctChange(current, previous) {
-    if (previous === 0) {
-        return current === 0 ? "0%" : "+100%";
-    }
-    const change = ((current - previous) / previous) * 100;
-    return `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`;
-}
-
-async function calculateMetric(fn, superAdminId, adminId) {
-    // this month
-    const thisMonth = await fn(superAdminId, adminId, 0);
-
-    // last month
-    const lastMonth = await fn(superAdminId, adminId, -1);
-
-    // difference %
-    const change = pctChange(thisMonth, lastMonth);
-
-    return { thisMonth, lastMonth, change };
-}
-
 // 🧩 Utility: build where conditions based on admin hierarchy
 async function buildAccessConditions(superAdminId, adminId, filters = {}) {
     const whereLead = {};
@@ -83,33 +62,88 @@ async function buildAccessConditions(superAdminId, adminId, filters = {}) {
     return { whereLead, whereVenue, whereSchedule, whereBooking };
 }
 
+/* ---------------------------------------------------
+   🏟️ Venues Used in Cancelled Bookings — Filter by Student Age
+--------------------------------------------------- */
+function getAgeFilter(age) {
+    if (!age || age === "allAges") return null;
+
+    // exact age (e.g. ?age=1)
+    if (!isNaN(age)) {
+        return { age: Number(age) };
+    }
+
+    if (age === "under18") return { age: { [Op.lt]: 18 } };
+    if (age === "18-25") return { age: { [Op.between]: [18, 25] } };
+
+    return null;
+}
+
+async function applyGlobalFilters(filters = {}) {
+    let cancelWhere = {};
+
+    if (filters.period) {
+        const range = getPeriodRange(filters.period);
+        if (range) {
+            cancelWhere.createdAt = {
+                [Op.between]: [range.start, range.end],
+            };
+        }
+    }
+
+    const ageFilter = getAgeFilter(filters.age);
+
+    const studentInclude = {
+        model: BookingStudentMeta,
+        as: "students",
+        attributes: [],
+        where: ageFilter || undefined,
+        required: !!ageFilter,
+    };
+
+    return { cancelWhere, studentInclude };
+}
+
 async function getAllVenuesUsedInCancelled(superAdminId, adminId, filters = {}) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
 
-    const cancelled = await Booking.findAll({
+    const ageFilter = getAgeFilter(filters.age);
+
+    const cancelledBookings = await Booking.findAll({
         where: {
             ...whereBooking,
             status: "cancelled",
         },
-        attributes: ["venueId"],
-        group: ["venueId"],
+        attributes: ["id", "venueId"],
         include: [
+            {
+                model: BookingStudentMeta,
+                as: "students",
+                attributes: ["age"],
+                where: ageFilter || undefined,
+                required: !!ageFilter, // only filter if age provided
+            },
             {
                 model: Venue,
                 as: "venue",
-                attributes: ["id", "name"]
-            }
+                attributes: ["id", "name"],
+            },
         ],
         raw: true,
-        nest: true
+        nest: true,
     });
 
-    return cancelled
-        .map(c => ({
-            id: c.venue?.id,
-            name: c.venue?.name
-        }))
-        .filter(v => v.id);
+    const venueMap = {};
+    cancelledBookings.forEach(c => {
+        if (c.venue?.id && !venueMap[c.venue.id]) {
+            venueMap[c.venue.id] = {
+                id: c.venue.id,
+                name: c.venue.name,
+            };
+        }
+    });
+
+    return Object.values(venueMap);
 }
 
 /* ---------------------------------------------------
@@ -118,20 +152,17 @@ async function getAllVenuesUsedInCancelled(superAdminId, adminId, filters = {}) 
 async function getTotalRTCs(superAdminId, adminId, filters, year) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
     const { start, end } = getYearRange(year);
+    const { cancelWhere, studentInclude } = await applyGlobalFilters(filters);
 
     return await CancelBooking.count({
-        where: {
-            createdAt: { [Op.between]: [start, end] },
-        },
+        where: cancelWhere,
         include: [
             {
                 model: Booking,
-                as: "booking", // must match association
-                where: {
-                    ...whereBooking,
-                    status: "request_to_cancel",
-                },
+                as: "booking",
+                where: { ...whereBooking, status: "request_to_cancel" },
                 attributes: [],
+                include: studentInclude ? [studentInclude] : [],
             },
         ],
         distinct: true,
@@ -171,20 +202,17 @@ async function getRTCYearComparison(superAdminId, adminId, filters) {
 async function getTotalCancelled(superAdminId, adminId, filters, year) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
     const { start, end } = getYearRange(year);
+    const { cancelWhere, studentInclude } = await applyGlobalFilters(filters);
 
     return await CancelBooking.count({
-        where: {
-            createdAt: { [Op.between]: [start, end] },
-        },
+        where: cancelWhere,
         include: [
             {
                 model: Booking,
                 as: "booking",
-                where: {
-                    ...whereBooking,
-                    status: "cancelled",
-                },
+                where: { ...whereBooking, status: "cancelled" },
                 attributes: [],
+                include: studentInclude ? [studentInclude] : [],
             },
         ],
         distinct: true,
@@ -221,36 +249,30 @@ async function getTotalCancelledYearComparison(superAdminId, adminId, filters) {
 --------------------------------------------------- */
 async function getMonthlyRevenueLost(superAdminId, adminId, filters, monthOffset = 0) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
-    const { start, end } = getMonthRange(monthOffset);
+    const { cancelWhere, studentInclude } = await applyGlobalFilters(filters);
 
     const rows = await CancelBooking.findAll({
-        where: {
-            createdAt: { [Op.between]: [start, end] }, // cancellation date
-        },
+        where: cancelWhere,
         include: [
             {
                 model: Booking,
                 as: "booking",
-                where: {
-                    ...whereBooking,
-                    status: "cancelled",
-                    paymentPlanId: { [Op.ne]: null }, // only bookings with paymentPlanId
-                },
+                where: { ...whereBooking, status: "cancelled", paymentPlanId: { [Op.ne]: null } },
                 attributes: ["id", "paymentPlanId"],
                 include: [
+                    studentInclude,
                     {
                         model: PaymentPlan,
                         as: "paymentPlan",
-                        attributes: ["id", "price"], // include id & price
+                        attributes: ["id", "price"],
                     },
-                ],
+                ].filter(Boolean),
             },
         ],
     });
 
-    // Only include rows where paymentPlan exists
     const cancelledWithPlan = rows
-        .filter(row => row.booking?.paymentPlan) // ignore bookings without a payment plan
+        .filter(row => row.booking?.paymentPlan)
         .map(row => ({
             bookingId: row.booking.id,
             paymentPlanId: row.booking.paymentPlan.id,
@@ -303,63 +325,41 @@ async function getMonthlyRevenueLostComparison(superAdminId, adminId, filters) {
 --------------------------------------------------- */
 async function getAvgMembershipTenure(superAdminId, adminId, filters = {}) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
-    whereBooking.paymentPlanId = { [Op.not]: null }; // only bookings with paymentPlan
+    whereBooking.paymentPlanId = { [Op.not]: null };
+    const { studentInclude } = await applyGlobalFilters(whereBooking, filters);
 
-    const currentYear = new Date().getFullYear();
-    const lastYear = currentYear - 1;
-
-    // Fetch cancelled bookings
     const cancelledBookings = await CancelBooking.findAll({
         include: [
             {
                 model: Booking,
                 as: "booking",
-                where: {
-                    ...whereBooking,
-                    status: "cancelled",
-                },
+                where: { ...whereBooking, status: "cancelled" },
                 attributes: ["id", "paymentPlanId"],
                 include: [
-                    {
-                        model: PaymentPlan,
-                        as: "paymentPlan",
-                        attributes: ["duration"], // duration in months
-                    },
-                ],
+                    studentInclude,
+                    { model: PaymentPlan, as: "paymentPlan", attributes: ["duration"] },
+                ].filter(Boolean),
             },
         ],
     });
 
-    // Helper to calculate average
-    const calcAvg = (bookings) => {
-        const durations = bookings
-            .map(b => b.booking?.paymentPlan?.duration || 0)
-            .filter(d => d > 0);
-        if (durations.length === 0) return 0;
-        return parseFloat((durations.reduce((a, b) => a + b, 0) / durations.length).toFixed(1));
+    const calcAvg = bookings => {
+        const durations = bookings.map(b => b.booking?.paymentPlan?.duration || 0).filter(d => d > 0);
+        return durations.length === 0 ? 0 : parseFloat((durations.reduce((a, b) => a + b, 0) / durations.length).toFixed(1));
     };
 
-    // Split bookings by year of cancellation
+    const currentYear = new Date().getFullYear();
+    const lastYear = currentYear - 1;
+
     const thisYearBookings = cancelledBookings.filter(b => b.createdAt.getFullYear() === currentYear);
     const lastYearBookings = cancelledBookings.filter(b => b.createdAt.getFullYear() === lastYear);
 
     const thisYearAvg = calcAvg(thisYearBookings);
     const lastYearAvg = calcAvg(lastYearBookings);
 
-    // Calculate change
-    const change =
-        lastYearAvg === 0
-            ? thisYearAvg === 0
-                ? "0%"
-                : "+100%"
-            : `${(((thisYearAvg - lastYearAvg) / lastYearAvg) * 100).toFixed(2)}%`;
+    const change = lastYearAvg === 0 ? (thisYearAvg === 0 ? "0%" : "+100%") : `${(((thisYearAvg - lastYearAvg) / lastYearAvg) * 100).toFixed(2)}%`;
 
-    return {
-        thisYear: thisYearAvg,
-        lastYear: lastYearAvg,
-        change,
-
-    };
+    return { thisYear: thisYearAvg, lastYear: lastYearAvg, change };
 }
 
 // Example usage
@@ -373,43 +373,25 @@ async function getAvgMembershipTenure(superAdminId, adminId, filters = {}) {
 --------------------------------------------------- */
 async function getReactivatedMembership(superAdminId, adminId, filters = {}) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
+    const { studentInclude } = await applyGlobalFilters(whereBooking, filters);
 
     const currentYear = new Date().getFullYear();
     const lastYear = currentYear - 1;
 
-    // Helper to count reactivated bookings by year
     const countByYear = async (year) => {
-        const start = new Date(year, 0, 1); // Jan 1
-        const end = new Date(year, 11, 31, 23, 59, 59); // Dec 31
+        const start = new Date(year, 0, 1);
+        const end = new Date(year, 11, 31, 23, 59, 59);
         return await Booking.count({
-            where: {
-                ...whereBooking,
-                reactivate: "true",
-                status: "active",
-                createdAt: { [Op.between]: [start, end] },
-            },
+            where: { ...whereBooking, reactivate: "true", status: "active", createdAt: { [Op.between]: [start, end] } },
+            include: studentInclude ? [studentInclude] : [],
         });
     };
 
-    const [thisYearCount, lastYearCount] = await Promise.all([
-        countByYear(currentYear),
-        countByYear(lastYear),
-    ]);
+    const [thisYearCount, lastYearCount] = await Promise.all([countByYear(currentYear), countByYear(lastYear)]);
 
-    // Calculate change
-    const change =
-        lastYearCount === 0
-            ? thisYearCount === 0
-                ? "0%"
-                : "+100%"
-            : `${(((thisYearCount - lastYearCount) / lastYearCount) * 100).toFixed(2)}%`;
+    const change = lastYearCount === 0 ? (thisYearCount === 0 ? "0%" : "+100%") : `${(((thisYearCount - lastYearCount) / lastYearCount) * 100).toFixed(2)}%`;
 
-    return {
-        thisYear: thisYearCount,
-        lastYear: lastYearCount,
-        change,
-
-    };
+    return { thisYear: thisYearCount, lastYear: lastYearCount, change };
 }
 
 // Example usage
@@ -419,14 +401,11 @@ async function getReactivatedMembership(superAdminId, adminId, filters = {}) {
 
 /* ---------------------------------------------------
    👶 6️⃣ Total New Students — via BookingStudentMeta
---------------------------------------------------- */
-/* ---------------------------------------------------
-   👶 6️⃣ Total New Students — via BookingStudentMeta
    Only active bookings, counted per year
 --------------------------------------------------- */
 async function getTotalNewStudents(superAdminId, adminId, filters = {}) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
-
+    const { studentInclude } = await applyGlobalFilters(whereBooking, filters);
     // Only consider active bookings
     whereBooking.status = "active";
 
@@ -444,12 +423,12 @@ async function getTotalNewStudents(superAdminId, adminId, filters = {}) {
                 createdAt: { [Op.between]: [start, end] },
             },
             include: [
-                {
+                studentInclude || {
                     model: BookingStudentMeta,
                     as: "students",
                     attributes: ["id"],
                 },
-            ],
+            ].filter(Boolean),
         });
 
         // Sum students per booking
@@ -476,31 +455,17 @@ async function getTotalNewStudents(superAdminId, adminId, filters = {}) {
     };
 }
 
-// Example usage
-// getTotalNewStudents(1, 2, {})
-//     .then(result => console.log(JSON.stringify(result, null, 4)))
-//     .catch(err => console.error(err));
-
-/* ---------------------------------------------------
-   ❌ 7️⃣ Monthly Cancellations & Reasons — current year
---------------------------------------------------- */
 /* ---------------------------------------------------
    ❌ Cancellation Reasons — current year summary only
 --------------------------------------------------- */
 async function getCancellationReasons(superAdminId, adminId, filters = {}) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
     const currentYear = moment().year();
+    const { cancelWhere } = await applyGlobalFilters(filters);
 
     // Fetch all cancelled bookings for the current year
     const cancellationsThisYear = await CancelBooking.findAll({
-        where: {
-            createdAt: {
-                [Op.between]: [
-                    moment().year(currentYear).startOf("year").toDate(),
-                    moment().year(currentYear).endOf("year").toDate(),
-                ],
-            },
-        },
+        where: cancelWhere,
         include: [
             {
                 model: Booking,
@@ -509,7 +474,7 @@ async function getCancellationReasons(superAdminId, adminId, filters = {}) {
                     ...whereBooking,
                     status: "cancelled",
                 },
-                attributes: ["id"], // no need for cancellationReason here
+                attributes: [],
             },
         ],
     });
@@ -535,127 +500,80 @@ async function getCancellationReasons(superAdminId, adminId, filters = {}) {
     };
 }
 
-// Example usage
-// getCancellationReasons(1, 2, {})
-//     .then(result => console.log(JSON.stringify(result, null, 4)))
-//     .catch(err => console.error(err));
-
-// Example usage
-// getMonthlyCancellations(1, 2, {})
-//     .then(result => console.log(JSON.stringify(result, null, 4)))
-//     .catch(err => console.error(err));
-
-/* ---------------------------------------------------
-   ❗ 7️⃣ Cancellation Reasons — Grouped (Count + %)
---------------------------------------------------- */
 /* ---------------------------------------------------
    ❌ 7️⃣ Monthly Cancellations & Reasons — current year
    cancellationReason is in CancelBooking table
 --------------------------------------------------- */
 async function getMonthlyCancellations(superAdminId, adminId, filters = {}) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
+    const { studentInclude } = await applyGlobalFilters(whereBooking, filters);
+
     const currentYear = moment().year();
+    const years = [currentYear, currentYear - 1]; // ✅ 2026, 2025
 
-    const chart = [];
+    const chart = {};
 
-    // Loop through months
-    for (let monthIndex = 0; monthIndex < 12; monthIndex++) {
-        const start = moment().year(currentYear).month(monthIndex).startOf("month").toDate();
-        const end = moment().year(currentYear).month(monthIndex).endOf("month").toDate();
+    for (const year of years) {
+        chart[year] = [];
 
-        const cancelled = await CancelBooking.count({
-            where: {
-                createdAt: { [Op.between]: [start, end] },
-            },
-            include: [
-                {
-                    model: Booking,
-                    as: "booking",
-                    where: {
-                        ...whereBooking,
-                        status: "cancelled",
+        for (let monthIndex = 0; monthIndex < 12; monthIndex++) {
+            const range = {
+                start: moment().year(year).month(monthIndex).startOf("month").toDate(),
+                end: moment().year(year).month(monthIndex).endOf("month").toDate(),
+            };
+
+            const cancelled = await CancelBooking.count({
+                where: {
+                    createdAt: {
+                        [Op.between]: [range.start, range.end],
                     },
-                    attributes: [], // no need
                 },
-            ],
-        });
+                include: [
+                    {
+                        model: Booking,
+                        as: "booking",
+                        where: {
+                            ...whereBooking,
+                            status: "cancelled",
+                        },
+                        attributes: [],
+                        include: studentInclude ? [studentInclude] : [],
+                    },
+                ],
+            });
 
-        chart.push({
-            month: MONTHS[monthIndex],
-            cancelled,
-        });
+            chart[year].push({
+                month: MONTHS[monthIndex],
+                cancelled,
+            });
+        }
     }
 
-    // Current vs Last Month change
-    const currentMonthIndex = moment().month();
-    const thisMonth = chart[currentMonthIndex].cancelled;
-    const lastMonth = currentMonthIndex === 0 ? chart[11].cancelled : chart[currentMonthIndex - 1].cancelled;
-
-    const change = lastMonth === 0 ? (thisMonth > 0 ? 100 : 0) : ((thisMonth - lastMonth) / lastMonth) * 100;
-
-    // Cancellation reasons for current year
-    const cancellationsThisYear = await CancelBooking.findAll({
-        where: {
-            createdAt: {
-                [Op.between]: [
-                    moment().year(currentYear).startOf("year").toDate(),
-                    moment().year(currentYear).endOf("year").toDate(),
-                ],
-            },
-        },
-    });
-
-    // Aggregate reasons
-    const reasonCounts = {};
-    cancellationsThisYear.forEach(c => {
-        const reason = c.cancelReason || "Other";
-        reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
-    });
-
-    const totalCancellations = cancellationsThisYear.length;
-
-    const reasons = Object.entries(reasonCounts).map(([reason, count]) => ({
-        reason,
-        count,
-        percentage: totalCancellations ? parseFloat(((count / totalCancellations) * 100).toFixed(2)) : 0,
-    }));
-
-    return {
-        change: `${change.toFixed(2)}%`,
-        chart,
-        cancellationReasons: {
-            total: totalCancellations,
-            reasons,
-        },
-    };
+    return { chart };
 }
 
-// Example usage
-getMonthlyCancellations(1, 2, {})
-    .then(result => console.log(JSON.stringify(result, null, 4)))
-    .catch(err => console.error(err));
-
 /* ---------------------------------------------------
-   👶 8️⃣ Cancelled Students — By Age & By Gender
+   👶 8️⃣ Cancelled Students — By Age & By Gender (Current Year)
 --------------------------------------------------- */
 async function getCancellStudentByAgeAndByGender(superAdminId, adminId, filters = {}) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
 
-    // 1️⃣ Fetch all cancelled bookings
+    const currentYear = moment().year();
+    const { cancelWhere } = await applyGlobalFilters(filters);
+
+    // 1️⃣ Fetch all cancelled bookings for current year
     const cancelledBookings = await Booking.findAll({
         where: {
             ...whereBooking,
             status: "cancelled",
-            ...(filters.startDate && filters.endDate
-                ? { createdAt: { [Op.between]: [filters.startDate, filters.endDate] } }
-                : {})
+            ...cancelWhere,
         },
         attributes: ["id"],
         raw: true,
     });
 
     if (cancelledBookings.length === 0) {
-        return { byAge: [], byGender: [] };
+        return { total: 0, byAge: [], byGender: [] };
     }
 
     const bookingIds = cancelledBookings.map(b => b.id);
@@ -668,7 +586,7 @@ async function getCancellStudentByAgeAndByGender(superAdminId, adminId, filters 
     });
 
     if (students.length === 0) {
-        return { byAge: [], byGender: [] };
+        return { total: 0, byAge: [], byGender: [] };
     }
 
     const total = students.length;
@@ -677,8 +595,7 @@ async function getCancellStudentByAgeAndByGender(superAdminId, adminId, filters 
     const ageCounts = {};
     students.forEach(s => {
         const age = s.age ? s.age.toString() : "Unknown";
-        if (!ageCounts[age]) ageCounts[age] = 0;
-        ageCounts[age]++;
+        ageCounts[age] = (ageCounts[age] || 0) + 1;
     });
 
     const byAge = Object.keys(ageCounts).map(age => ({
@@ -687,14 +604,13 @@ async function getCancellStudentByAgeAndByGender(superAdminId, adminId, filters 
         percentage: parseFloat(((ageCounts[age] / total) * 100).toFixed(2)),
     }));
 
-    byAge.sort((a, b) => b.count - a.count); // biggest first
+    byAge.sort((a, b) => b.count - a.count);
 
     // 4️⃣ Group by Gender
     const genderCounts = {};
     students.forEach(s => {
         const gender = s.gender || "Unknown";
-        if (!genderCounts[gender]) genderCounts[gender] = 0;
-        genderCounts[gender]++;
+        genderCounts[gender] = (genderCounts[gender] || 0) + 1;
     });
 
     const byGender = Object.keys(genderCounts).map(gender => ({
@@ -715,6 +631,7 @@ async function getCancellStudentByAgeAndByGender(superAdminId, adminId, filters 
 /* ---------------------------------------------------
    💠 9️⃣ Membership Plans Most Cancelled (Corrected for real DB)
 --------------------------------------------------- */
+
 async function getMostCancelledMembershipPlans(superAdminId, adminId, filters = {}) {
     const { whereBooking } = await buildAccessConditions(superAdminId, adminId, filters);
 
@@ -764,42 +681,6 @@ function getPeriodRange(period) {
     }
 }
 
-function getAgeFilter(age) {
-    if (!age || age === "allAges") return null;
-
-    if (age === "under18") {
-        return { age: { [Op.lt]: 18 } };
-    }
-
-    if (age === "18-25") {
-        return { age: { [Op.between]: [18, 25] } };
-    }
-
-    return null;
-}
-async function applyGlobalFilters(whereBooking, filters) {
-    // PERIOD FILTER
-    if (filters.period) {
-        const range = getPeriodRange(filters.period);
-        if (range) {
-            whereBooking.createdAt = { [Op.between]: [range.start, range.end] };
-        }
-    }
-
-    // AGE FILTER (joins BookingStudentMeta)
-    const ageFilter = getAgeFilter(filters.age);
-
-    const studentInclude = {
-        model: BookingStudentMeta,
-        as: "students",
-        attributes: [],
-        where: ageFilter || undefined,
-        required: !!ageFilter,
-    };
-
-    return { studentInclude };
-}
-
 /* ---------------------------------------------------
    📊 Combined Analytics — summary for dashboard
 --------------------------------------------------- */
@@ -820,16 +701,16 @@ async function getWeeklyClassPerformance(superAdminId, adminId, filters) {
     ] = await Promise.all([
         getRTCYearComparison(superAdminId, adminId, filters),
         getTotalCancelledYearComparison(superAdminId, adminId, filters),
-        getMonthlyRevenueLostComparison(filters, superAdminId, adminId),
-        getAvgMembershipTenure(filters, superAdminId, adminId),
-        getReactivatedMembership(filters, superAdminId, adminId),
-        getTotalNewStudents(filters, superAdminId, adminId),
+        getMonthlyRevenueLostComparison(superAdminId, adminId, filters),
+        getAvgMembershipTenure(superAdminId, adminId, filters),
+        getReactivatedMembership(superAdminId, adminId, filters),
+        getTotalNewStudents(superAdminId, adminId, filters),
 
         getMonthlyCancellations(superAdminId, adminId, filters),
         getCancellationReasons(superAdminId, adminId, filters),
         getCancellStudentByAgeAndByGender(superAdminId, adminId, filters),
         getMostCancelledMembershipPlans(superAdminId, adminId, filters),
-        getAllVenuesUsedInCancelled(superAdminId, adminId, filters),
+        getAllVenuesUsedInCancelled(superAdminId, adminId),
     ])
 
     return {
@@ -839,7 +720,7 @@ async function getWeeklyClassPerformance(superAdminId, adminId, filters) {
         avgMembershipTenure: avgTenure,
         reactivatedMembership: reactivated,
         totalNewStudents: newStudents,
-        chart: monthlyAttendance,
+        graph: monthlyAttendance,
         cancellationReasons: cancellationReasons,
         getByAgeandByGender: getByAgeandByGender,
         mostCancelledPlans: mostCancelledPlans,

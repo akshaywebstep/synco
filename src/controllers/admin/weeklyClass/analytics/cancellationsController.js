@@ -9,6 +9,7 @@ const MODULE = "weekly-class";
 // 🎯 Controller: Get Cancellations Analytics Report
 exports.getCancellationsReport = async (req, res) => {
     const adminId = req.admin?.id;
+     const filters = req.query || {}; 
 
     if (DEBUG) {
         console.log("📊 [Step 1] Request received to generate cancellations analytics report.");
@@ -23,7 +24,6 @@ exports.getCancellationsReport = async (req, res) => {
         const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? adminId;
 
         // 🎯 Extract optional filters
-        const filters = req.query || {};
 
         // ✅ Generate all cancellations-related analytics
         const analyticsData = await cancellationsAnalytics.getWeeklyClassPerformance(
