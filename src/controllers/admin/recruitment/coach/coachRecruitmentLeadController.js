@@ -282,8 +282,8 @@ exports.getAllRecruitmentLeadRport = async (req, res) => {
     const adminId = req.admin?.id;
 
     // 👉 accept ?dateRange=thisMonth | lastMonth | last3Months | last6Months
-    const { dateRange = "thisMonth" } = req.query;
-
+    const { dateRange } = req.query;
+   
     if (!adminId) {
       return res.status(401).json({
         status: false,
