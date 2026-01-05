@@ -496,12 +496,12 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
     const leadSourceCount = {};
     const topAgentCount = {};
     const normalizePercent = (items) => {
-        const total = items.reduce((s, i) => s + i.count, 0);
-        return items.map(i => ({
-          ...i,
-          percent: total > 0 ? ((i.count / total) * 100).toFixed(0) + "%" : "0%"
-        }));
-      };
+      const total = items.reduce((s, i) => s + i.count, 0);
+      return items.map(i => ({
+        ...i,
+        percent: total > 0 ? ((i.count / total) * 100).toFixed(0) + "%" : "0%"
+      }));
+    };
 
     let totalCallScore = 0;
     let totalCallMax = 0;
@@ -521,7 +521,7 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
           : leadYear === LAST_YEAR
             ? yearlyCounters.lastYear
             : null;
-      
+
       if (!bucket) continue;
 
       // ===== TOTAL LEADS =====
@@ -688,16 +688,32 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
       })
     );
 
-    const highDemandVenues = Object.keys(venueDemandCount).map(id => {
+    const totalCount = Object.values(venueDemandCount).reduce((sum, val) => sum + val, 0);
+
+    let runningPercent = 0;
+
+    const highDemandVenues = Object.keys(venueDemandCount).map((id, index, arr) => {
       const venue = venues.find(v => v.id == id);
-      return {
-        venueName: venue ? venue.name : "Unknown",
-        count: venueDemandCount[id],
-        percent:
-          totalLeads > 0
-            ? ((venueDemandCount[id] / totalLeads) * 100).toFixed(0) + "%"
-            : "0%"
-      };
+      const count = venueDemandCount[id];
+
+      // For each but last, calculate rounded percent
+      if (index < arr.length - 1) {
+        const percentNum = Math.round((count / totalCount) * 100);
+        runningPercent += percentNum;
+        return {
+          venueName: venue ? venue.name : "Unknown",
+          count,
+          percent: percentNum + "%"
+        };
+      } else {
+        // For last one, assign remaining percent to make total 100
+        const percentNum = 100 - runningPercent;
+        return {
+          venueName: venue ? venue.name : "Unknown",
+          count,
+          percent: percentNum + "%"
+        };
+      }
     });
 
     const topAgents = Object.keys(topAgentCount)
