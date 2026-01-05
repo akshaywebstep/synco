@@ -1248,6 +1248,37 @@ exports.waitingListCreate = async (data, adminId) => {
   }
 };
 
+// Helper to get startDate & endDate based on filterType
+function getDateRange(filterType) {
+  const now = new Date();
+  let startDate, endDate;
+
+  switch (filterType) {
+    case "thisMonth":
+      startDate = moment().startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+      break;
+    case "lastMonth":
+      startDate = moment().subtract(1, "month").startOf("month").toDate();
+      endDate = moment().subtract(1, "month").endOf("month").toDate();
+      break;
+    case "last3Months":
+      startDate = moment().subtract(3, "months").startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+      break;
+    case "last6Months":
+      startDate = moment().subtract(6, "months").startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+      break;
+    default:
+      // Default: full year
+      startDate = new Date(now.getFullYear(), 0, 1);
+      endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
+  }
+
+  return { startDate, endDate };
+}
+
 exports.holidayCampsReports = async (superAdminId, adminId, filterType) => {
   try {
     //----------------------------------------
@@ -1280,38 +1311,46 @@ exports.holidayCampsReports = async (superAdminId, adminId, filterType) => {
       whereBooking.bookedBy = adminId;
     }
 
-    // 🗓️ Dynamic date filter
-    let startDate, endDate;
-
-    if (filterType === "thisMonth") {
-      startDate = moment().startOf("month").toDate();
-      endDate = moment().endOf("month").toDate();
-    } else if (filterType === "lastMonth") {
-      startDate = moment().subtract(1, "month").startOf("month").toDate();
-      endDate = moment().subtract(1, "month").endOf("month").toDate();
-    } else if (filterType === "last3Months") {
-      startDate = moment().subtract(3, "months").startOf("month").toDate();
-      endDate = moment().endOf("month").toDate();
-    } else if (filterType === "last6Months") {
-      startDate = moment().subtract(6, "months").startOf("month").toDate();
-      endDate = moment().endOf("month").toDate();
-    } else {
-      throw new Error("Invalid filterType. Use thisMonth | lastMonth | last3Months | last6Months");
-    }
-
-    const dateFilter = {
-      createdAt: {
-        [Op.between]: [startDate, endDate]
-      }
-    };
     const allowed = Array.isArray(whereBooking.bookedBy?.[Op.in])
       ? whereBooking.bookedBy[Op.in]
       : [whereBooking.bookedBy];
 
     //----------------------------------------
+    // FILTER DATE RANGE (optional)
+    //----------------------------------------
+    let filterStartDate = null;
+    let filterEndDate = null;
+
+    if (filterType) {
+      const range = getDateRange(filterType);
+      filterStartDate = range.startDate;
+      filterEndDate = range.endDate;
+    }
+
+    const applyDateFilter = (where = {}) => {
+      if (filterStartDate && filterEndDate) {
+        where.createdAt = { [Op.between]: [filterStartDate, filterEndDate] };
+      }
+      return where;
+    };
+
+    //----------------------------------------
     // Date ranges
     //----------------------------------------
     const now = new Date();
+    const startOfThisYear = new Date(now.getFullYear(), 0, 1);
+    const endOfThisYear = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
+
+    const startOfLastYear = new Date(now.getFullYear() - 1, 0, 1);
+    const endOfLastYear = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59);
+
+    const sqlDateCondition = filterStartDate
+      ? `AND hb.createdAt BETWEEN :startDate AND :endDate`
+      : ``;
+
+    const sqlDateReplacements = filterStartDate
+      ? { startDate: filterStartDate, endDate: filterEndDate }
+      : {};
     //----------------------------------------
     // 1) TOTAL REVENUE
     //----------------------------------------
@@ -1323,161 +1362,257 @@ exports.holidayCampsReports = async (superAdminId, adminId, filterType) => {
               model: HolidayBooking,
               as: "booking",
               attributes: [],
-              where: {
-                ...whereBooking,
-                ...dateFilter
-              }
+              where: applyDateFilter({
+                ...whereBooking
+              })
             }
           ]
         })
       ) || 0
     );
-
-    const revenueThisMonthRow = await sequelize.query(
+    const revenueThisYearRow = await sequelize.query(
       `
-  SELECT IFNULL(SUM(hbp.amount),0) AS revenue
-  FROM holiday_booking hb
-  LEFT JOIN holiday_booking_payments hbp ON hbp.holiday_booking_id = hb.id
+  SELECT IFNULL(SUM(hbp.amount), 0) AS revenue
+  FROM holiday_booking_payments hbp
+  JOIN holiday_booking hb 
+    ON hb.id = hbp.holiday_booking_id
   WHERE hb.bookedBy IN(:allowed)
-  AND hb.createdAt BETWEEN :startDate AND :endDate
+  ${sqlDateCondition}
   `,
       {
         type: sequelize.QueryTypes.SELECT,
         replacements: {
-          allowed: Array.isArray(whereBooking.bookedBy?.[Op.in])
-            ? whereBooking.bookedBy[Op.in]
-            : [whereBooking.bookedBy],
-          startDate,
-          endDate
+          allowed,
+          ...sqlDateReplacements
         }
       }
     );
 
-    const revenueLastMonthRow = await sequelize.query(
+    const revenueThisYear = Number(revenueThisYearRow?.[0]?.revenue || 0);
+
+    const revenueLastYearRow = await sequelize.query(
       `
-  SELECT IFNULL(SUM(hbp.amount),0) AS revenue
-  FROM holiday_booking hb
-  LEFT JOIN holiday_booking_payments hbp ON hbp.holiday_booking_id = hb.id
+  SELECT IFNULL(SUM(hbp.amount), 0) AS revenue
+  FROM holiday_booking_payments hbp
+  JOIN holiday_booking hb 
+    ON hb.id = hbp.holiday_booking_id
   WHERE hb.bookedBy IN(:allowed)
-  AND hb.createdAt BETWEEN :startDate AND :endDate
+    AND hb.createdAt BETWEEN :startDate AND :endDate
   `,
       {
         type: sequelize.QueryTypes.SELECT,
         replacements: {
-          allowed: Array.isArray(whereBooking.bookedBy?.[Op.in])
-            ? whereBooking.bookedBy[Op.in]
-            : [whereBooking.bookedBy],
-          startDate,
-          endDate
+          allowed,
+          startDate: startOfLastYear,
+          endDate: endOfLastYear
         }
       }
     );
 
-    const revenueThisMonth = Number(revenueThisMonthRow?.[0]?.revenue || 0);
-    const revenueLastMonth = Number(revenueLastMonthRow?.[0]?.revenue || 0);
-
-    const revenueGrowthPercent =
-      revenueLastMonth === 0
-        ? (revenueThisMonth === 0 ? 0 : 100)
-        : Number(
-          (((revenueThisMonth - revenueLastMonth) / revenueLastMonth) * 100).toFixed(2)
-        );
+    const revenueLastYear = Number(revenueLastYearRow?.[0]?.revenue || 0);
+    const maxRevenue = Math.max(revenueThisYear, revenueLastYear);
+    const revenueAverageRaw =
+      (revenueThisYear + revenueLastYear) / 2;
+    const revenueAverage =
+      maxRevenue === 0
+        ? 0
+        : Number(((revenueAverageRaw / maxRevenue) * 100).toFixed(2));
 
     //----------------------------------------
     // 2) AVERAGE REVENUE PER CAMP
     //----------------------------------------
-    const revenuePerCampRows = await HolidayBooking.findAll({
-      attributes: [
-        "holidayCampId",
-        [sequelize.fn("SUM", sequelize.col("totalStudents")), "studentsCount"],
-        [sequelize.fn("COUNT", sequelize.col("HolidayBooking.id")), "bookingCount"],
-      ],
-      where: { ...whereBooking, ...dateFilter },
 
-      group: ["holidayCampId"],
-      raw: true,
-    });
-
-    const paymentsByCamp = await sequelize.query(
+    const avgRevenuePerCampThisYearRow = await sequelize.query(
       `
-      SELECT hb.holidayCampId AS holidayCampId,
-      IFNULL(SUM(hbp.amount),0) AS revenue
-      FROM holiday_booking hb
-      LEFT JOIN holiday_booking_payments hbp ON hbp.holiday_booking_id = hb.id
-      WHERE hb.bookedBy IN(:allowed)
-      GROUP BY hb.holidayCampId
-      `,
+  SELECT 
+    IFNULL(SUM(hbp.amount),0) / NULLIF(COUNT(DISTINCT hb.holidayCampId),0)
+    AS avgRevenue
+  FROM holiday_booking hb
+  JOIN holiday_booking_payments hbp
+    ON hbp.holiday_booking_id = hb.id
+  WHERE hb.bookedBy IN(:allowed)
+    AND hb.status = 'active'
+    AND hb.createdAt BETWEEN :startDate AND :endDate
+  `,
       {
         type: sequelize.QueryTypes.SELECT,
-        replacements: { allowed, startDate, endDate }
-
+        replacements: {
+          allowed,
+          startDate: startOfThisYear,
+          endDate: endOfThisYear
+        }
       }
     );
 
-    const paymentsByCampMap = paymentsByCamp.reduce((acc, r) => {
-      acc[r.holidayCampId] = Number(r.revenue || 0);
-      return acc;
-    }, {});
-
-    const campIds = revenuePerCampRows.map(r => r.holidayCampId);
-    const numCamps = campIds.length || 0;
-
-    const totalRevenueForCamps = campIds.reduce(
-      (sum, id) => sum + (paymentsByCampMap[id] || 0),
-      0
+    const avgRevenuePerCampThisYear = Number(
+      avgRevenuePerCampThisYearRow[0]?.avgRevenue || 0
+    );
+    const avgRevenuePerCampLastYearRow = await sequelize.query(
+      `
+  SELECT 
+    IFNULL(SUM(hbp.amount),0) / NULLIF(COUNT(DISTINCT hb.holidayCampId),0)
+    AS avgRevenue
+  FROM holiday_booking hb
+  JOIN holiday_booking_payments hbp
+    ON hbp.holiday_booking_id = hb.id
+  WHERE hb.bookedBy IN(:allowed)
+    AND hb.status = 'active'
+    AND hb.createdAt BETWEEN :startDate AND :endDate
+  `,
+      {
+        type: sequelize.QueryTypes.SELECT,
+        replacements: {
+          allowed,
+          startDate: startOfLastYear,
+          endDate: endOfLastYear
+        }
+      }
     );
 
-    const averageRevenuePerCamp = numCamps > 0 ? Number((totalRevenueForCamps / numCamps).toFixed(2)) : 0;
+    const avgRevenuePerCampLastYear = Number(
+      avgRevenuePerCampLastYearRow[0]?.avgRevenue || 0
+    );
+    const avgRevenuePerCampGrowthPercent =
+      avgRevenuePerCampLastYear === 0
+        ? 0
+        : Number(
+          Math.min(
+            ((avgRevenuePerCampThisYear - avgRevenuePerCampLastYear) /
+              avgRevenuePerCampLastYear) *
+            100,
+            100
+          ).toFixed(2)
+        );
+
+    // ---------------------------
+    // 6 REVENUE GROWTH
+    // --------------------------------
+    const startOfYearBeforeLast = new Date(now.getFullYear() - 2, 0, 1);
+    const endOfYearBeforeLast = new Date(now.getFullYear() - 2, 11, 31, 23, 59, 59);
+
+    const revenueYearBeforeLastRow = await sequelize.query(
+      `
+  SELECT IFNULL(SUM(hbp.amount), 0) AS revenue
+  FROM holiday_booking_payments hbp
+  JOIN holiday_booking hb 
+    ON hb.id = hbp.holiday_booking_id
+  WHERE hb.bookedBy IN(:allowed)
+    AND hb.createdAt BETWEEN :startDate AND :endDate
+  `,
+      {
+        type: sequelize.QueryTypes.SELECT,
+        replacements: {
+          allowed,
+          startDate: startOfYearBeforeLast,
+          endDate: endOfYearBeforeLast
+        }
+      }
+    );
+    const revenueYearBeforeLast = Number(
+      revenueYearBeforeLastRow?.[0]?.revenue || 0
+    );
+
+    const avgRevenueThisYear =
+      Number(((revenueThisYear + revenueLastYear) / 2).toFixed(2));
+
+    const avgRevenueLastYear =
+      Number(((revenueLastYear + revenueYearBeforeLast) / 2).toFixed(2));
+
+    // normalization base
+    const maxAvgRevenue = Math.max(avgRevenueThisYear, avgRevenueLastYear);
+
+    const revenueGrowth = {
+      thisYear:
+        maxAvgRevenue === 0
+          ? 0
+          : Number(((avgRevenueThisYear / maxAvgRevenue) * 100).toFixed(2)),
+
+      lastYear:
+        maxAvgRevenue === 0
+          ? 0
+          : Number(((avgRevenueLastYear / maxAvgRevenue) * 100).toFixed(2)),
+
+      average:
+        maxAvgRevenue === 0
+          ? 0
+          : Number(
+            (((avgRevenueThisYear - avgRevenueLastYear) / maxAvgRevenue) * 100).toFixed(2)
+          )
+    };
 
     //----------------------------------------
     // 3) AVERAGE AGE
     //----------------------------------------
-    const avgAgeRow = await HolidayBookingStudentMeta.findOne({
-      attributes: [[sequelize.fn("AVG", sequelize.col("age")), "avgAge"]],
-      include: [
-        {
-          model: HolidayBooking,
-          as: "holidayBooking",
-          attributes: [],
-          where: { status: "active", ...whereBooking },
-        },
-      ],
-      raw: true,
-    });
+    const getAverageAge = async () => {
+      const avgAgeRow = await HolidayBookingStudentMeta.findOne({
+        attributes: [[sequelize.fn("AVG", sequelize.col("age")), "avgAge"]],
+        include: [
+          {
+            model: HolidayBooking,
+            as: "holidayBooking",
+            attributes: [],
+            where: applyDateFilter({
+              status: "active",
+              ...whereBooking
+            }),
+          },
+        ],
+        raw: true,
+      });
 
-    const averageAge = avgAgeRow ? Number(Number(avgAgeRow.avgAge || 0).toFixed(2)) : 0;
+      return Number(Number(avgAgeRow?.avgAge || 0).toFixed(2));
+    };
+
+    // Use your year boundaries
+    // const averageAgeThisYear = await getAverageAge(startOfThisYear, endOfThisYear);
+    // const averageAgeLastYear = await getAverageAge(startOfLastYear, endOfLastYear);
+    const averageAgeThisYear = await getAverageAge();
+    const averageAgeLastYear = averageAgeThisYear; // same range now
 
     // ----------------------------
     // 5) STUDENTS PER CAMP (active)
     // ----------------------------
     // ----------------------------
-    // 1) STUDENTS PER CAMP MONTHLY
-    // ----------------------------
+    // Fetch students per camp grouped by year & month
     const studentsPerCampRows = await HolidayBooking.findAll({
       attributes: [
         "holidayCampId",
-        [sequelize.fn("MONTH", sequelize.col("createdAt")), "month"], // MySQL: returns 1-12
+        [sequelize.fn("YEAR", sequelize.col("createdAt")), "year"], // year
+        [sequelize.fn("MONTH", sequelize.col("createdAt")), "month"], // 1-12
         [sequelize.fn("SUM", sequelize.col("totalStudents")), "enrolledStudents"],
         [sequelize.fn("COUNT", sequelize.col("id")), "bookingCount"],
       ],
-      where: { status: "active", ...whereBooking },
-      group: ["holidayCampId", sequelize.fn("MONTH", sequelize.col("createdAt"))],
+      where: {
+        status: "active",
+        ...whereBooking,
+        createdAt: {
+          [Op.between]: [
+            new Date(now.getFullYear() - 1, 0, 1),
+            new Date(now.getFullYear(), 11, 31, 23, 59, 59),
+          ]
+        }
+      },
+      group: [
+        "holidayCampId",
+        sequelize.fn("YEAR", sequelize.col("createdAt")),
+        sequelize.fn("MONTH", sequelize.col("createdAt")),
+      ],
       raw: true,
     });
 
-    // Convert month number 1-12 to 0-11 for JavaScript Date/monthNames
+    // Month names
     const monthNames = [
       "Jan", "Feb", "Mar", "Apr", "May", "Jun",
       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
     ];
 
-    // Build per-camp monthly data
+    // Optional: per camp monthly map (if needed)
     const perCampMonthly = {};
 
-    // Group by camp
+    // Populate perCampMonthly
     studentsPerCampRows.forEach(row => {
       const campId = row.holidayCampId;
-      const monthIndex = Number(row.month) - 1; // Adjust 1-12 → 0-11
+      const monthIndex = Number(row.month) - 1; // 0-11
 
       if (!perCampMonthly[campId]) {
         perCampMonthly[campId] = monthNames.map(name => ({
@@ -1494,6 +1629,24 @@ exports.holidayCampsReports = async (superAdminId, adminId, filterType) => {
       };
     });
 
+    // Helper function to build monthly students per year
+    const buildMonthlyStudents = (year) => {
+      return monthNames.map((month, index) => {
+        const monthEntries = studentsPerCampRows.filter(
+          s => Number(s.month) - 1 === index && Number(s.year) === year
+        );
+
+        const students = monthEntries.reduce((sum, s) => sum + Number(s.enrolledStudents || 0), 0);
+        const bookings = monthEntries.reduce((sum, s) => sum + Number(s.bookingCount || 0), 0);
+
+        return { month, students, bookings };
+      });
+    };
+
+    // Monthly students for this year & last year
+    const monthlyStudentsThisYear = buildMonthlyStudents(now.getFullYear());
+    const monthlyStudentsLastYear = buildMonthlyStudents(now.getFullYear() - 1);
+
     // ----------------------------
     // 6) CAMP REGISTRATIONS
     // ----------------------------
@@ -1502,7 +1655,10 @@ exports.holidayCampsReports = async (superAdminId, adminId, filterType) => {
         "holidayCampId",
         [sequelize.fn("COUNT", sequelize.col("id")), "waitingCount"],
       ],
-      where: { status: "waiting list", ...whereBooking },
+      where: applyDateFilter({
+        status: "waiting list",
+        ...whereBooking
+      }),
       group: ["holidayCampId"],
       raw: true,
     });
@@ -1543,7 +1699,10 @@ exports.holidayCampsReports = async (superAdminId, adminId, filterType) => {
     });
 
     const activeHolidayBookings = await HolidayBooking.findAll({
-      where: { status: "active", ...whereBooking },
+      where: applyDateFilter({
+        status: "waiting list",
+        ...whereBooking
+      }),
       attributes: ["id", "classScheduleId", "totalStudents", "status"],
       raw: true,
     });
@@ -1612,13 +1771,17 @@ exports.holidayCampsReports = async (superAdminId, adminId, filterType) => {
         IFNULL(SUM(hbp.amount),0) AS revenue
         FROM holiday_booking hb
         LEFT JOIN holiday_booking_payments hbp ON hbp.holiday_booking_id = hb.id
-        WHERE hb.status='active'
-        AND hb.bookedBy IN(:allowed)
+       WHERE hb.status='active'
+AND hb.bookedBy IN(:allowed)
+${sqlDateCondition}
         GROUP BY hb.holidayCampId
       `,
       {
         type: sequelize.QueryTypes.SELECT,
-        replacements: { allowed, startDate, endDate }
+        replacements: {
+          allowed,
+          ...sqlDateReplacements
+        }
 
       }
     );
@@ -1648,72 +1811,65 @@ exports.holidayCampsReports = async (superAdminId, adminId, filterType) => {
     });
 
     // ----------------------------
-    // 8) REGISTERATION PER CAMP GROWTH AND REVENUE
+    // 8) REGISTRATION PER CAMP GROWTH AND REVENUE
     // ----------------------------
-    const growthPerCampRows = await sequelize.query(
+
+    // 1️⃣ Fetch total revenue per venue (all active bookings)
+    const revenuePerVenueRows = await sequelize.query(
       `
-    SELECT
-      hc.id AS holidayCampId,
-      hv.name AS venueName,
-
-      SUM(
-  CASE WHEN hb.createdAt BETWEEN :startDate AND :endDate
-  THEN IFNULL(hbp.amount, 0) 
-  ELSE 0 
-  END
-) AS revenueThisMonth,
-
-SUM(
-  CASE WHEN hb.createdAt BETWEEN :startDate AND :endDate
-  THEN IFNULL(hbp.amount, 0) 
-  ELSE 0 
-  END
-) AS revenueLastMonth
-
-    FROM holiday_camp hc
-    JOIN holiday_booking hb ON hb.holidayCampId = hc.id
-    JOIN holiday_venues hv ON hv.id = hb.venueId
-    LEFT JOIN holiday_booking_payments hbp 
-      ON hbp.holiday_booking_id = hb.id
-
-    WHERE hb.status = 'active'
-      AND hb.bookedBy IN(:allowed)
-
-    GROUP BY hc.id, hv.name
+  SELECT
+    hc.id AS holidayCampId,
+    hv.name AS venueName,
+    IFNULL(SUM(hbp.amount), 0) AS revenue
+  FROM holiday_camp hc
+  JOIN holiday_booking hb ON hb.holidayCampId = hc.id
+  JOIN holiday_venues hv ON hv.id = hb.venueId
+  LEFT JOIN holiday_booking_payments hbp 
+    ON hbp.holiday_booking_id = hb.id
+  WHERE hb.status = 'active'
+AND hb.bookedBy IN(:allowed)
+${sqlDateCondition}
+  GROUP BY hc.id, hv.name
+  ORDER BY hc.id
   `,
       {
         type: sequelize.QueryTypes.SELECT,
-        replacements: {
-          allowed,     // define as shown earlier
-          startDate,
-          endDate
-        }
-
+        replacements: { allowed, ...sqlDateReplacements }
       }
     );
 
+    // 2️⃣ Calculate total revenue across all venues
+    const totalRevenues = revenuePerVenueRows.reduce((sum, r) => sum + Number(r.revenue || 0), 0);
+
+    // 3️⃣ Map results into growth & revenue arrays
     const growth = [];
-    const revenue = [];
+    const revenueData = [];
 
-    growthPerCampRows.forEach(r => {
-      const last = Number(r.revenueLastMonth || 0);
-      const cur = Number(r.revenueThisMonth || 0);
-
-      const growthPercent =
-        last === 0 ? (cur === 0 ? 0 : 100) : Number((((cur - last) / last) * 100).toFixed(2));
+    revenuePerVenueRows.forEach(r => {
+      const revenue = Number(r.revenue || 0);
+      const growthPercent = totalRevenues > 0 ? Number(((revenue / totalRevenues) * 100).toFixed(2)) : 0;
 
       growth.push({
         holidayCampId: r.holidayCampId,
         venueName: r.venueName,
-        growthPercent
+        growthPercent: growthPercent > 100 ? 100 : growthPercent
       });
 
-      revenue.push({
+      revenueData.push({
         holidayCampId: r.holidayCampId,
         venueName: r.venueName,
-        growthPercent
+        revenue
       });
     });
+
+    // 4️⃣ Final object for report
+    const registration_perCamp_growth_and_venue = {
+      growth,
+      revenue: revenueData
+    };
+
+    // Debug log
+    console.log(registration_perCamp_growth_and_venue);
 
     // ----------------------------
     // 9) ENROLLED STUDENTS + AGE + GENDER
@@ -1727,7 +1883,10 @@ SUM(
           model: HolidayBooking,
           as: "holidayBooking",
           attributes: [],
-          where: { status: "active", ...whereBooking }
+          where: applyDateFilter({
+            status: "active",
+            ...whereBooking
+          }),
         }
       ],
       raw: true,
@@ -1761,7 +1920,9 @@ SUM(
             model: HolidayBooking,
             as: "holidayBooking",
             attributes: [],
-            where: { status: "active", ...whereBooking },
+            where: applyDateFilter({
+              ...whereBooking
+            }),
             required: true
           }
         ],
@@ -1789,7 +1950,10 @@ SUM(
           model: HolidayBooking,
           as: "holidayBooking",
           attributes: [],
-          where: { status: "active", ...whereBooking },
+          where: applyDateFilter({
+            status: "active",
+            ...whereBooking
+          }),
           required: true
         }
       ],
@@ -1813,31 +1977,42 @@ SUM(
     // ----------------------------
     const marketingRows = await HolidayBooking.findAll({
       attributes: ["marketingChannel", [sequelize.fn("COUNT", sequelize.col("id")), "count"]],
-      where: { ...whereBooking },
+      where: applyDateFilter({
+        ...whereBooking
+      }),
       group: ["marketingChannel"],
       raw: true,
     });
-
+    // Sum total bookings dynamically
     const totalBookingsForMarketing = marketingRows.reduce(
-      (s, r) => s + Number(r.count || 0),
+      (sum, r) => sum + Number(r.count || 0),
       0
     );
 
-    const marketingPerformance = marketingRows.map(r => ({
-      channel: r.marketingChannel || "unknown",
-      total: Number(r.count || 0),
-      percentage:
-        totalBookingsForMarketing > 0
-          ? Number(((Number(r.count) / totalBookingsForMarketing) * 100).toFixed(2))
-          : 0,
-    }));
+    // Map dynamic channels with counts
+    const marketChannelPerformance = marketingRows.map(r => {
+      const count = Number(r.count || 0);
+      return {
+        name: r.marketingChannel || "unknown",
+        count,
+        percentage:
+          totalBookingsForMarketing > 0
+            ? Number(((count / totalBookingsForMarketing) * 100).toFixed(2))
+            : 0,
+      };
+    });
 
+    // ----------------------------
+    // 11) TOP AGENTS
+    // ----------------------------
     // ----------------------------
     // 11) TOP AGENTS
     // ----------------------------
     const topAgentsRows = await HolidayBooking.findAll({
       attributes: ["bookedBy", [sequelize.fn("COUNT", sequelize.col("id")), "count"]],
-      where: { ...whereBooking },
+      where: applyDateFilter({
+        ...whereBooking
+      }),
       group: ["bookedBy"],
       order: [[sequelize.literal("count"), "DESC"]],
       limit: 10,
@@ -1848,7 +2023,7 @@ SUM(
 
     const admins = await Admin.findAll({
       where: { id: { [Op.in]: agentIds } },
-      attributes: ["id", "firstName", "lastName"],
+      attributes: ["id", "firstName", "lastName", "profile"],
       raw: true,
     });
 
@@ -1857,12 +2032,35 @@ SUM(
       return acc;
     }, {});
 
-    const topAgents = topAgentsRows.map(r => ({
-      agentId: r.bookedBy,
-      firstName: adminMap[r.bookedBy]?.firstName || null,
-      lastName: adminMap[r.bookedBy]?.lastName || null,
-      count: Number(r.count || 0),
-    }));
+    // Total leads for normalization
+    const totalLeads = topAgentsRows.reduce((sum, r) => sum + Number(r.count || 0), 0);
+
+    // Map agents with percentage normalized
+    let sumPercentAgents = 0;
+    const topAgents = topAgentsRows.map((r, i) => {
+      const admin = adminMap[r.bookedBy];
+      const count = Number(r.count || 0);
+      let percentage = totalLeads > 0 ? Number(((count / totalLeads) * 100).toFixed(2)) : 0;
+
+      // Adjust last agent to make total 100
+      if (i === topAgentsRows.length - 1) {
+        percentage = Number((100 - sumPercentAgents).toFixed(2));
+      } else {
+        sumPercentAgents += percentage;
+      }
+
+      return {
+        createdBy: r.bookedBy,
+        leadCount: count,
+        percentage, // normalized
+        creator: {
+          id: admin?.id || null,
+          firstName: admin?.firstName || null,
+          lastName: admin?.lastName || null,
+          profile: admin?.profile || null,
+        },
+      };
+    });
 
     //----------------------------------------------------
     // FINAL REPORT
@@ -1873,80 +2071,58 @@ SUM(
         // ---------- TOP CARDS ----------
         summary: {
           totalRevenue: {
-            total: totalRevenue,
-            thisMonth: revenueThisMonth,
-            lastMonth: revenueLastMonth,
-            percentage: revenueGrowthPercent,
+            thisYear: revenueThisYear,
+            lastYear: revenueLastYear,
+            average: revenueAverage,
           },
           averageRevenuePerCamp: {
-            total: averageRevenuePerCamp,
-            thisMonth: revenueThisMonth,
-            lastMonth: revenueLastMonth,
-            percentage: revenueGrowthPercent,
+            thisYear: avgRevenuePerCampThisYear,
+            lastYear: avgRevenuePerCampLastYear,
+            average: avgRevenuePerCampGrowthPercent,
           },
-          revenueGrowth: {
-            total: totalRevenue,
-            thisMonth: revenueThisMonth,
-            lastMonth: revenueLastMonth,
-            percentage: revenueGrowthPercent,
-          },
+          revenueGrowth,
           averageAgeOfChild: {
-            total: averageAge,
-            thisMonth: averageAge,
-            lastMonth: averageAge,
-            percentage: null,
-          }
+            thisYear: averageAgeThisYear,  // use correct variable
+            lastYear: averageAgeLastYear,  // use correct variable
+          },
         },
 
         // ---------- MONTHLY STUDENTS ----------
-        monthlyStudents: monthNames.map((month, index) => {
-          // Filter rows for this month (s.month is 1-12)
-          const monthEntries = studentsPerCampRows.filter(s => Number(s.month) - 1 === index);
+        monthlyStudents: {
+          thisYear: monthlyStudentsThisYear,
+          lastYear: monthlyStudentsLastYear,
+        },
 
-          // Sum students and bookings
-          const students = monthEntries.reduce((sum, s) => sum + Number(s.enrolledStudents || 0), 0);
-          const bookings = monthEntries.reduce((sum, s) => sum + Number(s.bookingCount || 0), 0);
+        // ---------- MARKETING CHANNEL PERFORMANCE ----------
+        marketChannelPerformance: (() => {
+          const total = marketingRows.reduce((sum, r) => sum + Number(r.count || 0), 0);
+          const channels = marketingRows.map(r => ({
+            name: r.marketingChannel || "unknown",
+            count: Number(r.count || 0),
+            percentage:
+              total > 0 ? Number(((Number(r.count) / total) * 100).toFixed(2)) : 0,
+          }));
 
-          return {
-            month,
-            students,
-            bookings,
-          };
-        }),
-
-        // ---------- MARKET CHANNEL PERFORMANCE ----------
-        marketChannelPerformance: marketingRows.map(r => ({
-          name: r.marketingChannel || "unknown",
-          count: Number(r.count || 0),
-          percentage:
-            totalBookingsForMarketing > 0
-              ? Number(((Number(r.count) / totalBookingsForMarketing) * 100).toFixed(2))
-              : 0,
-        })),
-
-        // ---------- TOP AGENTS ----------
-        topAgents: topAgentsRows.map(r => {
-          const admin = adminMap[r.bookedBy];
-          return {
-            createdBy: r.bookedBy,
-            leadCount: Number(r.count || 0),
-            creator: {
-              id: admin?.id || null,
-              firstName: admin?.firstName || null,
-              lastName: admin?.lastName || null,
-              profile: admin?.profile || null, // if you have profile field
+          // Adjust last channel to make sum exactly 100
+          let sumPercent = 0;
+          channels.forEach((c, i) => {
+            if (i === channels.length - 1) {
+              c.percentage = Number((100 - sumPercent).toFixed(2));
+            } else {
+              sumPercent += c.percentage;
             }
-          };
-        }),
+          });
+
+          return channels;
+        })(),
+        // ---------- TOP AGENTS ----------
+        topAgents: topAgents,
 
         // ---------- CAMPS REGISTRATION ----------
-        campsRegistration: campsRegistration,
+        // campsRegistration: campsRegistration,
         // ---------- CAMP GROWTH ----------
 
-        registeration_perCamp_growth_and_venue: {
-          growth,
-          revenue
-        },
+        registration_perCamp_growth_and_venue,
 
         // ---------- ENROLLED STUDENTS ----------
         enrolledStudents: {
