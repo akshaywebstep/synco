@@ -1070,20 +1070,28 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
       }
 
       // ===== TOP AGENT =====
-      if (lead.status === "recruited") {
-        const id = lead.creator?.id;
-        if (!id) continue;
+      // ===== TOP AGENT (CURRENT YEAR ONLY) =====
+      if (lead.status === "recruited" && lead.creator) {
+        const createdYear = new Date(lead.createdAt).getFullYear();
+        if (createdYear !== CURRENT_YEAR) continue; // only current year
 
-        if (!topAgentCount[id]) {
-          topAgentCount[id] = {
-            firstName: lead.creator.firstName,
-            lastName: lead.creator.lastName,
-            profile: lead.creator.profile,
+        const agentId = lead.creator.id;
+        if (!agentId) continue; // skip if no ID
+
+        // Initialize if not already
+        if (!topAgentCount[agentId]) {
+          topAgentCount[agentId] = {
+            firstName: lead.creator.firstName || "",
+            lastName: lead.creator.lastName || "",
+            profile: lead.creator.profile || "",
             totalHires: 0
           };
         }
-        topAgentCount[id].totalHires++;
+
+        // Increment current year hires
+        topAgentCount[agentId].totalHires++;
       }
+
     }
 
     // ================= FINAL CALCS =================
