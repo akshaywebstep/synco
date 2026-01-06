@@ -1249,6 +1249,7 @@ exports.waitingListCreate = async (data, adminId) => {
 };
 
 // Helper to get startDate & endDate based on filterType
+// Helper to get startDate & endDate based on filterType
 function getDateRange(filterType) {
   const now = new Date();
   let startDate, endDate;
@@ -1564,8 +1565,6 @@ exports.holidayCampsReports = async (superAdminId, adminId, filterType) => {
     };
 
     // Use your year boundaries
-    // const averageAgeThisYear = await getAverageAge(startOfThisYear, endOfThisYear);
-    // const averageAgeLastYear = await getAverageAge(startOfLastYear, endOfLastYear);
     const averageAgeThisYear = await getAverageAge();
     const averageAgeLastYear = averageAgeThisYear; // same range now
 
@@ -1873,6 +1872,121 @@ ${sqlDateCondition}
     console.log(registration_perCamp_growth_and_venue);
 
     // ----------------------------
+    // EARLY BIRD OFFER (DERIVED)
+    // ----------------------------
+
+    const EARLY_BIRD_DAYS = 14;
+
+    // 1️⃣ Early bird bookings THIS YEAR
+    const earlyBirdBookingsThisYearRow = await sequelize.query(
+      `
+SELECT COUNT(DISTINCT hb.id) AS count
+FROM holiday_booking hb
+JOIN (
+  SELECT holidayCampId, MIN(startDate) AS firstStartDate
+  FROM holiday_camp_dates
+  WHERE startDate IS NOT NULL
+  GROUP BY holidayCampId
+) hcd ON hcd.holidayCampId = hb.holidayCampId
+WHERE hb.status = 'active'
+  AND hb.bookedBy IN(:allowed)
+  AND hb.createdAt BETWEEN :startDate AND :endDate
+  AND DATEDIFF(hcd.firstStartDate, hb.createdAt) >= :days
+`,
+      {
+        type: sequelize.QueryTypes.SELECT,
+        replacements: {
+          allowed,
+          startDate: startOfThisYear,
+          endDate: endOfThisYear,
+          days: EARLY_BIRD_DAYS
+        }
+      }
+    );
+
+    const earlyBirdBookingsThisYear = Number(
+      earlyBirdBookingsThisYearRow?.[0]?.count || 0
+    );
+
+    // 2️⃣ Total bookings LAST YEAR
+    const totalBookingsLastYearRow = await HolidayBooking.findOne({
+      attributes: [[sequelize.fn("COUNT", sequelize.col("id")), "count"]],
+      where: {
+        status: "active",
+        bookedBy: { [Op.in]: allowed },
+        createdAt: {
+          [Op.between]: [startOfLastYear, endOfLastYear]
+        }
+      },
+      raw: true
+    });
+
+    const totalBookingsLastYear = Number(
+      totalBookingsLastYearRow?.count || 0
+    );
+
+    // 3️⃣ Total bookings THIS YEAR
+    const totalBookingsThisYearRow = await HolidayBooking.findOne({
+      attributes: [[sequelize.fn("COUNT", sequelize.col("id")), "count"]],
+      where: {
+        status: "active",
+        bookedBy: { [Op.in]: allowed },
+        createdAt: {
+          [Op.between]: [startOfThisYear, endOfThisYear]
+        }
+      },
+      raw: true
+    });
+
+    const totalBookingsThisYear = Number(
+      totalBookingsThisYearRow?.count || 0
+    );
+
+    // 4️⃣ Percent calculations
+    const registrationsPercent =
+      totalBookingsThisYear > 0
+        ? Number(((earlyBirdBookingsThisYear / totalBookingsThisYear) * 100).toFixed(2))
+        : 0;
+
+    const percentage =
+      totalBookingsThisYear > 0
+        ? Number(((earlyBirdBookingsThisYear / totalBookingsThisYear) * 100).toFixed(2))
+        : 0;
+
+    // 5️⃣ Revenue impact (ACTIVE early bird)
+    const revenueImpactRow = await sequelize.query(
+      `
+SELECT IFNULL(SUM(hbp.amount),0) AS revenue
+FROM holiday_booking hb
+JOIN (
+  SELECT holidayCampId, MIN(startDate) AS firstStartDate
+  FROM holiday_camp_dates
+  WHERE startDate IS NOT NULL
+  GROUP BY holidayCampId
+) hcd ON hcd.holidayCampId = hb.holidayCampId
+LEFT JOIN holiday_booking_payments hbp
+  ON hbp.holiday_booking_id = hb.id
+WHERE hb.status = 'active'
+  AND hb.bookedBy IN(:allowed)
+  AND hb.createdAt BETWEEN :startDate AND :endDate
+  AND DATEDIFF(hcd.firstStartDate, hb.createdAt) >= :days
+`,
+      {
+        type: sequelize.QueryTypes.SELECT,
+        replacements: {
+          allowed,
+          startDate: startOfThisYear,
+          endDate: endOfThisYear,
+          days: EARLY_BIRD_DAYS
+        }
+      }
+    );
+
+    const revenueImpact = Number(
+      revenueImpactRow?.[0]?.revenue || 0
+    );
+
+    // ----------------------------
     // 9) ENROLLED STUDENTS + AGE + GENDER
     // ----------------------------
     const enrolledStudentsTotalRow = await HolidayBookingStudentMeta.findOne({
@@ -2130,7 +2244,12 @@ ${sqlDateCondition}
           total: enrolledStudentsTotal,
           byAge: ageBucketCounts,
           byGender: genderCounts,
-        }
+        },
+        earlyBirdOffer: {
+          registrationsPercent,
+          percentage,
+          revenueImpact
+        },
       }
     };
   } catch (error) {
