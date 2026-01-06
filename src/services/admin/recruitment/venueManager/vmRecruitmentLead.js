@@ -128,80 +128,78 @@ exports.getAllVmRecruitmentLead = async (adminId) => {
       formatted.push(leadJson);
     }
     const now = new Date();
-    const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
+    const lastYear = currentYear - 1;
 
-    // Total applications with candidateProfile
-    const totalApplications = recruitmentLead.filter(
-      (lead) => lead.candidateProfile !== null
+    // Leads for current year (for counts in totals)
+    const currentYearLeads = recruitmentLead.filter(
+      lead => new Date(lead.createdAt).getFullYear() === currentYear
+    );
+
+    // Leads for last year (for percentage calculation)
+    const lastYearLeads = recruitmentLead.filter(
+      lead => new Date(lead.createdAt).getFullYear() === lastYear
+    );
+
+    const totalApplicationsCurrentYear = currentYearLeads.filter(
+      lead => lead.candidateProfile !== null
     ).length;
 
-    // New applications this month
-    const totalNewApplications = recruitmentLead.filter(
-      (lead) =>
+    const totalNewApplicationsCurrentYear = currentYearLeads.filter(
+      lead =>
         lead.candidateProfile !== null &&
-        new Date(lead.createdAt).getMonth() === currentMonth &&
-        new Date(lead.createdAt).getFullYear() === currentYear
+        new Date(lead.createdAt).getMonth() === now.getMonth()
     ).length;
 
-    // Applications to assessments (have bookPracticalAssessment with entries)
-    const totalToAssessments = recruitmentLead.filter(
-      (lead) =>
+    const totalToAssessmentsCurrentYear = currentYearLeads.filter(
+      lead =>
         lead.candidateProfile?.bookPracticalAssessment &&
         lead.candidateProfile.bookPracticalAssessment.length > 0
     ).length;
 
-    // Applications to recruitment (status = recruited)
-    const totalToRecruitment = recruitmentLead.filter(
-      (lead) =>
+    const totalToRecruitmentCurrentYear = currentYearLeads.filter(
+      lead =>
         lead.status === "recruited" &&
         lead.candidateProfile !== null
     ).length;
 
-    // Optional: % of recruited applications
-    const recruitmentPercent = totalApplications > 0
-      ? ((totalToRecruitment / totalApplications) * 100).toFixed(2)
-      : 0;
+    // Percentages are calculated based on last year's totalApplications
+    const totalApplicationsLastYear = lastYearLeads.filter(
+      lead => lead.candidateProfile !== null
+    ).length;
 
-    // % of new applications this month
-    const newApplicationsPercent = totalApplications > 0
-      ? ((totalNewApplications / totalApplications) * 100).toFixed(2) + "%"
-      : "0%";
+    const calcPercent = (count) =>
+      totalApplicationsLastYear > 0
+        ? ((count / totalApplicationsLastYear) * 100).toFixed(2) + "%"
+        : "0%";
 
-    // % of applications to assessments
-    const toAssessmentsPercent = totalApplications > 0
-      ? ((totalToAssessments / totalApplications) * 100).toFixed(2) + "%"
-      : "0%";
-
-    const totalApplicationsPercent = totalApplications > 0 ? "100%" : "0%";
     return {
       status: true,
       message: "Candidate Profile Data Fetched Successfully",
       totals: [
         {
           name: "totalApplications",
-          count: totalApplications,
-          percent: totalApplications > 0 ? "100%" : "0%"
+          count: totalApplicationsCurrentYear,
+          percent: calcPercent(totalApplicationsCurrentYear)
         },
         {
           name: "totalNewApplications",
-          count: totalNewApplications,
-          percent: totalApplications > 0 ? ((totalNewApplications / totalApplications) * 100).toFixed(2) + "%" : "0%"
+          count: totalNewApplicationsCurrentYear,
+          percent: calcPercent(totalNewApplicationsCurrentYear)
         },
         {
           name: "totalToAssessments",
-          count: totalToAssessments,
-          percent: totalApplications > 0 ? ((totalToAssessments / totalApplications) * 100).toFixed(2) + "%" : "0%"
+          count: totalToAssessmentsCurrentYear,
+          percent: calcPercent(totalToAssessmentsCurrentYear)
         },
         {
           name: "totalToRecruitment",
-          count: totalToRecruitment,
-          percent: totalApplications > 0 ? ((totalToRecruitment / totalApplications) * 100).toFixed(2) + "%" : "0%"
+          count: totalToRecruitmentCurrentYear,
+          percent: calcPercent(totalToRecruitmentCurrentYear)
         }
       ],
       data: formatted
     };
-
   } catch (error) {
     return {
       status: false,

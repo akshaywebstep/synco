@@ -1344,39 +1344,50 @@ exports.getAllCoachAndVmRecruitmentLead = async (adminId) => {
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
+    const lastYear = currentYear - 1;
 
-    // Count all valid applications (having candidateProfile)
-    const totalApplications = recruitmentLead.filter(
-      (lead) => lead.candidateProfile !== null
+    // Leads for current year (counts)
+    const currentYearLeads = recruitmentLead.filter(
+      (lead) => new Date(lead.createdAt).getFullYear() === currentYear
+    );
+
+    // Leads for last year (percentages)
+    const lastYearLeads = recruitmentLead.filter(
+      (lead) => new Date(lead.createdAt).getFullYear() === lastYear
+    );
+
+    // Count all applications (do not exclude)
+    const totalApplications = currentYearLeads.length;
+
+    // New applications this month (do not exclude)
+    const totalNewApplications = currentYearLeads.filter(
+      (lead) => new Date(lead.createdAt).getMonth() === currentMonth
     ).length;
 
-    // New applications this month
-    const totalNewApplications = recruitmentLead.filter(
-      (lead) =>
-        lead.candidateProfile !== null &&
-        new Date(lead.createdAt).getMonth() === currentMonth &&
-        new Date(lead.createdAt).getFullYear() === currentYear
-    ).length;
-
-    // Applications that reached assessments
-    const totalToAssessments = recruitmentLead.filter(
-      (lead) => {
-        const book = lead.candidateProfile?.bookPracticalAssessment;
-
-        return book && Array.isArray(book) && book.length > 0;
+    // Applications that reached assessments (parse safely, but include all leads)
+    const totalToAssessments = currentYearLeads.filter((lead) => {
+      let book = lead.candidateProfile?.bookPracticalAssessment;
+      if (typeof book === "string") {
+        try {
+          book = JSON.parse(book);
+        } catch {
+          book = [];
+        }
       }
+      return Array.isArray(book) && book.length > 0;
+    }).length;
+
+    // Applications successfully recruited (include all)
+    const totalToRecruitment = currentYearLeads.filter(
+      (lead) => lead.status === "recruited"
     ).length;
 
-    // Applications successfully recruited (valid for both coach + venue manager)
-    const totalToRecruitment = recruitmentLead.filter(
-      (lead) =>
-        lead.status === "recruited" && lead.candidateProfile !== null
-    ).length;
+    // ---------- PERCENTAGES BASED ON LAST YEAR ----------
+    const totalApplicationsLastYear = lastYearLeads.length;
 
-    // ---------- PERCENTAGES ----------
     const pct = (count) =>
-      totalApplications > 0
-        ? ((count / totalApplications) * 100).toFixed(2) + "%"
+      totalApplicationsLastYear > 0
+        ? ((count / totalApplicationsLastYear) * 100).toFixed(2) + "%"
         : "0%";
 
     return {
