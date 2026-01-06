@@ -129,52 +129,42 @@ exports.getAllRecruitmentLead = async (adminId) => {
       formatted.push(leadJson);
     }
     const now = new Date();
-    const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
 
-    // Total applications with candidateProfile
-    const totalApplications = recruitmentLead.filter(
-      (lead) => lead.candidateProfile !== null
+    // current year leads
+    const currentYearLeads = recruitmentLead.filter(
+      lead => new Date(lead.createdAt).getFullYear() === currentYear
+    );
+
+    const totalApplications = currentYearLeads.length;
+
+    const totalNewApplications = currentYearLeads.filter(
+      lead => new Date(lead.createdAt).getMonth() === currentMonth
     ).length;
 
-    // New applications this month
-    const totalNewApplications = recruitmentLead.filter(
-      (lead) =>
-        lead.candidateProfile !== null &&
-        new Date(lead.createdAt).getMonth() === currentMonth &&
-        new Date(lead.createdAt).getFullYear() === currentYear
+    const totalToAssessments = currentYearLeads.filter((lead) => {
+      let booked = lead.candidateProfile?.bookPracticalAssessment;
+
+      if (typeof booked === "string") {
+        try {
+          booked = JSON.parse(booked);
+        } catch {
+          booked = [];
+        }
+      }
+
+      return Array.isArray(booked) && booked.length > 0;
+    }).length;
+
+    const totalToRecruitment = currentYearLeads.filter(
+      lead => lead.status === "recruited"
     ).length;
 
-    // Applications to assessments (have bookPracticalAssessment with entries)
-    const totalToAssessments = recruitmentLead.filter(
-      (lead) =>
-        lead.candidateProfile?.bookPracticalAssessment &&
-        lead.candidateProfile.bookPracticalAssessment.length > 0
-    ).length;
-
-    // Applications to recruitment (status = recruited)
-    const totalToRecruitment = recruitmentLead.filter(
-      (lead) =>
-        lead.status === "recruited" &&
-        lead.candidateProfile !== null
-    ).length;
-
-    // Optional: % of recruited applications
-    const recruitmentPercent = totalApplications > 0
-      ? ((totalToRecruitment / totalApplications) * 100).toFixed(2)
-      : 0;
-
-    // % of new applications this month
-    const newApplicationsPercent = totalApplications > 0
-      ? ((totalNewApplications / totalApplications) * 100).toFixed(2) + "%"
-      : "0%";
-
-    // % of applications to assessments
-    const toAssessmentsPercent = totalApplications > 0
-      ? ((totalToAssessments / totalApplications) * 100).toFixed(2) + "%"
-      : "0%";
-
-    const totalApplicationsPercent = totalApplications > 0 ? "100%" : "0%";
+    const percent = (count) =>
+      totalApplications > 0
+        ? ((count / totalApplications) * 100).toFixed(2) + "%"
+        : "0%";
     return {
       status: true,
       message: "Recuitment Lead and  Succesfully",
@@ -201,6 +191,437 @@ exports.getAllRecruitmentLead = async (adminId) => {
         }
       ],
       data: formatted
+    };
+
+  } catch (error) {
+    return {
+      status: false,
+      message: "Fetch recruitmentLead failed. " + error.message,
+    };
+  }
+};
+exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
+  try {
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "Invalid admin or super admin ID",
+        data: [],
+      };
+    }
+
+    // ================= DATE RANGE =================
+    let startDate, endDate, prevStartDate, prevEndDate;
+
+    if (!dateRange) {
+      startDate = moment().startOf("year").toDate();  // Jan 1 current year
+      endDate = moment().endOf("year").toDate();      // Dec 31 current year
+
+      prevStartDate = moment(startDate).subtract(1, "year").startOf("day").toDate();
+      prevEndDate = moment(endDate).subtract(1, "year").endOf("day").toDate();
+
+    } else if (dateRange === "thisMonth") {
+      startDate = moment().startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+
+      prevStartDate = moment(startDate).subtract(1, "month").startOf("month").toDate();
+      prevEndDate = moment(endDate).subtract(1, "month").endOf("month").toDate();
+
+    } else if (dateRange === "lastMonth") {
+      startDate = moment().subtract(1, "month").startOf("month").toDate();
+      endDate = moment().subtract(1, "month").endOf("month").toDate();
+
+      prevStartDate = moment(startDate).subtract(1, "month").startOf("month").toDate();
+      prevEndDate = moment(endDate).subtract(1, "month").endOf("month").toDate();
+
+    } else if (dateRange === "last3Months") {
+      startDate = moment().subtract(3, "months").startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+
+      prevStartDate = moment(startDate).subtract(3, "months").startOf("month").toDate();
+      prevEndDate = moment(startDate).subtract(1, "day").endOf("day").toDate();
+
+    } else if (dateRange === "last6Months") {
+      startDate = moment().subtract(6, "months").startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+
+      prevStartDate = moment(startDate).subtract(6, "months").startOf("month").toDate();
+      prevEndDate = moment(startDate).subtract(1, "day").endOf("day").toDate();
+
+    } else {
+      throw new Error("Invalid dateRange");
+    }
+
+    const combinedStart = prevStartDate;
+    const combinedEnd = endDate;
+
+    const recruitmentLead = await RecruitmentLead.findAll({
+      where: {
+        createdBy: Number(adminId),
+        createdAt: {
+          [Op.between]: [combinedStart, combinedEnd]
+        },
+        appliedFor: "coach",
+      },
+      include: [
+        { model: CandidateProfile, as: "candidateProfile" },
+        {
+          model: Admin,
+          as: "creator",
+          attributes: ["id", "firstName", "lastName", "profile"],
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+    });
+
+    // ================= CONSTANTS =================
+    const now = new Date();
+    const CURRENT_YEAR = now.getFullYear();
+    const LAST_YEAR = CURRENT_YEAR - 1;
+
+    const monthNames = [
+      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    ];
+
+    // ================= CHART DATA =================
+    const chartData = {
+      leads: {
+        currentYear: Object.fromEntries(monthNames.map(m => [m, 0])),
+        lastYear: Object.fromEntries(monthNames.map(m => [m, 0]))
+      },
+      hires: {
+        currentYear: Object.fromEntries(monthNames.map(m => [m, 0])),
+        lastYear: Object.fromEntries(monthNames.map(m => [m, 0]))
+      }
+    };
+
+    // ================= YEARLY REPORT COUNTERS =================
+    // Keep original keys thisYear / lastYear as per your final response
+    const yearlyCounters = {
+      thisYear: { totalLeads: 0, telephoneCalls: 0, practicalAssessments: 0, hires: 0 },
+      lastYear: { totalLeads: 0, telephoneCalls: 0, practicalAssessments: 0, hires: 0 }
+    };
+
+    const yearlyTelephoneLeadSet = {
+      thisYear: new Set(),
+      lastYear: new Set()
+    };
+    const yearlyHiredLeadSet = {
+      thisYear: new Set(),
+      lastYear: new Set()
+    };
+
+    // ================= OTHER STATS =================
+    const qualificationStats = {
+      faQualification: 0,
+      dbsCertificate: 0,
+      coachingExperience: 0,
+      noExperience: 0
+    };
+
+    const ageCount = {};
+    const genderCount = { Male: 0, Female: 0, Others: 0 };
+    const venueCount = {};
+    const venueDemandCount = {};
+    const leadSourceCount = {};
+    const topAgentCount = {};
+
+    const normalizePercent = (items) => {
+      const total = items.reduce((s, i) => s + i.count, 0);
+      return items.map(i => ({
+        ...i,
+        percent: total > 0 ? ((i.count / total) * 100).toFixed(0) + "%" : "0%"
+      }));
+    };
+
+    let totalCallScore = 0;
+    let totalCallMax = 0;
+    let totalPracticalLeadsWithAssessment = 0;
+
+    // ================= LOOP =================
+    for (const lead of recruitmentLead) {
+      const created = new Date(lead.createdAt);
+      const leadYear = created.getFullYear();
+      const leadMonth = created.getMonth();
+      const monthName = monthNames[leadMonth];
+      const profile = lead.candidateProfile;
+
+      // Assign bucket based on date range, keep keys consistent with final response
+      let bucket = null;
+      if (created >= startDate && created <= endDate) {
+        bucket = yearlyCounters.thisYear;
+      } else if (created >= prevStartDate && created <= prevEndDate) {
+        bucket = yearlyCounters.lastYear;
+      } else {
+        continue; // out of combined range, skip
+      }
+
+      // ===== TOTAL LEADS =====
+      if (["pending", "recruited", "reject"].includes(lead.status)) {
+        bucket.totalLeads++;
+      }
+
+      // ===== TELEPHONE =====
+      if (profile?.telephoneCallSetupDate && profile?.telephoneCallSetupTime) {
+        bucket.telephoneCalls++;
+
+        if (created >= startDate && created <= endDate) {
+          yearlyTelephoneLeadSet.thisYear.add(lead.id);
+        } else if (created >= prevStartDate && created <= prevEndDate) {
+          yearlyTelephoneLeadSet.lastYear.add(lead.id);
+        }
+      }
+
+      // ===== PRACTICAL / HIRES =====
+      let booked = profile?.bookPracticalAssessment;
+      if (typeof booked === "string") {
+        try { booked = JSON.parse(booked); } catch { booked = []; }
+      }
+
+      if (lead.status === "recruited") {
+        bucket.hires++;
+
+        if (created >= startDate && created <= endDate) {
+          yearlyHiredLeadSet.thisYear.add(lead.id);
+        } else if (created >= prevStartDate && created <= prevEndDate) {
+          yearlyHiredLeadSet.lastYear.add(lead.id);
+        }
+
+        if (Array.isArray(booked) && booked.length > 0) {
+          bucket.practicalAssessments++;
+        }
+      }
+
+      // ===== CHART DATA =====
+      if (["pending", "recruited"].includes(lead.status)) {
+        if (created >= startDate && created <= endDate) chartData.leads.currentYear[monthName]++;
+        if (created >= prevStartDate && created <= prevEndDate) chartData.leads.lastYear[monthName]++;
+      }
+      if (lead.status === "recruited") {
+        if (created >= startDate && created <= endDate) chartData.hires.currentYear[monthName]++;
+        if (created >= prevStartDate && created <= prevEndDate) chartData.hires.lastYear[monthName]++;
+      }
+
+      // ===== AGE =====
+      if (lead.age) ageCount[lead.age] = (ageCount[lead.age] || 0) + 1;
+
+      // ===== GENDER =====
+      let gender = (lead.gender || "Others").toLowerCase();
+      if (gender === "male" || gender === "m") gender = "Male";
+      else if (gender === "female" || gender === "f") gender = "Female";
+      else gender = "Others";
+      genderCount[gender]++;
+
+      // ===== QUALIFICATION =====
+      if (lead.level === "yes") qualificationStats.faQualification++;
+      if (lead.dbs === "yes") qualificationStats.dbsCertificate++;
+      if (lead.managementExperience === "yes") {
+        qualificationStats.coachingExperience++;
+      } else {
+        qualificationStats.noExperience++;
+      }
+
+      // ===== ONBOARDING =====
+      if (profile) {
+        const skills = [
+          profile.telePhoneCallDeliveryCommunicationSkill,
+          profile.telePhoneCallDeliveryPassionCoaching,
+          profile.telePhoneCallDeliveryExperience,
+          profile.telePhoneCallDeliveryKnowledgeOfSSS
+        ].filter(s => typeof s === "number");
+
+        if (skills.length) {
+          totalCallScore += skills.reduce((a, b) => a + b, 0);
+          totalCallMax += skills.length * 5;
+        }
+      }
+
+      if (Array.isArray(booked) && booked.length) {
+        totalPracticalLeadsWithAssessment++;
+      }
+
+      // ===== SOURCE =====
+      const source = profile?.howDidYouHear?.trim() || "Other";
+      leadSourceCount[source] = (leadSourceCount[source] || 0) + 1;
+
+      // ===== VENUE =====
+      if (Array.isArray(booked)) {
+        for (const b of booked) {
+          if (b?.venueId) {
+            venueCount[b.venueId] = (venueCount[b.venueId] || 0) + 1;
+            venueDemandCount[b.venueId] = (venueDemandCount[b.venueId] || 0) + 1;
+          }
+        }
+      }
+
+      // ===== TOP AGENT =====
+      if (lead.status === "recruited") {
+        const id = lead.creator?.id;
+        if (!id) continue;
+
+        if (!topAgentCount[id]) {
+          topAgentCount[id] = {
+            firstName: lead.creator.firstName,
+            lastName: lead.creator.lastName,
+            profile: lead.creator.profile,
+            totalHires: 0
+          };
+        }
+        topAgentCount[id].totalHires++;
+      }
+    }
+
+    // ================= FINAL CALCS =================
+    const totalLeads = yearlyCounters.thisYear.totalLeads + yearlyCounters.lastYear.totalLeads;
+
+    const averageCallGrade = totalCallMax > 0 ? Math.round((totalCallScore / totalCallMax) * 100) : 0;
+
+    const averagePracticalGrade = totalLeads > 0
+      ? Math.round((totalPracticalLeadsWithAssessment / totalLeads) * 100)
+      : 0;
+
+    const calcRate = (v, t) => (t > 0 ? ((v / t) * 100).toFixed(0) + "%" : "0%");
+
+    // ---- Normalize leadSource percent with rounding fix to sum 100%
+    const totalCounted = Object.values(leadSourceCount).reduce((sum, val) => sum + val, 0);
+
+    let runningPercents = 0;
+
+    const byLeadSource = Object.keys(leadSourceCount).map((source, index, arr) => {
+      const count = leadSourceCount[source];
+
+      if (index < arr.length - 1) {
+        const percentNum = Math.round((count / totalCounted) * 100);
+        runningPercents += percentNum;
+        return {
+          source,
+          count,
+          percent: percentNum + "%"
+        };
+      } else {
+        const percentNum = 100 - runningPercents;
+        return {
+          source,
+          count,
+          percent: percentNum + "%"
+        };
+      }
+    });
+
+    // ---- Other normalized percentages
+    const byAge = normalizePercent(
+      Object.keys(ageCount).map(age => ({
+        age: Number(age),
+        count: ageCount[age]
+      }))
+    );
+
+    const byGender = normalizePercent(
+      Object.keys(genderCount).map(g => ({
+        gender: g,
+        count: genderCount[g]
+      }))
+    );
+
+    const venues = await Venue.findAll();
+
+    const byVenue = normalizePercent(
+      Object.keys(venueCount).map(id => {
+        const venue = venues.find(v => v.id == id);
+        return {
+          venueName: venue ? venue.name : "Unknown",
+          count: venueCount[id]
+        };
+      })
+    );
+
+    // ---- High demand venues with percent sum to 100%
+    const totalDemandCount = Object.values(venueDemandCount).reduce((sum, val) => sum + val, 0);
+
+    let runningPercent = 0;
+
+    const highDemandVenues = Object.keys(venueDemandCount).map((id, index, arr) => {
+      const venue = venues.find(v => v.id == id);
+      const count = venueDemandCount[id];
+
+      if (index < arr.length - 1) {
+        const percentNum = Math.round((count / totalDemandCount) * 100);
+        runningPercent += percentNum;
+        return {
+          venueName: venue ? venue.name : "Unknown",
+          count,
+          percent: percentNum + "%"
+        };
+      } else {
+        const percentNum = 100 - runningPercent;
+        return {
+          venueName: venue ? venue.name : "Unknown",
+          count,
+          percent: percentNum + "%"
+        };
+      }
+    });
+
+    const topAgents = Object.keys(topAgentCount)
+      .map(id => ({
+        agentId: id,
+        ...topAgentCount[id]
+      }))
+      .sort((a, b) => b.totalHires - a.totalHires);
+
+    console.log("Filtering date range:", startDate, "to", endDate);
+    console.log("Total leads fetched:", recruitmentLead.length);
+
+    // ================= REPORT (SAME STRUCTURE) =================
+    const report = {
+      totalLeads: {
+        current: yearlyCounters.thisYear.totalLeads,
+        previous: yearlyCounters.lastYear.totalLeads,
+        conversionRate: calcRate(yearlyCounters.thisYear.totalLeads, yearlyCounters.lastYear.totalLeads)
+      },
+
+      telephoneInterviews: {
+        current: yearlyCounters.thisYear.telephoneCalls,
+        previous: yearlyCounters.lastYear.telephoneCalls,
+        conversionRate: calcRate(yearlyTelephoneLeadSet.thisYear.size, yearlyCounters.thisYear.totalLeads)
+      },
+
+      practicalAssessments: {
+        current: yearlyCounters.thisYear.practicalAssessments,
+        previous: yearlyCounters.lastYear.practicalAssessments,
+        conversionRate: calcRate(yearlyCounters.thisYear.practicalAssessments, yearlyTelephoneLeadSet.thisYear.size)
+      },
+
+      hires: {
+        current: yearlyCounters.thisYear.hires,
+        previous: yearlyCounters.lastYear.hires,
+        conversionRate: calcRate(yearlyHiredLeadSet.thisYear.size, yearlyTelephoneLeadSet.thisYear.size)
+      },
+
+      conversionRate: {
+        current: calcRate(yearlyHiredLeadSet.thisYear.size, yearlyCounters.thisYear.totalLeads),
+        previous: calcRate(yearlyHiredLeadSet.lastYear.size, yearlyCounters.lastYear.totalLeads)
+      }
+    };
+
+    return {
+      status: true,
+      message: "Recruitment report fetched successfully.",
+      data: {
+        report,
+        chartData,
+        demographics: { byAge, byGender, byVenue },
+        qualifications: qualificationStats,
+        onboardingResults: {
+          averageCallGrade: averageCallGrade + "%",
+          averagePracticalAssessmentGrade: averagePracticalGrade + "%",
+          averageCoachEducationPassMark: averageCallGrade + "%"
+        },
+        sourceOfLeads: byLeadSource,
+        highDemandVenues,
+        topAgents
+      }
     };
 
   } catch (error) {
