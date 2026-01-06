@@ -1858,7 +1858,8 @@ ${sqlDateCondition}
       revenueData.push({
         holidayCampId: r.holidayCampId,
         venueName: r.venueName,
-        revenue
+        revenue,
+        revenueAverage,
       });
     });
 
