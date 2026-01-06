@@ -476,45 +476,68 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
         data: [],
       };
     }
-    // 🗓️ Define date ranges dynamically based on dateRange
-    let startDate, endDate;
 
-    if (dateRange === "thisMonth") {
+    // ================= DATE RANGE =================
+    let startDate, endDate, prevStartDate, prevEndDate;
+
+    if (!dateRange) {
+      startDate = moment().startOf("year").toDate();
+      endDate = moment().endOf("year").toDate();
+
+      prevStartDate = moment(startDate).subtract(1, "year").toDate();
+      prevEndDate = moment(endDate).subtract(1, "year").toDate();
+    }
+    else if (dateRange === "thisMonth") {
       startDate = moment().startOf("month").toDate();
       endDate = moment().endOf("month").toDate();
-    } else if (dateRange === "lastMonth") {
+
+      prevStartDate = moment(startDate).subtract(1, "month").startOf("month").toDate();
+      prevEndDate = moment(endDate).subtract(1, "month").endOf("month").toDate();
+    }
+    else if (dateRange === "lastMonth") {
       startDate = moment().subtract(1, "month").startOf("month").toDate();
       endDate = moment().subtract(1, "month").endOf("month").toDate();
-    } else if (dateRange === "last3Months") {
+
+      prevStartDate = moment(startDate).subtract(1, "month").startOf("month").toDate();
+      prevEndDate = moment(startDate).subtract(1, "day").endOf("day").toDate();
+    }
+    else if (dateRange === "last3Months") {
       startDate = moment().subtract(3, "months").startOf("month").toDate();
       endDate = moment().endOf("month").toDate();
-    } else if (dateRange === "last6Months") {
+
+      prevStartDate = moment(startDate).subtract(3, "months").startOf("month").toDate();
+      prevEndDate = moment(startDate).subtract(1, "day").endOf("day").toDate();
+    }
+    else if (dateRange === "last6Months") {
       startDate = moment().subtract(6, "months").startOf("month").toDate();
       endDate = moment().endOf("month").toDate();
-    } else {
-      throw new Error(
-        "Invalid dateRange. Use thisMonth | lastMonth | last3Months | last6Months"
-      );
+
+      prevStartDate = moment(startDate).subtract(6, "months").startOf("month").toDate();
+      prevEndDate = moment(startDate).subtract(1, "day").endOf("day").toDate();
     }
+    else {
+      throw new Error("Invalid dateRange");
+    }
+
+    const combinedStart = prevStartDate;
+    const combinedEnd = endDate;
 
     const recruitmentLead = await RecruitmentLead.findAll({
       where: {
         createdBy: Number(adminId),
-        createdAt: { [Op.between]: [startDate, endDate] },
-        appliedFor: "venue manager"
+        createdAt: { [Op.between]: [combinedStart, combinedEnd] },
+        appliedFor: "venue manager",
       },
       include: [
         { model: CandidateProfile, as: "candidateProfile" },
-        { model: Admin, as: "creator", attributes: ["id", "firstName", "lastName", "profile"] }
+        { model: Admin, as: "creator", attributes: ["id", "firstName", "lastName", "profile"] },
       ],
       order: [["createdAt", "DESC"]],
     });
 
+    // ================= CONSTANTS =================
     const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-    const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-    const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+    const CURRENT_YEAR = now.getFullYear();
 
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -529,10 +552,13 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
       }
     };
 
-    const counters = {
-      thisMonth: { totalLeads: 0, telephoneCalls: 0, practicalAssessments: 0, hires: 0 },
-      lastMonth: { totalLeads: 0, telephoneCalls: 0, practicalAssessments: 0, hires: 0 }
+    // ===== SAME KEYS AS BEFORE =====
+    const yearlyCounters = {
+      thisYear: { totalLeads: 0, telephoneCalls: 0, practicalAssessments: 0, hires: 0 },
+      lastYear: { totalLeads: 0, telephoneCalls: 0, practicalAssessments: 0, hires: 0 }
     };
+
+    // ===== LEGACY COUNTS (NOT REMOVED) =====
     const qualificationStats = {
       faQualification: 0,
       dbsCertificate: 0,
@@ -540,277 +566,247 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
       noExperience: 0
     };
 
-    // ========= DEMOGRAPHICS ===========
     const ageCount = {};
     const genderCount = { Male: 0, Female: 0, Others: 0 };
-    // Normalize gender
-    let g = (recruitmentLead.gender || "Others").toString().trim().toLowerCase();
-
-    if (g === "male" || g === "m") g = "Male";
-    else if (g === "female" || g === "f") g = "Female";
-    else g = "Others";
-
-    genderCount[g] = (genderCount[g] || 0) + 1;
-
     const venueCount = {};
-    let totalCallScore = 0;
-    let totalCallMax = 0;
-    let totalPracticalScore = 0;
-    let totalPracticalMax = 0;
-    let totalPracticalLeadsWithAssessment = 0;
-    const leadSourceCount = {};
     const venueDemandCount = {};
+    const leadSourceCount = {};
     const topAgentCount = {};
 
+    let totalCallScore = 0;
+    let totalCallMax = 0;
+    let totalPracticalLeadsWithAssessment = 0;
+
+    const normalizePercent = (items) => {
+      const total = items.reduce((s, i) => s + i.count, 0);
+      return items.map(i => ({
+        ...i,
+        percent: total > 0 ? ((i.count / total) * 100).toFixed(0) + "%" : "0%"
+      }));
+    };
+
+    // ================= LOOP =================
     for (const lead of recruitmentLead) {
       const created = new Date(lead.createdAt);
-      const leadMonth = created.getMonth();
-      const leadYear = created.getFullYear();
-      const monthName = monthNames[leadMonth];
+      const year = created.getFullYear();
+      const monthName = monthNames[created.getMonth()];
       const profile = lead.candidateProfile;
 
-      // ========== THIS MONTH & LAST MONTH =============
-      const bucket =
-        leadMonth === currentMonth && leadYear === currentYear
-          ? counters.thisMonth
-          : leadMonth === lastMonth && leadYear === lastMonthYear
-            ? counters.lastMonth
-            : null;
+      let bucket = null;
+      if (created >= startDate && created <= endDate) bucket = yearlyCounters.thisYear;
+      else if (created >= prevStartDate && created <= prevEndDate) bucket = yearlyCounters.lastYear;
+      else continue;
 
-      if (bucket) {
+      // ===== LEGACY TOTAL LEADS LOGIC =====
+      if (lead.status === "pending") bucket.totalLeads++;
 
-        // COUNT ONLY leads with status = pending AND appliedFor = venue manager
-        if (lead.status === "pending" && lead.appliedFor === "venue manager") {
-          bucket.totalLeads++;
-        }
-
-        // === VIDEO CALL INTERVIEW ===
-        // Count when email is NULL
-        if (profile && !profile.telephoneCallSetupEmail) {
-          bucket.telephoneCalls++;
-        }
-
-        let booked = profile?.bookPracticalAssessment;
-        if (typeof booked === "string") {
-          try { booked = JSON.parse(booked); } catch { booked = []; }
-        }
-        if (lead.status === "recruited" && Array.isArray(booked))
-          bucket.practicalAssessments += booked.length;
-
-        if (lead.status === "recruited") bucket.hires++;
+      // ===== LEGACY TELEPHONE LOGIC =====
+      if (profile && !profile.telephoneCallSetupEmail) {
+        bucket.telephoneCalls++;
       }
 
-      // ========== MONTHLY CHART DATA ==========
-      if (lead.status === "pending") {
-        if (leadYear === currentYear) chartData.leads.currentYear[monthName]++;
-        if (leadYear === currentYear - 1) chartData.leads.lastYear[monthName]++;
-      }
-
-      if (lead.status === "recruited") {
-        if (leadYear === currentYear) chartData.hires.currentYear[monthName]++;
-        if (leadYear === currentYear - 1) chartData.hires.lastYear[monthName]++;
-      }
-
-      // ========== DEMOGRAPHICS ==========
-      // AGE
-      if (lead.age) {
-        ageCount[lead.age] = (ageCount[lead.age] || 0) + 1;
-      }
-
-      // GENDER
-      const g = lead.gender || "Others";
-      genderCount[g] = (genderCount[g] || 0) + 1;
-
-      // VENUE
+      // ===== LEGACY PRACTICAL / HIRES LOGIC =====
       let booked = profile?.bookPracticalAssessment;
       if (typeof booked === "string") {
         try { booked = JSON.parse(booked); } catch { booked = []; }
       }
 
-      if (Array.isArray(booked)) {
-        for (const b of booked) {
-          const venueId = b?.venueId;
-          if (venueId) venueCount[venueId] = (venueCount[venueId] || 0) + 1;
+      if (lead.status === "recruited") {
+        bucket.hires++;
+        if (Array.isArray(booked)) {
+          bucket.practicalAssessments += booked.length;
+          if (booked.length) totalPracticalLeadsWithAssessment++;
         }
       }
 
-      // === QUALIFICATIONS & EXPERIENCE ===
-      if (lead.level === "yes") {
-        qualificationStats.faQualification++;
+      // ===== CHART DATA (FIXED ONLY) =====
+      if (lead.status === "pending") {
+        if (bucket === yearlyCounters.thisYear) chartData.leads.currentYear[monthName]++;
+        else chartData.leads.lastYear[monthName]++;
       }
 
-      if (lead.dbs === "yes") {
-        qualificationStats.dbsCertificate++;
+      if (lead.status === "recruited") {
+        if (bucket === yearlyCounters.thisYear) chartData.hires.currentYear[monthName]++;
+        else chartData.hires.lastYear[monthName]++;
       }
 
-      if (lead.managementExperience === "yes") {
-        qualificationStats.coachingExperience++;
-      } else if (lead.managementExperience === "no") {
-        qualificationStats.noExperience++;
-      }
-      // const totalLeads = recruitmentLead.length;
+      // ===== DEMOGRAPHICS =====
+      if (lead.age) ageCount[lead.age] = (ageCount[lead.age] || 0) + 1;
 
-      // === ONBOARDING RESULTS
+      let g = (lead.gender || "Others").toLowerCase();
+      g = g === "male" ? "Male" : g === "female" ? "Female" : "Others";
+      genderCount[g]++;
+
+      if (lead.level === "yes") qualificationStats.faQualification++;
+      if (lead.dbs === "yes") qualificationStats.dbsCertificate++;
+      if (lead.managementExperience === "yes") qualificationStats.coachingExperience++;
+      else qualificationStats.noExperience++;
+
       if (profile) {
         const skills = [
           profile.telePhoneCallDeliveryCommunicationSkill,
           profile.telePhoneCallDeliveryPassionCoaching,
           profile.telePhoneCallDeliveryExperience,
           profile.telePhoneCallDeliveryKnowledgeOfSSS
-        ];
+        ].filter(s => typeof s === "number");
 
-        const validSkills = skills.filter(s => typeof s === "number");
-        if (validSkills.length > 0) {
-          totalCallScore += validSkills.reduce((a, b) => a + b, 0);
-          totalCallMax += validSkills.length * 5; // max score per skill = 5
-        }
-      }
-      if (typeof booked === "string") {
-        try { booked = JSON.parse(booked); } catch { booked = []; }
-      }
-      if (Array.isArray(booked) && booked.length > 0) {
-        totalPracticalLeadsWithAssessment++; // increment counter
-      }
-
-      // === SOURCE COUNT 
-      if (lead.candidateProfile) { // candidateProfile exists
-        const source = lead.candidateProfile.howDidYouHear?.trim();
-        if (source) {
-          leadSourceCount[source] = (leadSourceCount[source] || 0) + 1;
-        } else {
-          leadSourceCount["Other"] = (leadSourceCount["Other"] || 0) + 1;
-        }
-      }
-
-      // == HIGH DEMAND VENUE
-      if (lead.candidateProfile) {
-        let booked = lead.candidateProfile.bookPracticalAssessment;
-
-        // Parse if string
-        if (typeof booked === "string") {
-          try { booked = JSON.parse(booked); } catch { booked = []; }
+        if (skills.length) {
+          totalCallScore += skills.reduce((a, b) => a + b, 0);
+          totalCallMax += skills.length * 5;
         }
 
-        if (Array.isArray(booked)) {
-          for (const b of booked) {
-            const venueId = b?.venueId;
-            if (venueId) {
-              venueDemandCount[venueId] = (venueDemandCount[venueId] || 0) + 1;
-            }
+        const source = profile.howDidYouHear?.trim() || "Other";
+        leadSourceCount[source] = (leadSourceCount[source] || 0) + 1;
+      }
+
+      if (Array.isArray(booked)) {
+        for (const b of booked) {
+          if (b?.venueId) {
+            venueCount[b.venueId] = (venueCount[b.venueId] || 0) + 1;
+            venueDemandCount[b.venueId] = (venueDemandCount[b.venueId] || 0) + 1;
           }
         }
       }
 
-      // inside the for (const lead of recruitmentLead) { ... } loop:
-      if (lead.status === "recruited") {
-        const agentId = lead.createdBy ?? (lead.creator && lead.creator.id);
-        if (agentId != null) {
-          const key = String(agentId);
-          if (!topAgentCount[key]) {
-            topAgentCount[key] = {
-              totalHires: 0,
-              firstName: lead.creator?.firstName || "",
-              lastName: lead.creator?.lastName || "",
-              profile: lead.creator?.profile || "",
-            };
-          }
-          topAgentCount[key].totalHires++;
+      // ===== TOP AGENT (LEGACY – ALL YEARS) =====
+      if (
+        lead.status === "recruited" &&
+        lead.creator &&
+        created >= startDate &&
+        created <= endDate
+      ) {
+        const agentId = lead.creator.id;
+        if (!agentId) continue;
+
+        if (!topAgentCount[agentId]) {
+          topAgentCount[agentId] = {
+            firstName: lead.creator.firstName || "",
+            lastName: lead.creator.lastName || "",
+            profile: lead.creator.profile || "",
+            totalHires: 0
+          };
         }
+
+        topAgentCount[agentId].totalHires++;
       }
+
     }
-    const totalLeads = recruitmentLead.length;
-    const averageCallGrade = totalCallMax > 0 ? Math.round((totalCallScore / totalCallMax) * 100) : 0;
-    const averagePracticalGrade = totalLeads > 0
-      ? Math.round((totalPracticalLeadsWithAssessment / totalLeads) * 100)
+
+    const calcRate = (v, t) => (t > 0 ? ((v / t) * 100).toFixed(0) + "%" : "0%");
+    const totalLeadsCount = recruitmentLead.length || 1;
+
+    // ---- Normalize leadSource percent with rounding fix to sum 100%
+    const totalCounted = Object.values(leadSourceCount).reduce((sum, val) => sum + val, 0);
+
+    let runningPercents = 0;
+
+    const byLeadSource = Object.keys(leadSourceCount).map((source, index, arr) => {
+      const count = leadSourceCount[source];
+
+      if (index < arr.length - 1) {
+        const percentNum = Math.round((count / totalCounted) * 100);
+        runningPercents += percentNum;
+        return {
+          source,
+          count,
+          percent: percentNum + "%"
+        };
+      } else {
+        const percentNum = 100 - runningPercents;
+        return {
+          source,
+          count,
+          percent: percentNum + "%"
+        };
+      }
+    });
+
+    // ---- Other normalized percentages
+    const byAge = normalizePercent(
+      Object.keys(ageCount).map(age => ({
+        age: Number(age),
+        count: ageCount[age]
+      }))
+    );
+
+    const byGender = normalizePercent(
+      Object.keys(genderCount).map(g => ({
+        gender: g,
+        count: genderCount[g]
+      }))
+    );
+
+    const venues = await Venue.findAll();
+
+    const byVenue = normalizePercent(
+      Object.keys(venueCount).map(id => {
+        const venue = venues.find(v => v.id == id);
+        return {
+          venueName: venue ? venue.name : "Unknown",
+          count: venueCount[id]
+        };
+      })
+    );
+
+    const averageCallGrade = totalCallMax ? Math.round((totalCallScore / totalCallMax) * 100) : 0;
+    const averageCoachEducationPassMark = averageCallGrade;
+    const averagePracticalGrade = recruitmentLead.length
+      ? Math.round((totalPracticalLeadsWithAssessment / recruitmentLead.length) * 100)
       : 0;
 
-    const byLeadSource = Object.keys(leadSourceCount).map(source => ({
-      source,
-      count: leadSourceCount[source],
-      percent: totalLeads > 0
-        ? ((leadSourceCount[source] / totalLeads) * 100).toFixed(0) + "%"
-        : "0%"
-    }));
-
-    const averageCoachEducationPassMark = averageCallGrade;
-    // ========= CONVERT DEMOGRAPHICS TO COUNT + PERCENT =========
-
-    // AGE
-    const byAge = Object.keys(ageCount).map(age => ({
-      age: Number(age),
-      count: ageCount[age],
-      percent: ((ageCount[age] / totalLeads) * 100).toFixed(0) + "%"
-    }));
-
-    // GENDER
-    const byGender = Object.keys(genderCount).map(g => ({
-      gender: g,
-      count: genderCount[g],
-      percent: ((genderCount[g] / totalLeads) * 100).toFixed(0) + "%"
-    }));
-
-    // VENUE (with venue name)
-    const venues = await Venue.findAll();
-    const byVenue = Object.keys(venueCount).map(id => {
-      const venue = venues.find(v => v.id == id);
-      return {
-        venueName: venue ? venue.name : "Unknown",
-        count: venueCount[id],
-        percent: ((venueCount[id] / totalLeads) * 100).toFixed(0) + "%"
-      };
-    });
-
-    const highDemandVenues = Object.keys(venueDemandCount).map(id => {
-      const venue = venues.find(v => v.id == id);
-      return {
-        venueName: venue ? venue.name : "Unknown",
-        count: venueDemandCount[id],
-        percent: totalLeads > 0
-          ? ((venueDemandCount[id] / totalLeads) * 100).toFixed(0) + "%"
-          : "0%"
-      };
-    });
-
     const topAgents = Object.keys(topAgentCount)
-      .map(agentId => ({
-        agentId,
-        firstName: topAgentCount[agentId].firstName,
-        lastName: topAgentCount[agentId].lastName,
-        profile: topAgentCount[agentId].profile,
-        totalHires: topAgentCount[agentId].totalHires
+      .map(id => ({
+        agentId: Number(id),
+        firstName: topAgentCount[id].firstName,
+        lastName: topAgentCount[id].lastName,
+        profile: topAgentCount[id].profile,
+        totalHires: topAgentCount[id].totalHires
       }))
-      .sort((a, b) => b.totalHires - a.totalHires); // highest hires first
-
-    // ========= MAIN REPORT =========
-    const calcRate = (value, total) =>
-      total > 0 ? ((value / total) * 100).toFixed(0) + "%" : "0%";
+      .sort((a, b) => b.totalHires - a.totalHires);
 
     const report = {
       totalLeads: {
-        current: counters.thisMonth.totalLeads,
-        previous: counters.lastMonth.totalLeads,
-        conversionRate: calcRate(counters.thisMonth.totalLeads, counters.thisMonth.totalLeads)
+        current: yearlyCounters.thisYear.totalLeads,
+        previous: yearlyCounters.lastYear.totalLeads,
+        conversionRate: calcRate(
+          yearlyCounters.thisYear.totalLeads,
+          yearlyCounters.thisYear.totalLeads
+        )
       },
       videoCallInterviews: {
-        current: counters.thisMonth.telephoneCalls,
-        previous: counters.lastMonth.telephoneCalls,
-        conversionRate: calcRate(counters.thisMonth.telephoneCalls, counters.thisMonth.totalLeads)
+        current: yearlyCounters.thisYear.telephoneCalls,
+        previous: yearlyCounters.lastYear.telephoneCalls,
+        conversionRate: calcRate(
+          yearlyCounters.thisYear.telephoneCalls,
+          yearlyCounters.thisYear.totalLeads
+        )
       },
       practicalAssessments: {
-        current: counters.thisMonth.practicalAssessments,
-        previous: counters.lastMonth.practicalAssessments,
-        conversionRate: calcRate(counters.thisMonth.practicalAssessments, counters.thisMonth.totalLeads)
+        current: yearlyCounters.thisYear.practicalAssessments,
+        previous: yearlyCounters.lastYear.practicalAssessments,
+        conversionRate: calcRate(
+          yearlyCounters.thisYear.practicalAssessments,
+          yearlyCounters.thisYear.totalLeads
+        )
       },
       hires: {
-        current: counters.thisMonth.hires,
-        previous: counters.lastMonth.hires,
-        conversionRate: calcRate(counters.thisMonth.hires, counters.thisMonth.totalLeads)
+        current: yearlyCounters.thisYear.hires,
+        previous: yearlyCounters.lastYear.hires,
+        conversionRate: calcRate(
+          yearlyCounters.thisYear.hires,
+          yearlyCounters.thisYear.totalLeads
+        )
       },
       conversionRate: {
-        current: calcRate(counters.thisMonth.hires, counters.thisMonth.totalLeads),
-        previous: calcRate(counters.lastMonth.hires, counters.lastMonth.totalLeads)
+        current: calcRate(
+          yearlyCounters.thisYear.hires,
+          yearlyCounters.thisYear.totalLeads
+        ),
+        previous: calcRate(
+          yearlyCounters.lastYear.hires,
+          yearlyCounters.lastYear.totalLeads
+        )
       }
-
     };
 
     return {
@@ -836,15 +832,14 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
           averageCoachEducationPassMark: averageCoachEducationPassMark + "%"
         },
         sourceOfLeads: byLeadSource,
-        // highDemandVenues,
-        topAgentsMostHires: topAgents,
+        topAgentsMostHires: topAgents
       }
     };
 
   } catch (error) {
     return {
       status: false,
-      message: "Fetch recruitmentLead failed. " + error.message,
+      message: "Fetch recruitmentLead failed. " + error.message
     };
   }
 };
