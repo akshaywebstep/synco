@@ -105,59 +105,38 @@ exports.getAllFranchiseRecruitmentLead = async (adminId) => {
       formatted.push(leadJson);
     }
     const now = new Date();
-    const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
 
-    // Total applications with candidateProfile
-    const totalFranchiseLeads = recruitmentLead.filter(
-      (lead) => lead.candidateProfile !== null
+    // ✅ current year leads only (BASE)
+    const currentYearLeads = recruitmentLead.filter(
+      lead => new Date(lead.createdAt).getFullYear() === currentYear
+    );
+
+    // total franchise leads (current year)
+    const totalFranchiseLeads = currentYearLeads.length;
+
+    // new franchise leads (current month + year)
+    const totalNewFranchiseLeads = currentYearLeads.filter(
+      lead => new Date(lead.createdAt).getMonth() === currentMonth
     ).length;
 
-    // New applications this month
-    const totalNewFranchiseLeads = recruitmentLead.filter(
-      (lead) =>
-        lead.candidateProfile !== null &&
-        new Date(lead.createdAt).getMonth() === currentMonth &&
-        new Date(lead.createdAt).getFullYear() === currentYear
+    // to assessments (same logic as report)
+    const totalToAssessments = currentYearLeads.filter((lead) => {
+      let booked = lead.candidateProfile?.bookPracticalAssessment;
+
+      if (typeof booked === "string") {
+        try { booked = JSON.parse(booked); } catch { booked = []; }
+      }
+
+      return Array.isArray(booked) && booked.length > 0;
+    }).length;
+
+    // leads to sales (recruited, current year)
+    const totalLeadsToSales = currentYearLeads.filter(
+      lead => lead.status === "recruited"
     ).length;
 
-    // Applications to assessments (have bookPracticalAssessment with entries)
-    const qualifyLeads = recruitmentLead.filter(
-      (lead) =>
-        lead.candidateProfile?.qualifyLead &&
-        lead.candidateProfile.qualifyLead.length > 0
-    ).length;
-
-    // Applications to recruitment (status = recruited)
-    const totalLeadsToSales = recruitmentLead.filter(
-      (lead) =>
-        lead.status === "recruited" &&
-        lead.candidateProfile !== null
-    ).length;
-
-    // Applications to assessments (have bookPracticalAssessment with entries)
-    const totalToAssessments = recruitmentLead.filter(
-      (lead) =>
-        lead.candidateProfile?.bookPracticalAssessment &&
-        lead.candidateProfile.bookPracticalAssessment.length > 0
-    ).length;
-
-    // Optional: % of recruited applications
-    const recruitmentPercent = totalFranchiseLeads > 0
-      ? ((totalLeadsToSales / totalFranchiseLeads) * 100).toFixed(2)
-      : 0;
-
-    // % of new applications this month
-    const newApplicationsPercent = totalFranchiseLeads > 0
-      ? ((totalNewFranchiseLeads / totalFranchiseLeads) * 100).toFixed(2) + "%"
-      : "0%";
-
-    // % of applications to assessments
-    const toAssessmentsPercent = totalFranchiseLeads > 0
-      ? ((totalToAssessments / totalFranchiseLeads) * 100).toFixed(2) + "%"
-      : "0%";
-
-    const totalFranchiseLeadsPercent = totalFranchiseLeads > 0 ? "100%" : "0%";
     return {
       status: true,
       message: "Recruitment Lead And Candidate Profile Data Fetched Succesfully",
@@ -439,7 +418,7 @@ exports.sendOfferEmail = async ({ recruitmentLeadId, admin }) => {
   }
 };
 
-exports.getAllFranchiseRecruitmentLeadRport = async (adminId,dateRange) => {
+exports.getAllFranchiseRecruitmentLeadRport = async (adminId, dateRange) => {
   try {
     if (!adminId || isNaN(Number(adminId))) {
       return {
@@ -448,36 +427,36 @@ exports.getAllFranchiseRecruitmentLeadRport = async (adminId,dateRange) => {
         data: [],
       };
     }
-     // 🗓️ Define date ranges dynamically based on dateRange
-        let startDate, endDate;
-    
-        if (dateRange === "thisMonth") {
-          startDate = moment().startOf("month").toDate();
-          endDate = moment().endOf("month").toDate();
-        } else if (dateRange === "lastMonth") {
-          startDate = moment().subtract(1, "month").startOf("month").toDate();
-          endDate = moment().subtract(1, "month").endOf("month").toDate();
-        } else if (dateRange === "last3Months") {
-          startDate = moment().subtract(3, "months").startOf("month").toDate();
-          endDate = moment().endOf("month").toDate();
-        } else if (dateRange === "last6Months") {
-          startDate = moment().subtract(6, "months").startOf("month").toDate();
-          endDate = moment().endOf("month").toDate();
-        } else {
-          throw new Error(
-            "Invalid dateRange. Use thisMonth | lastMonth | last3Months | last6Months"
-          );
-        }
-    
+    // 🗓️ Define date ranges dynamically based on dateRange
+    let startDate, endDate;
+
+    if (dateRange === "thisMonth") {
+      startDate = moment().startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+    } else if (dateRange === "lastMonth") {
+      startDate = moment().subtract(1, "month").startOf("month").toDate();
+      endDate = moment().subtract(1, "month").endOf("month").toDate();
+    } else if (dateRange === "last3Months") {
+      startDate = moment().subtract(3, "months").startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+    } else if (dateRange === "last6Months") {
+      startDate = moment().subtract(6, "months").startOf("month").toDate();
+      endDate = moment().endOf("month").toDate();
+    } else {
+      throw new Error(
+        "Invalid dateRange. Use thisMonth | lastMonth | last3Months | last6Months"
+      );
+    }
+
     const recruitmentLead = await RecruitmentLead.findAll({
       where: {
         createdBy: Number(adminId),
-         createdAt: { [Op.between]: [startDate, endDate] }, 
+        createdAt: { [Op.between]: [startDate, endDate] },
         appliedFor: "franchise"
       },
       include: [
         { model: CandidateProfile, as: "candidateProfile" },
-        { model: Admin, as: "creator", attributes: ["id", "firstName", "lastName","profile"] }
+        { model: Admin, as: "creator", attributes: ["id", "firstName", "lastName", "profile"] }
       ],
       order: [["createdAt", "DESC"]],
     });
@@ -691,7 +670,7 @@ exports.getAllFranchiseRecruitmentLeadRport = async (adminId,dateRange) => {
         }
       }
 
-     // inside the for (const lead of recruitmentLead) { ... } loop:
+      // inside the for (const lead of recruitmentLead) { ... } loop:
       if (lead.status === "recruited") {
         const agentId = lead.createdBy ?? (lead.creator && lead.creator.id);
         if (agentId != null) {
