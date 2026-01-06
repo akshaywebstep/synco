@@ -261,6 +261,178 @@ exports.createBooking = async (data, options) => {
   }
 };
 
+// Get all admins (also include the logged-in admin)
+exports.getAllAdmins = async (
+  superAdminId,
+  loggedInAdminId,
+  includeSuperAdmin = false
+) => {
+  if (!superAdminId || isNaN(Number(superAdminId))) {
+    return {
+      status: false,
+      message: "No valid parent or super admin found for this request.",
+      data: [],
+    };
+  }
+
+  try {
+    const orConditions = [{ superAdminId: Number(superAdminId) }];
+
+    // include super admin themselves
+    if (includeSuperAdmin) {
+      orConditions.push({ id: Number(superAdminId) });
+    }
+
+    // include currently logged-in admin
+    if (loggedInAdminId) {
+      orConditions.push({ id: Number(loggedInAdminId) });
+    }
+
+    const admins = await Admin.findAll({
+      where: {
+        [Op.or]: orConditions,
+      },
+      include: [
+        {
+          model: AdminRole,
+          as: "role",
+          attributes: ["id", "role"],
+          where: {
+            role: {
+              [Op.in]: ["Super Admin", "Admin"], // ✅ only these roles
+            },
+          },
+          required: true, // ✅ ensures role filter is enforced
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+    });
+
+    return {
+      status: true,
+      message: `Fetched ${admins.length} admin(s) successfully.`,
+      data: admins,
+    };
+  } catch (error) {
+    console.error("❌ Sequelize Error in getAllAdmins:", error);
+
+    return {
+      status: false,
+      message:
+        error?.parent?.sqlMessage ||
+        error?.message ||
+        "Failed to fetch admins.",
+    };
+  }
+};
+
+exports.assignBookingsToAgent = async ({ bookingIds, bookedBy }) => {
+  const t = await sequelize.transaction();
+
+  try {
+    // Validation
+    if (!Array.isArray(bookingIds) || bookingIds.length === 0) {
+      throw new Error("At least one booking ID is required");
+    }
+    if (!bookedBy || isNaN(Number(bookedBy))) {
+      throw new Error("Valid agent ID is required");
+    }
+
+    // Check Agent Exists
+    const agent = await Admin.findByPk(bookedBy, {
+      include: [{ model: AdminRole, as: "role" }],
+      transaction: t,
+    });
+    if (!agent) {
+      throw new Error("Agent not found");
+    }
+
+    // Fetch Bookings with students and parents eager loaded
+    const bookings = await Booking.findAll({
+      where: {
+        id: { [Op.in]: bookingIds },
+      },
+      include: [
+        {
+          model: BookingStudentMeta,
+          as: "students",
+          include: [
+            { model: BookingParentMeta, as: "parents", required: false },
+          ],
+          required: false,
+        },
+      ],
+      transaction: t,
+    });
+
+    if (bookings.length !== bookingIds.length) {
+      throw new Error("One or more bookings were not found");
+    }
+
+    // Filter bookings that are already assigned
+    const alreadyAssigned = bookings.filter((b) => b.bookedBy);
+
+    if (alreadyAssigned.length > 0) {
+      // Build detailed info for error message
+      const detailedInfo = alreadyAssigned.map((booking) => {
+        const studentNames = booking.students
+          ?.map(
+            (s) => `${s.studentFirstName || ""} ${s.studentLastName || ""}`.trim()
+          )
+          .filter(Boolean)
+          .join(", ") || "N/A";
+
+        const parentNames = booking.students
+          ?.flatMap((s) =>
+            s.parents?.map(
+              (p) => `${p.parentFirstName || ""} ${p.parentLastName || ""}`.trim()
+            ) || []
+          )
+          .filter(Boolean)
+          .join(", ") || "N/A";
+
+        return `Student(s): ${studentNames}; Parent(s): ${parentNames}`;
+      });
+
+      throw new Error(
+        `Some bookings are already assigned: ${detailedInfo.join(" | ")}`
+      );
+    }
+
+    // Bulk update bookings
+    await Booking.update(
+      {
+        bookedBy,
+        updatedAt: new Date(),
+      },
+      {
+        where: {
+          id: { [Op.in]: bookingIds },
+        },
+        transaction: t,
+      }
+    );
+
+    await t.commit();
+
+    return {
+      status: true,
+      message: "Bookings successfully assigned to agent",
+      data: {
+        bookingIds,
+        bookedBy,
+        totalAssigned: bookingIds.length,
+      },
+    };
+  } catch (error) {
+    await t.rollback();
+    return {
+      status: false,
+      message: error.message,
+    };
+  }
+};
+
 // Get all booking with bookingType = free
 exports.getAllBookings = async (filters = {}) => {
   try {
@@ -272,7 +444,7 @@ exports.getAllBookings = async (filters = {}) => {
     if (filters.venueId) trialWhere.venueId = filters.venueId;
     if (filters.trialDate) trialWhere.trialDate = filters.trialDate;
     if (filters.status) trialWhere.status = filters.status;
-   
+
     let allowedAdminIds = [];
 
     if (filters.bookedBy !== undefined) {
@@ -466,7 +638,7 @@ exports.getAllBookings = async (filters = {}) => {
           if (typeof venue.paymentPlanId === "string") {
             try {
               paymentPlanIds = JSON.parse(venue.paymentPlanId);
-            } catch {}
+            } catch { }
           } else if (Array.isArray(venue.paymentPlanId)) {
             paymentPlanIds = venue.paymentPlanId;
           }
@@ -493,12 +665,12 @@ exports.getAllBookings = async (filters = {}) => {
           venue: booking.classSchedule?.venue || null, // ✅ include venue per trial
           ...(booking.bookedByAdmin
             ? {
-                [booking.bookedByAdmin.role?.name === "Admin"
-                  ? "bookedByAdmin"
-                  : booking.bookedByAdmin.role?.name === "Agent"
+              [booking.bookedByAdmin.role?.name === "Admin"
+                ? "bookedByAdmin"
+                : booking.bookedByAdmin.role?.name === "Agent"
                   ? "bookedByAgent"
                   : "bookedByOther"]: booking.bookedByAdmin,
-              }
+            }
             : { bookedBy: null }),
         };
       })
@@ -511,9 +683,8 @@ exports.getAllBookings = async (filters = {}) => {
 
       finalBookings = parsedBookings.filter((booking) =>
         booking.students.some((s) => {
-          const fullName = `${s.studentFirstName || ""} ${
-            s.studentLastName || ""
-          }`.toLowerCase();
+          const fullName = `${s.studentFirstName || ""} ${s.studentLastName || ""
+            }`.toLowerCase();
           return fullName.includes(keyword);
         })
       );
@@ -553,10 +724,7 @@ exports.getAllBookings = async (filters = {}) => {
       totalFreeTrials > 0
         ? Math.round((attendedCount / totalFreeTrials) * 100)
         : 0;
-    const trialsToMembers = finalBookings.filter(
-      (b) => b.paymentPlans?.length > 0
-    ).length;
-
+    const trialsToMembers = finalBookings.filter(b => b.isConvertedToMembership).length;
     // ✅ Top Performer (Admin/Agent with most bookings)
     let topPerformer = null;
     if (allBookedBy.length > 0) {

@@ -8,6 +8,8 @@ const {
   getAllBookFreeTrials,
   getBookFreeTrialDetails,
   sendSelectedTrialistEmail,
+  getAllAdmins,
+  assignBookings,
 } = require("../../controllers/admin/booking/bookFreeTrialController");
 
 // 📧 Send trial confirmation emails
@@ -40,6 +42,20 @@ router.get(
   authMiddleware,
   permissionMiddleware("book-free-trial", "view-listing"),
   getAllBookFreeTrials
+);
+
+router.get(
+  "/get-agents",
+  authMiddleware,
+  permissionMiddleware("book-free-trial", "view-listing"),
+  getAllAdmins
+);
+
+router.put(
+  "/assign-booking",
+  authMiddleware,
+  permissionMiddleware("book-free-trial", "view-listing"),
+  assignBookings
 );
 
 // 📄 Get a specific free trial booking by ID

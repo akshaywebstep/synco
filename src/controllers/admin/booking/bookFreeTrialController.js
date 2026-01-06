@@ -346,13 +346,13 @@ exports.createBooking = async (req, res) => {
 
           const studentsHtml = students.length
             ? students
-                .map(
-                  (s) =>
-                    `<p style="margin:0; font-size:13px; color:#5F5F6D;">
+              .map(
+                (s) =>
+                  `<p style="margin:0; font-size:13px; color:#5F5F6D;">
              ${s.studentFirstName} ${s.studentLastName}
            </p>`
-                )
-                .join("")
+              )
+              .join("")
             : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
 
           let finalHtml = htmlTemplate
@@ -428,6 +428,118 @@ exports.createBooking = async (req, res) => {
       false
     );
     return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
+
+exports.getAllAdmins = async (req, res) => {
+  if (DEBUG) console.log("📋 Request received to list all admins");
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin?.id);
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+  try {
+    const loggedInAdminId = req.admin?.id; // Get the current admin's ID
+
+    const result = await BookingTrialService.getAllAdmins(superAdminId, loggedInAdminId); // Pass it to the service
+
+    if (!result.status) {
+      if (DEBUG) console.log("❌ Failed to retrieve admins:", result.message);
+
+      await logActivity(req, PANEL, MODULE, "list", result, false);
+      return res.status(500).json({
+        status: false,
+        message: result.message || "Failed to fetch admins.",
+      });
+    }
+
+    if (DEBUG) {
+      console.log(`✅ Retrieved ${result.data.length} admin(s)`);
+      console.table(
+        result.data.map((m) => ({
+          ID: m.id,
+          Name: m.name,
+          Email: m.email,
+          Created: m.createdAt,
+        }))
+      );
+    }
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      {
+        oneLineMessage: `Fetched ${result.data.length} admin(s) successfully.`,
+      },
+      true
+    );
+
+    return res.status(200).json({
+      status: true,
+      message: `Fetched ${result.data.length} admin(s) successfully.`,
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ List Admins Error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Failed to fetch admins. Please try again later.",
+    });
+  }
+};
+
+// Assign Booking to Admin / Agent
+exports.assignBookings = async (req, res) => {
+  try {
+    const { bookingIds, bookedBy } = req.body;
+
+    if (!Array.isArray(bookingIds) || bookingIds.length === 0) {
+      return res.status(400).json({
+        status: false,
+        message: "Booking IDs array is required.",
+      });
+    }
+
+    if (!bookedBy || isNaN(Number(bookedBy))) {
+      return res.status(400).json({
+        status: false,
+        message: "Valid admin ID is required.",
+      });
+    }
+
+    const result = await BookingTrialService.assignBookingsToAgent({
+      bookingIds,
+      bookedBy,
+    });
+
+    if (!result.status) {
+      await logActivity(req, PANEL, MODULE, "update", result, false);
+      return res.status(400).json(result);
+    }
+
+    await createNotification(
+      req,
+      "Bookings Assigned",
+      `${bookingIds.length} booking(s) assigned to agent successfully.`,
+      "System"
+    );
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "update",
+      {
+        oneLineMessage: `Assigned ${bookingIds.length} bookings to admin ${bookedBy}`,
+      },
+      true
+    );
+
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(500).json({
+      status: false,
+      message: "Failed to assign bookings.",
+    });
   }
 };
 
