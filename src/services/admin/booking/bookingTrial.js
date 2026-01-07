@@ -262,7 +262,7 @@ exports.createBooking = async (data, options) => {
 };
 
 // Get all admins (also include the logged-in admin)
-exports.getAllAdmins = async (
+exports.getAllAgents = async (
   superAdminId,
   loggedInAdminId,
   includeSuperAdmin = false
@@ -314,14 +314,14 @@ exports.getAllAdmins = async (
       data: admins,
     };
   } catch (error) {
-    console.error("❌ Sequelize Error in getAllAdmins:", error);
+    console.error("❌ Sequelize Error in getAllAgents:", error);
 
     return {
       status: false,
       message:
         error?.parent?.sqlMessage ||
         error?.message ||
-        "Failed to fetch admins.",
+        "Failed to fetch agents.",
     };
   }
 };

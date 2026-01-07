@@ -8,7 +8,6 @@ const {
   getAllBookFreeTrials,
   getBookFreeTrialDetails,
   sendSelectedTrialistEmail,
-  getAllAdmins,
   assignBookings,
 } = require("../../controllers/admin/booking/bookFreeTrialController");
 
@@ -42,13 +41,6 @@ router.get(
   authMiddleware,
   permissionMiddleware("book-free-trial", "view-listing"),
   getAllBookFreeTrials
-);
-
-router.get(
-  "/get-agents",
-  authMiddleware,
-  permissionMiddleware("book-free-trial", "view-listing"),
-  getAllAdmins
 );
 
 router.put(

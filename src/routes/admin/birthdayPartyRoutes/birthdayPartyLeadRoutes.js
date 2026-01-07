@@ -15,6 +15,7 @@ const {
   sendEmailToFirstParentWithBooking,
   cancelBirthdayPartyLeadAndBooking,
   renewBirthdayPartyLeadAndBooking,
+  assignBookings,
 } = require("../../../controllers/admin/birthdayParty/birthdayPartyLeadsController");
 
 // ✅ Get All Session Plan Groups
@@ -38,6 +39,13 @@ router.get(
   authMiddleware,
   permissionMiddleware("birthday-party-lead", "view-listing"),
   getAllBirthdayPartyLeads
+);
+
+router.put(
+  "/leads/assign-booking",
+  authMiddleware,
+  permissionMiddleware("birthday-party-lead", "view-listing"),
+  assignBookings
 );
 
 router.get(

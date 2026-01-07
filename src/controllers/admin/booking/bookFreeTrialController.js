@@ -373,14 +373,14 @@ exports.createBooking = async (req, res) => {
   }
 };
 
-exports.getAllAdmins = async (req, res) => {
+exports.getAllAgents = async (req, res) => {
   if (DEBUG) console.log("📋 Request received to list all admins");
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin?.id);
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
   try {
     const loggedInAdminId = req.admin?.id; // Get the current admin's ID
 
-    const result = await BookingTrialService.getAllAdmins(superAdminId, loggedInAdminId); // Pass it to the service
+    const result = await BookingTrialService.getAllAgents(superAdminId, loggedInAdminId); // Pass it to the service
 
     if (!result.status) {
       if (DEBUG) console.log("❌ Failed to retrieve admins:", result.message);

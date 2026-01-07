@@ -157,6 +157,69 @@ exports.createBirthdayPartyLeads = async (req, res) => {
   }
 };
 
+// Assign Booking to Admin / Agent
+exports.assignBookings = async (req, res) => {
+  try {
+    const { leadIds, createdBy } = req.body;
+
+    // ✅ Validation
+    if (!Array.isArray(leadIds) || leadIds.length === 0) {
+      return res.status(400).json({
+        status: false,
+        message: "Lead IDs array is required.",
+      });
+    }
+
+    if (!createdBy || isNaN(Number(createdBy))) {
+      return res.status(400).json({
+        status: false,
+        message: "Valid agent ID is required.",
+      });
+    }
+
+    // ✅ Call service
+    const result = await birthdayPartyLeadService.assignBookingsToAgent({
+      leadIds,
+      createdBy,
+    });
+
+    // ❌ Service failed (e.g. already assigned)
+    if (!result.status) {
+      await logActivity(req, PANEL, MODULE, "update", result, false);
+      return res.status(400).json(result);
+    }
+
+    // ✅ Notification (success only)
+    await createNotification(
+      req,
+      "Lead Assigned",
+      `${leadIds.length} lead(s) assigned to agent successfully.`,
+      "System"
+    );
+
+    // ✅ Activity log (success)
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "update",
+      {
+        oneLineMessage: `Assigned ${leadIds.length} lead(s) to admin ${createdBy}`,
+      },
+      true
+    );
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("❌ Assign bookings controller error:", error);
+
+    return res.status(500).json({
+      status: false,
+      message: error.message || "Failed to assign bookings.",
+    });
+  }
+};
+
 exports.getAllBirthdayPartyLeads = async (req, res) => {
   const adminId = req.admin?.id;
   if (DEBUG) console.log("📥 Fetching all One-to-One leads...");

@@ -14,6 +14,8 @@ const {
   getAllAdminsForReassign,
 } = require("../../controllers/admin/administration/adminPannel/adminController");
 
+const { getAllAgents } = require("../../controllers/admin/booking/bookFreeTrialController");
+
 const multer = require("multer");
 const upload = multer();
 
@@ -182,6 +184,13 @@ router.use("/student-course/", require("./coach/studentCourseRoutes"));
 router.use("/feedback/", require("./feedbackRoutes"));
 
 // Base: /api/admin/admin
+// Assign Agent List
+router.get(
+  "/get-agents",
+  authMiddleware,
+  permissionMiddleware("member", "view-listing"),
+  getAllAgents
+);
 router.post(
   "/",
   // upload.single("profile")

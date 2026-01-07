@@ -34,6 +34,85 @@ exports.createBirthdayPartyLeads = async (data) => {
   }
 };
 
+exports.assignBookingsToAgent = async ({ leadIds, createdBy }) => {
+  const t = await sequelize.transaction();
+
+  try {
+    // ✅ Validation
+    if (!Array.isArray(leadIds) || leadIds.length === 0) {
+      throw new Error("At least one lead ID is required");
+    }
+
+    if (!createdBy || isNaN(Number(createdBy))) {
+      throw new Error("Valid agent ID is required");
+    }
+
+    // ✅ Check agent exists
+    const agent = await Admin.findByPk(createdBy, { transaction: t });
+    if (!agent) {
+      throw new Error("Agent not found");
+    }
+
+    // ✅ Fetch leads (parentName already exists here)
+    const leads = await BirthdayPartyLead.findAll({
+      where: {
+        id: { [Op.in]: leadIds },
+      },
+      attributes: ["id", "parentName", "createdBy"],
+      transaction: t,
+    });
+
+    if (leads.length !== leadIds.length) {
+      throw new Error("One or more leads were not found");
+    }
+
+    // ✅ Check already assigned leads
+    const alreadyAssigned = leads.filter(
+      (lead) => lead.createdBy !== null
+    );
+
+    if (alreadyAssigned.length > 0) {
+      const names = alreadyAssigned
+        .map((lead) => lead.parentName || "Unknown Parent")
+        .join(", ");
+
+      throw new Error(`${names} lead already assigned`);
+    }
+
+    // ✅ Assign agent
+    await BirthdayPartyLead.update(
+      {
+        createdBy,
+        updatedAt: new Date(),
+      },
+      {
+        where: {
+          id: { [Op.in]: leadIds },
+        },
+        transaction: t,
+      }
+    );
+
+    await t.commit();
+
+    return {
+      status: true,
+      message: "Leads successfully assigned to agent",
+      data: {
+        leadIds,
+        createdBy,
+        totalAssigned: leadIds.length,
+      },
+    };
+  } catch (error) {
+    await t.rollback();
+    return {
+      status: false,
+      message: error.message,
+    };
+  }
+};
+
 // Get All Leads
 exports.getAllBirthdayPartyLeads = async (
   superAdminId,
