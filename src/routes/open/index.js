@@ -13,4 +13,7 @@ router.use("/waiting-list", require("./booking/waitingListRoutes"));
 // Book Membership Modle Base Routes
 router.use("/book-membership", require("./booking/bookingMembershipRoutes"));
 
+// Birthday Party Inqury Form
+router.use("/birthday-party", require("./booking/birthdayPartyBookingRoutes"));
+
 module.exports = router;

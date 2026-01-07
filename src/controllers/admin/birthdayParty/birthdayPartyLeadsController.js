@@ -11,40 +11,110 @@ const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "birthday-party-leads";
 
+// exports.createBirthdayPartyLeads = async (req, res) => {
+//   try {
+//     const formData = req.body;
+
+//     // ✅ Validate required fields
+//     const validation = validateFormData(formData, {
+//       requiredFields: [
+//         "parentName",
+//         "childName",
+//         "age",
+//         "partyDate",
+//         "packageInterest",
+//         "source",
+//       ],
+//     });
+
+//     if (!validation.isValid) {
+//       return res.status(400).json({
+//         success: false,
+//         message: `${validation.missingField} is required`
+//       });
+//     }
+
+//     // ✅ Create the lead
+//     const createResult = await birthdayPartyLeadService.createBirthdayPartyLeads({
+//       parentName: formData.parentName,
+//       childName: formData.childName,
+//       age: formData.age,
+//       partyDate: formData.partyDate,
+//       packageInterest: formData.packageInterest,
+//       source: formData.source,
+//       status: "pending", // Default
+//       createdBy: req.admin.id,
+//     });
+
+//     if (!createResult.status) {
+//       return res.status(500).json({
+//         status: false,
+//         message: createResult.message || "Failed to create lead.",
+//       });
+//     }
+
+//     // ✅ Log activity
+//     await logActivity(req, PANEL, MODULE, "create", createResult.data, true);
+
+//     // ✅ Correct notification format
+//     await createNotification(
+//       req,
+//       "New Birthday Party Lead Added",
+//       `Lead for ${formData.parentName} has been created by ${req?.admin?.firstName || "Admin"
+//       } ${req?.admin?.lastName || ""}.`,
+//       "Support"
+//     );
+
+//     // ✅ Respond with success
+//     return res.status(201).json({
+//       status: true,
+//       message: "Birthday Party Lead created successfully.",
+//       data: createResult.data,
+//     });
+//   } catch (error) {
+//     console.error("❌ Server error:", error);
+//     return res.status(500).json({
+//       status: false,
+//       message: "Server error.",
+//     });
+//   }
+// };
+
+// ✅ Get Leads
 exports.createBirthdayPartyLeads = async (req, res) => {
   try {
     const formData = req.body;
 
-    // ✅ Validate required fields
+    // ✅ Validation
     const validation = validateFormData(formData, {
-      requiredFields: [
-        "parentName",
-        "childName",
-        "age",
-        "partyDate",
-        "packageInterest",
-        "source",
-      ],
+      requiredFields: ["parentName", "childName", "age", "partyDate"],
     });
 
     if (!validation.isValid) {
       return res.status(400).json({
         success: false,
-        message: `${validation.missingField} is required`
+        message: `${validation.missingField} is required`,
       });
     }
 
-    // ✅ Create the lead
-    const createResult = await birthdayPartyLeadService.createBirthdayPartyLeads({
-      parentName: formData.parentName,
-      childName: formData.childName,
-      age: formData.age,
-      partyDate: formData.partyDate,
-      packageInterest: formData.packageInterest,
-      source: formData.source,
-      status: "pending", // Default
-      createdBy: req.admin.id,
-    });
+    const createdBy = req?.admin?.id || null;
+
+    // ✅ Create lead
+    const createResult =
+      await birthdayPartyLeadService.createBirthdayPartyLeads({
+        parentName: formData.parentName,
+        childName: formData.childName,
+        age: formData.age,
+        partyDate: formData.partyDate,
+        packageInterest: formData.packageInterest || null,
+        source: formData.source || "Website",
+        phoneNumber: formData.phoneNumber || null,
+        email: formData.email || null,
+        postCode: formData.postCode || null,
+        notes: formData.notes || null,
+        status: "pending",
+        createdBy,
+      });
 
     if (!createResult.status) {
       return res.status(500).json({
@@ -53,19 +123,26 @@ exports.createBirthdayPartyLeads = async (req, res) => {
       });
     }
 
-    // ✅ Log activity
-    await logActivity(req, PANEL, MODULE, "create", createResult.data, true);
+    // ✅ ONLY ADMIN-CREATED → log + notify
+    if (createdBy) {
+      await logActivity(
+        req,
+        PANEL,
+        MODULE,
+        "create",
+        createResult.data,
+        true
+      );
 
-    // ✅ Correct notification format
-    await createNotification(
-      req,
-      "New Birthday Party Lead Added",
-      `Lead for ${formData.parentName} has been created by ${req?.admin?.firstName || "Admin"
-      } ${req?.admin?.lastName || ""}.`,
-      "Support"
-    );
+      await createNotification(
+        req,
+        "New Birthday Party Lead Added",
+        `Lead for ${formData.parentName} has been created by ${req.admin.firstName || "Admin"
+        } ${req.admin.lastName || ""}.`,
+        "Support"
+      );
+    }
 
-    // ✅ Respond with success
     return res.status(201).json({
       status: true,
       message: "Birthday Party Lead created successfully.",
@@ -80,7 +157,6 @@ exports.createBirthdayPartyLeads = async (req, res) => {
   }
 };
 
-// ✅ Get Leads
 exports.getAllBirthdayPartyLeads = async (req, res) => {
   const adminId = req.admin?.id;
   if (DEBUG) console.log("📥 Fetching all One-to-One leads...");
@@ -763,9 +839,8 @@ exports.cancelBirthdayPartyLeadAndBooking = async (req, res) => {
     // ============================================================
     // 🔔 Create notification
     // ============================================================
-    const adminName = `${req?.admin?.firstName || "Admin"} ${
-      req?.admin?.lastName || ""
-    }`.trim();
+    const adminName = `${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""
+      }`.trim();
 
     await createNotification(
       req,
@@ -841,9 +916,8 @@ exports.renewBirthdayPartyLeadAndBooking = async (req, res) => {
     // ============================================================
     // 🔔 Create notification
     // ============================================================
-    const adminName = `${req?.admin?.firstName || "Admin"} ${
-      req?.admin?.lastName || ""
-    }`.trim();
+    const adminName = `${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""
+      }`.trim();
 
     await createNotification(
       req,

@@ -53,20 +53,26 @@ exports.getAllBirthdayPartyLeads = async (
 
     // ✅ Build WHERE conditions for super admin vs admin
     if (superAdminId && superAdminId === adminId) {
-      // 🟢 Super Admin → fetch all admins under them + self
       const managedAdmins = await Admin.findAll({
         where: { superAdminId },
         attributes: ["id"],
       });
       const adminIds = managedAdmins.map((a) => a.id);
       adminIds.push(superAdminId);
-      whereLead.createdBy = { [Op.in]: adminIds };
+      whereLead[Op.or] = [
+        { createdBy: { [Op.in]: adminIds } },
+        { createdBy: null },
+      ];
     } else if (superAdminId && adminId) {
-      // 🟢 Admin → fetch own + super admin’s leads
-      whereLead.createdBy = { [Op.in]: [adminId, superAdminId] };
+      whereLead[Op.or] = [
+        { createdBy: { [Op.in]: [adminId, superAdminId] } },
+        { createdBy: null },
+      ];
     } else {
-      // 🟢 Fallback (in case no superAdminId found)
-      whereLead.createdBy = adminId;
+      whereLead[Op.or] = [
+        { createdBy: adminId },
+        { createdBy: null },
+      ];
     }
 
     // ✅ Date range filter

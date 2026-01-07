@@ -22,6 +22,14 @@ const BirthdayPartyLead = sequelize.define(
             allowNull: false,
             comment: "Full name of the child",
         },
+        email: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            comment: "Parent email address (mainly for website leads)",
+            validate: {
+                isEmail: true,
+            },
+        },
 
         age: {
             type: DataTypes.INTEGER.UNSIGNED,
@@ -53,18 +61,45 @@ const BirthdayPartyLead = sequelize.define(
             defaultValue: "new",
             comment: "Lead status (e.g., new, contacted, booked, lost, etc.)",
         },
+        // ✅ NEW FIELDS
+        phoneNumber: {
+            type: DataTypes.STRING, // safer than BIGINT for phone numbers
+            allowNull: true,
+        },
 
-        // ✅ Foreign key for the admin who created this lead
+        postCode: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
+
+        notes: {
+            type: DataTypes.TEXT,
+            allowNull: true,
+        },
+
+        // ✅ createdBy now OPTIONAL
         createdBy: {
             type: DataTypes.BIGINT.UNSIGNED,
-            allowNull: false,
+            allowNull: true,
             references: {
                 model: "admins",
                 key: "id",
             },
             onUpdate: "CASCADE",
-            onDelete: "RESTRICT",
+            onDelete: "SET NULL",
         },
+
+        // ✅ Foreign key for the admin who created this lead
+        // createdBy: {
+        //     type: DataTypes.BIGINT.UNSIGNED,
+        //     allowNull: false,
+        //     references: {
+        //         model: "admins",
+        //         key: "id",
+        //     },
+        //     onUpdate: "CASCADE",
+        //     onDelete: "RESTRICT",
+        // },
 
         // ✅ Soft delete support
         deletedAt: {
