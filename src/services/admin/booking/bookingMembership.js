@@ -374,11 +374,14 @@ exports.createBooking = async (data, options) => {
         );
       }
 
-      if (source === "open") {
-        bookedByAdminId = admin.id;
-        if (DEBUG)
-          console.log("🔍 [DEBUG] bookedByAdminId set to:", bookedByAdminId);
-      }
+    }
+    // 🔹 Determine bookedBy & source values
+    let bookedBy = adminId || null;
+    let bookingSource = source || null;
+
+    if (source === "open") {
+      bookedBy = null; // ✅ bookedBy must be NULL
+      bookingSource = "website"; // ✅ source saved as website
     }
 
     // Create Booking
@@ -394,7 +397,9 @@ exports.createBooking = async (data, options) => {
         bookingType: data.paymentPlanId ? "paid" : "free",
         paymentPlanId: data.paymentPlanId || null,
         status: data.status || "active",
-        bookedBy: source === "open" ? bookedByAdminId : adminId,
+        bookedBy, // ✅ NULL for open booking
+        source: bookingSource, // ✅ website for open booking
+        // bookedBy: source === "open" ? bookedByAdminId : adminId,
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -724,6 +729,74 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
   await autoSyncFreezeBilling();
 
   try {
+    if (filters.bookedBy !== undefined) {
+      allowedAdminIds = Array.isArray(filters.bookedBy)
+        ? filters.bookedBy.map(Number)
+        : [Number(filters.bookedBy)];
+    }
+    // ----------------------------
+    // ✅ ACCESS CONTROL
+    // ----------------------------
+    let accessControl = {};
+
+    if (filters.bookedBy && filters.bookedBy.adminIds?.length > 0) {
+      const { type, adminIds } = filters.bookedBy;
+
+      // ------------------------------------
+      // SUPER ADMIN
+      // ------------------------------------
+      if (type === "super_admin") {
+        accessControl = {
+          [Op.or]: [
+            // 1️⃣ Admin bookings → self + child admins
+            {
+              bookedBy: { [Op.in]: adminIds },
+            },
+
+            // 2️⃣ Website bookings → ONLY venues created by THIS super admin
+            {
+              bookedBy: null,
+              source: "website",
+              "$classSchedule.venue.createdBy$": {
+                [Op.in]: adminIds,
+              },
+            },
+          ],
+        };
+      }
+
+      // ------------------------------------
+      // ADMIN
+      // ------------------------------------
+      else if (type === "admin") {
+        accessControl = {
+          [Op.or]: [
+            // 1️⃣ Admin bookings → self + super admin
+            {
+              bookedBy: { [Op.in]: adminIds },
+            },
+
+            // 2️⃣ Website bookings → admin venues + super admin venues
+            {
+              bookedBy: null,
+              source: "website",
+              "$classSchedule.venue.createdBy$": {
+                [Op.in]: adminIds,
+              },
+            },
+          ],
+        };
+      }
+
+      // ------------------------------------
+      // AGENT
+      // ------------------------------------
+      else {
+        accessControl = {
+          bookedBy: { [Op.in]: adminIds },
+        };
+      }
+    }
     // const whereBooking = { bookingType: "paid" };
     const whereBooking = {
       bookingType: {
@@ -741,16 +814,26 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
           "attended",
           "not attended",
           "expired",
-        ], // only these statuses
+        ],
       },
+
+      [Op.and]: [
+        // ✅ Waiting list rule
+        {
+          [Op.or]: [
+            { status: { [Op.ne]: "waiting list" } },
+            {
+              status: "waiting list",
+              paymentPlanId: { [Op.not]: null },
+            },
+          ],
+        },
+
+        // ✅ ACCESS CONTROL (admins + website bookings)
+        accessControl,
+      ],
     };
-    whereBooking[Op.or] = [
-      { status: { [Op.ne]: "waiting list" } }, // keep everything else
-      {
-        status: "waiting list",
-        paymentPlanId: { [Op.not]: null } // only valid waiting list
-      }
-    ];
+
     const whereVenue = {};
 
     console.log(`filters - `, filters);
@@ -767,13 +850,6 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
     if (filters.venueId) whereBooking.venueId = filters.venueId;
     if (filters.venueName)
       whereVenue.name = { [Op.like]: `%${filters.venueName}%` };
-    if (filters.bookedBy) {
-      const bookedByArray = Array.isArray(filters.bookedBy)
-        ? filters.bookedBy
-        : [filters.bookedBy];
-
-      whereBooking.bookedBy = { [Op.in]: bookedByArray };
-    }
 
     if (filters.duration) {
       const raw = filters.duration.toLowerCase().trim();
@@ -796,7 +872,6 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
     }
 
     // ✅ Date filters
-    // Support new date format
     if (filters.fromDate) filters.dateFrom = filters.fromDate;
     if (filters.toDate) filters.dateTo = filters.toDate;
 
@@ -819,21 +894,6 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
       const end = new Date(`${filters.dateTo} 23:59:59`);
       whereBooking.createdAt = { [Op.lte]: end };
     }
-    // if (filters.dateBooked) {
-    //   const start = new Date(`${filters.dateBooked} 00:00:00`);
-    //   const end = new Date(`${filters.dateBooked} 23:59:59`);
-    //   whereBooking.createdAt = { [Op.between]: [start, end] };
-    // } else if (filters.dateFrom && filters.dateTo) {
-    //   const start = new Date(`${filters.dateFrom} 00:00:00`);
-    //   const end = new Date(`${filters.dateTo} 23:59:59`);
-    //   whereBooking.createdAt = { [Op.between]: [start, end] };
-    // } else if (filters.dateFrom) {
-    //   const start = new Date(`${filters.dateFrom} 00:00:00`);
-    //   whereBooking.createdAt = { [Op.gte]: start };
-    // } else if (filters.dateTo) {
-    //   const end = new Date(`${filters.dateTo} 23:59:59`);
-    //   whereBooking.createdAt = { [Op.lte]: end };
-    // }
 
     const bookings = await Booking.findAll({
       where: {

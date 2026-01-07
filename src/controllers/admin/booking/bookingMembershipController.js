@@ -59,60 +59,60 @@ exports.createBooking = async (req, res) => {
         .status(400)
         .json({ status: false, message: "At least one student is required." });
     }
-
+    const isFromWebsite = req.source === "open";
     // ✅ Inject venue
     formData.venueId = classData.venueId;
-    let skipped = [];
-    const adminId = req.admin?.id;
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
-    // 🔹 Attach payment gateway response so the service can save it
-    // if (formData.paymentPlanId) {
 
-    //   const planCheck = await PaymentPlan.getPlanById(paymentPlanId, createdBy); // ✅ add createdBy here
-    const paymentPlanId = formData.paymentPlanId; // ✅ define it first
+    let skipped = [];
+    const adminId = req.admin?.id || null;
+
+    // 🔹 Super admin only applies for admin-panel bookings
+    let superAdminId = null;
+    if (!isFromWebsite && adminId) {
+      const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+      superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+    }
+
+    const paymentPlanId = formData.paymentPlanId;
+
+    // 🔹 Fetch payment plan for BOTH flows (needed for email)
     if (paymentPlanId) {
-      const planCheck = await PaymentPlan.getPlanById(
-        paymentPlanId,
-        superAdminId
-      );
-      console.log(`planCheck - `, planCheck);
-      if (!planCheck.status) {
-        skipped.push({ paymentPlanId, reason: "Plan does not exist" });
-        if (DEBUG) {
-          console.log(`⛔ Skipped plan ID ${paymentPlanId}: Not found`);
-          console.log(
-            "🔍 Fetching payment plan:",
-            paymentPlanId,
-            "createdBy:",
-            req.admin?.id
-          );
-        }
-        return res
-          .status(400)
-          .json({ status: false, message: planCheck.message });
+      let planCheck;
+
+      if (isFromWebsite) {
+        // ✅ PUBLIC lookup (no admin scope)
+        planCheck = await PaymentPlan.getPublicPlanById(paymentPlanId);
+      } else {
+        // ✅ ADMIN scoped lookup
+        planCheck = await PaymentPlan.getPlanById(paymentPlanId, superAdminId);
       }
 
-      paymentPlan = planCheck.data;
+      // ❌ Block admin if invalid
+      if (!isFromWebsite && !planCheck.data) {
+        return res.status(400).json({
+          status: false,
+          message: planCheck.message,
+        });
+      }
+
+      // 🔹 Website flow → allow booking but still use plan if exists
+      paymentPlan = planCheck.data || null;
 
       let incomingGatewayResponse =
         formData.paymentResponse || formData.gatewayResponse || null;
 
-      if (
-        incomingGatewayResponse &&
-        typeof incomingGatewayResponse === "string"
-      ) {
+      if (typeof incomingGatewayResponse === "string") {
         try {
           incomingGatewayResponse = JSON.parse(incomingGatewayResponse);
-        } catch (_) { }
+        } catch { }
       }
 
-      formData.paymentResponse = incomingGatewayResponse || null;
-      formData.gatewayResponse = incomingGatewayResponse || null;
+      formData.paymentResponse = incomingGatewayResponse;
+      formData.gatewayResponse = incomingGatewayResponse;
     }
 
     const leadId = req.params.leadId || null;
-    
+
     // 🔹 Step 1: Create Booking + Students + Parents (Service)
     const result = await BookingMembershipService.createBooking(formData, {
       source: req.source,
@@ -161,11 +161,20 @@ exports.createBooking = async (req, res) => {
 
     let paymentPlanType = null;
 
-    if (paymentPlan?.interval && paymentPlan?.duration) {
-      const interval = paymentPlan.interval.toLowerCase();
-      const duration = parseInt(paymentPlan.duration, 10);
+    // 🔹 Normalize paymentPlan (handles Sequelize + nesting)
+    const normalizedPlan =
+      paymentPlan?.dataValues ||
+      paymentPlan?.plan ||
+      paymentPlan ||
+      null;
 
-      if (["month", "quarter", "year"].includes(interval)) {
+    console.log("🧾 Normalized paymentPlan:", normalizedPlan);
+
+    if (normalizedPlan?.interval && normalizedPlan?.duration) {
+      const interval = String(normalizedPlan.interval).toLowerCase();
+      const duration = parseInt(normalizedPlan.duration, 10);
+
+      if (["month", "quarter", "year"].includes(interval) && duration > 0) {
         paymentPlanType = `${duration}-${interval}`;
       }
     }
@@ -295,12 +304,14 @@ exports.createBooking = async (req, res) => {
       console.log("❌ paymentPlanType is falsy. Skipping email sending block.");
     }
     // 🔹 Step 4: Notifications & Logging
-    await createNotification(
-      req,
-      "New Booking Created",
-      `Booking "${classData.className}" scheduled on ${formData.startDate}`,
-      "System"
-    );
+    if (!isFromWebsite && adminId) {
+      await createNotification(
+        req,
+        "New Booking Created",
+        `Booking "${classData.className}" scheduled on ${formData.startDate}`,
+        "System"
+      );
+    }
     await logActivity(req, PANEL, MODULE, "create", result, true);
 
     return res.status(201).json({
@@ -320,6 +331,300 @@ exports.createBooking = async (req, res) => {
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };
+// exports.createBooking = async (req, res) => {
+//   const formData = req.body;
+//   let paymentPlan;
+//   try {
+//     // ✅ Check class
+//     const classData = await ClassSchedule.findByPk(formData.classScheduleId);
+//     if (!classData)
+//       return res
+//         .status(404)
+//         .json({ status: false, message: "Class not found." });
+
+//     // ✅ Check capacity
+//     if (classData.capacity < formData.totalStudents) {
+//       return res.status(400).json({
+//         status: false,
+//         message: `Only ${classData.capacity} slot(s) left for this class.`,
+//       });
+//     }
+
+//     // ✅ Validate form
+//     const { isValid, error } = validateFormData(formData, {
+//       requiredFields: ["startDate", "totalStudents", "classScheduleId"],
+//     });
+//     if (!isValid) {
+//       await logActivity(req, PANEL, MODULE, "create", error, false);
+//       return res.status(400).json({ status: false, ...error });
+//     }
+
+//     if (!Array.isArray(formData.students) || formData.students.length === 0) {
+//       return res
+//         .status(400)
+//         .json({ status: false, message: "At least one student is required." });
+//     }
+
+//     // ✅ Inject venue
+//     formData.venueId = classData.venueId;
+//     let skipped = [];
+//     const adminId = req.admin?.id;
+//     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+//     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+//     // 🔹 Attach payment gateway response so the service can save it
+//     // if (formData.paymentPlanId) {
+
+//     //   const planCheck = await PaymentPlan.getPlanById(paymentPlanId, createdBy); // ✅ add createdBy here
+//     const paymentPlanId = formData.paymentPlanId; // ✅ define it first
+//     if (paymentPlanId) {
+//       const planCheck = await PaymentPlan.getPlanById(
+//         paymentPlanId,
+//         superAdminId
+//       );
+//       console.log(`planCheck - `, planCheck);
+//       if (!planCheck.status) {
+//         skipped.push({ paymentPlanId, reason: "Plan does not exist" });
+//         if (DEBUG) {
+//           console.log(`⛔ Skipped plan ID ${paymentPlanId}: Not found`);
+//           console.log(
+//             "🔍 Fetching payment plan:",
+//             paymentPlanId,
+//             "createdBy:",
+//             req.admin?.id
+//           );
+//         }
+//         return res
+//           .status(400)
+//           .json({ status: false, message: planCheck.message });
+//       }
+
+//       paymentPlan = planCheck.data;
+
+//       let incomingGatewayResponse =
+//         formData.paymentResponse || formData.gatewayResponse || null;
+
+//       if (
+//         incomingGatewayResponse &&
+//         typeof incomingGatewayResponse === "string"
+//       ) {
+//         try {
+//           incomingGatewayResponse = JSON.parse(incomingGatewayResponse);
+//         } catch (_) { }
+//       }
+
+//       formData.paymentResponse = incomingGatewayResponse || null;
+//       formData.gatewayResponse = incomingGatewayResponse || null;
+//     }
+
+//     const leadId = req.params.leadId || null;
+
+//     // 🔹 Step 1: Create Booking + Students + Parents (Service)
+//     const result = await BookingMembershipService.createBooking(formData, {
+//       source: req.source,
+//       adminId: req.admin?.id || null,
+//       leadId,
+//     });
+//     if (!result.status) {
+//       await logActivity(req, PANEL, MODULE, "create", result, false);
+//       return res.status(500).json({ status: false, message: result.message });
+//     }
+
+//     const booking = result.data.booking;
+//     const studentIds = result.data.studentIds || [result.data.studentId]; // support multiple students
+
+//     // 🔹 Step 2: Fetch venue for email
+//     const venue = await Venue.findByPk(classData.venueId);
+//     const venueName = venue?.venueName || venue?.name || "N/A";
+
+//     // let paymentPlanType;
+
+//     // if (paymentPlan.interval.toLowerCase() === "month") {
+//     //   if (parseInt(paymentPlan.duration, 10) === 1) {
+//     //     paymentPlanType = "1-month";
+//     //   } else if (parseInt(paymentPlan.duration, 10) === 6) {
+//     //     paymentPlanType = "6-month";
+//     //   } else if (parseInt(paymentPlan.duration, 10) === 12) {
+//     //     paymentPlanType = "12-month";
+//     //   }
+//     // } else if (paymentPlan.interval.toLowerCase() === "quarter") {
+//     //   if (parseInt(paymentPlan.duration, 10) === 1) {
+//     //     paymentPlanType = "1-quarter";
+//     //   } else if (parseInt(paymentPlan.duration, 10) === 6) {
+//     //     paymentPlanType = "6-quarter";
+//     //   } else if (parseInt(paymentPlan.duration, 10) === 12) {
+//     //     paymentPlanType = "12-quarter";
+//     //   }
+//     // } else if (paymentPlan.interval.toLowerCase() === "year") {
+//     //   if (parseInt(paymentPlan.duration, 10) === 1) {
+//     //     paymentPlanType = "1-year";
+//     //   } else if (parseInt(paymentPlan.duration, 10) === 6) {
+//     //     paymentPlanType = "6-year";
+//     //   } else if (parseInt(paymentPlan.duration, 10) === 12) {
+//     //     paymentPlanType = "12-year";
+//     //   }
+//     // }
+
+//     let paymentPlanType = null;
+
+//     if (paymentPlan?.interval && paymentPlan?.duration) {
+//       const interval = paymentPlan.interval.toLowerCase();
+//       const duration = parseInt(paymentPlan.duration, 10);
+
+//       if (["month", "quarter", "year"].includes(interval)) {
+//         paymentPlanType = `${duration}-${interval}`;
+//       }
+//     }
+
+//     console.log("➡️ paymentPlanType =", paymentPlanType);
+
+//     console.log("➡️ Entered email sending block");
+//     console.log("paymentPlanType =", paymentPlanType);
+
+//     if (paymentPlanType) {
+//       console.log("✔️ paymentPlanType is truthy. Proceeding...");
+
+//       // 🔹 Step 3: Fetch email template (book-paid-trial)
+//       console.log("➡️ Fetching email config for 'book-paid-trial'...");
+//       const {
+//         status: configStatus,
+//         emailConfig,
+//         htmlTemplate,
+//         subject,
+//       } = await emailModel.getEmailConfig(PANEL, "book-paid-trial");
+
+//       console.log("configStatus:", configStatus);
+//       console.log("emailConfig:", emailConfig);
+//       console.log("htmlTemplate exists?", !!htmlTemplate);
+//       console.log("subject:", subject);
+
+//       if (configStatus && htmlTemplate) {
+//         console.log("✔️ Email template loaded successfully.");
+//         console.log("studentIds:", studentIds);
+
+//         for (const sId of studentIds) {
+//           console.log("\n---------------------------------------------");
+//           console.log("➡️ Processing studentId:", sId);
+
+//           const parentMetas = await BookingParentMeta.findAll({
+//             where: { studentId: sId },
+//           });
+
+//           console.log("parentMetas count:", parentMetas.length);
+
+//           if (!parentMetas.length) {
+//             console.log("⚠️ No parentMetas found. Skipping student:", sId);
+//             continue;
+//           }
+
+//           // Get the first parent only
+//           const firstParent = parentMetas[0];
+//           if (!firstParent || !firstParent.parentEmail) {
+//             console.log(
+//               "⚠️ First parent missing email. Skipping student:",
+//               sId
+//             );
+//             continue;
+//           }
+
+//           // Get ALL students for this parent
+//           const allStudents = await BookingStudentMeta.findAll({
+//             where: { bookingTrialId: booking.id },
+//           });
+
+//           // Build HTML list of ALL students
+//           const studentsHtml = allStudents.length
+//             ? allStudents
+//               .map(
+//                 (s) =>
+//                   `<p style="margin:0; font-size:13px; color:#5F5F6D;">${s.studentFirstName} ${s.studentLastName}</p>`
+//               )
+//               .join("")
+//             : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
+
+//           console.log("Generated studentsHtml length:", studentsHtml.length);
+
+//           try {
+//             let htmlBody = htmlTemplate
+//               .replace(
+//                 /{{parentName}}/g,
+//                 `${firstParent.parentFirstName} ${firstParent.parentLastName}`
+//               )
+//               .replace(/{{venueName}}/g, venueName)
+//               .replace(/{{className}}/g, classData?.className || "N/A")
+//               .replace(
+//                 /{{classTime}}/g,
+//                 `${classData?.startTime} - ${classData?.endTime}`
+//               )
+//               .replace(/{{startDate}}/g, booking?.startDate || "")
+//               .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
+//               .replace(/{{parentPassword}}/g, "Synco123")
+//               .replace(/{{appName}}/g, "Synco")
+//               .replace(/{{year}}/g, new Date().getFullYear().toString())
+//               .replace(/{{studentsHtml}}/g, studentsHtml)
+//               .replace(
+//                 /{{logoUrl}}/g,
+//                 "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
+//               )
+//               .replace(
+//                 /{{kidsPlaying}}/g,
+//                 "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
+//               );
+
+//             console.log("Generated htmlBody length:", htmlBody.length);
+
+//             const emailResp = await sendEmail(emailConfig, {
+//               recipient: [
+//                 {
+//                   name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
+//                   email: firstParent.parentEmail,
+//                 },
+//               ],
+//               subject,
+//               htmlBody,
+//             });
+
+//             console.log(
+//               "📧 Email sent successfully to first parent:",
+//               firstParent.parentEmail,
+//               emailResp
+//             );
+//           } catch (err) {
+//             console.error(
+//               `❌ Failed to send email to ${firstParent.parentEmail}:`,
+//               err.message
+//             );
+//           }
+//         }
+//       }
+//     } else {
+//       console.log("❌ paymentPlanType is falsy. Skipping email sending block.");
+//     }
+//     // 🔹 Step 4: Notifications & Logging
+//     await createNotification(
+//       req,
+//       "New Booking Created",
+//       `Booking "${classData.className}" scheduled on ${formData.startDate}`,
+//       "System"
+//     );
+//     await logActivity(req, PANEL, MODULE, "create", result, true);
+
+//     return res.status(201).json({
+//       status: true,
+//       message: "Booking created successfully. Confirmation email sent.",
+//       data: booking,
+//     });
+//   } catch (error) {
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "create",
+//       { error: error.message },
+//       false
+//     );
+//     return res.status(500).json({ status: false, message: "Server error." });
+//   }
+// };
 
 exports.getAllPaidBookings = async (req, res) => {
   try {
@@ -344,39 +649,61 @@ exports.getAllPaidBookings = async (req, res) => {
       dateTo: req.query.dateTo || undefined,
       duration: req.query.duration,
       interval: req.query.interval ? req.query.interval.trim() : undefined,
-      bookedBy: req.query.bookedBy,
+      // bookedBy: req.query.bookedBy,
     };
 
-    // ✅ Apply bookedBy filter
-    // If user provides bookedBy in query → ALWAYS respect it
-    // ✅ Apply bookedBy filter
-    if (req.query.bookedBy) {
-      let bookedByParam = req.query.bookedBy;
+    // ✅ Resolve bookedBy filter safely
+    const bookedByQuery = req.query.bookedBy;
+    const role = req.admin?.role?.toLowerCase();
 
-      // If multiple query params → array
-      if (Array.isArray(bookedByParam)) {
-        filters.bookedBy = bookedByParam.map(Number);
-
-        // If single param → string
+    // ----------------------------------
+    // CASE 1: bookedBy explicitly sent
+    // ----------------------------------
+    if (
+      bookedByQuery !== undefined &&
+      bookedByQuery !== null &&
+      bookedByQuery !== ""
+    ) {
+      if (Array.isArray(bookedByQuery)) {
+        filters.bookedBy = bookedByQuery.map(Number).filter(Boolean);
       } else {
-        filters.bookedBy = bookedByParam.split(",").map(Number);
+        filters.bookedBy = bookedByQuery.split(",").map(Number).filter(Boolean);
+      }
+    }
+
+    // ----------------------------------
+    // CASE 2: bookedBy NOT sent → role-based default
+    // ----------------------------------
+    else {
+      // ✅ SUPER ADMIN → self + child admins + website
+      if (role === "super admin") {
+        const childAdminIds = (mainSuperAdminResult?.admins || []).map(
+          (a) => a.id
+        );
+
+        filters.bookedBy = {
+          type: "super_admin",
+          adminIds: [req.admin.id, ...childAdminIds],
+        };
       }
 
-    } else if (req.admin?.role?.toLowerCase() === "super admin") {
+      // ✅ ADMIN → self + super admin + website
+      else if (role === "admin") {
+        filters.bookedBy = {
+          type: "admin",
+          adminIds: [req.admin.id, mainSuperAdminResult?.superAdmin?.id].filter(
+            Boolean
+          ),
+        };
+      }
 
-      const childAdminIds = (mainSuperAdminResult?.admins || [])
-        .map((a) => a.id);
-
-      filters.bookedBy = [
-        req.admin.id,        // ✅ include Super Admin
-        ...childAdminIds,    // ✅ include child admins
-      ];
-
-    }
-    else {
-
-      filters.bookedBy = [req.admin.id];
-
+      // ✅ AGENT → only self
+      else {
+        filters.bookedBy = {
+          type: "agent",
+          adminIds: [req.admin.id],
+        };
+      }
     }
 
     const result = await BookingMembershipService.getAllBookingsWithStats(

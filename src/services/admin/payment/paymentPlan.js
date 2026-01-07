@@ -106,6 +106,32 @@ exports.getPlanById = async (id, adminId) => {
   }
 };
 
+// Public lookup
+exports.getPublicPlanById = async (id) => {
+  try {
+    const plan = await PaymentPlan.findOne({
+      where: { id }, // no status check
+    });
+
+    if (!plan) {
+      return {
+        message: "No payment plan found with the provided ID.",
+        data: null,
+      };
+    }
+
+    return {
+      message: "Payment plan retrieved successfully.",
+      data: plan,
+    };
+  } catch (error) {
+    return {
+      message: error.message,
+      data: null,
+    };
+  }
+};
+
 // ✅ Update a payment plan by ID and createdBy
 exports.updatePlan = async (id, adminId, data) => {
   try {

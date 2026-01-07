@@ -110,8 +110,6 @@ exports.createBooking = async (req, res) => {
       });
     }
 
-    // ✅ Validate emergency contact
-    // ✅ Validate emergency contact
     // ✅ Emergency contact is OPTIONAL
     const emergency = req.body.emergency;
 
@@ -263,62 +261,6 @@ exports.createBooking = async (req, res) => {
     const studentFirstName = result.data.studentFirstName;
     const studentLastName = result.data.studentLastName;
 
-    // Create parent admin accounts
-
-    // // Send email
-    // const parentMetas = await BookingParentMeta.findAll({
-    //   where: { studentId },
-    // });
-
-    // if (parentMetas && parentMetas.length > 0) {
-    //   const {
-    //     status: configStatus,
-    //     emailConfig,
-    //     htmlTemplate,
-    //     subject,
-    //   } = await emailModel.getEmailConfig(PANEL, "free-trial-confirmation");
-
-    //   if (configStatus && htmlTemplate) {
-    //     const recipients = parentMetas.map((p) => ({
-    //       name: `${p.parentFirstName} ${p.parentLastName}`,
-    //       email: p.parentEmail,
-    //     }));
-
-    //     for (const recipient of recipients) {
-    //       const variables = {
-    //         "{{parentName}}": recipient.name,
-    //         "{{parentEmail}}": recipient.email,
-    //         "{{parentPassword}}": "Synco123",
-    //         "{{studentFirstName}}": studentFirstName || "",
-    //         "{{studentLastName}}": studentLastName || "",
-    //         "{{venueName}}": venue?.name || "N/A",
-    //         "{{className}}": classData?.className || "N/A",
-    //         "{{trialDate}}": booking?.trialDate || "",
-    //         "{{classTime}}": classData?.startTime || "",
-    //         "{{logoUrl}}": "https://webstepdev.com/demo/syncoUploads/syncoLogo.png",
-    //         "{{kidsPlaying}}": "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png",
-    //         "{{appName}}": "Synco",
-    //         "{{year}}": new Date().getFullYear().toString(),
-    //       };
-
-    //       let finalHtml = htmlTemplate;
-    //       for (const [key, val] of Object.entries(variables)) {
-    //         const safeKey = key.replace(/[{}]/g, "").trim(); // remove braces and spaces
-    //         const regex = new RegExp(`{{\\s*${safeKey}\\s*}}`, "g"); // match {{ parentName }} or {{parentName}}
-    //         finalHtml = finalHtml.replace(regex, val);
-    //       }
-
-    //       await sendEmail(emailConfig, {
-    //         recipient: [recipient],
-    //         cc: emailConfig.cc || [],
-    //         bcc: emailConfig.bcc || [],
-    //         subject,
-    //         htmlBody: finalHtml,
-    //       });
-    //     }
-    //   }
-    // }
-    // Send email
     // Send email to only the first parent
     // Send email
     const parentMetas = await BookingParentMeta.findAll({

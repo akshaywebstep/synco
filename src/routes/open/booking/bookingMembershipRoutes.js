@@ -8,7 +8,7 @@ const {
 
 // ✅ Create a new free trial booking
 router.post(
-  "/",
+  "/create",
   openParam,
   createBooking
 );
