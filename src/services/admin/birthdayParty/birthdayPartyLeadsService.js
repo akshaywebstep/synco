@@ -2982,63 +2982,63 @@ exports.getAllBirthdayPartyAnalytics = async (
           },
 
         },
-        // lastYear: {
-        //   year: lastYear,
+        lastYear: {
+          year: lastYear,
 
-        //   // monthlyStudents: defaultMonthlyStudents(),
-        //   monthlyStudents: useOrDefault(
-        //     lastYearMonthlyStudents,
-        //     defaultMonthlyStudents()
-        //   ),
-        //   marketChannelPerformance: useOrDefault(
-        //     lastYearMarketChannelPerformance,
-        //     defaultCountBreakdown(["Flyer", "Online", "Referral"])
-        //   ),
-        //   sourceBreakdown: useOrDefault(
-        //     lastYearSourceBreakdown,
-        //     defaultCountBreakdown(["Flyer", "Online", "Referral"])
-        //   ),
-        //   topAgents: [
-        //     {
-        //       createdBy: null,
-        //       leadCount: 0,
-        //       creator: {}
-        //     }
-        //   ],
+          // monthlyStudents: defaultMonthlyStudents(),
+          monthlyStudents: useOrDefault(
+            lastYearMonthlyStudents,
+            defaultMonthlyStudents()
+          ),
+          marketChannelPerformance: useOrDefault(
+            lastYearMarketChannelPerformance,
+            defaultCountBreakdown(["Flyer", "Online", "Referral"])
+          ),
+          sourceBreakdown: useOrDefault(
+            lastYearSourceBreakdown,
+            defaultCountBreakdown(["Flyer", "Online", "Referral"])
+          ),
+          topAgents: [
+            {
+              createdBy: null,
+              leadCount: 0,
+              creator: {}
+            }
+          ],
 
-        //   partyBooking: [
-        //     {
-        //       byAge: [],
-        //       byGender: defaultCountBreakdown(["male", "female", "other"]),
-        //       byTotal: [
-        //         {
-        //           name: "Total",
-        //           count: 0,
-        //           percentage: 100
-        //         }
-        //       ]
-        //     }
-        //   ],
+          partyBooking: [
+            {
+              byAge: [],
+              byGender: defaultCountBreakdown(["male", "female", "other"]),
+              byTotal: [
+                {
+                  name: "Total",
+                  count: 0,
+                  percentage: 100
+                }
+              ]
+            }
+          ],
 
-        //   packageBackground: [
-        //     {
-        //       growth: defaultCountBreakdown(["Gold", "Silver"])
-        //     },
-        //     {
-        //       revenue: defaultCountBreakdown(["Gold", "Silver"])
-        //     }
-        //   ],
+          packageBackground: [
+            {
+              growth: defaultCountBreakdown(["Gold", "Silver"])
+            },
+            {
+              revenue: defaultCountBreakdown(["Gold", "Silver"])
+            }
+          ],
 
-        //   renewalBreakdown: defaultCountBreakdown(["Gold", "Silver"]),
+          renewalBreakdown: defaultCountBreakdown(["Gold", "Silver"]),
 
-        //   packageBreakdown: defaultCountBreakdown(["Gold", "Silver"]),
+          packageBreakdown: defaultCountBreakdown(["Gold", "Silver"]),
 
-        //   revenueByPackage: defaultRevenueByPackage(["Gold", "Silver"]),
-        //   averageBirthdayChild: {
-        //     value: averageBirthdayChildAgeLastYear,
-        //     label: `${averageBirthdayChildAgeLastYear} Years`
-        //   },
-        // }
+          revenueByPackage: defaultRevenueByPackage(["Gold", "Silver"]),
+          averageBirthdayChild: {
+            value: averageBirthdayChildAgeLastYear,
+            label: `${averageBirthdayChildAgeLastYear} Years`
+          },
+        }
 
       }
     };
