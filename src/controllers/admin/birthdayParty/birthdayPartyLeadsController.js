@@ -714,7 +714,7 @@ exports.updateBirthdayPartyLeadById = async (req, res) => {
 // ✅ Get One-to-One Analytics
 exports.getAllBirthdayPartyAnalytics = async (req, res) => {
   const adminId = req.admin?.id;
-  const { filterType = "thisMonth" } = req.query; // 👈 e.g. ?filterType=last3Months
+  const { filterType } = req.query;// 👈 e.g. ?filterType=last3Months
 
   if (DEBUG) console.log("📊 Fetching Birthday Party analytics...");
 

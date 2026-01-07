@@ -2075,6 +2075,7 @@ exports.updateBirthdayPartyLeadById = async (id, superAdminId, adminId, updateDa
 // };
 
 // Get All Birthday Party Analytics
+
 exports.getAllBirthdayPartyAnalytics = async (
   superAdminId,
   adminId,
@@ -2106,44 +2107,53 @@ exports.getAllBirthdayPartyAnalytics = async (
         revenueGrowth: 0
       }));
 
-    const whereLead = {}; // ✅ initialize first
+    const whereLead = {}; // base
 
-    // ===============================
-    // ROLE-BASED DATA SCOPING
-    // ===============================
-
-    // 🟣 CASE 1: Logged-in user is SUPER ADMIN
-    // superAdminId === adminId means "I am the super admin"
-    if (superAdminId && adminId && superAdminId === adminId) {
+    if (superAdminId && superAdminId === adminId) {
+      // 🟣 SUPER ADMIN
       const managedAdmins = await Admin.findAll({
-        where: {
-          superAdminId: superAdminId // 🔒 only admins under THIS super admin
-        },
+        where: { superAdminId },
         attributes: ["id"],
       });
 
       const adminIds = managedAdmins.map(a => a.id);
+      adminIds.push(superAdminId);
 
-      whereLead.createdBy = {
-        [Op.in]: [superAdminId, ...adminIds] // ✅ self + own admins only
-      };
+      whereLead[Op.or] = [
+        { createdBy: { [Op.in]: adminIds } },
+        { createdBy: null }
+      ];
     }
-
-    // 🟢 CASE 2: Logged-in user is ADMIN
-    // admin belongs to a super admin
     else if (superAdminId && adminId) {
-      whereLead.createdBy = {
-        [Op.in]: [adminId, superAdminId] // ✅ self + their super admin only
-      };
+      // 🟢 ADMIN
+      whereLead[Op.or] = [
+        { createdBy: { [Op.in]: [adminId, superAdminId] } },
+        { createdBy: null }
+      ];
     }
-
-    // 🔵 CASE 3: Safety fallback (should rarely happen)
     else {
-      whereLead.createdBy = adminId;
+      // 🔵 FALLBACK
+      whereLead[Op.or] = [
+        { createdBy: adminId },
+        { createdBy: null }
+      ];
     }
-    // 🗓️ Define date ranges dynamically based on filterType
-    let startDate, endDate;
 
+    // 🗓️ Default date ranges
+    const startOfThisYear = moment().startOf("year").toDate();
+    const endOfThisYear = moment().endOf("year").toDate();
+
+    let startDate = moment().startOf("year").toDate();
+    let endDate = moment().endOf("year").toDate();
+
+    const buildLeadWhere = (startDate, endDate) => ({
+      [Op.and]: [
+        whereLead,
+        { createdAt: { [Op.between]: [startDate, endDate] } }
+      ]
+    });
+
+    // Apply filterType overrides
     if (filterType === "thisMonth") {
       startDate = moment().startOf("month").toDate();
       endDate = moment().endOf("month").toDate();
@@ -2156,110 +2166,98 @@ exports.getAllBirthdayPartyAnalytics = async (
     } else if (filterType === "last6Months") {
       startDate = moment().subtract(6, "months").startOf("month").toDate();
       endDate = moment().endOf("month").toDate();
-    } else {
-      throw new Error(
-        "Invalid filterType. Use thisMonth | lastMonth | last3Months | last6Months"
-      );
     }
 
-    // 🗓️ Define date ranges
-    const startOfThisMonth = moment().startOf("month").toDate();
-    const endOfThisMonth = moment().endOf("month").toDate();
-    const startOfLastMonth = moment()
-      .subtract(1, "month")
-      .startOf("month")
-      .toDate();
-    const endOfLastMonth = moment()
-      .subtract(1, "month")
-      .endOf("month")
-      .toDate();
+    const activeStartDate = startDate;
+    const activeEndDate = endDate;
 
-    const whereThisMonth = {
-      ...whereLead, // includes createdBy: adminId OR createdBy: { [Op.in]: adminIds } for superAdmin
-      createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
+    // ✅ Default: FULL LAST YEAR (Jan–Dec)
+    let activeLastYearStartDate = moment().subtract(1, "year").startOf("year").toDate();
+    let activeLastYearEndDate = moment().subtract(1, "year").endOf("year").toDate();
+
+    // 🔁 If you REALLY want same-period comparison (optional)
+    if (filterType) {
+      activeLastYearStartDate = moment(startDate).subtract(1, "year").toDate();
+      activeLastYearEndDate = moment(endDate).subtract(1, "year").toDate();
+    }
+
+    const whereThisYear = {
+      [Op.and]: [
+        whereLead
+      ],
+      createdAt: { [Op.between]: [activeStartDate, activeEndDate] },
     };
-    const whereLastMonth = {
-      ...whereLead,
-      createdAt: { [Op.between]: [startDate, endDate] },
+    const whereLastYear = {
+      [Op.and]: [
+        whereLead
+      ],
+      createdAt: { [Op.between]: [activeLastYearStartDate, activeLastYearEndDate] },
     };
 
     // ✅ Total Leads (scoped to the lead owners determined by whereLead)
-    const totalLeadsThisMonth = await BirthdayPartyLead.count({
-      where: whereThisMonth,
-    });
-    const totalLeadsLastMonth = await BirthdayPartyLead.count({
-      where: whereLastMonth,
-    });
-    // ✅ Number of Sales (active bookings only)
-    const salesThisMonth = await BirthdayPartyBooking.count({
+    const totalLeadsThisYear = await BirthdayPartyLead.count({
       where: {
-        status: "active",
-        createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
+        ...whereThisYear,
+        createdAt: { [Op.between]: [activeStartDate, activeEndDate] },
       },
-      include: [
-        {
-          model: BirthdayPartyLead,
-          as: "lead", // 👈 make sure alias matches your association
-          attributes: [],
-          where: whereLead, // ✅ filter by lead.createdBy (admin or superAdmin scope)
-          required: true,
-        },
-      ],
     });
 
-    const salesLastMonth = await BirthdayPartyBooking.count({
+    const totalLeadsLastYear = await BirthdayPartyLead.count({
+      where: {
+        ...whereLead,
+        createdAt: {
+          [Op.between]: [activeLastYearStartDate, activeLastYearEndDate]
+        }
+      }
+    });
+    // ✅ Number of Sales (active bookings only)
+    const salesThisYear = await BirthdayPartyBooking.count({
       where: {
         status: "active",
-        createdAt: { [Op.between]: [startDate, endDate] },
+        createdAt: { [Op.between]: [activeStartDate, activeEndDate] },
       },
       include: [
         {
           model: BirthdayPartyLead,
           as: "lead",
           attributes: [],
-          where: whereLead, // ✅ same filtering logic
+          where: whereLead,
+          required: true,
+        },
+      ],
+    });
+
+    const salesLastYear = await BirthdayPartyBooking.count({
+      where: {
+        status: "active",
+        createdAt: {
+          [Op.between]: [activeLastYearStartDate, activeLastYearEndDate]
+        },
+      },
+      include: [
+        {
+          model: BirthdayPartyLead,
+          as: "lead",
+          attributes: [],
+          where: whereLead,
           required: true,
         },
       ],
     });
 
     // ✅ Conversion Rate
-    const conversionThisMonth =
-      totalLeadsThisMonth > 0
-        ? ((salesThisMonth / totalLeadsThisMonth) * 100).toFixed(2)
+    const conversionThisYear =
+      totalLeadsThisYear > 0
+        ? ((salesThisYear / totalLeadsThisYear) * 100).toFixed(2)
         : "0.00";
-    const conversionLastMonth =
-      totalLeadsLastMonth > 0
-        ? ((salesLastMonth / totalLeadsLastMonth) * 100).toFixed(2)
+
+    const conversionLastYear =
+      totalLeadsLastYear > 0
+        ? ((salesLastYear / totalLeadsLastYear) * 100).toFixed(2)
         : "0.00";
 
     // ✅ Revenue Generated (based on lead.createdBy)
-    const paymentsThisMonth = await BirthdayPartyPayment.findAll({
-      attributes: [[fn("SUM", col("BirthdayPartyPayment.amount")), "total"]],
-      include: [
-        {
-          model: BirthdayPartyBooking,
-          as: "booking", // 👈 must match your association
-          attributes: [],
-          include: [
-            {
-              model: BirthdayPartyLead,
-              as: "lead",
-              attributes: [],
-              where: whereLead, // ✅ filter by lead.createdBy (admin/superAdmin scope)
-              required: true,
-            },
-          ],
-          required: true,
-        },
-      ],
-      where: {
-        createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
-      },
-      raw: true,
-    });
-
-    const paymentsLastMonth = await BirthdayPartyPayment.findAll({
+    const paymentsThisYear = await BirthdayPartyPayment.findAll({
       attributes: [[fn("SUM", col("BirthdayPartyPayment.amount")), "total"]],
       include: [
         {
@@ -2271,7 +2269,7 @@ exports.getAllBirthdayPartyAnalytics = async (
               model: BirthdayPartyLead,
               as: "lead",
               attributes: [],
-              where: whereLead, // ✅ same filtering logic for last month
+              where: whereLead,
               required: true,
             },
           ],
@@ -2279,28 +2277,62 @@ exports.getAllBirthdayPartyAnalytics = async (
         },
       ],
       where: {
-        createdAt: { [Op.between]: [startDate, endDate] },
+        createdAt: { [Op.between]: [activeStartDate, activeEndDate] }
       },
       raw: true,
     });
 
-    const revenueThisMonth = paymentsThisMonth[0]?.total || 0;
-    const revenueLastMonth = paymentsLastMonth[0]?.total || 0;
+    const paymentsLastYear = await BirthdayPartyPayment.findAll({
+      attributes: [[fn("SUM", col("BirthdayPartyPayment.amount")), "total"]],
+      include: [
+        {
+          model: BirthdayPartyBooking,
+          as: "booking",
+          attributes: [],
+          include: [
+            {
+              model: BirthdayPartyLead,
+              as: "lead",
+              attributes: [],
+              where: whereLead,
+              required: true,
+            },
+          ],
+          required: true,
+        },
+      ],
+      where: {
+        createdAt: {
+          [Op.between]: [activeLastYearStartDate, activeLastYearEndDate]
+        }
+      },
+      raw: true,
+    });
+
+    const revenueThisYear = paymentsThisYear[0]?.total || 0;
+    const revenueLastYear = paymentsLastYear[0]?.total || 0;
 
     // ✅ Source Breakdown (Marketing)
     const sourceBreakdown = await BirthdayPartyLead.findAll({
+      attributes: ["source", [fn("COUNT", col("source")), "count"]],
       where: {
-        ...whereLead,
-        createdAt: { [Op.between]: [startDate, endDate] }
-      }
-
+        [Op.and]: [
+          whereLead,
+          { createdAt: { [Op.between]: [activeStartDate, activeEndDate] } }
+        ],
+        source: { [Op.ne]: null },
+      },
+      group: ["source"],
+      raw: true
     });
 
     // ✅ Top Agents
     const topAgents = await BirthdayPartyLead.findAll({
       where: {
-        ...whereLead,
-        createdAt: { [Op.between]: [startDate, endDate] }
+        [Op.and]: [
+          whereLead,
+          { createdAt: { [Op.between]: [activeStartDate, activeEndDate] } }
+        ],
       }, // ✅ filter by same createdBy logic
       attributes: ["createdBy", [fn("COUNT", col("createdBy")), "leadCount"]],
       include: [
@@ -2313,6 +2345,20 @@ exports.getAllBirthdayPartyAnalytics = async (
       group: ["createdBy", "creator.id"], // ✅ include all group fields
       order: [[literal("leadCount"), "DESC"]],
     });
+    const topAgentsLastYear = await BirthdayPartyLead.findAll({
+      where: buildLeadWhere(activeLastYearStartDate, activeLastYearEndDate),
+      attributes: ["createdBy", [fn("COUNT", col("createdBy")), "leadCount"]],
+      include: [
+        {
+          model: Admin,
+          as: "creator",
+          attributes: ["id", "firstName", "lastName", "profile"]
+        }
+      ],
+      group: ["createdBy", "creator.id"],
+      order: [[literal("leadCount"), "DESC"]],
+    });
+
     // 🧠 Generate all 12 months (Jan → Dec)
     const allMonths = Array.from({ length: 12 }, (_, i) => ({
       month: moment().month(i).format("MMMM"),
@@ -2333,7 +2379,7 @@ exports.getAllBirthdayPartyAnalytics = async (
       ],
       where: {
         status: { [Op.in]: ["pending", "active"] },
-        createdAt: { [Op.between]: [startDate, endDate] }, // ✅ Use dynamic filter
+        createdAt: { [Op.between]: [activeStartDate, activeEndDate] }, // ✅ Use dynamic filter
       },
       group: [fn("MONTH", col("BirthdayPartyBooking.createdAt"))],
       order: [[fn("MONTH", col("BirthdayPartyBooking.createdAt")), "ASC"]],
@@ -2347,33 +2393,24 @@ exports.getAllBirthdayPartyAnalytics = async (
         [fn("COUNT", fn("DISTINCT", col("students.id"))), "students"],
       ],
       include: [
-        {
-          model: BirthdayPartyStudent,
-          as: "students",
-          attributes: [],
-          required: true,
-        },
+        { model: BirthdayPartyStudent, as: "students", attributes: [], required: true },
         {
           model: BirthdayPartyLead,
           as: "lead",
           attributes: [],
           where: whereLead,
-          required: true,
-        },
+          required: true
+        }
       ],
       where: {
         status: { [Op.in]: ["pending", "active"] },
-        createdAt: {
-          [Op.between]: [
-            moment().subtract(1, "year").startOf("year").toDate(),
-            moment().subtract(1, "year").endOf("year").toDate(),
-          ],
-        },
+        createdAt: { [Op.between]: [activeLastYearStartDate, activeLastYearEndDate] }
       },
       group: [fn("MONTH", col("BirthdayPartyBooking.createdAt"))],
       order: [[fn("MONTH", col("BirthdayPartyBooking.createdAt")), "ASC"]],
-      raw: true,
+      raw: true
     });
+
     const lastYearMonthlyStudents = allMonths.map((m) => {
       const found = lastYearMonthlyStudentsRaw.find(
         (r) => r.month === m.month
@@ -2387,16 +2424,7 @@ exports.getAllBirthdayPartyAnalytics = async (
     });
     const lastYearMarketChannelRaw = await BirthdayPartyLead.findAll({
       attributes: ["source", [fn("COUNT", col("source")), "count"]],
-      where: {
-        ...whereLead,
-        source: { [Op.ne]: null },
-        createdAt: {
-          [Op.between]: [
-            moment().subtract(1, "year").startOf("year").toDate(),
-            moment().subtract(1, "year").endOf("year").toDate()
-          ]
-        }
-      },
+      where: buildLeadWhere(activeLastYearStartDate, activeLastYearEndDate),
       group: ["source"],
       raw: true
     });
@@ -2442,7 +2470,10 @@ exports.getAllBirthdayPartyAnalytics = async (
         [fn("COUNT", col("packageInterest")), "count"],
       ],
       where: {
-        ...whereLead, // ✅ add lead.createdBy filter here
+        [Op.and]: [
+          whereLead,
+          { createdAt: { [Op.between]: [activeStartDate, activeEndDate] } }
+        ],
         packageInterest: { [Op.in]: ["Gold", "Silver"] },
       },
       group: ["packageInterest"],
@@ -2533,7 +2564,12 @@ exports.getAllBirthdayPartyAnalytics = async (
               model: BirthdayPartyLead,
               as: "lead",
               attributes: [],
-              where: { packageInterest: { [Op.in]: ["Gold", "Silver"] }, ...whereLead },
+              where: {
+                packageInterest: { [Op.in]: ["Gold", "Silver"] }, [Op.and]: [
+                  whereLead,
+                  { createdAt: { [Op.between]: [startOfThisYear, endOfThisYear] } }
+                ]
+              },
               required: true,
             },
           ],
@@ -2541,7 +2577,7 @@ exports.getAllBirthdayPartyAnalytics = async (
         },
       ],
       where: {
-        createdAt: { [Op.between]: [startDate, endDate] }, // ✅ Apply dynamic filterType
+        createdAt: { [Op.between]: [startOfThisYear, endOfThisYear] }, // ✅ Apply dynamic filterType
       },
       group: ["booking->lead.packageInterest"],
       raw: true,
@@ -2573,64 +2609,115 @@ exports.getAllBirthdayPartyAnalytics = async (
         },
       ],
       where: {
-        createdAt: { [Op.between]: [startDate, endDate] },
+        createdAt: { [Op.between]: [startOfThisYear, endOfThisYear] },
+      },
+      group: ["booking->lead.packageInterest"],
+      raw: true,
+    });
+
+    const revenueByPackageThisYearRaw = await BirthdayPartyPayment.findAll({
+      attributes: [
+        [col("booking->lead.packageInterest"), "packageName"],
+        [fn("SUM", col("BirthdayPartyPayment.amount")), "totalRevenue"],
+      ],
+      include: [
+        {
+          model: BirthdayPartyBooking,
+          as: "booking",
+          attributes: [],
+          include: [
+            {
+              model: BirthdayPartyLead,
+              as: "lead",
+              attributes: [],
+              where: {
+                packageInterest: { [Op.in]: ["Gold", "Silver"] },
+                ...whereLead
+              },
+              required: true,
+            },
+          ],
+          required: true,
+        },
+      ],
+      where: {
+        createdAt: { [Op.between]: [activeStartDate, activeEndDate] }
+      },
+      group: ["booking->lead.packageInterest"],
+      raw: true,
+    });
+
+    const revenueByPackageLastYearRaw = await BirthdayPartyPayment.findAll({
+      attributes: [
+        [col("booking->lead.packageInterest"), "packageName"],
+        [fn("SUM", col("BirthdayPartyPayment.amount")), "totalRevenue"],
+      ],
+      include: [
+        {
+          model: BirthdayPartyBooking,
+          as: "booking",
+          attributes: [],
+          include: [
+            {
+              model: BirthdayPartyLead,
+              as: "lead",
+              attributes: [],
+              where: {
+                packageInterest: { [Op.in]: ["Gold", "Silver"] },
+                ...whereLead
+              },
+              required: true,
+            },
+          ],
+          required: true,
+        },
+      ],
+      where: {
+        createdAt: {
+          [Op.between]: [activeLastYearStartDate, activeLastYearEndDate]
+        }
       },
       group: ["booking->lead.packageInterest"],
       raw: true,
     });
 
     // 🧮 Combine and calculate growth %
-    const revenueByPackage = ["Gold", "Silver"].map((pkgName) => {
-      const current = revenueByPackageRaw.find(
-        (r) => r.packageName === pkgName
+    const revenueByPackage = ["Gold", "Silver"].map(pkgName => {
+      const thisYear = revenueByPackageThisYearRaw.find(
+        r => r.packageName === pkgName
       );
-      const last = revenueByPackageLastMonth.find(
-        (r) => r.packageName === pkgName
+      const lastYear = revenueByPackageLastYearRaw.find(
+        r => r.packageName === pkgName
       );
 
-      const currentRevenue = current
-        ? parseFloat(current.totalRevenue || 0)
-        : 0;
-      const lastRevenue = last ? parseFloat(last.totalRevenue || 0) : 0;
+      const currentRevenue = thisYear ? Number(thisYear.totalRevenue) : 0;
+      const lastRevenue = lastYear ? Number(lastYear.totalRevenue) : 0;
 
       const revenueGrowth =
         lastRevenue > 0
-          ? (((currentRevenue - lastRevenue) / lastRevenue) * 100).toFixed(2)
+          ? Number((((currentRevenue - lastRevenue) / lastRevenue) * 100).toFixed(2))
           : 0;
-
-      const lastRevenueGrowth =
-        lastRevenue > 0
-          ? (((lastRevenue - currentRevenue) / lastRevenue) * 100).toFixed(2)
-          : 0;
-
-      const count =
-        lastRevenue > currentRevenue
-          ? lastRevenue - currentRevenue
-          : currentRevenue - lastRevenue;
 
       return {
         name: pkgName,
         currentRevenue,
-        revenueGrowth: Number(revenueGrowth),
-        lastRevenueGrowth: Number(lastRevenueGrowth),
-        // count
+        lastRevenue,
+        revenueGrowth,
       };
-
     });
+
     // ✅ Marketing Channel Performance
     const marketChannelRaw = await BirthdayPartyLead.findAll({
       attributes: ["source", [fn("COUNT", col("source")), "count"]],
       where: {
-        ...whereLead,
-        source: { [Op.ne]: null },
-        createdAt: {
-          [Op.between]: [
-            moment().startOf("year").toDate(),
-            moment().endOf("year").toDate()
-          ]
-        }
-      }
-
+        [Op.and]: [
+          whereLead,
+          { createdAt: { [Op.between]: [activeStartDate, activeEndDate] } }
+        ],
+        source: { [Op.ne]: null }
+      },
+      group: ["source"],
+      raw: true
     });
 
     // 🧮 Calculate total leads for percentage
@@ -2669,7 +2756,12 @@ exports.getAllBirthdayPartyAnalytics = async (
               model: BirthdayPartyLead,
               as: "lead",
               attributes: [],
-              where: { ...whereLead }, // ✅ filter by lead.createdBy (scope)
+              where: {
+                [Op.and]: [
+                  whereLead,
+                  { createdAt: { [Op.between]: [startOfThisYear, endOfThisYear] } }
+                ]
+              }, // ✅ filter by lead.createdBy (scope)
               required: true,
             },
           ],
@@ -2784,19 +2876,19 @@ exports.getAllBirthdayPartyAnalytics = async (
       { revenue }
     ];
     // ===============================
-    // PACKAGE REVENUE (SUMMARY)
+    // PACKAGE REVENUE (SUMMARY - YEAR WISE)
     // ===============================
 
-    const revenueGoldThisMonth =
+    const revenueGoldThisYear =
       revenueByPackage.find(p => p.name === "Gold")?.currentRevenue || 0;
 
-    const revenueGoldLastMonth =
+    const revenueGoldLastYear =
       revenueByPackage.find(p => p.name === "Gold")?.lastRevenue || 0;
 
-    const revenueSilverThisMonth =
+    const revenueSilverThisYear =
       revenueByPackage.find(p => p.name === "Silver")?.currentRevenue || 0;
 
-    const revenueSilverLastMonth =
+    const revenueSilverLastYear =
       revenueByPackage.find(p => p.name === "Silver")?.lastRevenue || 0;
 
     const getAverageBirthdayChildAge = async (startDate, endDate, leadFilter) => {
@@ -2834,38 +2926,41 @@ exports.getAllBirthdayPartyAnalytics = async (
     );
 
     const averageBirthdayChildAgeLastYear = await getAverageBirthdayChildAge(
-      moment().subtract(1, "year").startOf("year").toDate(),
-      moment().subtract(1, "year").endOf("year").toDate(),
+      activeLastYearStartDate,
+      activeLastYearEndDate,
       whereLead
     );
+
     // ✅ Final Structured Response (matches Figma)
     return {
       status: true,
       message: "Fetched One-to-One analytics successfully.",
       summary: {
         totalLeads: {
-          thisMonth: totalLeadsThisMonth,
-          previousMonth: totalLeadsLastMonth,
+          thisYear: totalLeadsThisYear,
+          lastYear: totalLeadsLastYear,
         },
         numberOfSales: {
-          thisMonth: salesThisMonth,
-          previousMonth: salesLastMonth,
+          thisYear: salesThisYear,
+          lastYear: salesLastYear,
         },
         conversionRate: {
-          thisMonth: `${conversionThisMonth}%`,
-          previousMonth: `${conversionLastMonth}%`,
+          thisYear: `${conversionThisYear}%`,
+          lastYear: `${conversionLastYear}%`,
         },
         revenueGenerated: {
-          thisMonth: revenueThisMonth,
-          previousMonth: revenueLastMonth,
+          thisYear: revenueThisYear,
+          lastYear: revenueLastYear,
         },
-        revenueGoldPackage: {
-          thisMonth: revenueGoldThisMonth,
-          previousMonth: revenueGoldLastMonth,
-        },
-        revenueSilverPackage: {
-          thisMonth: revenueSilverThisMonth,
-          previousMonth: revenueSilverLastMonth,
+        packageRevenue: {
+          gold: {
+            thisYear: revenueGoldThisYear,
+            lastYear: revenueGoldLastYear,
+          },
+          silver: {
+            thisYear: revenueSilverThisYear,
+            lastYear: revenueSilverLastYear,
+          },
         }
       },
 
@@ -2887,69 +2982,63 @@ exports.getAllBirthdayPartyAnalytics = async (
           },
 
         },
-        lastYear: {
-          year: lastYear,
+        // lastYear: {
+        //   year: lastYear,
 
-          // monthlyStudents: defaultMonthlyStudents(),
-          monthlyStudents: useOrDefault(
-            lastYearMonthlyStudents,
-            defaultMonthlyStudents()
-          ),
+        //   // monthlyStudents: defaultMonthlyStudents(),
+        //   monthlyStudents: useOrDefault(
+        //     lastYearMonthlyStudents,
+        //     defaultMonthlyStudents()
+        //   ),
+        //   marketChannelPerformance: useOrDefault(
+        //     lastYearMarketChannelPerformance,
+        //     defaultCountBreakdown(["Flyer", "Online", "Referral"])
+        //   ),
+        //   sourceBreakdown: useOrDefault(
+        //     lastYearSourceBreakdown,
+        //     defaultCountBreakdown(["Flyer", "Online", "Referral"])
+        //   ),
+        //   topAgents: [
+        //     {
+        //       createdBy: null,
+        //       leadCount: 0,
+        //       creator: {}
+        //     }
+        //   ],
 
-          // marketChannelPerformance: defaultCountBreakdown([
-          //   "Flyer",
-          //   "Online",
-          //   "Referral"
-          // ]),
-          marketChannelPerformance: useOrDefault(
-            lastYearMarketChannelPerformance,
-            defaultCountBreakdown(["Flyer", "Online", "Referral"])
-          ),
-          sourceBreakdown: useOrDefault(
-            lastYearSourceBreakdown,
-            defaultCountBreakdown(["Flyer", "Online", "Referral"])
-          ),
-          topAgents: [
-            {
-              createdBy: null,
-              leadCount: 0,
-              creator: {}
-            }
-          ],
+        //   partyBooking: [
+        //     {
+        //       byAge: [],
+        //       byGender: defaultCountBreakdown(["male", "female", "other"]),
+        //       byTotal: [
+        //         {
+        //           name: "Total",
+        //           count: 0,
+        //           percentage: 100
+        //         }
+        //       ]
+        //     }
+        //   ],
 
-          partyBooking: [
-            {
-              byAge: [],
-              byGender: defaultCountBreakdown(["male", "female", "other"]),
-              byTotal: [
-                {
-                  name: "Total",
-                  count: 0,
-                  percentage: 100
-                }
-              ]
-            }
-          ],
+        //   packageBackground: [
+        //     {
+        //       growth: defaultCountBreakdown(["Gold", "Silver"])
+        //     },
+        //     {
+        //       revenue: defaultCountBreakdown(["Gold", "Silver"])
+        //     }
+        //   ],
 
-          packageBackground: [
-            {
-              growth: defaultCountBreakdown(["Gold", "Silver"])
-            },
-            {
-              revenue: defaultCountBreakdown(["Gold", "Silver"])
-            }
-          ],
+        //   renewalBreakdown: defaultCountBreakdown(["Gold", "Silver"]),
 
-          renewalBreakdown: defaultCountBreakdown(["Gold", "Silver"]),
+        //   packageBreakdown: defaultCountBreakdown(["Gold", "Silver"]),
 
-          packageBreakdown: defaultCountBreakdown(["Gold", "Silver"]),
-
-          revenueByPackage: defaultRevenueByPackage(["Gold", "Silver"]),
-          averageBirthdayChild: {
-            value: averageBirthdayChildAgeLastYear,
-            label: `${averageBirthdayChildAgeLastYear} Years`
-          },
-        }
+        //   revenueByPackage: defaultRevenueByPackage(["Gold", "Silver"]),
+        //   averageBirthdayChild: {
+        //     value: averageBirthdayChildAgeLastYear,
+        //     label: `${averageBirthdayChildAgeLastYear} Years`
+        //   },
+        // }
 
       }
     };
