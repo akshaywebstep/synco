@@ -2345,20 +2345,6 @@ exports.getAllBirthdayPartyAnalytics = async (
       group: ["createdBy", "creator.id"], // ✅ include all group fields
       order: [[literal("leadCount"), "DESC"]],
     });
-    const topAgentsLastYear = await BirthdayPartyLead.findAll({
-      where: buildLeadWhere(activeLastYearStartDate, activeLastYearEndDate),
-      attributes: ["createdBy", [fn("COUNT", col("createdBy")), "leadCount"]],
-      include: [
-        {
-          model: Admin,
-          as: "creator",
-          attributes: ["id", "firstName", "lastName", "profile"]
-        }
-      ],
-      group: ["createdBy", "creator.id"],
-      order: [[literal("leadCount"), "DESC"]],
-    });
-
     // 🧠 Generate all 12 months (Jan → Dec)
     const allMonths = Array.from({ length: 12 }, (_, i) => ({
       month: moment().month(i).format("MMMM"),

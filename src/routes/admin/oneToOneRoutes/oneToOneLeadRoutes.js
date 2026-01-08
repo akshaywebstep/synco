@@ -15,6 +15,7 @@ const {
   sendEmailToFirstParentWithBooking,
   cancelOneToOneLeadAndBooking,
   renewOneToOneLeadAndBooking,
+  assignBookings,
 } = require("../../../controllers/admin/oneToOne/oneToOneLeadsController");
 
 // ✅ Get All Session Plan Groups
@@ -24,6 +25,13 @@ router.post(
   authMiddleware,
   permissionMiddleware("one-to-one-lead", "create"),
   createOnetoOneLeads
+);
+
+router.put(
+  "/leads/assign-booking",
+  authMiddleware,
+  permissionMiddleware("one-to-one-lead", "view-listing"),
+  assignBookings
 );
 
 router.post(

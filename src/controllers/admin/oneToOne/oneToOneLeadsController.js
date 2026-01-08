@@ -23,8 +23,7 @@ exports.createOnetoOneLeads = async (req, res) => {
         "age",
         "postCode",
         "packageInterest",
-        "availability",
-        "source",
+        "availability"
       ],
     });
 
@@ -34,18 +33,20 @@ exports.createOnetoOneLeads = async (req, res) => {
         message: `${validation.missingField} is required`
       });
     }
-
+    const createdBy = req?.admin?.id || null;
     // ✅ Create the lead
     const createResult = await oneToOneLeadService.createOnetoOneLeads({
       parentName: formData.parentName,
       childName: formData.childName,
       age: formData.age,
       postCode: formData.postCode,
-      packageInterest: formData.packageInterest,
+      packageInterest: formData.packageInterest || null,
       availability: formData.availability,
-      source: formData.source,
+      source: formData.source || "Website",
+      phoneNumber: formData.phoneNumber || null,
+      email: formData.email || null,
       status: "pending", // Default
-      createdBy: req.admin.id,
+      createdBy,
     });
 
     if (!createResult.status) {
@@ -56,16 +57,25 @@ exports.createOnetoOneLeads = async (req, res) => {
     }
 
     // ✅ Log activity
-    await logActivity(req, PANEL, MODULE, "create", createResult.data, true);
-
-    // ✅ Correct notification format
-    await createNotification(
-      req,
-      "New One-to-One Lead Added",
-      `Lead for ${formData.parentName} has been created by ${req?.admin?.firstName || "Admin"
-      } ${req?.admin?.lastName || ""}.`,
-      "Support"
-    );
+    // ✅ ONLY ADMIN-CREATED → log + notify
+    if (createdBy) {
+      await logActivity(
+        req,
+        PANEL,
+        MODULE,
+        "create",
+        createResult.data,
+        true
+      );
+      // ✅ Correct notification format
+      await createNotification(
+        req,
+        "New One-to-One Lead Added",
+        `Lead for ${formData.parentName} has been created by ${req?.admin?.firstName || "Admin"
+        } ${req?.admin?.lastName || ""}.`,
+        "Support"
+      );
+    }
 
     // ✅ Respond with success
     return res.status(201).json({
@@ -78,6 +88,69 @@ exports.createOnetoOneLeads = async (req, res) => {
     return res.status(500).json({
       status: false,
       message: "Server error.",
+    });
+  }
+};
+
+// Assign Booking to Admin / Agent
+exports.assignBookings = async (req, res) => {
+  try {
+    const { leadIds, createdBy } = req.body;
+
+    // ✅ Validation
+    if (!Array.isArray(leadIds) || leadIds.length === 0) {
+      return res.status(400).json({
+        status: false,
+        message: "Lead IDs array is required.",
+      });
+    }
+
+    if (!createdBy || isNaN(Number(createdBy))) {
+      return res.status(400).json({
+        status: false,
+        message: "Valid agent ID is required.",
+      });
+    }
+
+    // ✅ Call service
+    const result = await oneToOneLeadService.assignBookingsToAgent({
+      leadIds,
+      createdBy,
+    });
+
+    // ❌ Service failed (e.g. already assigned)
+    if (!result.status) {
+      await logActivity(req, PANEL, MODULE, "update", result, false);
+      return res.status(400).json(result);
+    }
+
+    // ✅ Notification (success only)
+    await createNotification(
+      req,
+      "Lead Assigned",
+      `${leadIds.length} lead(s) assigned to agent successfully.`,
+      "System"
+    );
+
+    // ✅ Activity log (success)
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "update",
+      {
+        oneLineMessage: `Assigned ${leadIds.length} lead(s) to admin ${createdBy}`,
+      },
+      true
+    );
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("❌ Assign bookings controller error:", error);
+
+    return res.status(500).json({
+      status: false,
+      message: error.message || "Failed to assign bookings.",
     });
   }
 };
@@ -612,7 +685,7 @@ exports.updateOnetoOneLeadById = async (req, res) => {
 // ✅ Get One-to-One Analytics
 exports.getAllOneToOneAnalytics = async (req, res) => {
   const adminId = req.admin?.id;
-  const { filterType = "thisMonth" } = req.query; // 👈 e.g. ?filterType=last3Months
+  const { filterType } = req.query;// 👈 e.g. ?filterType=last3Months
 
   if (DEBUG) console.log("📊 Fetching One-to-One analytics...");
 
@@ -920,9 +993,8 @@ exports.cancelOneToOneLeadAndBooking = async (req, res) => {
     // ============================================================
     // 🔔 Create notification
     // ============================================================
-    const adminName = `${req?.admin?.firstName || "Admin"} ${
-      req?.admin?.lastName || ""
-    }`.trim();
+    const adminName = `${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""
+      }`.trim();
 
     await createNotification(
       req,
@@ -998,9 +1070,8 @@ exports.renewOneToOneLeadAndBooking = async (req, res) => {
     // ============================================================
     // 🔔 Create notification
     // ============================================================
-    const adminName = `${req?.admin?.firstName || "Admin"} ${
-      req?.admin?.lastName || ""
-    }`.trim();
+    const adminName = `${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""
+      }`.trim();
 
     await createNotification(
       req,

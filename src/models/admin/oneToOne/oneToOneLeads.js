@@ -48,6 +48,20 @@ const OneToOneLead = sequelize.define(
       comment:
         "How the lead heard about us (e.g., social media, referral, etc.)",
     },
+    // ✅ NEW: Email (optional – website booking)
+    email: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      validate: {
+        isEmail: true,
+      },
+    },
+
+    // ✅ NEW: Notes
+    notes: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
 
     status: {
       type: DataTypes.STRING,
@@ -56,16 +70,16 @@ const OneToOneLead = sequelize.define(
       comment: "Lead status (e.g., referral, contacted, enrolled, etc.)",
     },
 
-    // ✅ Foreign key to admins table for creation
+    // ✅ UPDATED: createdBy OPTIONAL
     createdBy: {
       type: DataTypes.BIGINT.UNSIGNED,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: "admins",
         key: "id",
       },
       onUpdate: "CASCADE",
-      onDelete: "RESTRICT",
+      onDelete: "SET NULL",
     },
 
     // ✅ Soft delete column
