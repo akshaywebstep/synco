@@ -20,7 +20,7 @@ const BirthdayPartyParent = sequelize.define(
       onUpdate: "CASCADE",
       onDelete: "CASCADE",
     },
-
+  
     parentFirstName: {
       type: DataTypes.STRING,
       allowNull: false,

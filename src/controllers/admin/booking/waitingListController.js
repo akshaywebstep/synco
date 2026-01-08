@@ -90,22 +90,6 @@ exports.createBooking = async (req, res) => {
     }
   }
 
-  // Validate emergency
-  // const { isValid: isEmergencyValid, error: emergencyError } = validateFormData(
-  //   formData.emergency,
-  //   {
-  //     requiredFields: [
-  //       "emergencyFirstName",
-  //       "emergencyLastName",
-  //       "emergencyPhoneNumber",
-  //       "emergencyRelation",
-  //     ],
-  //   }
-  // );
-  // if (!isEmergencyValid) {
-  //   return res.status(400).json({ status: false, ...emergencyError });
-  // }
-
   if (DEBUG) console.log("📍 Setting class metadata...");
   formData.venueId = classData.venueId;
   formData.className = classData.className;

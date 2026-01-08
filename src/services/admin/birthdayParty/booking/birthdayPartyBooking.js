@@ -17,6 +17,7 @@ const {
     AdminRole,
 } = require("../../../../models");
 const { sequelize } = require("../../../../models");
+const bcrypt = require("bcrypt");
 
 const stripePromise = require("../../../../utils/payment/pay360/stripe");
 const {
@@ -38,7 +39,11 @@ exports.createBirthdayPartyBooking = async (data) => {
         // -----------------------------------------------------
         // 0️⃣ Check if Lead Already Has Booking
         // -----------------------------------------------------
+        let lead = null;
         if (data.leadId) {
+            lead = await BirthdayPartyLead.findByPk(data.leadId);
+            if (!lead) throw new Error(`Lead ID ${data.leadId} not found`);
+
             const existingBooking = await BirthdayPartyBooking.findOne({
                 where: { leadId: data.leadId },
             });
@@ -54,6 +59,9 @@ exports.createBirthdayPartyBooking = async (data) => {
                 };
             }
         }
+
+        // Determine source from lead (default to "website")
+        const source = lead?.source?.toLowerCase() || "Website";
 
         // -----------------------------------------------------
         // 1️⃣ Calculate Base Amount + Discount
@@ -71,6 +79,7 @@ exports.createBirthdayPartyBooking = async (data) => {
         let discount = null;
         let discount_amount = 0;
         let finalAmount = baseAmount;
+        let parentAdminId = null;
 
         // -----------------------------
         // DISCOUNT LOGIC
@@ -118,12 +127,63 @@ exports.createBirthdayPartyBooking = async (data) => {
             finalAmount = Math.max(baseAmount - discount_amount, 0);
         }
 
+        // -----------------------------
+        // Parent Admin Creation
+        // -----------------------------
+        if (data.parents?.length > 0) {
+            const firstParent = data.parents[0];
+            const email = firstParent.parentEmail?.trim()?.toLowerCase();
+            if (!email) throw new Error("Parent email is required");
+
+            const parentRole = await AdminRole.findOne({
+                where: { role: "Parents" },
+                transaction,
+            });
+            if (!parentRole) throw new Error("Parent role not found");
+
+            const hashedPassword = await bcrypt.hash("Synco123", 10);
+
+            if (source === "admin") {
+                // ADMIN PORTAL → always create new parent
+                const admin = await Admin.create(
+                    {
+                        firstName: firstParent.parentFirstName || "Parent",
+                        lastName: firstParent.parentLastName || "",
+                        phoneNumber: firstParent.phoneNumber || "",
+                        email,
+                        password: hashedPassword,
+                        roleId: parentRole.id,
+                        status: "active",
+                    },
+                    { transaction }
+                );
+                parentAdminId = admin.id;
+            } else {
+                // WEBSITE / Referral / Online / Flyer → findOrCreate
+                const [admin] = await Admin.findOrCreate({
+                    where: { email },
+                    defaults: {
+                        firstName: firstParent.parentFirstName || "Parent",
+                        lastName: firstParent.parentLastName || "",
+                        phoneNumber: firstParent.phoneNumber || "",
+                        email,
+                        password: hashedPassword,
+                        roleId: parentRole.id,
+                        status: "active",
+                    },
+                    transaction,
+                });
+                parentAdminId = admin.id;
+            }
+        }
+
         // -----------------------------------------------------
         // 2️⃣ Create Booking
         // -----------------------------------------------------
         const booking = await BirthdayPartyBooking.create(
             {
                 leadId: data.leadId || null,
+                parentAdminId,
                 coachId: data.coachId,
                 address: data.address,
                 date: data.date,

@@ -9,6 +9,16 @@ const Booking = sequelize.define(
       primaryKey: true,
       autoIncrement: true,
     },
+    parentAdminId: {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: true,          // ✅
+      defaultValue: null,       // ✅
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onDelete: "SET NULL",     // ✅ safer than CASCADE
+    },
 
     bookingType: {
       type: DataTypes.ENUM("free", "paid", "removed", "waiting list"),

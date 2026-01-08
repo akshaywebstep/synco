@@ -295,8 +295,20 @@ async function autoSyncFreezeBilling() {
 exports.createBooking = async (data, options) => {
   const t = await sequelize.transaction();
   try {
+    // const adminId = options?.adminId || null;
+    // const source = options?.source || null;
+    let parentAdminId = null;
+    // let source = options?.source;
     const adminId = options?.adminId || null;
-    const source = options?.source || null;
+    const parentPortalAdminId = options?.parentAdminId || null;
+
+    let source = "open"; // default = website
+
+    if (adminId) {
+      source = "admin";
+    } else if (parentPortalAdminId) {
+      source = "parent";
+    }
     const leadId = options?.leadId || null;
 
     if (DEBUG) {
@@ -341,13 +353,27 @@ exports.createBooking = async (data, options) => {
           phoneNumber: firstParent.parentPhoneNumber || "",
           email,
           password: hashedPassword,
-          roleId: 9, // parent role
+          roleId: 9,
           status: "active",
           createdAt: new Date(),
           updatedAt: new Date(),
         },
         transaction: t,
       });
+
+      // ✅ THIS IS THE MISSING LINE
+      parentAdminId = admin.id;
+
+      if (!created) {
+        await admin.update(
+          {
+            firstName: firstParent.parentFirstName,
+            lastName: firstParent.parentLastName,
+            phoneNumber: firstParent.parentPhoneNumber || "",
+          },
+          { transaction: t }
+        );
+      }
 
       if (DEBUG) {
         console.log("🔍 [DEBUG] Admin account lookup completed.");
@@ -376,18 +402,24 @@ exports.createBooking = async (data, options) => {
 
     }
     // 🔹 Determine bookedBy & source values
-    let bookedBy = adminId || null;
-    let bookingSource = source || null;
+    let bookedBy = null;
+    let bookingSource = null;
 
-    if (source === "open") {
-      bookedBy = null; // ✅ bookedBy must be NULL
-      bookingSource = "website"; // ✅ source saved as website
+    if (source === "admin") {
+      // 👨‍💼 Admin portal
+      bookedBy = adminId;     // ✅ saved
+      bookingSource = null;   // ✅ NULL
+    } else {
+      // 🌐 Website + 👪 Parent portal
+      bookedBy = null;
+      bookingSource = "website";
     }
 
     // Create Booking
     const booking = await Booking.create(
       {
         venueId: data.venueId,
+        parentAdminId: parentAdminId,
         bookingId: generateBookingId(12),
         leadId,
         totalStudents: data.totalStudents,
@@ -405,6 +437,13 @@ exports.createBooking = async (data, options) => {
       },
       { transaction: t }
     );
+    if (DEBUG) {
+      console.log("✅ FINAL BOOKING VALUES", {
+        parentAdminId,
+        bookedBy,
+        source: bookingSource,
+      });
+    }
 
     // Create Students
     const studentRecords = [];

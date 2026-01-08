@@ -583,23 +583,23 @@ exports.getWaitingList = async (filters = {}) => {
     const avgInterest =
       allInterests.length > 0
         ? (
-            allInterests.reduce((a, b) => a + b, 0) / allInterests.length
-          ).toFixed(2)
+          allInterests.reduce((a, b) => a + b, 0) / allInterests.length
+        ).toFixed(2)
         : 0;
 
     // Avg. days waiting (currentDate - createdAt)
     const avgDaysWaiting =
       parsedBookings.length > 0
         ? (
-            parsedBookings.reduce((sum, b) => {
-              const created = new Date(b.createdAt);
-              const now = new Date();
-              const diffDays = Math.floor(
-                (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)
-              );
-              return sum + diffDays;
-            }, 0) / parsedBookings.length
-          ).toFixed(0)
+          parsedBookings.reduce((sum, b) => {
+            const created = new Date(b.createdAt);
+            const now = new Date();
+            const diffDays = Math.floor(
+              (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)
+            );
+            return sum + diffDays;
+          }, 0) / parsedBookings.length
+        ).toFixed(0)
         : 0;
 
     // Top Referrer (admin with most bookings)
@@ -664,14 +664,26 @@ exports.createBooking = async (data, options) => {
   const t = await sequelize.transaction();
 
   try {
+    let parentAdminId = null;
     const adminId = options?.adminId || null;
-    const source = options?.source === "website" ? "website" : "admin";
+    const parentPortalAdminId = options?.parentAdminId || null;
     const leadId = options?.leadId || null;
 
-    let bookedBy = source === "website" ? null : adminId;
+    // ✅ FIXED SOURCE LOGIC
+    let source = "website"; // default website
+    if (adminId) {
+      source = "admin";
+    } else if (parentPortalAdminId) {
+      source = "parent";
+    }
 
-    if (source === "website" && !adminId) {
-      throw new Error("Admin ID is required for website booking");
+    // ✅ bookedBy logic
+    let bookedBy = null;
+    let bookingSource = source; // keep original source for logic
+
+    if (source === "admin") {
+      bookedBy = adminId;      // admin who booked
+      bookingSource = null;    // ✅ save NULL in DB instead of 'admin'
     }
 
     if (DEBUG) {
@@ -732,62 +744,44 @@ exports.createBooking = async (data, options) => {
         console.log("🔍 [DEBUG] Generated hashed password for parent account");
       // 🔹 Fetch Parent role
       const parentRole = await AdminRole.findOne({
-        where: { role: "Parents" }, // ✅ correct column
+        where: { role: "Parents" },
         transaction: t,
       });
-      if (DEBUG) console.log("🔍 [DEBUG] Extracted parent role:", parentRole);
-
       if (!parentRole) {
         throw new Error("Parent role not found in admin_roles table");
       }
 
-      const parentRoleId = parentRole.id;
-
-      const [admin, created] = await Admin.findOrCreate({
-        where: { email },
-        defaults: {
-          firstName: firstParent.parentFirstName || "Parent",
-          lastName: firstParent.parentLastName || "",
-          phoneNumber: firstParent.parentPhoneNumber || "",
-          email,
-          password: hashedPassword,
-          roleId: 9, // parent role
-          status: "active",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        transaction: t,
-      });
-
-      if (DEBUG) {
-        console.log("🔍 [DEBUG] Admin account lookup completed.");
-        console.log("🔍 [DEBUG] Was new admin created?:", created);
-        console.log(
-          "🔍 [DEBUG] Admin record:",
-          admin.toJSON ? admin.toJSON() : admin
-        );
-      }
-
-      if (!created) {
-        if (DEBUG)
-          console.log(
-            "🔍 [DEBUG] Updating existing admin record with parent details"
-          );
-
-        await admin.update(
+      // Admin portal → always create new parent
+      if (source === "admin") {
+        const admin = await Admin.create(
           {
-            firstName: firstParent.parentFirstName,
-            lastName: firstParent.parentLastName,
+            firstName: firstParent.parentFirstName || "Parent",
+            lastName: firstParent.parentLastName || "",
             phoneNumber: firstParent.parentPhoneNumber || "",
+            email,
+            password: hashedPassword,
+            roleId: parentRole.id,
+            status: "active",
           },
           { transaction: t }
         );
-      }
-
-      if (source === "open") {
-        bookedByAdminId = admin.id;
-        if (DEBUG)
-          console.log("🔍 [DEBUG] bookedByAdminId set to:", bookedByAdminId);
+        parentAdminId = admin.id;
+      } else {
+        // website/open booking → findOrCreate
+        const [admin, created] = await Admin.findOrCreate({
+          where: { email },
+          defaults: {
+            firstName: firstParent.parentFirstName || "Parent",
+            lastName: firstParent.parentLastName || "",
+            phoneNumber: firstParent.parentPhoneNumber || "",
+            email,
+            password: hashedPassword,
+            roleId: parentRole.id,
+            status: "active",
+          },
+          transaction: t,
+        });
+        parentAdminId = admin.id;
       }
     }
 
@@ -795,28 +789,25 @@ exports.createBooking = async (data, options) => {
     const booking = await Booking.create(
       {
         venueId: data.venueId,
+        parentAdminId,
         bookingId: generateBookingId(12),
         leadId,
         serviceType: "weekly class trial",
         totalStudents: data.totalStudents,
         startDate: data.startDate,
         classScheduleId: data.classScheduleId,
-        bookingType: "waiting list",
+        bookingType: bookingStatus === "waiting list" ? "waiting list" : "confirmed",
         className: data.className,
         classTime: data.classTime,
-        // keyInformation: data.keyInformation,
+        bookedBy,
         status: bookingStatus,
-        // bookedBy: source === "open" ? bookedByAdminId : adminId,
-        bookedBy, // ✅ NULL for website
-        source, // ✅ "website" or "admin"
-
+        source: bookingSource, // ✅ correct as per admin/website
         interest: data.interest,
         createdAt: new Date(),
         updatedAt: new Date(),
       },
       { transaction: t }
     );
-
     // Step 2: Create Students
     const studentIds = [];
     for (const student of data.students || []) {
@@ -1562,9 +1553,8 @@ exports.convertToMembership = async (data, options) => {
 
           const billingRequestPayload = {
             customerId: createCustomerRes.customer.id,
-            description: `${venue?.name || "Venue"} - ${
-              classSchedule?.className || "Class"
-            }`,
+            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+              }`,
             amount: price,
             scheme: "faster_payments",
             currency: "GBP",
@@ -1721,8 +1711,7 @@ exports.convertToMembership = async (data, options) => {
               gatewayResponse?.transaction?.merchantRef || merchantRef,
             description:
               gatewayResponse?.transaction?.description ||
-              `${venue?.name || "Venue"} - ${
-                classSchedule?.className || "Class"
+              `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
               }`,
             commerceType: "ECOM",
             gatewayResponse,

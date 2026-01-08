@@ -31,8 +31,19 @@ exports.createBooking = async (data, options) => {
   const t = await sequelize.transaction();
 
   try {
-    const adminId = options?.adminId;
-    const source = options?.source;
+    let parentAdminId = null;
+    // let source = options?.source;
+    const adminId = options?.adminId || null;
+    const parentPortalAdminId = options?.parentAdminId || null;
+
+    let source = "open"; // default = website
+
+    if (adminId) {
+      source = "admin";
+    } else if (parentPortalAdminId) {
+      source = "parent";
+    }
+
     const leadId = options?.leadId || null;
 
     if (DEBUG) {
@@ -41,100 +52,101 @@ exports.createBooking = async (data, options) => {
       console.log("🔍 [DEBUG] Extracted leadId:", leadId);
     }
 
-    if (source !== "open" && !adminId) {
-      throw new Error("Admin ID is required for bookedBy");
+    if (source === "parent") {
+      // ✅ Parent portal — parent already logged in
+      if (!parentPortalAdminId) {
+        throw new Error("Parent adminId is required for parent portal booking");
+      }
+
+      parentAdminId = parentPortalAdminId;
+
+      if (DEBUG) {
+        console.log("🔍 [DEBUG] Parent portal booking. parentAdminId:", parentAdminId);
+      }
     }
 
-    let bookedByAdminId = adminId || null;
-
-    if (data.parents?.length > 0) {
-      if (DEBUG)
-        console.log("🔍 [DEBUG] Source is 'open'. Processing first parent...");
-
+    else if (data.parents?.length > 0) {
       const firstParent = data.parents[0];
       const email = firstParent.parentEmail?.trim()?.toLowerCase();
 
-      if (DEBUG) console.log("🔍 [DEBUG] Extracted parent email:", email);
+      if (!email) throw new Error("Parent email is required");
 
-      if (!email) throw new Error("Parent email is required for open booking");
-
-      const plainPassword = "Synco123";
-      const hashedPassword = await bcrypt.hash(plainPassword, 10);
-
-      if (DEBUG)
-        console.log("🔍 [DEBUG] Generated hashed password for parent account");
-      // 🔹 Fetch Parent role
       const parentRole = await AdminRole.findOne({
-        where: { role: "Parents" }, // ✅ correct column
+        where: { role: "Parents" },
         transaction: t,
       });
-      if (DEBUG) console.log("🔍 [DEBUG] Extracted parent role:", parentRole);
 
       if (!parentRole) {
-        throw new Error("Parent role not found in admin_roles table");
+        throw new Error("Parent role not found");
       }
+      const hashedPassword = await bcrypt.hash("Synco123", 10);
 
-      const parentRoleId = parentRole.id;
-      const [admin, created] = await Admin.findOrCreate({
-        where: { email },
-        defaults: {
-          firstName: firstParent.parentFirstName || "Parent",
-          lastName: firstParent.parentLastName || "",
-          phoneNumber: firstParent.parentPhoneNumber || "",
-          email,
-          password: hashedPassword,
-          roleId: parentRoleId,
-          status: "active",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        transaction: t,
-      });
-
-      if (DEBUG) {
-        console.log("🔍 [DEBUG] Admin account lookup completed.");
-        console.log("🔍 [DEBUG] Was new admin created?:", created);
-        console.log(
-          "🔍 [DEBUG] Admin record:",
-          admin.toJSON ? admin.toJSON() : admin
-        );
-      }
-
-      if (!created) {
-        if (DEBUG)
-          console.log(
-            "🔍 [DEBUG] Updating existing admin record with parent details"
-          );
-
-        await admin.update(
+      if (source === "admin") {
+        // ✅ ADMIN PORTAL → ALWAYS CREATE NEW PARENT
+        const admin = await Admin.create(
           {
-            firstName: firstParent.parentFirstName,
-            lastName: firstParent.parentLastName,
+            firstName: firstParent.parentFirstName || "Parent",
+            lastName: firstParent.parentLastName || "",
             phoneNumber: firstParent.parentPhoneNumber || "",
+            email,
+            password: hashedPassword,
+            roleId: parentRole.id,
+            status: "active",
           },
           { transaction: t }
         );
+
+        parentAdminId = admin.id;
+
+        if (DEBUG) {
+          console.log("🔍 [DEBUG] Admin portal booking. New parent created:", parentAdminId);
+        }
       }
 
-      if (source === "open") {
-        bookedByAdminId = admin.id;
-        if (DEBUG)
-          console.log("🔍 [DEBUG] bookedByAdminId set to:", bookedByAdminId);
+      else {
+        // ✅ WEBSITE BOOKING → findOrCreate
+        const [admin] = await Admin.findOrCreate({
+          where: { email },
+          defaults: {
+            firstName: firstParent.parentFirstName || "Parent",
+            lastName: firstParent.parentLastName || "",
+            phoneNumber: firstParent.parentPhoneNumber || "",
+            email,
+            password: hashedPassword,
+            roleId: parentRole.id,
+            status: "active",
+          },
+          transaction: t,
+        });
+
+        parentAdminId = admin.id;
+
+        if (DEBUG) {
+          console.log("🔍 [DEBUG] Website booking parentAdminId:", parentAdminId);
+        }
       }
     }
-    // 🔹 Determine bookedBy & source values
-    let bookedBy = adminId || null;
-    let bookingSource = source || null;
 
-    if (source === "open") {
-      bookedBy = null; // ✅ bookedBy must be NULL
-      bookingSource = "website"; // ✅ source saved as website
+    let bookedBy = null;
+    let bookingSource = null;
+
+    if (source === "admin") {
+      // 👨‍💼 Admin portal
+      bookedBy = adminId;      // ✅ ALWAYS saved
+      bookingSource = null;    // ✅ NULL
     }
-
+    else {
+      // 🌐 Website + 👪 Parent portal
+      bookedBy = null;
+      bookingSource = "website";
+    }
+    
     // Step 1: Create Booking
     const booking = await Booking.create(
       {
         venueId: data.venueId,
+        // ✅ THIS IS THE KEY LINE
+        parentAdminId: parentAdminId,
         bookingId: generateBookingId(12), // random booking reference
         leadId,
         totalStudents: data.totalStudents,
@@ -153,6 +165,13 @@ exports.createBooking = async (data, options) => {
       },
       { transaction: t }
     );
+    if (DEBUG) {
+      console.log("✅ FINAL BOOKING VALUES", {
+        parentAdminId,
+        bookedBy,
+        source: bookingSource,
+      });
+    }
 
     // Step 2: Create Students
     const studentIds = [];
@@ -186,6 +205,7 @@ exports.createBooking = async (data, options) => {
           throw new Error(`Invalid or missing parent email: ${email}`);
         }
 
+        /*
         // Check duplicate email in BookingParentMeta
         const existingEmail = await BookingParentMeta.findOne({
           where: { parentEmail: email },
@@ -194,6 +214,7 @@ exports.createBooking = async (data, options) => {
         if (existingEmail) {
           throw new Error(`Parent with email ${email} already exists.`);
         }
+        */
 
         // Always create BookingParentMeta for each parent
         await BookingParentMeta.create(

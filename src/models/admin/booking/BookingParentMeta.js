@@ -18,6 +18,7 @@ const BookingParentMeta = sequelize.define(
       },
       onDelete: "CASCADE",
     },
+
     parentFirstName: DataTypes.STRING,
     parentLastName: DataTypes.STRING,
     parentEmail: DataTypes.STRING,

@@ -34,6 +34,16 @@ const BirthdayPartyBooking = sequelize.define(
       onDelete: "RESTRICT",
       comment: "Admin (coach) assigned to this booking",
     },
+    parentAdminId: {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: true,          // ✅
+      defaultValue: null,       // ✅
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onDelete: "SET NULL",     // ✅ safer than CASCADE
+    },
 
     status: {
       type: DataTypes.ENUM(
