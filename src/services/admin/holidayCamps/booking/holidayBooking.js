@@ -969,7 +969,7 @@ exports.updateHolidayBookingById = async (bookingId, data, adminId) => {
     if (!classSchedule) throw new Error("Class schedule not found");
 
     let addedStudentsCount = 0;
-
+    let adminSynced = false;
     // ============================================================
     // 1️⃣ STUDENTS: UPDATE IF ID EXISTS, CREATE IF NOT
     // ============================================================
@@ -1030,10 +1030,42 @@ exports.updateHolidayBookingById = async (bookingId, data, adminId) => {
     // ============================================================
     // 2️⃣ PARENTS: UPDATE IF ID EXISTS, CREATE IF NOT
     // ============================================================
+    // ============================================================
+    // 2️⃣ PARENTS: UPDATE IF ID EXISTS, CREATE IF NOT + ADMIN SYNC
+    // ============================================================
     if (Array.isArray(data.parents)) {
-      for (const p of data.parents) {
+      for (let index = 0; index < data.parents.length; index++) {
+        const p = data.parents[index];
 
+        const isFirstParent =
+          index === 0 && booking.parentAdminId && !adminSynced;
+
+        // 🔒 Admin email uniqueness check (FIRST parent only)
+        if (isFirstParent && p.parentEmail) {
+          const admin = await Admin.findByPk(booking.parentAdminId, {
+            transaction,
+            paranoid: false,
+          });
+
+          if (admin && p.parentEmail !== admin.email) {
+            const emailExists = await Admin.findOne({
+              where: {
+                email: p.parentEmail,
+                id: { [Op.ne]: admin.id },
+              },
+              transaction,
+              paranoid: false,
+            });
+
+            if (emailExists) {
+              throw new Error("This email is already in use");
+            }
+          }
+        }
+
+        // ============================
         // UPDATE parent
+        // ============================
         if (p.id) {
           await HolidayBookingParentMeta.update(
             {
@@ -1048,7 +1080,9 @@ exports.updateHolidayBookingById = async (bookingId, data, adminId) => {
           );
         }
 
-        // CREATE new parent
+        // ============================
+        // CREATE parent
+        // ============================
         else {
           if (!p.studentId) continue;
 
@@ -1064,6 +1098,31 @@ exports.updateHolidayBookingById = async (bookingId, data, adminId) => {
             },
             { transaction }
           );
+        }
+
+        // 🔹 Sync FIRST parent → Admin (ONCE)
+        if (isFirstParent) {
+          const admin = await Admin.findByPk(booking.parentAdminId, {
+            transaction,
+            paranoid: false,
+          });
+
+          if (admin) {
+            if (p.parentFirstName !== undefined)
+              admin.firstName = p.parentFirstName;
+
+            if (p.parentLastName !== undefined)
+              admin.lastName = p.parentLastName;
+
+            if (p.parentEmail !== undefined)
+              admin.email = p.parentEmail;
+
+            if (p.parentPhoneNumber !== undefined)
+              admin.phoneNumber = p.parentPhoneNumber;
+
+            await admin.save({ transaction });
+            adminSynced = true;
+          }
         }
       }
     }
