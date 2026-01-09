@@ -76,16 +76,16 @@ const HolidayBooking = sequelize.define(
             onDelete: "SET NULL",
             comment: "Selected payment plan for paid bookings",
         },
-        // parentAdminId: {
-        //     type: DataTypes.BIGINT.UNSIGNED,
-        //     allowNull: true,
-        //     defaultValue: null,
-        //     references: {
-        //         model: "admins",
-        //         key: "id",
-        //     },
-        //     onDelete: "SET NULL",
-        // },
+        parentAdminId: {
+            type: DataTypes.BIGINT.UNSIGNED,
+            allowNull: true,
+            defaultValue: null,
+            references: {
+                model: "admins",
+                key: "id",
+            },
+            onDelete: "SET NULL",
+        },
 
         status: {
             type: DataTypes.ENUM(

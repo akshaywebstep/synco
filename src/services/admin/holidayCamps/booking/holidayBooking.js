@@ -16,6 +16,7 @@ const {
   DiscountAppliesTo,
   Comment,
   Admin,
+  AdminRole,
   //  sequelize
 } = require("../../../../models");
 const { sequelize } = require("../../../../models");
@@ -31,6 +32,7 @@ const {
 const sendEmail = require("../../../../utils/email/sendEmail");
 const moment = require("moment");
 const debug = require("debug")("service:comments");
+const bcrypt = require("bcrypt");
 
 const DEBUG = process.env.DEBUG === "true";
 const emailModel = require("../../../../services/email");
@@ -98,6 +100,59 @@ exports.createHolidayBooking = async (data, adminId) => {
 
       finalAmount = Math.max(base_amount - discount_amount, 0);
     }
+    // ==================================================
+    //  CREATE / FIND PARENT ADMIN (FIRST PARENT)
+    // ==================================================
+    let parentAdminId = null;
+
+    if (data.parents?.length > 0) {
+      const firstParent = data.parents[0];
+      const email = firstParent.parentEmail?.trim()?.toLowerCase();
+
+      if (!email) {
+        throw new Error("Parent email is required");
+      }
+
+      const parentRole = await AdminRole.findOne({
+        where: { role: "Parents" },
+        transaction,
+      });
+
+      if (!parentRole) {
+        throw new Error("Parent role not found");
+      }
+
+      const hashedPassword = await bcrypt.hash("Synco123", 10);
+
+      const [admin, created] = await Admin.findOrCreate({
+        where: { email },
+        defaults: {
+          firstName: firstParent.parentFirstName || "Parent",
+          lastName: firstParent.parentLastName || "",
+          phoneNumber: firstParent.parentPhoneNumber || "",
+          email,
+          password: hashedPassword,
+          roleId: parentRole.id,
+          status: "active",
+        },
+        transaction,
+      });
+
+      // ✅ IMPORTANT
+      parentAdminId = admin.id;
+
+      // Optional update if already exists
+      if (!created) {
+        await admin.update(
+          {
+            firstName: firstParent.parentFirstName,
+            lastName: firstParent.parentLastName,
+            phoneNumber: firstParent.parentPhoneNumber || "",
+          },
+          { transaction }
+        );
+      }
+    }
 
     // ==================================================
     //  CREATE BOOKING
@@ -114,6 +169,7 @@ exports.createHolidayBooking = async (data, adminId) => {
         paymentPlanId: data.paymentPlanId,
         status: "active",
         bookedBy: adminId,
+        parentAdminId,
         bookingType: "paid",
         marketingChannel: "website",
         type: "paid",

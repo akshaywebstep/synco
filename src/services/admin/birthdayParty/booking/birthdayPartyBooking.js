@@ -190,7 +190,7 @@ exports.createBirthdayPartyBooking = async (data) => {
                 time: data.time,
                 paymentPlanId: data.paymentPlanId || null,
                 discountId: data.discountId || null,
-                status: "active",
+                status: "pending",
                 type: "paid",
                 serviceType: "birthday party",
             },
@@ -375,6 +375,10 @@ exports.createBirthdayPartyBooking = async (data) => {
                 },
                 { transaction }
             );
+        }
+        if (paymentStatus === "paid") {
+            booking.status = "active";
+            await booking.save({ transaction });
         }
 
         await transaction.commit();

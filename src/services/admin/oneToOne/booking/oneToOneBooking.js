@@ -13,8 +13,10 @@ const {
   PaymentGroupHasPlan,
   Admin,
   AdminRole,
+  oneToOneLeads,
 } = require("../../../../models");
 const { sequelize } = require("../../../../models");
+const bcrypt = require("bcrypt");
 
 const stripePromise = require("../../../../utils/payment/pay360/stripe");
 const {
@@ -34,18 +36,28 @@ exports.createOnetoOneBooking = async (data) => {
   const transaction = await sequelize.transaction();
   try {
     // 0️⃣ Check if lead already booked
+    let lead = null;
     if (data.leadId) {
+      lead = await oneToOneLeads.findByPk(data.leadId);
+      if (!lead) throw new Error(`Lead ID ${data.leadId} not found`);
+
       const existingBooking = await OneToOneBooking.findOne({
         where: { leadId: data.leadId },
       });
 
       if (existingBooking) {
+        console.warn(
+          `⚠️ Lead ID ${data.leadId} already associated with Booking ID ${existingBooking.id}`
+        );
+
         return {
           success: false,
           message: "You have already booked this lead.",
         };
       }
     }
+    let parentAdminId = null;
+    const source = lead?.source?.toLowerCase() || "website";
 
     // 1️⃣ Load payment plan
     let paymentPlan = null;
@@ -107,10 +119,61 @@ exports.createOnetoOneBooking = async (data) => {
       finalAmount = Math.max(baseAmount - discount_amount, 0);
     }
 
+    // -----------------------------
+    // Parent Admin Creation
+    // -----------------------------
+    if (data.parents?.length > 0) {
+      const firstParent = data.parents[0];
+      const email = firstParent.parentEmail?.trim()?.toLowerCase();
+      if (!email) throw new Error("Parent email is required");
+
+      const parentRole = await AdminRole.findOne({
+        where: { role: "Parents" },
+        transaction,
+      });
+      if (!parentRole) throw new Error("Parent role not found");
+
+      const hashedPassword = await bcrypt.hash("Synco123", 10);
+
+      if (source === "admin") {
+        // ADMIN PORTAL → always create new parent
+        const admin = await Admin.create(
+          {
+            firstName: firstParent.parentFirstName || "Parent",
+            lastName: firstParent.parentLastName || "",
+            phoneNumber: firstParent.phoneNumber || "",
+            email,
+            password: hashedPassword,
+            roleId: parentRole.id,
+            status: "pending",
+          },
+          { transaction }
+        );
+        parentAdminId = admin.id;
+      } else {
+        // WEBSITE / Referral / Online / Flyer → findOrCreate
+        const [admin] = await Admin.findOrCreate({
+          where: { email },
+          defaults: {
+            firstName: firstParent.parentFirstName || "Parent",
+            lastName: firstParent.parentLastName || "",
+            phoneNumber: firstParent.phoneNumber || "",
+            email,
+            password: hashedPassword,
+            roleId: parentRole.id,
+            status: "active",
+          },
+          transaction,
+        });
+        parentAdminId = admin.id;
+      }
+    }
+
     // 2️⃣ Create booking
     const booking = await OneToOneBooking.create(
       {
         leadId: data.leadId || null,
+        parentAdminId,
         coachId: data.coachId,
         location: data.location,
         address: data.address,
@@ -269,6 +332,10 @@ exports.createOnetoOneBooking = async (data) => {
         },
         { transaction }
       );
+    }
+    if (paymentStatus === "paid") {
+      booking.status = "active";
+      await booking.save({ transaction });
     }
 
     await transaction.commit();
