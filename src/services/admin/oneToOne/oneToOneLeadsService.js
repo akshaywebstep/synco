@@ -1945,6 +1945,7 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
       await t.rollback();
       return { status: false, message: "Booking not found for this lead." };
     }
+    let adminSynced = false;
 
     // ======================================================
     // 🧩 STUDENTS (STRICT VALIDATION)
@@ -1999,10 +2000,40 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
     }
 
     // ======================================================
-    // 👨‍👩‍👧 PARENTS (STRICT VALIDATION)
+    // 👨‍👩‍👧 PARENTS (STRICT VALIDATION + ADMIN SYNC)
     // ======================================================
     if (Array.isArray(updateData?.parentDetails)) {
-      for (const p of updateData.parentDetails) {
+      for (let index = 0; index < updateData.parentDetails.length; index++) {
+        const p = updateData.parentDetails[index];
+        const isFirstParent =
+          index === 0 && booking.parentAdminId && !adminSynced;
+
+        // 🔒 PRE-CHECK Admin email uniqueness (FIRST parent only)
+        if (isFirstParent && p.parentEmail) {
+          const admin = await Admin.findByPk(booking.parentAdminId, {
+            transaction: t,
+            paranoid: false,
+          });
+
+          if (admin && p.parentEmail !== admin.email) {
+            const emailExists = await Admin.findOne({
+              where: {
+                email: p.parentEmail,
+                id: { [Op.ne]: admin.id },
+              },
+              transaction: t,
+              paranoid: false,
+            });
+
+            if (emailExists) {
+              await t.rollback();
+              return {
+                status: false,
+                message: "This email is already in use",
+              };
+            }
+          }
+        }
 
         // ---------- UPDATE ----------
         if (p.id) {
@@ -2024,38 +2055,67 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
               { transaction: t }
             );
           }
-          continue;
+        } else {
+          // ---------- CREATE ----------
+          const requiredParentFields = [
+            "parentFirstName",
+            "parentLastName",
+            "parentEmail",
+            "phoneNumber",
+            "relationChild",
+            "studentId",
+          ];
+
+          const missing = requiredParentFields.filter(
+            (f) => !p[f] || String(p[f]).trim() === ""
+          );
+
+          if (missing.length > 0) {
+            await t.rollback();
+            return {
+              status: false,
+              message: `Missing required fields: ${missing.join(", ")}`,
+            };
+          }
+
+          await OneToOneParent.create(
+            {
+              studentId: p.studentId,
+              parentFirstName: p.parentFirstName,
+              parentLastName: p.parentLastName,
+              parentEmail: p.parentEmail,
+              phoneNumber: p.phoneNumber,
+              relationChild: p.relationChild,
+              howDidHear: p.howDidHear ?? "",
+            },
+            { transaction: t }
+          );
         }
 
-        // ---------- CREATE NEW ----------
-        const requiredParentFields = [
-          "parentFirstName",
-          "parentLastName",
-          "parentEmail",
-          "phoneNumber",
-          "relationChild",
-          "studentId"
-        ];
+        // 🔹 Sync FIRST parent → Admin (ONCE)
+        if (isFirstParent) {
+          const admin = await Admin.findByPk(booking.parentAdminId, {
+            transaction: t,
+            paranoid: false,
+          });
 
-        const missing = requiredParentFields.filter(f => !p[f] || String(p[f]).trim() === "");
+          if (admin) {
+            if (p.parentFirstName !== undefined)
+              admin.firstName = p.parentFirstName;
 
-        if (missing.length > 0) {
-          await t.rollback();
-          return { status: false, message: `Missing required fields: ${missing.join(", ")}` };
+            if (p.parentLastName !== undefined)
+              admin.lastName = p.parentLastName;
+
+            if (p.parentEmail !== undefined)
+              admin.email = p.parentEmail;
+
+            if (p.phoneNumber !== undefined)
+              admin.phoneNumber = p.phoneNumber;
+
+            await admin.save({ transaction: t });
+            adminSynced = true;
+          }
         }
-
-        await OneToOneParent.create(
-          {
-            studentId: p.studentId,
-            parentFirstName: p.parentFirstName,
-            parentLastName: p.parentLastName,
-            parentEmail: p.parentEmail,
-            phoneNumber: p.phoneNumber,
-            relationChild: p.relationChild,
-            howDidHear: p.howDidHear ?? "",
-          },
-          { transaction: t }
-        );
       }
     }
 
