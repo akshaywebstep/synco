@@ -1382,20 +1382,86 @@ exports.waitingListCreate = async (data, adminId) => {
   const transaction = await sequelize.transaction();
   try {
     // ==================================================
+    //  CREATE / FIND PARENT ADMIN (FIRST PARENT)
+    // ==================================================
+    let parentAdminId = null;
+
+    if (data.parents?.length > 0) {
+      const firstParent = data.parents[0];
+      const email = firstParent.parentEmail?.trim()?.toLowerCase();
+
+      if (!email) throw new Error("Parent email is required");
+
+      const parentRole = await AdminRole.findOne({
+        where: { role: "Parents" },
+        transaction,
+      });
+
+      if (!parentRole) {
+        throw new Error("Parent role not found");
+      }
+
+      // 🔒 CHECK IF EMAIL ALREADY USED BY NON-PARENT
+      const existingAdmin = await Admin.findOne({
+        where: { email },
+        transaction,
+      });
+
+      if (existingAdmin && existingAdmin.roleId !== parentRole.id) {
+        throw new Error(
+          "This email is already registered with another account. Please use a different email."
+        );
+      }
+
+      const hashedPassword = await bcrypt.hash("Synco123", 10);
+
+      const [parentAdmin, created] = await Admin.findOrCreate({
+        where: { email },
+        defaults: {
+          firstName: firstParent.parentFirstName || "Parent",
+          lastName: firstParent.parentLastName || "",
+          phoneNumber: firstParent.parentPhoneNumber || "",
+          email,
+          password: hashedPassword,
+          roleId: parentRole.id,
+          status: "active",
+        },
+        transaction,
+      });
+
+      parentAdminId = parentAdmin.id;
+
+      // Optional update if already parent
+      if (!created) {
+        await parentAdmin.update(
+          {
+            firstName: firstParent.parentFirstName,
+            lastName: firstParent.parentLastName,
+            phoneNumber: firstParent.parentPhoneNumber || "",
+          },
+          { transaction }
+        );
+      }
+    }
+
+    // ==================================================
     //  CREATE WAITING-LIST BOOKING
     // ==================================================
+    const isAdminBooking = !!adminId;
     const booking = await HolidayBooking.create(
       {
         venueId: data.venueId,
+        parentAdminId,
         classScheduleId: data.classScheduleId,
         holidayCampId: data.holidayCampId,
         totalStudents: data.totalStudents,
         status: "waiting list",
-        bookedBy: adminId,
         bookingType: "waiting list",
         type: "waiting list",
         serviceType: "holiday camp",
-        marketingChannel: "website",
+        // ✅ AUTO-DETECT SOURCE
+        bookedBy: isAdminBooking ? adminId : null,
+        marketingChannel: isAdminBooking ? "admin" : "website",
       },
       { transaction }
     );

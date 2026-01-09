@@ -38,6 +38,7 @@ router.get(
   permissionMiddleware("holiday-booking", "view-listing"),
   getAllHolidayBooking
 );
+
 router.get(
   "/discount/holiday-camp",
   authMiddleware,
@@ -58,6 +59,7 @@ router.put(
   permissionMiddleware("holiday-booking", "update"),
   updateHolidayBooking
 );
+
 router.get(
   "/listBy/:bookingId",
   authMiddleware,
