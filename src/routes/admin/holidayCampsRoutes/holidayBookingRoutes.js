@@ -13,6 +13,7 @@ const {
   waitingListCreate,
   cancelHolidayBookingById,
   getAllDiscounts,
+  assignBookings,
 } = require("../../../controllers/admin/holidayCamps/booking/holidayBookingController");
 
 // ➕ Create Camp
@@ -22,6 +23,13 @@ router.post(
   authMiddleware,
   permissionMiddleware("holiday-booking", "create"),
   createHolidayBooking
+);
+
+router.put(
+  "/assign-booking",
+  authMiddleware,
+  permissionMiddleware("holiday-booking", "view-listing"),
+  assignBookings
 );
 
 router.get(

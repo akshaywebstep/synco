@@ -77,14 +77,11 @@ exports.findAHolidayClassListing = async (req, res) => {
 
 exports.getHolidayClassScheduleById = async (req, res) => {
     const { id } = req.params;
-    const createdBy = req.admin?.id;
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
     if (DEBUG) console.log(`🔍 Fetching class + venue for class ID: ${id}`);
 
     try {
         // ✅ Call service with only classId (no adminId)
-        const result = await getHolidayClassById(id, superAdminId);
+        const result = await getHolidayClassById(id);
 
         if (!result.status) {
             if (DEBUG) console.log("⚠️ Not found:", result.message);

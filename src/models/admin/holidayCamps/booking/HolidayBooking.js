@@ -118,15 +118,17 @@ const HolidayBooking = sequelize.define(
         // ✅ NEW FIELD — FK → Admins.id
         bookedBy: {
             type: DataTypes.BIGINT.UNSIGNED,
-            allowNull: false,
+            allowNull: true,          // ✅ allow website bookings
+            defaultValue: null,
             references: {
-                model: "admins", // table name for admins
+                model: "admins",
                 key: "id",
             },
             onUpdate: "CASCADE",
-            onDelete: "RESTRICT",
-            comment: "Admin ID who created the booking",
+            onDelete: "SET NULL",     // ✅ safer
+            comment: "Admin ID who created the booking (null = website)",
         },
+
         cancelReason: {
             type: DataTypes.TEXT,
             allowNull: true,
@@ -158,10 +160,11 @@ const HolidayBooking = sequelize.define(
                 "referral",
                 "website",
                 "others",
-                "social"
+                "social",
+                "admin",
             ),
             allowNull: false,
-            defaultValue: "website",
+            defaultValue: "admin",
             comment: "Marketing source of the booking",
         },
     },

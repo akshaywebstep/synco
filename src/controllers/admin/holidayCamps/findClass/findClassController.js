@@ -10,6 +10,8 @@ const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "find-class";
 
+// ✅ Safe boolean parsing
+
 exports.findAHolidayClassListing = async (req, res) => {
   try {
     const adminId = req.admin?.id;

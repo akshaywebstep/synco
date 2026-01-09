@@ -12,66 +12,6 @@ const {
 
 const { Op, Sequelize } = require("sequelize");
 
-const parseSessionPlanGroupLevels = async (spg) => {
-  if (!spg?.levels) return spg;
-
-  let parsedLevels = {};
-  try {
-    parsedLevels =
-      typeof spg.levels === "string" ? JSON.parse(spg.levels) : spg.levels;
-  } catch {
-    parsedLevels = {};
-  }
-
-  // Collect all unique sessionExerciseIds
-  const allIds = new Set();
-  Object.values(parsedLevels).forEach((levelArray) => {
-    if (Array.isArray(levelArray)) {
-      levelArray.forEach((item) => {
-        if (Array.isArray(item.sessionExerciseId)) {
-          item.sessionExerciseId.forEach((id) => allIds.add(id));
-        }
-      });
-    }
-  });
-
-  // Fetch all related session exercises
-  const exercises = await SessionExercise.findAll({
-    where: { id: [...allIds] },
-    attributes: ["id", "title", "description", "imageUrl", "duration"],
-  });
-
-  const exerciseMap = {};
-  exercises.forEach((ex) => {
-    exerciseMap[ex.id] = ex;
-  });
-
-  // Attach corresponding exercises directly after sessionExerciseId array
-  Object.values(parsedLevels).forEach((levelArray) => {
-    if (Array.isArray(levelArray)) {
-      levelArray.forEach((item) => {
-        if (Array.isArray(item.sessionExerciseId)) {
-          item.sessionExercises = item.sessionExerciseId
-            .map((id) => exerciseMap[id])
-            .filter(Boolean);
-        }
-      });
-    }
-  });
-
-  spg.dataValues.levels = parsedLevels;
-  return spg;
-};
-
-function parseSafeArray(value) {
-  if (!value) return [];
-  try {
-    return typeof value === "string" ? JSON.parse(value) : value;
-  } catch {
-    return [];
-  }
-}
-
 function deg2rad(deg) {
   return deg * (Math.PI / 180);
 }

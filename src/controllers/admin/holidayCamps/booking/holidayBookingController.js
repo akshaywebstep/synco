@@ -177,6 +177,62 @@ exports.createHolidayBooking = async (req, res) => {
   }
 };
 
+// Assign Booking to Admin / Agent
+exports.assignBookings = async (req, res) => {
+  try {
+    const { bookingIds, bookedBy } = req.body;
+
+    if (!Array.isArray(bookingIds) || bookingIds.length === 0) {
+      return res.status(400).json({
+        status: false,
+        message: "Booking IDs array is required.",
+      });
+    }
+
+    if (!bookedBy || isNaN(Number(bookedBy))) {
+      return res.status(400).json({
+        status: false,
+        message: "Valid admin ID is required.",
+      });
+    }
+
+    const result = await holidayBookingService.assignBookingsToAgent({
+      bookingIds,
+      bookedBy,
+    });
+
+    if (!result.status) {
+      await logActivity(req, PANEL, MODULE, "update", result, false);
+      return res.status(400).json(result);
+    }
+
+    await createNotification(
+      req,
+      "Bookings Assigned",
+      `${bookingIds.length} booking(s) assigned to agent successfully.`,
+      "System"
+    );
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "update",
+      {
+        oneLineMessage: `Assigned ${bookingIds.length} bookings to admin ${bookedBy}`,
+      },
+      true
+    );
+
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(500).json({
+      status: false,
+      message: "Failed to assign bookings.",
+    });
+  }
+};
+
 exports.getAllHolidayBooking = async (req, res) => {
   const adminId = req.admin?.id;
 

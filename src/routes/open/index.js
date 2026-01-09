@@ -16,9 +16,13 @@ router.use("/book-membership", require("./booking/bookingMembershipRoutes"));
 // Birthday Party Inqury Form
 router.use("/birthday-party", require("./booking/birthdayPartyBookingRoutes"));
 
+// One to One Inqury Form
 router.use("/one-to-one", require("./booking/oneToOneBookingRoutes"));
 
-// find a camp
+// Find a Camp
 router.use("/find-a-camp", require("./holidayFindACamp/findACampRoutes"));
+
+// Holiday Booking
+router.use("/book-holiday-camp", require("./holidayFindACamp/holidayBookingRoutes"));
 
 module.exports = router;

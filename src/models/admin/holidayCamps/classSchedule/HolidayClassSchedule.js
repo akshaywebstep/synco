@@ -104,9 +104,3 @@ HolidayClassSchedule.associate = function (models) {
 
 module.exports = HolidayClassSchedule;
 
-// HolidayClassSchedule.hasMany(models.HolidayCancelSession, {
-//     foreignKey: "classScheduleId",
-//     as: "holidayCancelSessions", // this is the name you will use in include
-//     onDelete: "CASCADE",
-//     onUpdate: "CASCADE",
-//   });

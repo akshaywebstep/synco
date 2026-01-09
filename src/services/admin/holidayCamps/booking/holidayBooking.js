@@ -157,21 +157,24 @@ exports.createHolidayBooking = async (data, adminId) => {
     // ==================================================
     //  CREATE BOOKING
     // ==================================================
+    const isAdminBooking = !!adminId;
+
     const booking = await HolidayBooking.create(
       {
         venueId: data.venueId,
         classScheduleId: data.classScheduleId,
         holidayCampId: data.holidayCampId,
-        // discountId: data.discountId,
-        // ✅ make discount optional
         discountId: data.discountId ?? null,
         totalStudents: data.totalStudents,
         paymentPlanId: data.paymentPlanId,
         status: "active",
-        bookedBy: adminId,
+
+        // ✅ AUTO-DETECT SOURCE
+        bookedBy: isAdminBooking ? adminId : null,
+        marketingChannel: isAdminBooking ? "admin" : "website",
+
         parentAdminId,
         bookingType: "paid",
-        marketingChannel: "website",
         type: "paid",
         serviceType: "holiday camp",
       },
@@ -320,8 +323,6 @@ exports.createHolidayBooking = async (data, adminId) => {
         { transaction }
       );
     }
-
-    // ✅ Send confirmation email to first parent (only if payment succeeded)
     // ✅ Send confirmation email to first parent (only if payment succeeded)
     try {
       if (payment_status === "paid") { // <-- corrected
@@ -442,21 +443,62 @@ exports.getHolidayBooking = async (superAdminId, adminId) => {
     }
 
     const whereBooking = {};
+    let adminIds = [];
 
-    // Determine accessible bookings
+    // ------------------------------------
+    // SUPER ADMIN
+    // ------------------------------------
     if (superAdminId && superAdminId === adminId) {
       const managedAdmins = await Admin.findAll({
         where: { superAdminId },
         attributes: ["id"]
       });
 
-      const adminIds = managedAdmins.map(a => a.id);
+      adminIds = managedAdmins.map(a => a.id);
       adminIds.push(superAdminId);
 
-      whereBooking.bookedBy = { [Op.in]: adminIds };
-    } else if (superAdminId && adminId) {
-      whereBooking.bookedBy = { [Op.in]: [adminId, superAdminId] };
-    } else {
+      whereBooking[Op.or] = [
+        // 1️⃣ Admin-created bookings
+        {
+          bookedBy: { [Op.in]: adminIds },
+        },
+
+        // 2️⃣ Website bookings → venues created by this super admin
+        {
+          bookedBy: null,
+          "$holidayClassSchedules.venue.createdBy$": {
+            [Op.in]: adminIds,
+          },
+        },
+      ];
+    }
+
+    // ------------------------------------
+    // ADMIN
+    // ------------------------------------
+    else if (superAdminId && adminId) {
+      adminIds = [adminId, superAdminId];
+
+      whereBooking[Op.or] = [
+        // 1️⃣ Admin-created bookings
+        {
+          bookedBy: { [Op.in]: adminIds },
+        },
+
+        // 2️⃣ Website bookings → admin + super admin venues
+        {
+          bookedBy: null,
+          "$holidayClassSchedules.venue.createdBy$": {
+            [Op.in]: adminIds,
+          },
+        },
+      ];
+    }
+
+    // ------------------------------------
+    // AGENT / FALLBACK
+    // ------------------------------------
+    else {
       whereBooking.bookedBy = adminId;
     }
 
@@ -467,49 +509,44 @@ exports.getHolidayBooking = async (superAdminId, adminId) => {
         {
           model: HolidayBookingStudentMeta,
           as: "students",
-          attributes: [
-            "id",
-            "bookingId",
-            "attendance",
-            "studentFirstName",
-            "studentLastName",
-            "dateOfBirth",
-            "age",
-            "gender",
-            "medicalInformation",
-            "createdAt",
-            "updatedAt",
-          ],
           include: [
-            {
-              model: HolidayBookingParentMeta,
-              as: "parents",
-            },
-            {
-              model: HolidayBookingEmergencyMeta,
-              as: "emergencyContacts",
-            }
+            { model: HolidayBookingParentMeta, as: "parents" },
+            { model: HolidayBookingEmergencyMeta, as: "emergencyContacts" }
           ]
         },
 
         { model: HolidayBookingPayment, as: "payment" },
         { model: HolidayPaymentPlan, as: "holidayPaymentPlan" },
-        { model: HolidayVenue, as: "holidayVenue" },
-        { model: HolidayClassSchedule, as: "holidayClassSchedules" },
+
+        {
+          model: HolidayClassSchedule,
+          as: "holidayClassSchedules",
+          include: [
+            {
+              model: HolidayVenue,
+              as: "venue",
+              attributes: ["id", "createdBy"]
+            }
+          ]
+        },
+
+        // Flat (for response compatibility)
+        {
+          model: HolidayVenue,
+          as: "holidayVenue",
+          required: false
+        },
+
         {
           model: Admin,
           as: "bookedByAdmin",
           attributes: ["id", "firstName", "lastName"]
         },
+
         {
           model: HolidayCamp,
           as: "holidayCamp",
-          include: [
-            {
-              model: HolidayCampDates,
-              as: "holidayCampDates"
-            }
-          ]
+          include: [{ model: HolidayCampDates, as: "holidayCampDates" }]
         },
 
         { model: Discount, as: "discount" }
@@ -609,6 +646,114 @@ exports.getHolidayBooking = async (superAdminId, adminId) => {
     };
   }
 };
+
+exports.assignBookingsToAgent = async ({ bookingIds, bookedBy }) => {
+  const t = await sequelize.transaction();
+
+  try {
+    // Validation
+    if (!Array.isArray(bookingIds) || bookingIds.length === 0) {
+      throw new Error("At least one booking ID is required");
+    }
+    if (!bookedBy || isNaN(Number(bookedBy))) {
+      throw new Error("Valid agent ID is required");
+    }
+
+    // Check Agent Exists
+    const agent = await Admin.findByPk(bookedBy, {
+      include: [{ model: AdminRole, as: "role" }],
+      transaction: t,
+    });
+    if (!agent) {
+      throw new Error("Agent not found");
+    }
+
+    // Fetch Bookings with students and parents eager loaded
+    const bookings = await HolidayBooking.findAll({
+      where: {
+        id: { [Op.in]: bookingIds },
+      },
+      include: [
+        {
+          model: HolidayBookingStudentMeta,
+          as: "students",
+          include: [
+            { model: HolidayBookingParentMeta, as: "parents", required: false },
+          ],
+          required: false,
+        },
+      ],
+      transaction: t,
+    });
+
+    if (bookings.length !== bookingIds.length) {
+      throw new Error("One or more bookings were not found");
+    }
+
+    // Filter bookings that are already assigned
+    const alreadyAssigned = bookings.filter((b) => b.bookedBy);
+
+    if (alreadyAssigned.length > 0) {
+      // Build detailed info for error message
+      const detailedInfo = alreadyAssigned.map((booking) => {
+        const studentNames = booking.students
+          ?.map(
+            (s) => `${s.studentFirstName || ""} ${s.studentLastName || ""}`.trim()
+          )
+          .filter(Boolean)
+          .join(", ") || "N/A";
+
+        const parentNames = booking.students
+          ?.flatMap((s) =>
+            s.parents?.map(
+              (p) => `${p.parentFirstName || ""} ${p.parentLastName || ""}`.trim()
+            ) || []
+          )
+          .filter(Boolean)
+          .join(", ") || "N/A";
+
+        return `Student(s): ${studentNames}; Parent(s): ${parentNames}`;
+      });
+
+      throw new Error(
+        `Some bookings are already assigned: ${detailedInfo.join(" | ")}`
+      );
+    }
+
+    // Bulk update bookings
+    await HolidayBooking.update(
+      {
+        bookedBy,
+        updatedAt: new Date(),
+      },
+      {
+        where: {
+          id: { [Op.in]: bookingIds },
+        },
+        transaction: t,
+      }
+    );
+
+    await t.commit();
+
+    return {
+      status: true,
+      message: "Bookings successfully assigned to agent",
+      data: {
+        bookingIds,
+        bookedBy,
+        totalAssigned: bookingIds.length,
+      },
+    };
+  } catch (error) {
+    await t.rollback();
+    return {
+      status: false,
+      message: error.message,
+    };
+  }
+};
+
 exports.cancelHolidayBookingById = async (bookingId, data, adminId) => {
   const transaction = await sequelize.transaction();
 
@@ -669,11 +814,53 @@ exports.getBookingById = async (bookingId, superAdminId, adminId) => {
     // Build access filter
     const whereBooking = { id: bookingId };
 
+    let adminIds = [];
+
     if (superAdminId && superAdminId === adminId) {
-      whereBooking.bookedBy = { [Op.in]: [superAdminId] };
-    } else if (superAdminId && adminId) {
-      whereBooking.bookedBy = { [Op.in]: [adminId, superAdminId] };
-    } else if (adminId) {
+      const managedAdmins = await Admin.findAll({
+        where: { superAdminId },
+        attributes: ["id"]
+      });
+
+      adminIds = managedAdmins.map(a => a.id);
+      adminIds.push(superAdminId);
+
+      whereBooking[Op.or] = [
+        // 1️⃣ Admin-created booking
+        {
+          bookedBy: { [Op.in]: adminIds },
+        },
+
+        // 2️⃣ Website booking → venue created by this super admin
+        {
+          bookedBy: null,
+          "$holidayClassSchedules.venue.createdBy$": {
+            [Op.in]: adminIds,
+          },
+        },
+      ];
+    }
+
+    else if (superAdminId && adminId) {
+      adminIds = [adminId, superAdminId];
+
+      whereBooking[Op.or] = [
+        // 1️⃣ Admin-created booking
+        {
+          bookedBy: { [Op.in]: adminIds },
+        },
+
+        // 2️⃣ Website booking → venue created by admin or super admin
+        {
+          bookedBy: null,
+          "$holidayClassSchedules.venue.createdBy$": {
+            [Op.in]: adminIds,
+          },
+        },
+      ];
+    }
+
+    else {
       whereBooking.bookedBy = adminId;
     }
 
@@ -692,7 +879,16 @@ exports.getBookingById = async (bookingId, superAdminId, adminId) => {
         { model: HolidayBookingPayment, as: "payment" },
         { model: HolidayPaymentPlan, as: "holidayPaymentPlan" },
         { model: HolidayVenue, as: "holidayVenue" },
-        { model: HolidayClassSchedule, as: "holidayClassSchedules" },
+        {
+          model: HolidayClassSchedule,
+          as: "holidayClassSchedules",
+          include: [
+            {
+              model: HolidayVenue,
+              as: "venue"
+            }
+          ]
+        },
         { model: Discount, as: "discount" },
         {
           model: Admin,
@@ -1363,7 +1559,6 @@ exports.waitingListCreate = async (data, adminId) => {
   }
 };
 
-// Helper to get startDate & endDate based on filterType
 // Helper to get startDate & endDate based on filterType
 function getDateRange(filterType) {
   const now = new Date();

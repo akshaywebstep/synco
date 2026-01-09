@@ -303,17 +303,13 @@ exports.getAllHolidayVenuesWithHolidayClasses = async ({
     }
 };
 
-exports.getHolidayClassById = async (classId, createdBy) => {
+exports.getHolidayClassById = async (classId) => {
     try {
-        if (!createdBy || isNaN(Number(createdBy))) {
-            return { status: false, message: "Invalid admin id." };
-        }
 
         // 🔍 Fetch the class + venue
         const cls = await HolidayClassSchedule.findOne({
             where: {
-                id: classId,
-                createdBy: Number(createdBy)
+                id: classId
             },
             include: [
                 {
@@ -321,12 +317,6 @@ exports.getHolidayClassById = async (classId, createdBy) => {
                     as: "venue",
                     required: true,
                     where: {
-                        createdBy: {
-                            [Op.or]: [
-                                Number(createdBy), // superadmin
-                                { [Op.ne]: null }  // admins
-                            ]
-                        }
                     }
                 }
             ]
@@ -345,13 +335,7 @@ exports.getHolidayClassById = async (classId, createdBy) => {
         if (venue.paymentGroupId) {
             paymentGroups = await HolidayPaymentGroup.findAll({
                 where: {
-                    id: venue.paymentGroupId,
-                    createdBy: {
-                        [Op.or]: [
-                            Number(createdBy),
-                            venue.createdBy
-                        ]
-                    }
+                    id: venue.paymentGroupId
                 },
                 include: [
                     {
@@ -394,13 +378,7 @@ exports.getHolidayClassById = async (classId, createdBy) => {
         const holidayCamps = holidayCampIds.length
             ? await HolidayCamp.findAll({
                 where: {
-                    id: holidayCampIds,
-                    createdBy: {
-                        [Op.or]: [
-                            Number(createdBy),
-                            venue.createdBy
-                        ]
-                    }
+                    id: holidayCampIds
                 }
             })
             : [];
@@ -413,13 +391,7 @@ exports.getHolidayClassById = async (classId, createdBy) => {
         const holidayCampDates = holidayCampIds.length
             ? await HolidayCampDates.findAll({
                 where: {
-                    holidayCampId: { [Op.in]: holidayCampIds },
-                    createdBy: {
-                        [Op.or]: [
-                            Number(createdBy),
-                            venue.createdBy
-                        ]
-                    }
+                    holidayCampId: { [Op.in]: holidayCampIds }
                 },
                 attributes: [
                     "id",
