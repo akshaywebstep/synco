@@ -6,9 +6,13 @@ const {
   BookingEmergencyMeta,
   ClassSchedule,
   Venue,
-  PaymentPlan,
   Admin,
   AdminRole,
+  TermGroup,
+  PaymentGroup,
+  PaymentPlan,
+  PaymentGroupHasPlan,
+  Term,
 } = require("../../../models");
 const DEBUG = process.env.DEBUG === "true";
 
@@ -140,7 +144,7 @@ exports.createBooking = async (data, options) => {
       bookedBy = null;
       bookingSource = "website";
     }
-    
+
     // Step 1: Create Booking
     const booking = await Booking.create(
       {
@@ -278,6 +282,237 @@ exports.createBooking = async (data, options) => {
   } catch (error) {
     await t.rollback();
     console.error("❌ createBooking Error:", error);
+    return { status: false, message: error.message };
+  }
+};
+
+exports.getBookingByIdForWebsitePreview = async (
+  id) => {
+  console.log("🔍 getBookingById params:", { id });
+
+  const whereClause = { id };
+
+  try {
+    console.log("🚀 Fetching booking from DB with whereClause:", whereClause);
+
+    // 1️⃣ Fetch booking with related data
+    const booking = await Booking.findOne({
+      where: whereClause,
+      include: [
+        {
+          model: BookingStudentMeta,
+          as: "students",
+          required: false,
+          include: [
+            { model: BookingParentMeta, as: "parents", required: false },
+            {
+              model: BookingEmergencyMeta,
+              as: "emergencyContacts",
+              required: false,
+            },
+          ],
+        },
+        {
+          model: ClassSchedule,
+          as: "classSchedule",
+          required: true,
+          include: [{ model: Venue, as: "venue", required: true }],
+        },
+      ],
+    });
+
+    if (!booking) {
+      return { status: false, message: "Booking not found or not authorized." };
+    }
+
+    const venue = booking.classSchedule?.venue;
+
+    // 2️⃣ Handle PaymentGroups
+    let paymentGroups = [];
+    if (venue?.paymentGroupId) {
+      let paymentGroupIds = [];
+      if (typeof venue.paymentGroupId === "string") {
+        try {
+          paymentGroupIds = JSON.parse(venue.paymentGroupId);
+        } catch {
+          paymentGroupIds = [];
+        }
+      } else if (Array.isArray(venue.paymentGroupId)) {
+        paymentGroupIds = venue.paymentGroupId;
+      } else {
+        paymentGroupIds = [venue.paymentGroupId]; // single number
+      }
+
+      if (paymentGroupIds.length) {
+        paymentGroups = await PaymentGroup.findAll({
+          where: {
+            id: { [Op.in]: paymentGroupIds }
+          },
+          include: [
+            {
+              model: PaymentPlan,
+              as: "paymentPlans",
+              through: { model: PaymentGroupHasPlan },
+            },
+          ],
+          order: [["createdAt", "DESC"]],
+        });
+      }
+    }
+
+    // 3️⃣ Handle TermGroups + Terms with safe JSON parsing
+    let termGroupIds = [];
+
+    // Parse termGroupId from string/array/number
+    if (typeof venue?.termGroupId === "string") {
+      try {
+        termGroupIds = JSON.parse(venue.termGroupId);
+      } catch {
+        termGroupIds = [];
+      }
+    } else if (Array.isArray(venue?.termGroupId)) {
+      termGroupIds = venue.termGroupId;
+    } else if (typeof venue?.termGroupId === "number") {
+      termGroupIds = [venue.termGroupId];
+    }
+
+    const termGroups = termGroupIds.length
+      ? await TermGroup.findAll({
+        where: { id: termGroupIds },
+      })
+      : [];
+
+    const terms = termGroupIds.length
+      ? await Term.findAll({
+        where: {
+          termGroupId: { [Op.in]: termGroupIds },
+        },
+        attributes: [
+          "id",
+          "termName",
+          "day",
+          "startDate",
+          "endDate",
+          "termGroupId",
+          "exclusionDates",
+          "totalSessions",
+          "sessionsMap",
+        ],
+      })
+      : [];
+
+    // Parse the terms safely
+    const parsedTerms = terms.map((t) => ({
+      id: t.id,
+      name: t.termName,
+      day: t.day,
+      startDate: t.startDate,
+      endDate: t.endDate,
+      termGroupId: t.termGroupId,
+      exclusionDates:
+        typeof t.exclusionDates === "string"
+          ? JSON.parse(t.exclusionDates)
+          : t.exclusionDates || [],
+      totalSessions: t.totalSessions,
+      sessionsMap:
+        typeof t.sessionsMap === "string"
+          ? JSON.parse(t.sessionsMap)
+          : t.sessionsMap || [],
+    }));
+
+    // 4️⃣ Extract students, parents, emergency contacts
+    const students =
+      booking.students?.map((s) => ({
+        id: s.id,
+        studentId: s.studentId,
+        studentFirstName: s.studentFirstName,
+        studentLastName: s.studentLastName,
+        dateOfBirth: s.dateOfBirth,
+        age: s.age,
+        gender: s.gender,
+        medicalInformation: s.medicalInformation,
+      })) || [];
+
+    const parents =
+      booking.students
+        ?.flatMap((s) => s.parents || [])
+        .map((p) => ({
+          id: p.id,
+          parentId: p.parentId,
+          parentFirstName: p.parentFirstName,
+          parentLastName: p.parentLastName,
+          parentEmail: p.parentEmail,
+          parentPhoneNumber: p.parentPhoneNumber,
+          relationToChild: p.relationToChild,
+          howDidYouHear: p.howDidYouHear,
+        })) || [];
+
+    const emergency =
+      booking.students
+        ?.flatMap((s) => s.emergencyContacts || [])
+        .map((e) => ({
+          id: e.id,
+          emergencyId: e.emergencyId,
+          emergencyFirstName: e.emergencyFirstName,
+          emergencyLastName: e.emergencyLastName,
+          emergencyPhoneNumber: e.emergencyPhoneNumber,
+          emergencyRelation: e.emergencyRelation,
+        })) || [];
+
+    // 5️⃣ Build final response
+    const response = {
+      id: booking.id,
+      bookingId: booking.bookingId,
+      classScheduleId: booking.classScheduleId,
+      attempt: booking.attempt,
+      serviceType: booking.serviceType,
+      trialDate: booking.trialDate,
+      bookedBy: booking.bookedByAdmin || null,
+      className: booking.className,
+      classTime: booking.classTime,
+      venueId: booking.venueId,
+      status: booking.status,
+      totalStudents: booking.totalStudents,
+      createdAt: booking.createdAt,
+      students,
+      parents,
+      emergency,
+      classSchedule: booking.classSchedule || {},
+      paymentGroups: paymentGroups.map((pg) => ({
+        id: pg.id,
+        name: pg.name,
+        description: pg.description,
+        createdBy: pg.createdBy,
+        createdAt: pg.createdAt,
+        updatedAt: pg.updatedAt,
+        paymentPlans: (pg.paymentPlans || []).map((plan) => ({
+          id: plan.id,
+          title: plan.title,
+          price: plan.price,
+          priceLesson: plan.priceLesson,
+          interval: plan.interval,
+          duration: plan.duration,
+          students: plan.students,
+          joiningFee: plan.joiningFee,
+          HolidayCampPackage: plan.HolidayCampPackage,
+          termsAndCondition: plan.termsAndCondition,
+          createdBy: plan.createdBy,
+          createdAt: plan.createdAt,
+          updatedAt: plan.updatedAt,
+          PaymentGroupHasPlan: plan.PaymentGroupHasPlan || null,
+        })),
+      })),
+      termGroups: termGroups.map((tg) => ({ id: tg.id, name: tg.name })),
+      terms: parsedTerms,
+    };
+
+    return {
+      status: true,
+      message: "Fetched booking details successfully.",
+      data: response,
+    };
+  } catch (error) {
+    console.error("❌ getBookingById Error:", error.message);
     return { status: false, message: error.message };
   }
 };

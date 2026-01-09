@@ -363,6 +363,46 @@ exports.createBooking = async (req, res) => {
   }
 };
 
+// Website Preview
+exports.getBookingByIdForWebsitePreview = async (req, res) => {
+  const { id } = req.params;
+  // const adminId = req.admin?.id;
+  if (DEBUG) console.log(`🔍 Fetching free trial booking ID: ${id}`);
+  try {
+    const result = await BookingTrialService.getBookingByIdForWebsitePreview(id);
+
+    if (!result.status) {
+      return res.status(404).json({ status: false, message: result.message });
+    }
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "getById",
+      { message: `Fetched booking ID: ${id}` },
+      true
+    );
+
+    return res.status(200).json({
+      status: true,
+      message: "Fetched booking details successfully.",
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching booking:", error);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "getById",
+      { error: error.message },
+      false
+    );
+    return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
+
 exports.getAllAgents = async (req, res) => {
   if (DEBUG) console.log("📋 Request received to list all admins");
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin?.id);

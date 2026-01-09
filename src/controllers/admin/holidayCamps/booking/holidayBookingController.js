@@ -515,6 +515,53 @@ exports.getHolidayBookingById = async (req, res) => {
   }
 };
 
+// Get Holiday Booking by Id
+exports.getBookingByIdForWebsitePreview = async (req, res) => {
+  const bookingId = req.params.bookingId;
+  try {
+    // -----------------------------
+    // Validate bookingId
+    // -----------------------------
+    if (!bookingId || isNaN(Number(bookingId))) {
+      return res.status(400).json({
+        status: false,
+        message: "Invalid bookingId.",
+      });
+    }
+
+    // -----------------------------
+    // Call service
+    // -----------------------------
+    const result = await holidayBookingService.getBookingByIdForWebsitePreview(
+      bookingId,
+    );
+
+    if (!result.success) {
+      return res.status(404).json({
+        status: false,
+        message: result.message || "Booking not found",
+      });
+    }
+
+    // -----------------------------
+    // Success response
+    // -----------------------------
+    return res.status(200).json({
+      status: true,
+      message: "Holiday booking fetched successfully",
+      data: result.data
+    });
+
+  } catch (error) {
+    if (DEBUG) console.error("❌ Error in getHolidayBookingById:", error);
+
+    return res.status(500).json({
+      status: false,
+      message: DEBUG ? error.message : "Internal server error",
+    });
+  }
+};
+
 exports.updateHolidayBooking = async (req, res) => {
   try {
     const adminId = req.admin?.id;

@@ -1024,6 +1024,153 @@ exports.getBookingById = async (bookingId, superAdminId, adminId) => {
   }
 };
 
+// Website Preview Data
+exports.getBookingByIdForWebsitePreview = async (bookingId) => {
+  try {
+    // Validate bookingId
+    if (!bookingId || isNaN(Number(bookingId))) {
+      return { success: false, message: "Invalid booking ID." };
+    }
+
+    // Build access filter
+    const whereBooking = { id: bookingId };
+
+    // Fetch with relations
+    let record = await HolidayBooking.findOne({
+      where: whereBooking,
+      include: [
+        {
+          model: HolidayBookingStudentMeta,
+          as: "students",
+          include: [
+            { model: HolidayBookingParentMeta, as: "parents" },
+            { model: HolidayBookingEmergencyMeta, as: "emergencyContacts" }
+          ]
+        },
+        { model: HolidayBookingPayment, as: "payment" },
+        { model: HolidayPaymentPlan, as: "holidayPaymentPlan" },
+        { model: HolidayVenue, as: "holidayVenue" },
+        {
+          model: HolidayClassSchedule,
+          as: "holidayClassSchedules",
+          include: [
+            {
+              model: HolidayVenue,
+              as: "venue"
+            }
+          ]
+        },
+        { model: Discount, as: "discount" },
+        {
+          model: HolidayCamp,
+          as: "holidayCamp",
+          include: [{ model: HolidayCampDates, as: "holidayCampDates" }]
+        }
+      ]
+    });
+
+    if (!record) {
+      return { success: false, message: "Booking not found or access denied." };
+    }
+
+    let booking = record.toJSON();
+
+    // ---------------------------
+    // Parent extraction
+    // ---------------------------
+    const parentMap = {};
+    booking.students.forEach(st => {
+      (st.parents || []).forEach(p => { parentMap[p.id] = p; });
+      delete st.parents;
+    });
+    booking.parents = Object.values(parentMap);
+
+    // ---------------------------
+    // Emergency extraction
+    // ---------------------------
+    const emergencyMap = {};
+    booking.students.forEach(st => {
+      (st.emergencyContacts || []).forEach(ec => { emergencyMap[ec.id] = ec; });
+      delete st.emergencyContacts;
+    });
+    booking.emergencyContacts = Object.values(emergencyMap);
+
+    // ---------------------------
+    // Payment + Stripe details (fixed + consistent)
+    // ---------------------------
+    let paymentObj = null;
+
+    if (booking.payment) {
+      const stripeChargeId = booking.payment.stripe_payment_intent_id;
+      let stripeChargeDetails = null;
+
+      if (stripeChargeId) {
+        try {
+          const stripe = await stripePromise;
+
+          if (stripeChargeId.startsWith("pi_")) {
+            const paymentIntent = await stripe.paymentIntents.retrieve(
+              stripeChargeId,
+              { expand: ["latest_charge", "latest_charge.balance_transaction"] }
+            );
+
+            if (paymentIntent.latest_charge) {
+              stripeChargeDetails = paymentIntent.latest_charge;
+            }
+          } else if (stripeChargeId.startsWith("ch_")) {
+            stripeChargeDetails = await stripe.charges.retrieve(stripeChargeId, {
+              expand: ["balance_transaction"]
+            });
+          }
+        } catch (err) {
+          console.error("⚠️ Stripe details fetch failed:", err.message);
+        }
+      }
+
+      // Build clean payment object
+      paymentObj = {
+        base_amount: booking.payment.base_amount,
+        discount_amount: booking.payment.discount_amount,
+        amount: booking.payment.amount,
+        currency: booking.payment.currency,
+        payment_status: booking.payment.payment_status,
+        payment_date: booking.payment.payment_date,
+        failure_reason: booking.payment.failure_reason,
+        email: booking.payment.email,
+        billingAddress: booking.payment.billingAddress,
+
+        gatewayResponse: stripeChargeDetails
+          ? {
+            id: stripeChargeDetails.id,
+            amount: stripeChargeDetails.amount / 100,
+            currency: stripeChargeDetails.currency,
+            status: stripeChargeDetails.status,
+            paymentMethod:
+              stripeChargeDetails.payment_method_details?.card?.brand || null,
+            last4:
+              stripeChargeDetails.payment_method_details?.card?.last4 || null,
+            receiptUrl: stripeChargeDetails.receipt_url || null,
+            fullResponse: stripeChargeDetails
+          }
+          : null
+      };
+    }
+    return {
+      success: true,
+      message: "Holiday booking fetched successfully",
+
+      data: {
+        ...booking,
+        payment: paymentObj
+      },
+    };
+
+  } catch (error) {
+    console.error("❌ getBookingById service error:", error);
+    return { success: false, message: error.message };
+  }
+};
+
 exports.sendEmailToParents = async ({ bookingId }) => {
   try {
     // 1️⃣ Fetch booking
