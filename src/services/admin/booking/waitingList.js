@@ -953,11 +953,13 @@ exports.updateBookingStudents = async (
     }
 
     // 🔹 Update or create students, parents, emergency contacts
+    let adminSynced = false; // 🔐 ensure admin updated once
+
     for (const student of studentsPayload) {
       let studentRecord;
 
+      // 🔹 Student
       if (student.id) {
-        // Update existing student
         studentRecord = booking.students.find((s) => s.id === student.id);
         if (!studentRecord) continue;
 
@@ -975,20 +977,49 @@ exports.updateBookingStudents = async (
 
         await studentRecord.save({ transaction: t });
       } else {
-        // Create new student
         studentRecord = await BookingStudentMeta.create(
           { bookingId, ...student },
           { transaction: t }
         );
       }
 
-      // Parents
+      // 🔹 Parents
       if (Array.isArray(student.parents)) {
-        for (const parent of student.parents) {
+        for (let index = 0; index < student.parents.length; index++) {
+          const parent = student.parents[index];
+          const isFirstParent =
+            index === 0 && booking.parentAdminId && !adminSynced;
+
+          // 🔒 PRE-CHECK admin email uniqueness
+          if (isFirstParent && parent.parentEmail) {
+            const admin = await Admin.findByPk(booking.parentAdminId, {
+              transaction: t,
+              paranoid: false,
+            });
+
+            if (admin && parent.parentEmail !== admin.email) {
+              const emailExists = await Admin.findOne({
+                where: {
+                  email: parent.parentEmail,
+                  id: { [Op.ne]: admin.id },
+                },
+                transaction: t,
+                paranoid: false,
+              });
+
+              if (emailExists) {
+                throw new Error("This email is already in use");
+              }
+            }
+          }
+
+          // 🔹 Parent update / create
+          let parentRecord;
           if (parent.id) {
-            const parentRecord = studentRecord.parents?.find(
+            parentRecord = studentRecord.parents?.find(
               (p) => p.id === parent.id
             );
+
             if (parentRecord) {
               [
                 "parentFirstName",
@@ -1001,13 +1032,39 @@ exports.updateBookingStudents = async (
                 if (parent[field] !== undefined)
                   parentRecord[field] = parent[field];
               });
+
               await parentRecord.save({ transaction: t });
             }
           } else {
-            await BookingParentMeta.create(
+            parentRecord = await BookingParentMeta.create(
               { bookingStudentMetaId: studentRecord.id, ...parent },
               { transaction: t }
             );
+          }
+
+          // 🔹 Sync FIRST parent → Admin (once)
+          if (isFirstParent) {
+            const admin = await Admin.findByPk(booking.parentAdminId, {
+              transaction: t,
+              paranoid: false,
+            });
+
+            if (admin) {
+              if (parent.parentFirstName !== undefined)
+                admin.firstName = parent.parentFirstName;
+
+              if (parent.parentLastName !== undefined)
+                admin.lastName = parent.parentLastName;
+
+              if (parent.parentEmail !== undefined)
+                admin.email = parent.parentEmail;
+
+              if (parent.parentPhoneNumber !== undefined)
+                admin.phoneNumber = parent.parentPhoneNumber;
+
+              await admin.save({ transaction: t });
+              adminSynced = true;
+            }
           }
         }
       }
