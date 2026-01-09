@@ -69,8 +69,7 @@ function normalizeContractStartDate(requestedStartDate, matchedSchedule) {
         (scheduleStart.getTime() - requested.getTime()) / (1000 * 60 * 60 * 24)
       );
       throw new Error(
-        `Start date must be on or after ${
-          matchedSchedule.Start.split("T")[0]
+        `Start date must be on or after ${matchedSchedule.Start.split("T")[0]
         } (${diffScheduleDays} day(s) later)`
       );
     }
@@ -99,7 +98,6 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
   const t = await sequelize.transaction();
 
   try {
-    // 🔹 Fetch booking with related data
     const booking = await Booking.findOne({
       where: { id: bookingId },
       include: [
@@ -122,12 +120,13 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
 
     if (!booking) throw new Error("Booking not found");
 
-    // 🔹 Update students, parents, and emergency contacts
+    let adminSynced = false; // 🔐 ensure admin updates once per booking
+
     for (const student of studentsPayload) {
       let studentRecord;
 
+      // 🔹 Student update / create
       if (student.id) {
-        // Update existing student
         studentRecord = booking.students.find((s) => s.id === student.id);
         if (!studentRecord) continue;
 
@@ -139,25 +138,57 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
           "gender",
           "medicalInformation",
         ].forEach((field) => {
-          if (student[field] !== undefined)
+          if (student[field] !== undefined) {
             studentRecord[field] = student[field];
+          }
         });
+
         await studentRecord.save({ transaction: t });
       } else {
-        // Create new student
         studentRecord = await BookingStudentMeta.create(
           { bookingId, ...student },
           { transaction: t }
         );
       }
 
-      // Parents
+      // 🔹 Parents
       if (Array.isArray(student.parents)) {
-        for (const parent of student.parents) {
+        for (let index = 0; index < student.parents.length; index++) {
+          const parent = student.parents[index];
+          let parentRecord;
+
+          const isFirstParent =
+            index === 0 && booking.parentAdminId && !adminSynced;
+
+          // 🔒 PRE-CHECK email conflict BEFORE any update
+          if (isFirstParent && parent.parentEmail) {
+            const admin = await Admin.findByPk(booking.parentAdminId, {
+              transaction: t,
+              paranoid: false,
+            });
+
+            if (admin && parent.parentEmail !== admin.email) {
+              const emailExists = await Admin.findOne({
+                where: {
+                  email: parent.parentEmail,
+                  id: { [Op.ne]: admin.id },
+                },
+                transaction: t,
+                paranoid: false,
+              });
+
+              if (emailExists) {
+                throw new Error("This email is already in use");
+              }
+            }
+          }
+
+          // 🔹 Parent update / create (SAFE now)
           if (parent.id) {
-            const parentRecord = studentRecord.parents?.find(
+            parentRecord = studentRecord.parents?.find(
               (p) => p.id === parent.id
             );
+
             if (parentRecord) {
               [
                 "parentFirstName",
@@ -167,27 +198,56 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
                 "relationToChild",
                 "howDidYouHear",
               ].forEach((field) => {
-                if (parent[field] !== undefined)
+                if (parent[field] !== undefined) {
                   parentRecord[field] = parent[field];
+                }
               });
+
               await parentRecord.save({ transaction: t });
             }
           } else {
-            await BookingParentMeta.create(
+            parentRecord = await BookingParentMeta.create(
               { bookingStudentMetaId: studentRecord.id, ...parent },
               { transaction: t }
             );
           }
+
+          // 🔹 Sync FIRST parent → Admin (only once)
+          if (isFirstParent) {
+            const admin = await Admin.findByPk(booking.parentAdminId, {
+              transaction: t,
+              paranoid: false,
+            });
+
+            if (admin) {
+              if (parent.parentFirstName !== undefined)
+                admin.firstName = parent.parentFirstName;
+
+              if (parent.parentLastName !== undefined)
+                admin.lastName = parent.parentLastName;
+
+              if (parent.parentEmail !== undefined)
+                admin.email = parent.parentEmail;
+
+              if (parent.parentPhoneNumber !== undefined)
+                admin.phoneNumber = parent.parentPhoneNumber;
+
+              await admin.save({ transaction: t });
+              adminSynced = true;
+            }
+          }
         }
       }
 
-      // Emergency contacts
+      // 🔹 Emergency contacts
       if (Array.isArray(student.emergencyContacts)) {
         for (const emergency of student.emergencyContacts) {
           if (emergency.id) {
-            const emergencyRecord = studentRecord.emergencyContacts?.find(
-              (e) => e.id === emergency.id
-            );
+            const emergencyRecord =
+              studentRecord.emergencyContacts?.find(
+                (e) => e.id === emergency.id
+              );
+
             if (emergencyRecord) {
               [
                 "emergencyFirstName",
@@ -195,9 +255,11 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
                 "emergencyPhoneNumber",
                 "emergencyRelation",
               ].forEach((field) => {
-                if (emergency[field] !== undefined)
+                if (emergency[field] !== undefined) {
                   emergencyRecord[field] = emergency[field];
+                }
               });
+
               await emergencyRecord.save({ transaction: t });
             }
           } else {
@@ -212,53 +274,12 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
 
     await t.commit();
 
-    // 🔹 Prepare structured response
-    const students =
-      booking.students?.map((s) => ({
-        studentId: s.id,
-        studentFirstName: s.studentFirstName,
-        studentLastName: s.studentLastName,
-        dateOfBirth: s.dateOfBirth,
-        age: s.age,
-        gender: s.gender,
-        medicalInformation: s.medicalInformation,
-      })) || [];
-
-    const parents =
-      booking.students?.flatMap(
-        (s) =>
-          s.parents?.map((p) => ({
-            parentId: p.id,
-            parentFirstName: p.parentFirstName,
-            parentLastName: p.parentLastName,
-            parentEmail: p.parentEmail,
-            parentPhoneNumber: p.parentPhoneNumber,
-            relationToChild: p.relationToChild,
-            howDidYouHear: p.howDidYouHear,
-          })) || []
-      ) || [];
-
-    const emergencyContacts =
-      booking.students?.flatMap(
-        (s) =>
-          s.emergencyContacts?.map((e) => ({
-            emergencyId: e.id,
-            emergencyFirstName: e.emergencyFirstName,
-            emergencyLastName: e.emergencyLastName,
-            emergencyPhoneNumber: e.emergencyPhoneNumber,
-            emergencyRelation: e.emergencyRelation,
-          })) || []
-      ) || [];
-
     return {
       status: true,
       message: "Booking students updated successfully",
       data: {
         bookingId: booking.id,
         status: booking.status,
-        students,
-        parents,
-        emergencyContacts,
       },
     };
   } catch (error) {
@@ -565,28 +586,28 @@ exports.getBookingById = async (
 
     const termGroups = termGroupIds.length
       ? await TermGroup.findAll({
-          where: { id: termGroupIds, createdBy: creatorId },
-        })
+        where: { id: termGroupIds, createdBy: creatorId },
+      })
       : [];
 
     const terms = termGroupIds.length
       ? await Term.findAll({
-          where: {
-            termGroupId: { [Op.in]: termGroupIds },
-            createdBy: creatorId,
-          },
-          attributes: [
-            "id",
-            "termName",
-            "day",
-            "startDate",
-            "endDate",
-            "termGroupId",
-            "exclusionDates",
-            "totalSessions",
-            "sessionsMap",
-          ],
-        })
+        where: {
+          termGroupId: { [Op.in]: termGroupIds },
+          createdBy: creatorId,
+        },
+        attributes: [
+          "id",
+          "termName",
+          "day",
+          "startDate",
+          "endDate",
+          "termGroupId",
+          "exclusionDates",
+          "totalSessions",
+          "sessionsMap",
+        ],
+      })
       : [];
 
     // Parse the terms safely
@@ -1016,14 +1037,13 @@ exports.updateBooking = async (payload, adminId, id) => {
           if (!createCustomerRes.status)
             throw new Error(
               createCustomerRes.message ||
-                "Failed to create GoCardless customer."
+              "Failed to create GoCardless customer."
             );
 
           const billingRequestPayload = {
             customerId: createCustomerRes.customer.id,
-            description: `${venue?.name || "Venue"} - ${
-              classSchedule?.className || "Class"
-            }`,
+            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+              }`,
             amount: price,
             scheme: "faster_payments",
             currency: "GBP",
@@ -1043,7 +1063,7 @@ exports.updateBooking = async (payload, adminId, id) => {
             await removeCustomer(createCustomerRes.customer.id);
             throw new Error(
               createBillingRequestRes.message ||
-                "Failed to create billing request."
+              "Failed to create billing request."
             );
           }
         }
@@ -1062,9 +1082,8 @@ exports.updateBooking = async (payload, adminId, id) => {
             amount: paymentPlan.price,
             paymentStatus: paymentStatusFromGateway,
             merchantRef,
-            description: `${venue?.name || "Venue"} - ${
-              classSchedule?.className || "Class"
-            }`,
+            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+              }`,
           },
           { transaction: t }
         );
