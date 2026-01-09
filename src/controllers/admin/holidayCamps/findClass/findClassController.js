@@ -5,18 +5,10 @@ const {
   // getAllTermsForListing,
 } = require("../../../../services/admin/holidayCamps/findClass/findAClass");
 
-const ClassScheduleService = require("../../../../services/admin/holidayCamps/findClass/findAClass");
 const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "find-class";
-
-// ✅ Safe boolean parsing
-const parseBoolean = (value) => {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "string") return value.toLowerCase() === "true";
-  return false;
-};
 
 exports.findAHolidayClassListing = async (req, res) => {
   try {

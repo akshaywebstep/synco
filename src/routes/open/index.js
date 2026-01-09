@@ -18,4 +18,7 @@ router.use("/birthday-party", require("./booking/birthdayPartyBookingRoutes"));
 
 router.use("/one-to-one", require("./booking/oneToOneBookingRoutes"));
 
+// find a camp
+router.use("/find-a-camp", require("./holidayFindACamp/findACampRoutes"));
+
 module.exports = router;
