@@ -302,8 +302,9 @@ exports.getFranchiseRecruitmentLeadById = async (id, adminId) => {
       };
     }
 
+    // ✅ Fetch lead without restricting by createdBy
     const recruitmentLead = await RecruitmentLead.findOne({
-      where: { id }, // remove createdBy filter
+      where: { id, appliedFor: "franchise" }, // match franchise leads
       attributes: [
         "id",
         "firstName",
@@ -348,22 +349,26 @@ exports.getFranchiseRecruitmentLeadById = async (id, adminId) => {
           profile.bookPracticalAssessment
         );
 
-        for (let item of profile.bookPracticalAssessment) {
-          const venue = await Venue.findByPk(item.venueId);
-          const classInfo = await ClassSchedule.findByPk(item.classId);
+        // Fetch related venue, class, and admin details concurrently
+        profile.bookPracticalAssessment = await Promise.all(
+          profile.bookPracticalAssessment.map(async (item) => {
+            const [venue, classInfo, admin] = await Promise.all([
+              Venue.findByPk(item.venueId),
+              ClassSchedule.findByPk(item.classId),
+              item.assignToVenueManagerId
+                ? Admin.findByPk(item.assignToVenueManagerId, {
+                    attributes: ["id", "firstName", "lastName", "email"],
+                  })
+                : null,
+            ]);
 
-          item.venue = venue ? venue.toJSON() : null;
-          item.classDetails = classInfo ? classInfo.toJSON() : null;
-
-          if (item.assignToVenueManagerId) {
-            const admin = await Admin.findByPk(item.assignToVenueManagerId, {
-              attributes: ["id", "firstName", "lastName", "email"],
-            });
+            item.venue = venue ? venue.toJSON() : null;
+            item.classDetails = classInfo ? classInfo.toJSON() : null;
             item.venueManager = admin ? admin.toJSON() : null;
-          } else {
-            item.venueManager = null;
-          }
-        }
+
+            return item;
+          })
+        );
       } catch (err) {
         profile.bookPracticalAssessment = [];
       }
@@ -372,7 +377,7 @@ exports.getFranchiseRecruitmentLeadById = async (id, adminId) => {
     // Calculate telephone call score
     const telephoneCallScorePercentage = calculateTelephoneCallScore(profile);
 
-    // Return all attributes individually at top level
+    // Return all attributes individually at top level (same as getAll)
     return {
       status: true,
       message:
