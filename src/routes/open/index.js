@@ -18,11 +18,7 @@ router.use("/waiting-list", require("./booking/waitingListRoutes"));
 router.use("/book-membership", require("./booking/bookingMembershipRoutes"));
 
 // Preview Weekly Classes
-router.get(
-  "/booking-preview/:id",
-  openParam,
-  getBookingByIdForWebsitePreview
-);
+router.get("/booking-preview/:id", openParam, getBookingByIdForWebsitePreview);
 
 // Birthday Party Inqury Form
 router.use("/birthday-party", require("./booking/birthdayPartyBookingRoutes"));
@@ -34,6 +30,12 @@ router.use("/one-to-one", require("./booking/oneToOneBookingRoutes"));
 router.use("/find-a-camp", require("./holidayFindACamp/findACampRoutes"));
 
 // Holiday Booking
-router.use("/book-holiday-camp", require("./holidayFindACamp/holidayBookingRoutes"));
+router.use(
+  "/book-holiday-camp",
+  require("./holidayFindACamp/holidayBookingRoutes")
+);
+
+// Franchise
+router.use("/franchise", require("./franchise/franchiseRoutes"));
 
 module.exports = router;

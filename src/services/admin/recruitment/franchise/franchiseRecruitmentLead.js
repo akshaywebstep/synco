@@ -1,4 +1,10 @@
-const { RecruitmentLead, CandidateProfile, Venue, ClassSchedule, Admin } = require("../../../../models");
+const {
+  RecruitmentLead,
+  CandidateProfile,
+  Venue,
+  ClassSchedule,
+  Admin,
+} = require("../../../../models");
 
 const { getEmailConfig } = require("../../../email");
 const sendEmail = require("../../../../utils/email/sendEmail");
@@ -9,22 +15,116 @@ const { Op } = require("sequelize");
 exports.createRecruitmentFranchiseLead = async (data) => {
   try {
     data.status = "pending";
+
     if (process.env.DEBUG === "true") {
       console.log("▶️ Data passed to model:", data);
     }
 
+    // ----------------------------------
+    // 💾 CREATE LEAD
+    // ----------------------------------
     const recruitmentLead = await RecruitmentLead.create(data);
+    const lead = recruitmentLead.get({ plain: true });
 
+    // ----------------------------------
+    // 📧 SEND EMAIL (ALWAYS)
+    // ----------------------------------
+    try {
+      if (!lead.email) {
+        console.warn("⚠️ Email not found, skipping email send");
+      } else {
+        // 1️⃣ Load email template
+        const {
+          status: configStatus,
+          emailConfig,
+          htmlTemplate,
+          subject,
+        } = await emailModel.getEmailConfig("admin", "franchise-lead");
+
+        if (!configStatus || !htmlTemplate) {
+          console.warn(
+            "⚠️ Email template not configured for franchise creation"
+          );
+        } else {
+          // Build candidate full name
+          const candidateName = `${lead.firstName || ""} ${
+            lead.lastName || ""
+          }`.trim();
+
+          // Ensure applicationStatus fallback
+          const applicationStatus = lead.status || "Pending";
+
+          // 2️⃣ Build email body
+          const htmlBody = htmlTemplate
+            .replace(
+              /{{candidateName}}/g,
+              candidateName || "Franchise Applicant"
+            )
+            .replace(/{{email}}/g, lead.email)
+            .replace(/{{source}}/g, lead.source || "website")
+            .replace(/{{applicationStatus}}/g, applicationStatus)
+            .replace(/{{year}}/g, new Date().getFullYear().toString());
+
+          // 3️⃣ Send email
+          await sendEmail(emailConfig, {
+            recipient: [
+              {
+                name: candidateName || "Franchise Applicant",
+                email: lead.email,
+              },
+            ],
+            subject: subject || "Franchise Application Received",
+            htmlBody,
+          });
+
+          console.log(`📧 Franchise creation email sent to ${lead.email}`);
+        }
+      }
+    } catch (emailErr) {
+      // ❗ DO NOT FAIL CREATION IF EMAIL FAILS
+      console.error(
+        "❌ Error sending franchise creation email:",
+        emailErr.message
+      );
+    }
+
+    // ----------------------------------
+    // ✅ RETURN SUCCESS
+    // ----------------------------------
     return {
       status: true,
-      message: "Recruitment Lead Created Succesfully",
-      data: recruitmentLead.get({ plain: true })
+      message: "Recruitment Lead Created Successfully",
+      data: lead,
     };
   } catch (error) {
     console.error("❌ Error creating createRecruitmentFranchiseLead:", error);
-    return { status: false, message: error.message };
+
+    return {
+      status: false,
+      message: error.message,
+    };
   }
 };
+
+// exports.createRecruitmentFranchiseLead = async (data) => {
+//   try {
+//     data.status = "pending";
+//     if (process.env.DEBUG === "true") {
+//       console.log("▶️ Data passed to model:", data);
+//     }
+
+//     const recruitmentLead = await RecruitmentLead.create(data);
+
+//     return {
+//       status: true,
+//       message: "Recruitment Lead Created Succesfully",
+//       data: recruitmentLead.get({ plain: true }),
+//     };
+//   } catch (error) {
+//     console.error("❌ Error creating createRecruitmentFranchiseLead:", error);
+//     return { status: false, message: error.message };
+//   }
+// };
 
 function calculateTelephoneCallScore(profile) {
   if (!profile) return 0;
@@ -33,10 +133,10 @@ function calculateTelephoneCallScore(profile) {
     profile.telePhoneCallDeliveryCommunicationSkill,
     profile.telePhoneCallDeliveryPassionCoaching,
     profile.telePhoneCallDeliveryExperience,
-    profile.telePhoneCallDeliveryKnowledgeOfSSS
+    profile.telePhoneCallDeliveryKnowledgeOfSSS,
   ];
 
-  const validScores = scores.filter(s => typeof s === "number");
+  const validScores = scores.filter((s) => typeof s === "number");
 
   const maxScore = validScores.length * 5;
   const totalScore = validScores.reduce((a, b) => a + b, 0);
@@ -57,13 +157,14 @@ exports.getAllFranchiseRecruitmentLead = async (adminId) => {
 
     const recruitmentLead = await RecruitmentLead.findAll({
       where: {
-        createdBy: Number(adminId),
-        appliedFor: "franchise"  // ⭐ static filter added here
+        appliedFor: "franchise",
+        [Op.or]: [
+          { createdBy: Number(adminId) },
+          { createdBy: null }, // ✅ website leads
+        ],
       },
 
-      include: [
-        { model: CandidateProfile, as: "candidateProfile" }
-      ],
+      include: [{ model: CandidateProfile, as: "candidateProfile" }],
       order: [["createdAt", "DESC"]],
     });
 
@@ -75,7 +176,9 @@ exports.getAllFranchiseRecruitmentLead = async (adminId) => {
 
       if (profile?.bookPracticalAssessment) {
         try {
-          profile.bookPracticalAssessment = JSON.parse(profile.bookPracticalAssessment);
+          profile.bookPracticalAssessment = JSON.parse(
+            profile.bookPracticalAssessment
+          );
 
           for (let item of profile.bookPracticalAssessment) {
             // Fetch venue & class
@@ -96,7 +199,6 @@ exports.getAllFranchiseRecruitmentLead = async (adminId) => {
               item.venueManager = null;
             }
           }
-
         } catch (err) {
           profile.bookPracticalAssessment = [];
         }
@@ -110,7 +212,7 @@ exports.getAllFranchiseRecruitmentLead = async (adminId) => {
 
     // ✅ current year leads only (BASE)
     const currentYearLeads = recruitmentLead.filter(
-      lead => new Date(lead.createdAt).getFullYear() === currentYear
+      (lead) => new Date(lead.createdAt).getFullYear() === currentYear
     );
 
     // total franchise leads (current year)
@@ -118,7 +220,7 @@ exports.getAllFranchiseRecruitmentLead = async (adminId) => {
 
     // new franchise leads (current month + year)
     const totalNewFranchiseLeads = currentYearLeads.filter(
-      lead => new Date(lead.createdAt).getMonth() === currentMonth
+      (lead) => new Date(lead.createdAt).getMonth() === currentMonth
     ).length;
 
     // to assessments (same logic as report)
@@ -126,7 +228,11 @@ exports.getAllFranchiseRecruitmentLead = async (adminId) => {
       let booked = lead.candidateProfile?.bookPracticalAssessment;
 
       if (typeof booked === "string") {
-        try { booked = JSON.parse(booked); } catch { booked = []; }
+        try {
+          booked = JSON.parse(booked);
+        } catch {
+          booked = [];
+        }
       }
 
       return Array.isArray(booked) && booked.length > 0;
@@ -134,37 +240,50 @@ exports.getAllFranchiseRecruitmentLead = async (adminId) => {
 
     // leads to sales (recruited, current year)
     const totalLeadsToSales = currentYearLeads.filter(
-      lead => lead.status === "recruited"
+      (lead) => lead.status === "recruited"
     ).length;
 
     return {
       status: true,
-      message: "Recruitment Lead And Candidate Profile Data Fetched Succesfully",
+      message:
+        "Recruitment Lead And Candidate Profile Data Fetched Succesfully",
       totals: [
         {
           name: "totalFranchiseLeads",
           count: totalFranchiseLeads,
-          percent: totalFranchiseLeads > 0 ? "100%" : "0%"
+          percent: totalFranchiseLeads > 0 ? "100%" : "0%",
         },
         {
           name: "totalNewFranchiseLeads",
           count: totalNewFranchiseLeads,
-          percent: totalFranchiseLeads > 0 ? ((totalNewFranchiseLeads / totalFranchiseLeads) * 100).toFixed(2) + "%" : "0%"
+          percent:
+            totalFranchiseLeads > 0
+              ? ((totalNewFranchiseLeads / totalFranchiseLeads) * 100).toFixed(
+                  2
+                ) + "%"
+              : "0%",
         },
         {
           name: "totalToAssessments",
           count: totalToAssessments,
-          percent: totalFranchiseLeads > 0 ? ((totalToAssessments / totalFranchiseLeads) * 100).toFixed(2) + "%" : "0%"
+          percent:
+            totalFranchiseLeads > 0
+              ? ((totalToAssessments / totalFranchiseLeads) * 100).toFixed(2) +
+                "%"
+              : "0%",
         },
         {
           name: "totalLeadsToSales",
           count: totalLeadsToSales,
-          percent: totalFranchiseLeads > 0 ? ((totalLeadsToSales / totalFranchiseLeads) * 100).toFixed(2) + "%" : "0%"
-        }
+          percent:
+            totalFranchiseLeads > 0
+              ? ((totalLeadsToSales / totalFranchiseLeads) * 100).toFixed(2) +
+                "%"
+              : "0%",
+        },
       ],
-      data: formatted
+      data: formatted,
     };
-
   } catch (error) {
     return {
       status: false,
@@ -211,7 +330,11 @@ exports.getFranchiseRecruitmentLeadById = async (id, adminId) => {
     });
 
     if (!recruitmentLead) {
-      return { status: false, message: "recruitmentLead not found or unauthorized.", data: {} };
+      return {
+        status: false,
+        message: "recruitmentLead not found or unauthorized.",
+        data: {},
+      };
     }
 
     // Convert to JSON
@@ -221,7 +344,9 @@ exports.getFranchiseRecruitmentLeadById = async (id, adminId) => {
     // Parse bookPracticalAssessment if exists
     if (profile.bookPracticalAssessment) {
       try {
-        profile.bookPracticalAssessment = JSON.parse(profile.bookPracticalAssessment);
+        profile.bookPracticalAssessment = JSON.parse(
+          profile.bookPracticalAssessment
+        );
 
         for (let item of profile.bookPracticalAssessment) {
           const venue = await Venue.findByPk(item.venueId);
@@ -250,7 +375,8 @@ exports.getFranchiseRecruitmentLeadById = async (id, adminId) => {
     // Return all attributes individually at top level
     return {
       status: true,
-      message: "Recruitment Lead And Candidate Profile Data Fetched Succesfully",
+      message:
+        "Recruitment Lead And Candidate Profile Data Fetched Succesfully",
       data: {
         id: leadJson.id,
         firstName: leadJson.firstName,
@@ -310,7 +436,6 @@ exports.rejectFranchiseRecruitmentStatusById = async (id, adminId) => {
       message: "Recruitment lead status updated to rejected.",
       data: recruitmentLead.toJSON(),
     };
-
   } catch (error) {
     console.error("❌ rejectFranchiseRecruitmentStatusById Error:", error);
     return {
@@ -329,22 +454,42 @@ exports.sendEmail = async ({ recruitmentLeadId, admin }) => {
     });
 
     if (!lead) {
-      return { status: false, message: "Recruitment lead not found.", sentTo: [] };
+      return {
+        status: false,
+        message: "Recruitment lead not found.",
+        sentTo: [],
+      };
     }
 
     if (!lead.email) {
-      return { status: false, message: "Candidate email not found.", sentTo: [] };
+      return {
+        status: false,
+        message: "Candidate email not found.",
+        sentTo: [],
+      };
     }
 
-    const candidateName = `${lead.firstName || ""} ${lead.lastName || ""}`.trim();
-    const adminName = `${admin?.firstName || "Admin"} ${admin?.lastName || ""}`.trim();
+    const candidateName = `${lead.firstName || ""} ${
+      lead.lastName || ""
+    }`.trim();
+    const adminName = `${admin?.firstName || "Admin"} ${
+      admin?.lastName || ""
+    }`.trim();
 
     // 2️⃣ Load email template
-    const { status: configStatus, emailConfig, htmlTemplate, subject } =
-      await emailModel.getEmailConfig("admin", "candidate-profile-reject");
+    const {
+      status: configStatus,
+      emailConfig,
+      htmlTemplate,
+      subject,
+    } = await emailModel.getEmailConfig("admin", "candidate-profile-reject");
 
     if (!configStatus || !htmlTemplate) {
-      return { status: false, message: "Email template not configured.", sentTo: [] };
+      return {
+        status: false,
+        message: "Email template not configured.",
+        sentTo: [],
+      };
     }
 
     // 3️⃣ Prepare email body
@@ -362,10 +507,19 @@ exports.sendEmail = async ({ recruitmentLeadId, admin }) => {
       htmlBody,
     });
 
-    return { status: true, message: "Email sent successfully.", sentTo: [lead.email] };
+    return {
+      status: true,
+      message: "Email sent successfully.",
+      sentTo: [lead.email],
+    };
   } catch (err) {
     console.error("❌ RecruitmentLeadService.sendEmail Error:", err);
-    return { status: false, message: "Failed to send email.", error: err.message, sentTo: [] };
+    return {
+      status: false,
+      message: "Failed to send email.",
+      error: err.message,
+      sentTo: [],
+    };
   }
 };
 
@@ -378,22 +532,42 @@ exports.sendOfferEmail = async ({ recruitmentLeadId, admin }) => {
     });
 
     if (!lead) {
-      return { status: false, message: "Recruitment lead not found.", sentTo: [] };
+      return {
+        status: false,
+        message: "Recruitment lead not found.",
+        sentTo: [],
+      };
     }
 
     if (!lead.email) {
-      return { status: false, message: "Candidate email not found.", sentTo: [] };
+      return {
+        status: false,
+        message: "Candidate email not found.",
+        sentTo: [],
+      };
     }
 
-    const candidateName = `${lead.firstName || ""} ${lead.lastName || ""}`.trim();
-    const adminName = `${admin?.firstName || "Admin"} ${admin?.lastName || ""}`.trim();
+    const candidateName = `${lead.firstName || ""} ${
+      lead.lastName || ""
+    }`.trim();
+    const adminName = `${admin?.firstName || "Admin"} ${
+      admin?.lastName || ""
+    }`.trim();
 
     // 2️⃣ Load email template
-    const { status: configStatus, emailConfig, htmlTemplate, subject } =
-      await emailModel.getEmailConfig("admin", "candidate-profile-offer");
+    const {
+      status: configStatus,
+      emailConfig,
+      htmlTemplate,
+      subject,
+    } = await emailModel.getEmailConfig("admin", "candidate-profile-offer");
 
     if (!configStatus || !htmlTemplate) {
-      return { status: false, message: "Email template not configured.", sentTo: [] };
+      return {
+        status: false,
+        message: "Email template not configured.",
+        sentTo: [],
+      };
     }
 
     // 3️⃣ Prepare email body
@@ -411,10 +585,19 @@ exports.sendOfferEmail = async ({ recruitmentLeadId, admin }) => {
       htmlBody,
     });
 
-    return { status: true, message: "Email sent successfully.", sentTo: [lead.email] };
+    return {
+      status: true,
+      message: "Email sent successfully.",
+      sentTo: [lead.email],
+    };
   } catch (err) {
     console.error("❌ RecruitmentLeadService.sendEmail Error:", err);
-    return { status: false, message: "Failed to send email.", error: err.message, sentTo: [] };
+    return {
+      status: false,
+      message: "Failed to send email.",
+      error: err.message,
+      sentTo: [],
+    };
   }
 };
 
@@ -429,27 +612,48 @@ exports.getAllFranchiseRecruitmentLeadRport = async (adminId, dateRange) => {
     if (!dateRange) {
       startDate = moment().startOf("year").toDate();
       endDate = moment().endOf("year").toDate();
-      prevStartDate = moment(startDate).subtract(1, "year").startOf("day").toDate();
+      prevStartDate = moment(startDate)
+        .subtract(1, "year")
+        .startOf("day")
+        .toDate();
       prevEndDate = moment(endDate).subtract(1, "year").endOf("day").toDate();
     } else if (dateRange === "thisMonth") {
       startDate = moment().startOf("month").toDate();
       endDate = moment().endOf("month").toDate();
-      prevStartDate = moment(startDate).subtract(1, "month").startOf("month").toDate();
-      prevEndDate = moment(endDate).subtract(1, "month").endOf("month").toDate();
+      prevStartDate = moment(startDate)
+        .subtract(1, "month")
+        .startOf("month")
+        .toDate();
+      prevEndDate = moment(endDate)
+        .subtract(1, "month")
+        .endOf("month")
+        .toDate();
     } else if (dateRange === "lastMonth") {
       startDate = moment().subtract(1, "month").startOf("month").toDate();
       endDate = moment().subtract(1, "month").endOf("month").toDate();
-      prevStartDate = moment(startDate).subtract(1, "month").startOf("month").toDate();
-      prevEndDate = moment(endDate).subtract(1, "month").endOf("month").toDate();
+      prevStartDate = moment(startDate)
+        .subtract(1, "month")
+        .startOf("month")
+        .toDate();
+      prevEndDate = moment(endDate)
+        .subtract(1, "month")
+        .endOf("month")
+        .toDate();
     } else if (dateRange === "last3Months") {
       startDate = moment().subtract(3, "months").startOf("month").toDate();
       endDate = moment().endOf("month").toDate();
-      prevStartDate = moment(startDate).subtract(3, "months").startOf("month").toDate();
+      prevStartDate = moment(startDate)
+        .subtract(3, "months")
+        .startOf("month")
+        .toDate();
       prevEndDate = moment(startDate).subtract(1, "day").endOf("day").toDate();
     } else if (dateRange === "last6Months") {
       startDate = moment().subtract(6, "months").startOf("month").toDate();
       endDate = moment().endOf("month").toDate();
-      prevStartDate = moment(startDate).subtract(6, "months").startOf("month").toDate();
+      prevStartDate = moment(startDate)
+        .subtract(6, "months")
+        .startOf("month")
+        .toDate();
       prevEndDate = moment(startDate).subtract(1, "day").endOf("day").toDate();
     } else {
       throw new Error("Invalid dateRange");
@@ -467,7 +671,11 @@ exports.getAllFranchiseRecruitmentLeadRport = async (adminId, dateRange) => {
       },
       include: [
         { model: CandidateProfile, as: "candidateProfile" },
-        { model: Admin, as: "creator", attributes: ["id", "firstName", "lastName", "profile"] },
+        {
+          model: Admin,
+          as: "creator",
+          attributes: ["id", "firstName", "lastName", "profile"],
+        },
       ],
       order: [["createdAt", "DESC"]],
     });
@@ -476,22 +684,45 @@ exports.getAllFranchiseRecruitmentLeadRport = async (adminId, dateRange) => {
     const now = new Date();
     const CURRENT_YEAR = now.getFullYear();
     const LAST_YEAR = CURRENT_YEAR - 1;
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const monthNames = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
 
     const chartData = {
       leads: {
-        currentYear: Object.fromEntries(monthNames.map(m => [m, 0])),
-        lastYear: Object.fromEntries(monthNames.map(m => [m, 0]))
+        currentYear: Object.fromEntries(monthNames.map((m) => [m, 0])),
+        lastYear: Object.fromEntries(monthNames.map((m) => [m, 0])),
       },
       hires: {
-        currentYear: Object.fromEntries(monthNames.map(m => [m, 0])),
-        lastYear: Object.fromEntries(monthNames.map(m => [m, 0]))
-      }
+        currentYear: Object.fromEntries(monthNames.map((m) => [m, 0])),
+        lastYear: Object.fromEntries(monthNames.map((m) => [m, 0])),
+      },
     };
 
     const yearlyCounters = {
-      thisYear: { totalLeads: 0, discoveryCalls: 0, practicalAssessments: 0, hires: 0 },
-      lastYear: { totalLeads: 0, discoveryCalls: 0, practicalAssessments: 0, hires: 0 }
+      thisYear: {
+        totalLeads: 0,
+        discoveryCalls: 0,
+        practicalAssessments: 0,
+        hires: 0,
+      },
+      lastYear: {
+        totalLeads: 0,
+        discoveryCalls: 0,
+        practicalAssessments: 0,
+        hires: 0,
+      },
     };
 
     const yearlyDiscoverySet = { thisYear: new Set(), lastYear: new Set() };
@@ -503,9 +734,16 @@ exports.getAllFranchiseRecruitmentLeadRport = async (adminId, dateRange) => {
     const venueDemandCount = {};
     const leadSourceCount = {};
     const topAgentCount = {};
-    const qualificationStats = { faQualification: 0, dbsCertificate: 0, coachingExperience: 0, noExperience: 0 };
+    const qualificationStats = {
+      faQualification: 0,
+      dbsCertificate: 0,
+      coachingExperience: 0,
+      noExperience: 0,
+    };
 
-    let totalCallScore = 0, totalCallMax = 0, totalPracticalLeadsWithAssessment = 0;
+    let totalCallScore = 0,
+      totalCallMax = 0,
+      totalPracticalLeadsWithAssessment = 0;
 
     // ================= LOOP =================
     for (const lead of recruitmentLead) {
@@ -515,8 +753,10 @@ exports.getAllFranchiseRecruitmentLeadRport = async (adminId, dateRange) => {
 
       // ===== DETERMINE BUCKET =====
       let bucket = null;
-      if (created >= startDate && created <= endDate) bucket = yearlyCounters.thisYear;
-      else if (created >= prevStartDate && created <= prevEndDate) bucket = yearlyCounters.lastYear;
+      if (created >= startDate && created <= endDate)
+        bucket = yearlyCounters.thisYear;
+      else if (created >= prevStartDate && created <= prevEndDate)
+        bucket = yearlyCounters.lastYear;
       else continue;
 
       // ===== TOTAL LEADS =====
@@ -524,23 +764,41 @@ exports.getAllFranchiseRecruitmentLeadRport = async (adminId, dateRange) => {
 
       // ===== DISCOVERY CALLS =====
       let discovery = profile?.discoveryDay;
-      if (typeof discovery === "string") { try { discovery = JSON.parse(discovery); } catch { discovery = []; } }
-      if (lead.status !== "rejected" && Array.isArray(discovery) && discovery.length > 0) {
+      if (typeof discovery === "string") {
+        try {
+          discovery = JSON.parse(discovery);
+        } catch {
+          discovery = [];
+        }
+      }
+      if (
+        lead.status !== "rejected" &&
+        Array.isArray(discovery) &&
+        discovery.length > 0
+      ) {
         bucket.discoveryCalls++;
-        if (bucket === yearlyCounters.thisYear) yearlyDiscoverySet.thisYear.add(lead.id);
+        if (bucket === yearlyCounters.thisYear)
+          yearlyDiscoverySet.thisYear.add(lead.id);
         else yearlyDiscoverySet.lastYear.add(lead.id);
       }
 
       // ===== PRACTICAL ASSESSMENTS =====
       let practicalBooked = profile?.bookPracticalAssessment;
-      if (typeof practicalBooked === "string") { try { practicalBooked = JSON.parse(practicalBooked); } catch { practicalBooked = []; } }
+      if (typeof practicalBooked === "string") {
+        try {
+          practicalBooked = JSON.parse(practicalBooked);
+        } catch {
+          practicalBooked = [];
+        }
+      }
       if (Array.isArray(practicalBooked) && practicalBooked.length > 0) {
         bucket.practicalAssessments++;
         totalPracticalLeadsWithAssessment++;
         for (const b of practicalBooked) {
           if (b?.venueId) {
             venueCount[b.venueId] = (venueCount[b.venueId] || 0) + 1;
-            venueDemandCount[b.venueId] = (venueDemandCount[b.venueId] || 0) + 1;
+            venueDemandCount[b.venueId] =
+              (venueDemandCount[b.venueId] || 0) + 1;
           }
         }
       }
@@ -548,29 +806,33 @@ exports.getAllFranchiseRecruitmentLeadRport = async (adminId, dateRange) => {
       // ===== HIRES =====
       if (lead.status === "recruited") {
         bucket.hires++;
-        if (bucket === yearlyCounters.thisYear) yearlyHiredSet.thisYear.add(lead.id);
+        if (bucket === yearlyCounters.thisYear)
+          yearlyHiredSet.thisYear.add(lead.id);
         else yearlyHiredSet.lastYear.add(lead.id);
 
         // ===== TOP AGENTS =====
         if (lead.creator?.id) {
           const id = lead.creator.id;
-          if (!topAgentCount[id]) topAgentCount[id] = {
-            firstName: lead.creator.firstName || "",
-            lastName: lead.creator.lastName || "",
-            profile: lead.creator.profile || "",
-            totalHires: 0
-          };
+          if (!topAgentCount[id])
+            topAgentCount[id] = {
+              firstName: lead.creator.firstName || "",
+              lastName: lead.creator.lastName || "",
+              profile: lead.creator.profile || "",
+              totalHires: 0,
+            };
           topAgentCount[id].totalHires++;
         }
       }
 
       // ===== CHART DATA =====
       if (lead.status === "pending") {
-        if (bucket === yearlyCounters.thisYear) chartData.leads.currentYear[monthName]++;
+        if (bucket === yearlyCounters.thisYear)
+          chartData.leads.currentYear[monthName]++;
         else chartData.leads.lastYear[monthName]++;
       }
       if (lead.status === "recruited") {
-        if (bucket === yearlyCounters.thisYear) chartData.hires.currentYear[monthName]++;
+        if (bucket === yearlyCounters.thisYear)
+          chartData.hires.currentYear[monthName]++;
         else chartData.hires.lastYear[monthName]++;
       }
 
@@ -583,7 +845,8 @@ exports.getAllFranchiseRecruitmentLeadRport = async (adminId, dateRange) => {
       // ===== QUALIFICATIONS =====
       if (lead.level === "yes") qualificationStats.faQualification++;
       if (lead.dbs === "yes") qualificationStats.dbsCertificate++;
-      if (lead.managementExperience === "yes") qualificationStats.coachingExperience++;
+      if (lead.managementExperience === "yes")
+        qualificationStats.coachingExperience++;
       if (lead.managementExperience === "no") qualificationStats.noExperience++;
 
       // ===== CALL SCORES =====
@@ -592,8 +855,8 @@ exports.getAllFranchiseRecruitmentLeadRport = async (adminId, dateRange) => {
           profile.telePhoneCallDeliveryCommunicationSkill,
           profile.telePhoneCallDeliveryPassionCoaching,
           profile.telePhoneCallDeliveryExperience,
-          profile.telePhoneCallDeliveryKnowledgeOfSSS
-        ].filter(v => typeof v === "number");
+          profile.telePhoneCallDeliveryKnowledgeOfSSS,
+        ].filter((v) => typeof v === "number");
         if (skills.length) {
           totalCallScore += skills.reduce((a, b) => a + b, 0);
           totalCallMax += skills.length * 5;
@@ -608,25 +871,88 @@ exports.getAllFranchiseRecruitmentLeadRport = async (adminId, dateRange) => {
     // ================= NORMALIZE =================
     const normalizePercent = (items) => {
       const total = items.reduce((s, i) => s + i.count, 0);
-      return items.map(i => ({ ...i, percent: total > 0 ? Math.round((i.count / total) * 100) + "%" : "0%" }));
+      return items.map((i) => ({
+        ...i,
+        percent: total > 0 ? Math.round((i.count / total) * 100) + "%" : "0%",
+      }));
     };
 
-    const byAge = normalizePercent(Object.keys(ageCount).map(a => ({ age: +a, count: ageCount[a] })));
-    const byGender = normalizePercent(Object.keys(genderCount).map(g => ({ gender: g, count: genderCount[g] })));
-    const byLeadSource = normalizePercent(Object.keys(leadSourceCount).map(s => ({ source: s, count: leadSourceCount[s] })));
-    const topAgents = Object.values(topAgentCount).sort((a, b) => b.totalHires - a.totalHires);
+    const byAge = normalizePercent(
+      Object.keys(ageCount).map((a) => ({ age: +a, count: ageCount[a] }))
+    );
+    const byGender = normalizePercent(
+      Object.keys(genderCount).map((g) => ({
+        gender: g,
+        count: genderCount[g],
+      }))
+    );
+    const byLeadSource = normalizePercent(
+      Object.keys(leadSourceCount).map((s) => ({
+        source: s,
+        count: leadSourceCount[s],
+      }))
+    );
+    const topAgents = Object.values(topAgentCount).sort(
+      (a, b) => b.totalHires - a.totalHires
+    );
 
-    const totalCallGrade = totalCallMax ? Math.round((totalCallScore / totalCallMax) * 100) + "%" : "0%";
-    const totalPracticalGrade = totalPracticalLeadsWithAssessment ? Math.round((totalPracticalLeadsWithAssessment / yearlyCounters.thisYear.totalLeads) * 100) + "%" : "0%";
+    const totalCallGrade = totalCallMax
+      ? Math.round((totalCallScore / totalCallMax) * 100) + "%"
+      : "0%";
+    const totalPracticalGrade = totalPracticalLeadsWithAssessment
+      ? Math.round(
+          (totalPracticalLeadsWithAssessment /
+            yearlyCounters.thisYear.totalLeads) *
+            100
+        ) + "%"
+      : "0%";
 
-    const calcRate = (v, t) => t > 0 ? ((v / t) * 100).toFixed(0) + "%" : "0%";
+    const calcRate = (v, t) =>
+      t > 0 ? ((v / t) * 100).toFixed(0) + "%" : "0%";
 
     const report = {
-      totalLeads: { current: yearlyCounters.thisYear.totalLeads, previous: yearlyCounters.lastYear.totalLeads, conversionRate: calcRate(yearlyCounters.thisYear.totalLeads, yearlyCounters.lastYear.totalLeads) },
-      discoveryCalls: { current: yearlyCounters.thisYear.discoveryCalls, previous: yearlyCounters.lastYear.discoveryCalls, conversionRate: calcRate(yearlyDiscoverySet.thisYear.size, yearlyCounters.thisYear.totalLeads) },
-      practicalAssessments: { current: yearlyCounters.thisYear.practicalAssessments, previous: yearlyCounters.lastYear.practicalAssessments, conversionRate: calcRate(yearlyCounters.thisYear.practicalAssessments, yearlyDiscoverySet.thisYear.size) },
-      hires: { current: yearlyCounters.thisYear.hires, previous: yearlyCounters.lastYear.hires, conversionRate: calcRate(yearlyHiredSet.thisYear.size, yearlyDiscoverySet.thisYear.size) },
-      conversionRate: { current: calcRate(yearlyHiredSet.thisYear.size, yearlyCounters.thisYear.totalLeads), previous: calcRate(yearlyHiredSet.lastYear.size, yearlyCounters.lastYear.totalLeads) }
+      totalLeads: {
+        current: yearlyCounters.thisYear.totalLeads,
+        previous: yearlyCounters.lastYear.totalLeads,
+        conversionRate: calcRate(
+          yearlyCounters.thisYear.totalLeads,
+          yearlyCounters.lastYear.totalLeads
+        ),
+      },
+      discoveryCalls: {
+        current: yearlyCounters.thisYear.discoveryCalls,
+        previous: yearlyCounters.lastYear.discoveryCalls,
+        conversionRate: calcRate(
+          yearlyDiscoverySet.thisYear.size,
+          yearlyCounters.thisYear.totalLeads
+        ),
+      },
+      practicalAssessments: {
+        current: yearlyCounters.thisYear.practicalAssessments,
+        previous: yearlyCounters.lastYear.practicalAssessments,
+        conversionRate: calcRate(
+          yearlyCounters.thisYear.practicalAssessments,
+          yearlyDiscoverySet.thisYear.size
+        ),
+      },
+      hires: {
+        current: yearlyCounters.thisYear.hires,
+        previous: yearlyCounters.lastYear.hires,
+        conversionRate: calcRate(
+          yearlyHiredSet.thisYear.size,
+          yearlyDiscoverySet.thisYear.size
+        ),
+      },
+      conversionRate: {
+        current: calcRate(
+          yearlyHiredSet.thisYear.size,
+          yearlyCounters.thisYear.totalLeads
+        ),
+        previous: calcRate(
+          yearlyHiredSet.lastYear.size,
+          yearlyCounters.lastYear.totalLeads
+        ),
+      },
     };
 
     return {
@@ -637,12 +963,14 @@ exports.getAllFranchiseRecruitmentLeadRport = async (adminId, dateRange) => {
         chartData,
         franchise_demographics: { byAge, byGender },
         qualificationsAndExperience: qualificationStats,
-        onboardingResults: { averageCallGrade: totalCallGrade, averagePracticalAssessmentGrade: totalPracticalGrade },
+        onboardingResults: {
+          averageCallGrade: totalCallGrade,
+          averagePracticalAssessmentGrade: totalPracticalGrade,
+        },
         sourceOfLeads: byLeadSource,
-        topAgentsMostHires: topAgents
-      }
+        topAgentsMostHires: topAgents,
+      },
     };
-
   } catch (error) {
     return { status: false, message: error.message };
   }

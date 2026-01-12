@@ -2,7 +2,9 @@ const { validateFormData } = require("../../../../utils/validateFormData");
 const { logActivity } = require("../../../../utils/admin/activityLogger");
 
 const RecruitmentLeadService = require("../../../../services/admin/recruitment/franchise/franchiseRecruitmentLead");
-const { createNotification } = require("../../../../utils/admin/notificationHelper");
+const {
+  createNotification,
+} = require("../../../../utils/admin/notificationHelper");
 const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
 
 const DEBUG = process.env.DEBUG === "true";
@@ -10,46 +12,28 @@ const PANEL = "admin";
 const MODULE = "recruitment-franchise-lead";
 
 // ----------------------------------------
-// ✅ CREATE RECRUITMENT LEAD
+// ✅ CREATE RECRUITMENT / FRANCHISE LEAD
 // ----------------------------------------
 
 exports.createRecruitmentFranchiseLead = async (req, res) => {
   if (DEBUG) console.log("▶️ Incoming Request Body:", req.body);
 
-  const {
-    firstName,
-    lastName,
-    dob,
-    age,
-    gender,
-    email,
-    phoneNumber,
-    postcode,
-    managementExperience,
-    dbs,
-    level,
-  } = req.body;
+  const adminId = req.admin?.id || null;
+  const isAdminRequest = !!adminId;
 
-  const adminId = req.admin?.id;
-  if (DEBUG) console.log("▶️ Admin ID:", adminId);
+  if (DEBUG) {
+    console.log("▶️ Admin ID:", adminId);
+    console.log("▶️ Is Admin Request:", isAdminRequest);
+  }
 
-  // -------------------------------
-  // 🔍 Validate Input Fields
-  // -------------------------------
+  // ----------------------------------
+  // 🔍 Conditional Validation
+  // ----------------------------------
   const validation = validateFormData(req.body, {
-    requiredFields: [
-      "firstName",
-      "lastName",
-      "dob",
-      "email",
-      "managementExperience",
-      "dbs",
-      "level",
-      "gender",
-    ],
+    requiredFields: isAdminRequest
+      ? ["firstName", "lastName", "email"]
+      : ["firstName", "lastName", "email", "phoneNumber"],
   });
-
-  if (DEBUG) console.log("🔍 Validation Result:", validation);
 
   if (!validation.isValid) {
     await logActivity(req, PANEL, MODULE, "create", validation.error, false);
@@ -57,47 +41,68 @@ exports.createRecruitmentFranchiseLead = async (req, res) => {
   }
 
   try {
-    // -------------------------------
-    // 💾 Create Lead
-    // -------------------------------
-    if (DEBUG) console.log("💾 Creating Recruitment Lead…");
-
-    const result = await RecruitmentLeadService.createRecruitmentFranchiseLead({
-      firstName,
-      lastName,
-      dob,
-      age,
-      gender,
-      email,
-      phoneNumber,
-      postcode,
-      managementExperience,
-      dbs,
+    // ----------------------------------
+    // 🧠 Build Payload Dynamically
+    // ----------------------------------
+    const payload = {
+      firstName: req.body.firstName,
+      lastName: req.body.lastName,
+      email: req.body.email, // ✅ always required
+      phoneNumber: req.body.phoneNumber || null,
       status: "pending",
-      level,
-      createdBy: adminId,
       appliedFor: "franchise",
-    });
+      createdBy: isAdminRequest ? adminId : null,
+      source: isAdminRequest ? "admin" : "website", // ✅ SOURCE BADGE
+    };
+
+    // 🔹 Admin-confirmed extras
+    if (isAdminRequest) {
+      payload.dob = req.body.dob;
+      payload.age = req.body.age;
+      payload.gender = req.body.gender;
+      payload.postcode = req.body.postcode;
+      payload.managementExperience = req.body.managementExperience;
+      payload.dbs = req.body.dbs;
+      payload.level = req.body.level;
+    }
+
+    // ----------------------------------
+    // 🔹 Public Website (Franchise Enquiry)
+    // ----------------------------------
+    if (!isAdminRequest) {
+      payload.desiredFranchiseLocation = req.body.desiredFranchiseLocation;
+      payload.liquidCapital = req.body.liquidCapital;
+      payload.message = req.body.message;
+    }
+
+    if (DEBUG) console.log("💾 Final Payload:", payload);
+
+    // ----------------------------------
+    // 💾 Create Lead
+    // ----------------------------------
+    const result = await RecruitmentLeadService.createRecruitmentFranchiseLead(
+      payload
+    );
 
     if (DEBUG) console.log("💾 Create Service Result:", result);
 
-    // Log activity
     await logActivity(req, PANEL, MODULE, "create", result, result.status);
 
-    // -------------------------------
-    // 🔔 Create Notification
-    // -------------------------------
-    await createNotification(
-      req,
-      "Recruitment Lead Created",
-      `Recruitment Lead created by ${req?.admin?.firstName || "Admin"}.`,
-      "System"
-    );
+    // ----------------------------------
+    // 🔔 Notifications (Admin only)
+    // ----------------------------------
+    if (isAdminRequest) {
+      await createNotification(
+        req,
+        "Recruitment Lead Created",
+        `Recruitment Lead created by ${req?.admin?.firstName || "Admin"}.`,
+        "System"
+      );
+    }
 
     return res.status(result.status ? 201 : 500).json(result);
-
   } catch (error) {
-    console.error("❌ Error in createRecruitmentLead:", error);
+    console.error("❌ Error in createRecruitmentFranchiseLead:", error);
 
     await logActivity(
       req,
@@ -116,6 +121,103 @@ exports.createRecruitmentFranchiseLead = async (req, res) => {
   }
 };
 
+// ----------------------------------------
+// ✅ CREATE RECRUITMENT LEAD
+// ----------------------------------------
+
+// exports.createRecruitmentFranchiseLead = async (req, res) => {
+//   if (DEBUG) console.log("▶️ Incoming Request Body:", req.body);
+
+//   const {
+//     firstName,
+//     lastName,
+//     dob,
+//     age,
+//     gender,
+//     email,
+//     phoneNumber,
+//     postcode,
+//     managementExperience,
+//     dbs,
+//     level,
+//   } = req.body;
+
+//   const adminId = req.admin?.id;
+//   if (DEBUG) console.log("▶️ Admin ID:", adminId);
+
+//   // -------------------------------
+//   // 🔍 Validate Input Fields
+//   // -------------------------------
+//   const validation = validateFormData(req.body, {
+//     requiredFields: ["firstName", "lastName", "email"],
+//   });
+
+//   if (DEBUG) console.log("🔍 Validation Result:", validation);
+
+//   if (!validation.isValid) {
+//     await logActivity(req, PANEL, MODULE, "create", validation.error, false);
+//     return res.status(400).json({ status: false, ...validation });
+//   }
+
+//   try {
+//     // -------------------------------
+//     // 💾 Create Lead
+//     // -------------------------------
+//     if (DEBUG) console.log("💾 Creating Recruitment Lead…");
+
+//     const result = await RecruitmentLeadService.createRecruitmentFranchiseLead({
+//       firstName,
+//       lastName,
+//       dob,
+//       age,
+//       gender,
+//       email,
+//       phoneNumber,
+//       postcode,
+//       managementExperience,
+//       dbs,
+//       status: "pending",
+//       level,
+//       createdBy: adminId,
+//       appliedFor: "franchise",
+//     });
+
+//     if (DEBUG) console.log("💾 Create Service Result:", result);
+
+//     // Log activity
+//     await logActivity(req, PANEL, MODULE, "create", result, result.status);
+
+//     // -------------------------------
+//     // 🔔 Create Notification
+//     // -------------------------------
+//     await createNotification(
+//       req,
+//       "Recruitment Lead Created",
+//       `Recruitment Lead created by ${req?.admin?.firstName || "Admin"}.`,
+//       "System"
+//     );
+
+//     return res.status(result.status ? 201 : 500).json(result);
+//   } catch (error) {
+//     console.error("❌ Error in createRecruitmentLead:", error);
+
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "create",
+//       { oneLineMessage: error.message },
+//       false
+//     );
+
+//     return res.status(500).json({
+//       status: false,
+//       message: "Server error.",
+//       error: DEBUG ? error.message : undefined,
+//     });
+//   }
+// };
+
 exports.getAllFranchiseRecruitmentLead = async (req, res) => {
   const adminId = req.admin?.id;
 
@@ -129,7 +231,9 @@ exports.getAllFranchiseRecruitmentLead = async (req, res) => {
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
-    const result = await RecruitmentLeadService.getAllFranchiseRecruitmentLead(superAdminId,); // ✅ pass adminId
+    const result = await RecruitmentLeadService.getAllFranchiseRecruitmentLead(
+      superAdminId
+    ); // ✅ pass adminId
     await logActivity(req, PANEL, MODULE, "list", result, result.status);
     return res.status(result.status ? 200 : 500).json(result);
   } catch (error) {
@@ -164,7 +268,10 @@ exports.getFranchiseRecruitmentLeadById = async (req, res) => {
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
-    const result = await RecruitmentLeadService.getFranchiseRecruitmentLeadById(id, superAdminId); // ✅ pass adminId
+    const result = await RecruitmentLeadService.getFranchiseRecruitmentLeadById(
+      id,
+      superAdminId
+    ); // ✅ pass adminId
     await logActivity(req, PANEL, MODULE, "getById", result, result.status);
     return res.status(result.status ? 200 : 404).json(result);
   } catch (error) {
@@ -182,11 +289,13 @@ exports.getFranchiseRecruitmentLeadById = async (req, res) => {
 };
 
 exports.rejectFranchiseRecruitmentStatusById = async (req, res) => {
-  const { id } = req.params;  // recruitment lead id
+  const { id } = req.params; // recruitment lead id
   const adminId = req.admin?.id;
 
   if (!id) {
-    return res.status(400).json({ status: false, message: "Recruitment Lead ID is required." });
+    return res
+      .status(400)
+      .json({ status: false, message: "Recruitment Lead ID is required." });
   }
 
   if (!adminId) {
@@ -199,13 +308,16 @@ exports.rejectFranchiseRecruitmentStatusById = async (req, res) => {
     // -----------------------------------
     // 🔧 SERVICE CALL
     // -----------------------------------
-    const result = await RecruitmentLeadService.rejectFranchiseRecruitmentStatusById(id, adminId);
+    const result =
+      await RecruitmentLeadService.rejectFranchiseRecruitmentStatusById(
+        id,
+        adminId
+      );
 
     // Log Activity
     await logActivity(req, PANEL, MODULE, "reject", result, result.status);
 
     return res.status(result.status ? 200 : 400).json(result);
-
   } catch (error) {
     console.error("❌ Error in rejectRecruitmentLeadStatus:", error);
 
@@ -245,7 +357,9 @@ exports.sendEmail = async (req, res) => {
           PANEL,
           MODULE,
           "send",
-          { message: `Email attempt for recruitmentLeadId ${leadId}: ${result.message}` },
+          {
+            message: `Email attempt for recruitmentLeadId ${leadId}: ${result.message}`,
+          },
           result.status
         );
 
@@ -300,7 +414,9 @@ exports.sendOfferEmail = async (req, res) => {
           PANEL,
           MODULE,
           "send",
-          { message: `Email attempt for recruitmentLeadId ${leadId}: ${result.message}` },
+          {
+            message: `Email attempt for recruitmentLeadId ${leadId}: ${result.message}`,
+          },
           result.status
         );
 
@@ -360,10 +476,11 @@ exports.getAllFranchiseRecruitmentLeadRport = async (req, res) => {
     }
 
     // 📌 Service call
-    const result = await RecruitmentLeadService.getAllFranchiseRecruitmentLeadRport(
-      superAdminId,
-      dateRange
-    );
+    const result =
+      await RecruitmentLeadService.getAllFranchiseRecruitmentLeadRport(
+        superAdminId,
+        dateRange
+      );
 
     // 📝 Activity Log
     await logActivity(
@@ -376,7 +493,6 @@ exports.getAllFranchiseRecruitmentLeadRport = async (req, res) => {
     );
 
     return res.status(result.status ? 200 : 400).json(result);
-
   } catch (error) {
     console.error("❌ Controller Error getAllRecruitmentLeadRport:", error);
 
