@@ -292,6 +292,7 @@ exports.getAllFranchiseRecruitmentLead = async (adminId) => {
   }
 };
 
+// GET BY ID
 exports.getFranchiseRecruitmentLeadById = async (id, adminId) => {
   try {
     if (!adminId || isNaN(Number(adminId))) {
