@@ -14,7 +14,13 @@ const {
   getAllAdminsForReassign,
 } = require("../../controllers/admin/administration/adminPannel/adminController");
 
-const { getAllAgents } = require("../../controllers/admin/booking/bookFreeTrialController");
+const {
+  getAllAgents,
+} = require("../../controllers/admin/booking/bookFreeTrialController");
+
+const {
+  assignLeadToAgent,
+} = require("../../controllers/admin/recruitment/franchise/franchiseRecruitmentLeadController");
 
 const multer = require("multer");
 const upload = multer();
@@ -116,10 +122,22 @@ router.use("/one-to-one", require("./oneToOneRoutes/oneToOneLeadRoutes"));
 router.use("/one-to-one", require("./oneToOneRoutes/oneToOneBookingRoutes"));
 
 // birthday party base route
-router.use("/birthday-party", require("./birthdayPartyRoutes/sessionExerciseRoutes"));
-router.use("/birthday-party", require("./birthdayPartyRoutes/sessionPlanLibraryRoutes"));
-router.use("/birthday-party", require("./birthdayPartyRoutes/birthdayPartyLeadRoutes"));
-router.use("/birthday-party", require("./birthdayPartyRoutes/birthdayPartyBookingRoutes"));
+router.use(
+  "/birthday-party",
+  require("./birthdayPartyRoutes/sessionExerciseRoutes")
+);
+router.use(
+  "/birthday-party",
+  require("./birthdayPartyRoutes/sessionPlanLibraryRoutes")
+);
+router.use(
+  "/birthday-party",
+  require("./birthdayPartyRoutes/birthdayPartyLeadRoutes")
+);
+router.use(
+  "/birthday-party",
+  require("./birthdayPartyRoutes/birthdayPartyBookingRoutes")
+);
 
 const {
   listComments,
@@ -133,49 +151,109 @@ router.get(
   listComments
 );
 
-// Holiday camps 
+// Holiday camps
 // Session Plan Group Base Route
-router.use("/holiday/session-plan-group", require("./holidayCampsRoutes/holidaySessionPlanGroupRoutes"));
+router.use(
+  "/holiday/session-plan-group",
+  require("./holidayCampsRoutes/holidaySessionPlanGroupRoutes")
+);
 // Session Plan Exercise Base Route
-router.use("/holiday/session-plan-exercise", require("./holidayCampsRoutes/holidaySessionExerciseRoutes"));
+router.use(
+  "/holiday/session-plan-exercise",
+  require("./holidayCampsRoutes/holidaySessionExerciseRoutes")
+);
 
 // Term Group Base Route
 router.use("/holiday/camp", require("./holidayCampsRoutes/holidayCampRoutes"));
 // Term Base Route
-router.use("/holiday/campDate", require("./holidayCampsRoutes/holidayCampDateRoutes"));
+router.use(
+  "/holiday/campDate",
+  require("./holidayCampsRoutes/holidayCampDateRoutes")
+);
 
 // Term Group Base Route
-router.use("/holiday/payment-plan", require("./holidayCampsRoutes/holidayPaymentPlanRoutes"));
+router.use(
+  "/holiday/payment-plan",
+  require("./holidayCampsRoutes/holidayPaymentPlanRoutes")
+);
 // Term Base Route
-router.use("/holiday/payment-group", require("./holidayCampsRoutes/holidayPaymentGroupRoutes"));
+router.use(
+  "/holiday/payment-group",
+  require("./holidayCampsRoutes/holidayPaymentGroupRoutes")
+);
 
-router.use("/holiday/venue", require("./holidayCampsRoutes/holidayVenueRoutes"));
+router.use(
+  "/holiday/venue",
+  require("./holidayCampsRoutes/holidayVenueRoutes")
+);
 
-router.use("/holiday/class-schedule", require("./holidayCampsRoutes/holidayClassScheduleRoutes"));
-router.use("/holiday/cancel-session", require("./holidayCampsRoutes/holidayCancelSessionRoutes.js"));
+router.use(
+  "/holiday/class-schedule",
+  require("./holidayCampsRoutes/holidayClassScheduleRoutes")
+);
+router.use(
+  "/holiday/cancel-session",
+  require("./holidayCampsRoutes/holidayCancelSessionRoutes.js")
+);
 
-router.use("/holiday/find-class", require("./holidayCampsRoutes/holidayFindClassRoutes"));
+router.use(
+  "/holiday/find-class",
+  require("./holidayCampsRoutes/holidayFindClassRoutes")
+);
 
-router.use("/holiday/booking", require("./holidayCampsRoutes/holidayBookingRoutes"));
-router.use("/holiday/comment", require("./holidayCampsRoutes/holidayBookingComment"));
+router.use(
+  "/holiday/booking",
+  require("./holidayCampsRoutes/holidayBookingRoutes")
+);
+router.use(
+  "/holiday/comment",
+  require("./holidayCampsRoutes/holidayBookingComment")
+);
 
-router.use("/holiday/template-category", require("./templates/templateCategoryRoutes"));
-router.use("/holiday/custom-template", require("./templates/customTemplateRoute"));
+router.use(
+  "/holiday/template-category",
+  require("./templates/templateCategoryRoutes")
+);
+router.use(
+  "/holiday/custom-template",
+  require("./templates/customTemplateRoute")
+);
 router.use("/holiday/to-do-list", require("./administration/toDoRoutes"));
 
 router.use("/folder", require("./administration/folderRoutes"));
 router.use("/folder", require("./administration/filesRoutes"));
 
-router.use("/coach/recruitment", require("./recruitmentRoutes/coachRecruitmentRoutes"));
-router.use("/coach/candidate-profile", require("./recruitmentRoutes/coachCandidateProfileRoutes"));
+router.use(
+  "/coach/recruitment",
+  require("./recruitmentRoutes/coachRecruitmentRoutes")
+);
+router.use(
+  "/coach/candidate-profile",
+  require("./recruitmentRoutes/coachCandidateProfileRoutes")
+);
 
-router.use("/venue-manager/recruitment/", require("./recruitmentRoutes/vmRecruitmentRoutes"));
-router.use("/venue-manager/candidate-profile", require("./recruitmentRoutes/vmCandidateProfileRoutes"));
+router.use(
+  "/venue-manager/recruitment/",
+  require("./recruitmentRoutes/vmRecruitmentRoutes")
+);
+router.use(
+  "/venue-manager/candidate-profile",
+  require("./recruitmentRoutes/vmCandidateProfileRoutes")
+);
 
-router.use("/franchise/recruitment/", require("./recruitmentRoutes/franchiseRecruitmentRoutes"));
-router.use("/franchise/candidate-profile", require("./recruitmentRoutes/franchiseCandidateProfileRoutes"));
+router.use(
+  "/franchise/recruitment/",
+  require("./recruitmentRoutes/franchiseRecruitmentRoutes")
+);
+router.use(
+  "/franchise/candidate-profile",
+  require("./recruitmentRoutes/franchiseCandidateProfileRoutes")
+);
 
-router.use("/coach-profile/venue-allocate/", require("./coach/coachProfileRoutes"));
+router.use(
+  "/coach-profile/venue-allocate/",
+  require("./coach/coachProfileRoutes")
+);
 router.use("/music-player/", require("./coach/musicPlayerRoutes"));
 router.use("/course/", require("./coach/courseRoutes"));
 
@@ -190,6 +268,13 @@ router.get(
   authMiddleware,
   permissionMiddleware("member", "view-listing"),
   getAllAgents
+);
+
+router.put(
+  "/assign-franchise",
+  authMiddleware,
+  permissionMiddleware("recruitment-lead-franchise", "view-listing"),
+  assignLeadToAgent
 );
 router.post(
   "/",

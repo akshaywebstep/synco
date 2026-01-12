@@ -121,103 +121,6 @@ exports.createRecruitmentFranchiseLead = async (req, res) => {
   }
 };
 
-// ----------------------------------------
-// ✅ CREATE RECRUITMENT LEAD
-// ----------------------------------------
-
-// exports.createRecruitmentFranchiseLead = async (req, res) => {
-//   if (DEBUG) console.log("▶️ Incoming Request Body:", req.body);
-
-//   const {
-//     firstName,
-//     lastName,
-//     dob,
-//     age,
-//     gender,
-//     email,
-//     phoneNumber,
-//     postcode,
-//     managementExperience,
-//     dbs,
-//     level,
-//   } = req.body;
-
-//   const adminId = req.admin?.id;
-//   if (DEBUG) console.log("▶️ Admin ID:", adminId);
-
-//   // -------------------------------
-//   // 🔍 Validate Input Fields
-//   // -------------------------------
-//   const validation = validateFormData(req.body, {
-//     requiredFields: ["firstName", "lastName", "email"],
-//   });
-
-//   if (DEBUG) console.log("🔍 Validation Result:", validation);
-
-//   if (!validation.isValid) {
-//     await logActivity(req, PANEL, MODULE, "create", validation.error, false);
-//     return res.status(400).json({ status: false, ...validation });
-//   }
-
-//   try {
-//     // -------------------------------
-//     // 💾 Create Lead
-//     // -------------------------------
-//     if (DEBUG) console.log("💾 Creating Recruitment Lead…");
-
-//     const result = await RecruitmentLeadService.createRecruitmentFranchiseLead({
-//       firstName,
-//       lastName,
-//       dob,
-//       age,
-//       gender,
-//       email,
-//       phoneNumber,
-//       postcode,
-//       managementExperience,
-//       dbs,
-//       status: "pending",
-//       level,
-//       createdBy: adminId,
-//       appliedFor: "franchise",
-//     });
-
-//     if (DEBUG) console.log("💾 Create Service Result:", result);
-
-//     // Log activity
-//     await logActivity(req, PANEL, MODULE, "create", result, result.status);
-
-//     // -------------------------------
-//     // 🔔 Create Notification
-//     // -------------------------------
-//     await createNotification(
-//       req,
-//       "Recruitment Lead Created",
-//       `Recruitment Lead created by ${req?.admin?.firstName || "Admin"}.`,
-//       "System"
-//     );
-
-//     return res.status(result.status ? 201 : 500).json(result);
-//   } catch (error) {
-//     console.error("❌ Error in createRecruitmentLead:", error);
-
-//     await logActivity(
-//       req,
-//       PANEL,
-//       MODULE,
-//       "create",
-//       { oneLineMessage: error.message },
-//       false
-//     );
-
-//     return res.status(500).json({
-//       status: false,
-//       message: "Server error.",
-//       error: DEBUG ? error.message : undefined,
-//     });
-//   }
-// };
-
 exports.getAllFranchiseRecruitmentLead = async (req, res) => {
   const adminId = req.admin?.id;
 
@@ -247,6 +150,69 @@ exports.getAllFranchiseRecruitmentLead = async (req, res) => {
       false
     );
     return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
+
+// Assign Booking to Admin / Agent
+exports.assignLeadToAgent = async (req, res) => {
+  try {
+    const { leadIds, createdBy } = req.body;
+
+    // ✅ Validation
+    if (!Array.isArray(leadIds) || leadIds.length === 0) {
+      return res.status(400).json({
+        status: false,
+        message: "Lead IDs array is required.",
+      });
+    }
+
+    if (!createdBy || isNaN(Number(createdBy))) {
+      return res.status(400).json({
+        status: false,
+        message: "Valid agent ID is required.",
+      });
+    }
+
+    // ✅ Call service
+    const result = await RecruitmentLeadService.assignLeadToAgent({
+      leadIds,
+      createdBy,
+    });
+
+    // ❌ Service failed (e.g. already assigned)
+    if (!result.status) {
+      await logActivity(req, PANEL, MODULE, "update", result, false);
+      return res.status(400).json(result);
+    }
+
+    // ✅ Notification (success only)
+    await createNotification(
+      req,
+      "Franchise Lead Assigned",
+      `${leadIds.length} lead(s) assigned to agent successfully.`,
+      "System"
+    );
+
+    // ✅ Activity log (success)
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "update",
+      {
+        oneLineMessage: `Assigned ${leadIds.length} lead(s) to admin ${createdBy}`,
+      },
+      true
+    );
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("❌ Assign bookings controller error:", error);
+
+    return res.status(500).json({
+      status: false,
+      message: error.message || "Failed to assign bookings.",
+    });
   }
 };
 

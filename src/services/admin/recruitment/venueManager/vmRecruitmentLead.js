@@ -1,4 +1,11 @@
-const { RecruitmentLead, CandidateProfile, Venue, ClassSchedule, Admin } = require("../../../../models");
+const {
+  RecruitmentLead,
+  CandidateProfile,
+  Venue,
+  ClassSchedule,
+  Admin,
+  sequelize,
+} = require("../../../../models");
 
 const { getEmailConfig } = require("../../../../services/email");
 const sendEmail = require("../../../../utils/email/sendEmail");
@@ -18,11 +25,124 @@ exports.createRecruitmentVmLead = async (data) => {
     return {
       status: true,
       message: "Rcruitment Lead created Successfully",
-      data: recruitmentVmLead.get({ plain: true })
+      data: recruitmentVmLead.get({ plain: true }),
     };
   } catch (error) {
     console.error("❌ Error creating createRecruitmentVmLead:", error);
     return { status: false, message: error.message };
+  }
+};
+
+// COMBINED SERVICE LEAD AND CANDIDATE PROFILE
+exports.createLeadAndCandidate = async (leadData, candidateData) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    // ----------------------------------
+    // 1️⃣ CREATE RECRUITMENT LEAD
+    // ----------------------------------
+    leadData.status = "pending";
+
+    if (process.env.DEBUG === "true") {
+      console.log("▶️ Lead Data:", leadData);
+    }
+
+    const recruitmentLead = await RecruitmentLead.create(leadData, {
+      transaction,
+    });
+
+    const lead = recruitmentLead.get({ plain: true });
+
+    // ----------------------------------
+    // 2️⃣ SEND EMAIL (NON-BLOCKING)
+    // ----------------------------------
+    (async () => {
+      try {
+        if (!lead.email) return;
+
+        const {
+          status: configStatus,
+          emailConfig,
+          htmlTemplate,
+          subject,
+        } = await emailModel.getEmailConfig("admin", "vm-lead");
+
+        if (!configStatus || !htmlTemplate) return;
+
+        const candidateName = `${lead.firstName || ""} ${
+          lead.lastName || ""
+        }`.trim();
+
+        const htmlBody = htmlTemplate
+          .replace(
+            /{{candidateName}}/g,
+            candidateName || "Venue-Manager Applicant"
+          )
+          .replace(/{{email}}/g, lead.email)
+          .replace(/{{source}}/g, lead.source || "website")
+          .replace(/{{applicationStatus}}/g, "pending")
+          .replace(/{{year}}/g, new Date().getFullYear());
+
+        await sendEmail(emailConfig, {
+          recipient: [
+            {
+              name: candidateName || "Vm Applicant",
+              email: lead.email,
+            },
+          ],
+          subject: subject || "Vm Application Update",
+          htmlBody,
+        });
+
+        console.log(`📧 Vm email sent to ${lead.email}`);
+      } catch (err) {
+        console.error("❌ Email send failed:", err.message);
+      }
+    })();
+
+    // ----------------------------------
+    // 3️⃣ CREATE CANDIDATE PROFILE (MANDATORY)
+    // ----------------------------------
+    candidateData.recruitmentLeadId = lead.id;
+    candidateData.status = "pending";
+
+    const candidateProfile = await CandidateProfile.create(candidateData, {
+      transaction,
+    });
+
+    // ----------------------------------
+    // 4️⃣ UPDATE LEAD STATUS
+    // ----------------------------------
+    await RecruitmentLead.update(
+      { status: "pending" },
+      { where: { id: lead.id }, transaction }
+    );
+
+    // ----------------------------------
+    // 5️⃣ COMMIT TRANSACTION
+    // ----------------------------------
+    await transaction.commit();
+
+    return {
+      status: true,
+      message: "Recruitment Lead and Candidate created successfully",
+      data: {
+        lead: {
+          ...lead,
+          status: "pending",
+        },
+        candidateProfile: candidateProfile.get({ plain: true }),
+      },
+    };
+  } catch (error) {
+    await transaction.rollback();
+
+    console.error("❌ Error in createLeadAndCandidate:", error);
+
+    return {
+      status: false,
+      message: error.message,
+    };
   }
 };
 
@@ -33,10 +153,10 @@ function calculateTelephoneCallScore(profile) {
     profile.telePhoneCallDeliveryCommunicationSkill,
     profile.telePhoneCallDeliveryPassionCoaching,
     profile.telePhoneCallDeliveryExperience,
-    profile.telePhoneCallDeliveryKnowledgeOfSSS
+    profile.telePhoneCallDeliveryKnowledgeOfSSS,
   ];
 
-  const validScores = scores.filter(s => typeof s === "number");
+  const validScores = scores.filter((s) => typeof s === "number");
 
   const maxScore = validScores.length * 5;
   const totalScore = validScores.reduce((a, b) => a + b, 0);
@@ -57,13 +177,11 @@ exports.getAllVmRecruitmentLead = async (adminId) => {
 
     const recruitmentLead = await RecruitmentLead.findAll({
       where: {
-        createdBy: Number(adminId),
-        appliedFor: "venue manager"  // ⭐ static filter added here
+        // createdBy: Number(adminId),
+        appliedFor: "venue manager", // ⭐ static filter added here
       },
 
-      include: [
-        { model: CandidateProfile, as: "candidateProfile" }
-      ],
+      include: [{ model: CandidateProfile, as: "candidateProfile" }],
       order: [["createdAt", "DESC"]],
     });
 
@@ -80,25 +198,27 @@ exports.getAllVmRecruitmentLead = async (adminId) => {
 
           const venues = await Venue.findAll({
             where: {
-              id: venueIds
-            }
+              id: venueIds,
+            },
           });
 
           profile.availableVenueWork = {
             ids: venueIds,
-            venues: venues.map(v => v.toJSON())
+            venues: venues.map((v) => v.toJSON()),
           };
-
         } catch (err) {
           profile.availableVenueWork = {
             ids: [],
-            venues: []
+            venues: [],
           };
         }
       }
+
       if (profile?.bookPracticalAssessment) {
         try {
-          profile.bookPracticalAssessment = JSON.parse(profile.bookPracticalAssessment);
+          profile.bookPracticalAssessment = JSON.parse(
+            profile.bookPracticalAssessment
+          );
 
           for (let item of profile.bookPracticalAssessment) {
             // Fetch venue & class
@@ -119,7 +239,6 @@ exports.getAllVmRecruitmentLead = async (adminId) => {
               item.venueManager = null;
             }
           }
-
         } catch (err) {
           profile.bookPracticalAssessment = [];
         }
@@ -133,39 +252,37 @@ exports.getAllVmRecruitmentLead = async (adminId) => {
 
     // Leads for current year (for counts in totals)
     const currentYearLeads = recruitmentLead.filter(
-      lead => new Date(lead.createdAt).getFullYear() === currentYear
+      (lead) => new Date(lead.createdAt).getFullYear() === currentYear
     );
 
     // Leads for last year (for percentage calculation)
     const lastYearLeads = recruitmentLead.filter(
-      lead => new Date(lead.createdAt).getFullYear() === lastYear
+      (lead) => new Date(lead.createdAt).getFullYear() === lastYear
     );
 
     const totalApplicationsCurrentYear = currentYearLeads.filter(
-      lead => lead.candidateProfile !== null
+      (lead) => lead.candidateProfile !== null
     ).length;
 
     const totalNewApplicationsCurrentYear = currentYearLeads.filter(
-      lead =>
+      (lead) =>
         lead.candidateProfile !== null &&
         new Date(lead.createdAt).getMonth() === now.getMonth()
     ).length;
 
     const totalToAssessmentsCurrentYear = currentYearLeads.filter(
-      lead =>
+      (lead) =>
         lead.candidateProfile?.bookPracticalAssessment &&
         lead.candidateProfile.bookPracticalAssessment.length > 0
     ).length;
 
     const totalToRecruitmentCurrentYear = currentYearLeads.filter(
-      lead =>
-        lead.status === "recruited" &&
-        lead.candidateProfile !== null
+      (lead) => lead.status === "recruited" && lead.candidateProfile !== null
     ).length;
 
     // Percentages are calculated based on last year's totalApplications
     const totalApplicationsLastYear = lastYearLeads.filter(
-      lead => lead.candidateProfile !== null
+      (lead) => lead.candidateProfile !== null
     ).length;
 
     const calcPercent = (count) =>
@@ -180,25 +297,25 @@ exports.getAllVmRecruitmentLead = async (adminId) => {
         {
           name: "totalApplications",
           count: totalApplicationsCurrentYear,
-          percent: calcPercent(totalApplicationsCurrentYear)
+          percent: calcPercent(totalApplicationsCurrentYear),
         },
         {
           name: "totalNewApplications",
           count: totalNewApplicationsCurrentYear,
-          percent: calcPercent(totalNewApplicationsCurrentYear)
+          percent: calcPercent(totalNewApplicationsCurrentYear),
         },
         {
           name: "totalToAssessments",
           count: totalToAssessmentsCurrentYear,
-          percent: calcPercent(totalToAssessmentsCurrentYear)
+          percent: calcPercent(totalToAssessmentsCurrentYear),
         },
         {
           name: "totalToRecruitment",
           count: totalToRecruitmentCurrentYear,
-          percent: calcPercent(totalToRecruitmentCurrentYear)
-        }
+          percent: calcPercent(totalToRecruitmentCurrentYear),
+        },
       ],
-      data: formatted
+      data: formatted,
     };
   } catch (error) {
     return {
@@ -284,7 +401,7 @@ exports.getVmRecruitmentLeadById = async (id, adminId) => {
     }
 
     const recruitmentLead = await RecruitmentLead.findOne({
-      where: { id }, // remove createdBy filter
+      where: { id, appliedFor: "venue manager" }, // remove createdBy filter
       attributes: [
         "id",
         "firstName",
@@ -310,17 +427,61 @@ exports.getVmRecruitmentLeadById = async (id, adminId) => {
     });
 
     if (!recruitmentLead) {
-      return { status: false, message: "recruitmentLead not found or unauthorized.", data: {} };
+      return {
+        status: false,
+        message: "recruitmentLead not found or unauthorized.",
+        data: {},
+      };
     }
 
     // Convert to JSON
     const leadJson = recruitmentLead.toJSON();
     const profile = leadJson.candidateProfile || {};
 
+    // -------------------------------
+    // ✅ Format qualification
+    // -------------------------------
+    if (leadJson.qualification) {
+      try {
+        leadJson.qualification = Array.isArray(leadJson.qualification)
+          ? leadJson.qualification
+          : JSON.parse(leadJson.qualification);
+      } catch {
+        leadJson.qualification = [];
+      }
+    }
+
+    // -------------------------------
+    // ✅ Resolve availableVenues
+    // -------------------------------
+    if (leadJson.availableVenues) {
+      try {
+        const venueIds = Array.isArray(leadJson.availableVenues)
+          ? leadJson.availableVenues
+          : JSON.parse(leadJson.availableVenues);
+
+        const venues = await Venue.findAll({
+          where: { id: venueIds },
+        });
+
+        leadJson.availableVenues = {
+          ids: venueIds,
+          venues: venues.map((v) => v.toJSON()),
+        };
+      } catch {
+        leadJson.availableVenues = {
+          ids: [],
+          venues: [],
+        };
+      }
+    }
+
     // Parse bookPracticalAssessment if exists
     if (profile.bookPracticalAssessment) {
       try {
-        profile.bookPracticalAssessment = JSON.parse(profile.bookPracticalAssessment);
+        profile.bookPracticalAssessment = JSON.parse(
+          profile.bookPracticalAssessment
+        );
 
         for (let item of profile.bookPracticalAssessment) {
           const venue = await Venue.findByPk(item.venueId);
@@ -408,7 +569,6 @@ exports.rejectRecruitmentStatusById = async (id, adminId) => {
       message: "Recruitment lead status updated to rejected.",
       data: recruitmentLead.toJSON(),
     };
-
   } catch (error) {
     console.error("❌ rejectRecruitmentStatusById Error:", error);
     return {
@@ -427,22 +587,42 @@ exports.sendEmail = async ({ recruitmentLeadId, admin }) => {
     });
 
     if (!lead) {
-      return { status: false, message: "Recruitment lead not found.", sentTo: [] };
+      return {
+        status: false,
+        message: "Recruitment lead not found.",
+        sentTo: [],
+      };
     }
 
     if (!lead.email) {
-      return { status: false, message: "Candidate email not found.", sentTo: [] };
+      return {
+        status: false,
+        message: "Candidate email not found.",
+        sentTo: [],
+      };
     }
 
-    const candidateName = `${lead.firstName || ""} ${lead.lastName || ""}`.trim();
-    const adminName = `${admin?.firstName || "Admin"} ${admin?.lastName || ""}`.trim();
+    const candidateName = `${lead.firstName || ""} ${
+      lead.lastName || ""
+    }`.trim();
+    const adminName = `${admin?.firstName || "Admin"} ${
+      admin?.lastName || ""
+    }`.trim();
 
     // 2️⃣ Load email template
-    const { status: configStatus, emailConfig, htmlTemplate, subject } =
-      await emailModel.getEmailConfig("admin", "candidate-profile-reject");
+    const {
+      status: configStatus,
+      emailConfig,
+      htmlTemplate,
+      subject,
+    } = await emailModel.getEmailConfig("admin", "candidate-profile-reject");
 
     if (!configStatus || !htmlTemplate) {
-      return { status: false, message: "Email template not configured.", sentTo: [] };
+      return {
+        status: false,
+        message: "Email template not configured.",
+        sentTo: [],
+      };
     }
 
     // 3️⃣ Prepare email body
@@ -460,10 +640,19 @@ exports.sendEmail = async ({ recruitmentLeadId, admin }) => {
       htmlBody,
     });
 
-    return { status: true, message: "Email sent successfully.", sentTo: [lead.email] };
+    return {
+      status: true,
+      message: "Email sent successfully.",
+      sentTo: [lead.email],
+    };
   } catch (err) {
     console.error("❌ RecruitmentLeadService.sendEmail Error:", err);
-    return { status: false, message: "Failed to send email.", error: err.message, sentTo: [] };
+    return {
+      status: false,
+      message: "Failed to send email.",
+      error: err.message,
+      sentTo: [],
+    };
   }
 };
 
@@ -486,36 +675,46 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
 
       prevStartDate = moment(startDate).subtract(1, "year").toDate();
       prevEndDate = moment(endDate).subtract(1, "year").toDate();
-    }
-    else if (dateRange === "thisMonth") {
+    } else if (dateRange === "thisMonth") {
       startDate = moment().startOf("month").toDate();
       endDate = moment().endOf("month").toDate();
 
-      prevStartDate = moment(startDate).subtract(1, "month").startOf("month").toDate();
-      prevEndDate = moment(endDate).subtract(1, "month").endOf("month").toDate();
-    }
-    else if (dateRange === "lastMonth") {
+      prevStartDate = moment(startDate)
+        .subtract(1, "month")
+        .startOf("month")
+        .toDate();
+      prevEndDate = moment(endDate)
+        .subtract(1, "month")
+        .endOf("month")
+        .toDate();
+    } else if (dateRange === "lastMonth") {
       startDate = moment().subtract(1, "month").startOf("month").toDate();
       endDate = moment().subtract(1, "month").endOf("month").toDate();
 
-      prevStartDate = moment(startDate).subtract(1, "month").startOf("month").toDate();
+      prevStartDate = moment(startDate)
+        .subtract(1, "month")
+        .startOf("month")
+        .toDate();
       prevEndDate = moment(startDate).subtract(1, "day").endOf("day").toDate();
-    }
-    else if (dateRange === "last3Months") {
+    } else if (dateRange === "last3Months") {
       startDate = moment().subtract(3, "months").startOf("month").toDate();
       endDate = moment().endOf("month").toDate();
 
-      prevStartDate = moment(startDate).subtract(3, "months").startOf("month").toDate();
+      prevStartDate = moment(startDate)
+        .subtract(3, "months")
+        .startOf("month")
+        .toDate();
       prevEndDate = moment(startDate).subtract(1, "day").endOf("day").toDate();
-    }
-    else if (dateRange === "last6Months") {
+    } else if (dateRange === "last6Months") {
       startDate = moment().subtract(6, "months").startOf("month").toDate();
       endDate = moment().endOf("month").toDate();
 
-      prevStartDate = moment(startDate).subtract(6, "months").startOf("month").toDate();
+      prevStartDate = moment(startDate)
+        .subtract(6, "months")
+        .startOf("month")
+        .toDate();
       prevEndDate = moment(startDate).subtract(1, "day").endOf("day").toDate();
-    }
-    else {
+    } else {
       throw new Error("Invalid dateRange");
     }
 
@@ -530,7 +729,11 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
       },
       include: [
         { model: CandidateProfile, as: "candidateProfile" },
-        { model: Admin, as: "creator", attributes: ["id", "firstName", "lastName", "profile"] },
+        {
+          model: Admin,
+          as: "creator",
+          attributes: ["id", "firstName", "lastName", "profile"],
+        },
       ],
       order: [["createdAt", "DESC"]],
     });
@@ -539,23 +742,46 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
     const now = new Date();
     const CURRENT_YEAR = now.getFullYear();
 
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const monthNames = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
 
     const chartData = {
       leads: {
-        currentYear: Object.fromEntries(monthNames.map(m => [m, 0])),
-        lastYear: Object.fromEntries(monthNames.map(m => [m, 0]))
+        currentYear: Object.fromEntries(monthNames.map((m) => [m, 0])),
+        lastYear: Object.fromEntries(monthNames.map((m) => [m, 0])),
       },
       hires: {
-        currentYear: Object.fromEntries(monthNames.map(m => [m, 0])),
-        lastYear: Object.fromEntries(monthNames.map(m => [m, 0]))
-      }
+        currentYear: Object.fromEntries(monthNames.map((m) => [m, 0])),
+        lastYear: Object.fromEntries(monthNames.map((m) => [m, 0])),
+      },
     };
 
     // ===== SAME KEYS AS BEFORE =====
     const yearlyCounters = {
-      thisYear: { totalLeads: 0, telephoneCalls: 0, practicalAssessments: 0, hires: 0 },
-      lastYear: { totalLeads: 0, telephoneCalls: 0, practicalAssessments: 0, hires: 0 }
+      thisYear: {
+        totalLeads: 0,
+        telephoneCalls: 0,
+        practicalAssessments: 0,
+        hires: 0,
+      },
+      lastYear: {
+        totalLeads: 0,
+        telephoneCalls: 0,
+        practicalAssessments: 0,
+        hires: 0,
+      },
     };
 
     // ===== LEGACY COUNTS (NOT REMOVED) =====
@@ -563,7 +789,7 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
       faQualification: 0,
       dbsCertificate: 0,
       coachingExperience: 0,
-      noExperience: 0
+      noExperience: 0,
     };
 
     const ageCount = {};
@@ -579,9 +805,9 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
 
     const normalizePercent = (items) => {
       const total = items.reduce((s, i) => s + i.count, 0);
-      return items.map(i => ({
+      return items.map((i) => ({
         ...i,
-        percent: total > 0 ? ((i.count / total) * 100).toFixed(0) + "%" : "0%"
+        percent: total > 0 ? ((i.count / total) * 100).toFixed(0) + "%" : "0%",
       }));
     };
 
@@ -593,8 +819,10 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
       const profile = lead.candidateProfile;
 
       let bucket = null;
-      if (created >= startDate && created <= endDate) bucket = yearlyCounters.thisYear;
-      else if (created >= prevStartDate && created <= prevEndDate) bucket = yearlyCounters.lastYear;
+      if (created >= startDate && created <= endDate)
+        bucket = yearlyCounters.thisYear;
+      else if (created >= prevStartDate && created <= prevEndDate)
+        bucket = yearlyCounters.lastYear;
       else continue;
 
       // ===== LEGACY TOTAL LEADS LOGIC =====
@@ -608,7 +836,11 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
       // ===== LEGACY PRACTICAL / HIRES LOGIC =====
       let booked = profile?.bookPracticalAssessment;
       if (typeof booked === "string") {
-        try { booked = JSON.parse(booked); } catch { booked = []; }
+        try {
+          booked = JSON.parse(booked);
+        } catch {
+          booked = [];
+        }
       }
 
       if (lead.status === "recruited") {
@@ -621,12 +853,14 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
 
       // ===== CHART DATA (FIXED ONLY) =====
       if (lead.status === "pending") {
-        if (bucket === yearlyCounters.thisYear) chartData.leads.currentYear[monthName]++;
+        if (bucket === yearlyCounters.thisYear)
+          chartData.leads.currentYear[monthName]++;
         else chartData.leads.lastYear[monthName]++;
       }
 
       if (lead.status === "recruited") {
-        if (bucket === yearlyCounters.thisYear) chartData.hires.currentYear[monthName]++;
+        if (bucket === yearlyCounters.thisYear)
+          chartData.hires.currentYear[monthName]++;
         else chartData.hires.lastYear[monthName]++;
       }
 
@@ -639,7 +873,8 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
 
       if (lead.level === "yes") qualificationStats.faQualification++;
       if (lead.dbs === "yes") qualificationStats.dbsCertificate++;
-      if (lead.managementExperience === "yes") qualificationStats.coachingExperience++;
+      if (lead.managementExperience === "yes")
+        qualificationStats.coachingExperience++;
       else qualificationStats.noExperience++;
 
       if (profile) {
@@ -647,8 +882,8 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
           profile.telePhoneCallDeliveryCommunicationSkill,
           profile.telePhoneCallDeliveryPassionCoaching,
           profile.telePhoneCallDeliveryExperience,
-          profile.telePhoneCallDeliveryKnowledgeOfSSS
-        ].filter(s => typeof s === "number");
+          profile.telePhoneCallDeliveryKnowledgeOfSSS,
+        ].filter((s) => typeof s === "number");
 
         if (skills.length) {
           totalCallScore += skills.reduce((a, b) => a + b, 0);
@@ -663,7 +898,8 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
         for (const b of booked) {
           if (b?.venueId) {
             venueCount[b.venueId] = (venueCount[b.venueId] || 0) + 1;
-            venueDemandCount[b.venueId] = (venueDemandCount[b.venueId] || 0) + 1;
+            venueDemandCount[b.venueId] =
+              (venueDemandCount[b.venueId] || 0) + 1;
           }
         }
       }
@@ -683,84 +919,93 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
             firstName: lead.creator.firstName || "",
             lastName: lead.creator.lastName || "",
             profile: lead.creator.profile || "",
-            totalHires: 0
+            totalHires: 0,
           };
         }
 
         topAgentCount[agentId].totalHires++;
       }
-
     }
 
-    const calcRate = (v, t) => (t > 0 ? ((v / t) * 100).toFixed(0) + "%" : "0%");
+    const calcRate = (v, t) =>
+      t > 0 ? ((v / t) * 100).toFixed(0) + "%" : "0%";
     const totalLeadsCount = recruitmentLead.length || 1;
 
     // ---- Normalize leadSource percent with rounding fix to sum 100%
-    const totalCounted = Object.values(leadSourceCount).reduce((sum, val) => sum + val, 0);
+    const totalCounted = Object.values(leadSourceCount).reduce(
+      (sum, val) => sum + val,
+      0
+    );
 
     let runningPercents = 0;
 
-    const byLeadSource = Object.keys(leadSourceCount).map((source, index, arr) => {
-      const count = leadSourceCount[source];
+    const byLeadSource = Object.keys(leadSourceCount).map(
+      (source, index, arr) => {
+        const count = leadSourceCount[source];
 
-      if (index < arr.length - 1) {
-        const percentNum = Math.round((count / totalCounted) * 100);
-        runningPercents += percentNum;
-        return {
-          source,
-          count,
-          percent: percentNum + "%"
-        };
-      } else {
-        const percentNum = 100 - runningPercents;
-        return {
-          source,
-          count,
-          percent: percentNum + "%"
-        };
+        if (index < arr.length - 1) {
+          const percentNum = Math.round((count / totalCounted) * 100);
+          runningPercents += percentNum;
+          return {
+            source,
+            count,
+            percent: percentNum + "%",
+          };
+        } else {
+          const percentNum = 100 - runningPercents;
+          return {
+            source,
+            count,
+            percent: percentNum + "%",
+          };
+        }
       }
-    });
+    );
 
     // ---- Other normalized percentages
     const byAge = normalizePercent(
-      Object.keys(ageCount).map(age => ({
+      Object.keys(ageCount).map((age) => ({
         age: Number(age),
-        count: ageCount[age]
+        count: ageCount[age],
       }))
     );
 
     const byGender = normalizePercent(
-      Object.keys(genderCount).map(g => ({
+      Object.keys(genderCount).map((g) => ({
         gender: g,
-        count: genderCount[g]
+        count: genderCount[g],
       }))
     );
 
     const venues = await Venue.findAll();
 
     const byVenue = normalizePercent(
-      Object.keys(venueCount).map(id => {
-        const venue = venues.find(v => v.id == id);
+      Object.keys(venueCount).map((id) => {
+        const venue = venues.find((v) => v.id == id);
         return {
           venueName: venue ? venue.name : "Unknown",
-          count: venueCount[id]
+          count: venueCount[id],
         };
       })
     );
 
-    const averageCallGrade = totalCallMax ? Math.round((totalCallScore / totalCallMax) * 100) : 0;
+    const averageCallGrade = totalCallMax
+      ? Math.round((totalCallScore / totalCallMax) * 100)
+      : 0;
     const averageCoachEducationPassMark = averageCallGrade;
     const averagePracticalGrade = recruitmentLead.length
-      ? Math.round((totalPracticalLeadsWithAssessment / recruitmentLead.length) * 100)
+      ? Math.round(
+          (totalPracticalLeadsWithAssessment / recruitmentLead.length) * 100
+        )
       : 0;
 
     const topAgents = Object.keys(topAgentCount)
-      .map(id => ({
+      .map((id) => ({
         agentId: Number(id),
         firstName: topAgentCount[id].firstName,
         lastName: topAgentCount[id].lastName,
         profile: topAgentCount[id].profile,
-        totalHires: topAgentCount[id].totalHires
+        totalHires: topAgentCount[id].totalHires,
       }))
       .sort((a, b) => b.totalHires - a.totalHires);
 
@@ -771,7 +1016,7 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
         conversionRate: calcRate(
           yearlyCounters.thisYear.totalLeads,
           yearlyCounters.thisYear.totalLeads
-        )
+        ),
       },
       videoCallInterviews: {
         current: yearlyCounters.thisYear.telephoneCalls,
@@ -779,7 +1024,7 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
         conversionRate: calcRate(
           yearlyCounters.thisYear.telephoneCalls,
           yearlyCounters.thisYear.totalLeads
-        )
+        ),
       },
       practicalAssessments: {
         current: yearlyCounters.thisYear.practicalAssessments,
@@ -787,7 +1032,7 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
         conversionRate: calcRate(
           yearlyCounters.thisYear.practicalAssessments,
           yearlyCounters.thisYear.totalLeads
-        )
+        ),
       },
       hires: {
         current: yearlyCounters.thisYear.hires,
@@ -795,7 +1040,7 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
         conversionRate: calcRate(
           yearlyCounters.thisYear.hires,
           yearlyCounters.thisYear.totalLeads
-        )
+        ),
       },
       conversionRate: {
         current: calcRate(
@@ -805,8 +1050,8 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
         previous: calcRate(
           yearlyCounters.lastYear.hires,
           yearlyCounters.lastYear.totalLeads
-        )
-      }
+        ),
+      },
     };
 
     return {
@@ -818,28 +1063,27 @@ exports.getAllVmRecruitmentLeadRport = async (adminId, dateRange) => {
         coaches_demographics: {
           byAge,
           byGender,
-          byVenue
+          byVenue,
         },
         qualificationsAndExperince: {
           faQualification: qualificationStats.faQualification,
           dbsCertificate: qualificationStats.dbsCertificate,
           coachingExperience: qualificationStats.coachingExperience,
-          noExperience: qualificationStats.noExperience
+          noExperience: qualificationStats.noExperience,
         },
         onboardingResults: {
           averageCallGrade: averageCallGrade + "%",
           averagePracticalAssessmentGrade: averagePracticalGrade + "%",
-          averageCoachEducationPassMark: averageCoachEducationPassMark + "%"
+          averageCoachEducationPassMark: averageCoachEducationPassMark + "%",
         },
         sourceOfLeads: byLeadSource,
-        topAgentsMostHires: topAgents
-      }
+        topAgentsMostHires: topAgents,
+      },
     };
-
   } catch (error) {
     return {
       status: false,
-      message: "Fetch recruitmentLead failed. " + error.message
+      message: "Fetch recruitmentLead failed. " + error.message,
     };
   }
 };

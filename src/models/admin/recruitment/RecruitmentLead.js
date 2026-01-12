@@ -41,6 +41,19 @@ const RecruitmentLead = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
     },
+    availableVenues: {
+      type: DataTypes.JSON,
+      allowNull: true,
+    },
+    qualification: {
+      type: DataTypes.JSON,
+      allowNull: true,
+    },
+    // 🔹 SECTION 3
+    heardFrom: {
+      type: DataTypes.ENUM("indeed", "facebook", "google", "referral", "other"),
+      allowNull: true,
+    },
 
     dbs: {
       type: DataTypes.ENUM("yes", "no"),

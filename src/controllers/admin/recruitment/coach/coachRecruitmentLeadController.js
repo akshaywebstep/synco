@@ -2,7 +2,9 @@ const { validateFormData } = require("../../../../utils/validateFormData");
 const { logActivity } = require("../../../../utils/admin/activityLogger");
 
 const RecruitmentLeadService = require("../../../../services/admin/recruitment/coach/coachRecruitmentLead");
-const { createNotification } = require("../../../../utils/admin/notificationHelper");
+const {
+  createNotification,
+} = require("../../../../utils/admin/notificationHelper");
 const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
 
 const DEBUG = process.env.DEBUG === "true";
@@ -12,26 +14,11 @@ const MODULE = "recruitment-lead";
 // ----------------------------------------
 // ✅ CREATE RECRUITMENT LEAD
 // ----------------------------------------
-
 exports.createRecruitmentLead = async (req, res) => {
   if (DEBUG) console.log("▶️ Incoming Request Body:", req.body);
 
-  const {
-    firstName,
-    lastName,
-    dob,
-    age,
-    gender,
-    email,
-    phoneNumber,
-    postcode,
-    managementExperience,
-    dbs,
-    level,
-  } = req.body;
-
-  const adminId = req.admin?.id;
-  if (DEBUG) console.log("▶️ Admin ID:", adminId);
+  const adminId = req.admin?.id || null;
+  const isAdminRequest = Boolean(adminId);
 
   // -------------------------------
   // 🔍 Validate Input Fields
@@ -42,14 +29,13 @@ exports.createRecruitmentLead = async (req, res) => {
       "lastName",
       "dob",
       "email",
-      "managementExperience",
-      "dbs",
-      "level",
       "gender",
+      "managementExperience",
+      "qualification",
+      "availableVenues",
+      "heardFrom",
     ],
   });
-
-  if (DEBUG) console.log("🔍 Validation Result:", validation);
 
   if (!validation.isValid) {
     await logActivity(req, PANEL, MODULE, "create", validation.error, false);
@@ -58,44 +44,54 @@ exports.createRecruitmentLead = async (req, res) => {
 
   try {
     // -------------------------------
+    // 💾 Build Payload
+    // -------------------------------
+    const payload = {
+      firstName: req.body.firstName,
+      lastName: req.body.lastName,
+      dob: req.body.dob,
+      age: req.body.age || null,
+      gender: req.body.gender,
+      email: req.body.email,
+      phoneNumber: req.body.phoneNumber || null,
+      postcode: req.body.postcode || null,
+      managementExperience: req.body.managementExperience,
+      qualification: req.body.qualification, // JSON / array
+      availableVenues: req.body.availableVenues, // JSON / array
+      heardFrom: req.body.heardFrom,
+      status: "pending",
+      appliedFor: "coach",
+      message: req.body.message || null,
+      // 🔐 SOURCE LOGIC (IMPORTANT)
+      createdBy: isAdminRequest ? adminId : null,
+      source: isAdminRequest ? "admin" : "website",
+    };
+
+    // -------------------------------
     // 💾 Create Lead
     // -------------------------------
-    if (DEBUG) console.log("💾 Creating Recruitment Lead…");
-
-    const result = await RecruitmentLeadService.createRecruitmentLead({
-      firstName,
-      lastName,
-      dob,
-      age,
-      email,
-      phoneNumber,
-      postcode,
-      managementExperience,
-      dbs,
-      gender,
-      status: "pending",
-      level,
-      createdBy: adminId,
-      appliedFor: "coach",
-    });
+    const result = await RecruitmentLeadService.createRecruitmentLead(payload);
 
     if (DEBUG) console.log("💾 Create Service Result:", result);
 
-    // Log activity
+    // -------------------------------
+    // 📝 Log Activity
+    // -------------------------------
     await logActivity(req, PANEL, MODULE, "create", result, result.status);
 
     // -------------------------------
-    // 🔔 Create Notification
+    // 🔔 Notification
     // -------------------------------
-    await createNotification(
-      req,
-      "Recruitment Lead Created",
-      `Recruitment Lead created by ${req?.admin?.firstName || "Admin"}.`,
-      "System"
-    );
+    if (isAdminRequest) {
+      await createNotification(
+        req,
+        "Recruitment Lead Created",
+        `Recruitment Lead created by ${req.admin.firstName}.`,
+        "System"
+      );
+    }
 
-    return res.status(result.status ? 201 : 500).json(result);
-
+    return res.status(201).json(result);
   } catch (error) {
     console.error("❌ Error in createRecruitmentLead:", error);
 
@@ -116,6 +112,190 @@ exports.createRecruitmentLead = async (req, res) => {
   }
 };
 
+exports.createWebsiteCoachLead = async (req, res) => {
+  if (DEBUG) console.log("▶️ Website Lead Request:", req.body);
+
+  // ----------------------------------
+  // 🔍 VALIDATE LEAD INPUT
+  // ----------------------------------
+  const validation = validateFormData(req.body.lead, {
+    requiredFields: [
+      "firstName",
+      "lastName",
+      "dob",
+      "email",
+      "phoneNumber",
+      "postcode",
+    ],
+  });
+
+  if (!validation.isValid) {
+    return res.status(400).json({ status: false, ...validation });
+  }
+
+  try {
+    // ----------------------------------
+    // 📦 BUILD LEAD PAYLOAD (WEBSITE)
+    // ----------------------------------
+    const leadPayload = {
+      firstName: req.body.lead.firstName,
+      lastName: req.body.lead.lastName,
+      dob: req.body.lead.dob,
+      email: req.body.lead.email,
+      phoneNumber: req.body.lead.phoneNumber || null,
+      postcode: req.body.lead.postcode || null,
+      qualification: req.body.lead.qualification || null,
+      // 🔒 WEBSITE FIXED VALUES
+      status: "pending",
+      appliedFor: "coach",
+      source: "website",
+      createdBy: null,
+    };
+
+    // ----------------------------------
+    // 📦 BUILD CANDIDATE PAYLOAD
+    // ----------------------------------
+    const candidatePayload = {
+      howDidYouHear: req.body.candidate.howDidYouHear,
+      ageGroupExperience: req.body.candidate.ageGroupExperience,
+      accessToOwnVehicle: req.body.candidate.accessToOwnVehicle,
+      whichQualificationYouHave: req.body.candidate.whichQualificationYouHave,
+      footballExperience: req.body.candidate.footballExperience,
+      availableVenueWork: req.body.candidate.availableVenueWork,
+      uploadCv: req.body.candidate.uploadCv,
+      coverNote: req.body.candidate.coverNote,
+    };
+
+    // ----------------------------------
+    // 🚀 CALL WEBSITE SERVICE
+    // ----------------------------------
+    const result = await RecruitmentLeadService.createLeadAndCandidate(
+      leadPayload,
+      candidatePayload
+    );
+
+    return res.status(201).json(result);
+  } catch (error) {
+    console.error("❌ Website lead error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Server error.",
+      error: DEBUG ? error.message : undefined,
+    });
+  }
+};
+
+// exports.createRecruitmentLead = async (req, res) => {
+//   if (DEBUG) console.log("▶️ Incoming Request Body:", req.body);
+
+//   const {
+//     firstName,
+//     lastName,
+//     dob,
+//     age,
+//     gender,
+//     email,
+//     phoneNumber,
+//     postcode,
+//     managementExperience,
+//     qualification,
+//     availableVenues,
+//     heardFrom,
+//     // dbs,
+//     // level,
+//   } = req.body;
+
+//   const adminId = req.admin?.id;
+//   if (DEBUG) console.log("▶️ Admin ID:", adminId);
+
+//   // -------------------------------
+//   // 🔍 Validate Input Fields
+//   // -------------------------------
+//   const validation = validateFormData(req.body, {
+//     requiredFields: [
+//       "firstName",
+//       "lastName",
+//       "dob",
+//       "email",
+//       "managementExperience",
+//       // "dbs",
+//       // "level",
+//       "gender",
+//       "qualification",
+//       "availableVenues",
+//       "heardFrom",
+//     ],
+//   });
+
+//   if (DEBUG) console.log("🔍 Validation Result:", validation);
+
+//   if (!validation.isValid) {
+//     await logActivity(req, PANEL, MODULE, "create", validation.error, false);
+//     return res.status(400).json({ status: false, ...validation });
+//   }
+
+//   try {
+//     // -------------------------------
+//     // 💾 Create Lead
+//     // -------------------------------
+//     if (DEBUG) console.log("💾 Creating Recruitment Lead…");
+
+//     const result = await RecruitmentLeadService.createRecruitmentLead({
+//       firstName,
+//       lastName,
+//       dob,
+//       age,
+//       email,
+//       phoneNumber,
+//       postcode,
+//       managementExperience,
+//       // dbs,
+//       // level,
+//       qualification,
+//       availableVenues,
+//       heardFrom,
+//       gender,
+//       status: "pending",
+//       createdBy: adminId,
+//       appliedFor: "coach",
+//     });
+
+//     if (DEBUG) console.log("💾 Create Service Result:", result);
+
+//     // Log activity
+//     await logActivity(req, PANEL, MODULE, "create", result, result.status);
+
+//     // -------------------------------
+//     // 🔔 Create Notification
+//     // -------------------------------
+//     await createNotification(
+//       req,
+//       "Recruitment Lead Created",
+//       `Recruitment Lead created by ${req?.admin?.firstName || "Admin"}.`,
+//       "System"
+//     );
+
+//     return res.status(result.status ? 201 : 500).json(result);
+//   } catch (error) {
+//     console.error("❌ Error in createRecruitmentLead:", error);
+
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "create",
+//       { oneLineMessage: error.message },
+//       false
+//     );
+
+//     return res.status(500).json({
+//       status: false,
+//       message: "Server error.",
+//       error: DEBUG ? error.message : undefined,
+//     });
+//   }
+// };
+
 exports.getAllRecruitmentLead = async (req, res) => {
   const adminId = req.admin?.id;
 
@@ -129,7 +309,9 @@ exports.getAllRecruitmentLead = async (req, res) => {
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
-    const result = await RecruitmentLeadService.getAllRecruitmentLead(superAdminId,); // ✅ pass adminId
+    const result = await RecruitmentLeadService.getAllRecruitmentLead(
+      superAdminId
+    ); // ✅ pass adminId
     await logActivity(req, PANEL, MODULE, "list", result, result.status);
     return res.status(result.status ? 200 : 500).json(result);
   } catch (error) {
@@ -164,7 +346,10 @@ exports.getRecruitmentLeadById = async (req, res) => {
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
-    const result = await RecruitmentLeadService.getRecruitmentLeadById(id, superAdminId); // ✅ pass adminId
+    const result = await RecruitmentLeadService.getRecruitmentLeadById(
+      id,
+      superAdminId
+    ); // ✅ pass adminId
     await logActivity(req, PANEL, MODULE, "getById", result, result.status);
     return res.status(result.status ? 200 : 404).json(result);
   } catch (error) {
@@ -182,11 +367,13 @@ exports.getRecruitmentLeadById = async (req, res) => {
 };
 
 exports.rejectRecruitmentLeadStatus = async (req, res) => {
-  const { id } = req.params;  // recruitment lead id
+  const { id } = req.params; // recruitment lead id
   const adminId = req.admin?.id;
 
   if (!id) {
-    return res.status(400).json({ status: false, message: "Recruitment Lead ID is required." });
+    return res
+      .status(400)
+      .json({ status: false, message: "Recruitment Lead ID is required." });
   }
 
   if (!adminId) {
@@ -199,13 +386,15 @@ exports.rejectRecruitmentLeadStatus = async (req, res) => {
     // -----------------------------------
     // 🔧 SERVICE CALL
     // -----------------------------------
-    const result = await RecruitmentLeadService.rejectRecruitmentStatusById(id, adminId);
+    const result = await RecruitmentLeadService.rejectRecruitmentStatusById(
+      id,
+      adminId
+    );
 
     // Log Activity
     await logActivity(req, PANEL, MODULE, "reject", result, result.status);
 
     return res.status(result.status ? 200 : 400).json(result);
-
   } catch (error) {
     console.error("❌ Error in rejectRecruitmentLeadStatus:", error);
 
@@ -245,7 +434,9 @@ exports.sendEmail = async (req, res) => {
           PANEL,
           MODULE,
           "send",
-          { message: `Email attempt for recruitmentLeadId ${leadId}: ${result.message}` },
+          {
+            message: `Email attempt for recruitmentLeadId ${leadId}: ${result.message}`,
+          },
           result.status
         );
 
@@ -283,7 +474,7 @@ exports.getAllRecruitmentLeadRport = async (req, res) => {
 
     // 👉 accept ?dateRange=thisMonth | lastMonth | last3Months | last6Months
     const { dateRange } = req.query;
-   
+
     if (!adminId) {
       return res.status(401).json({
         status: false,
@@ -305,7 +496,7 @@ exports.getAllRecruitmentLeadRport = async (req, res) => {
     // 📌 Call service with dateRange
     const result = await RecruitmentLeadService.getAllRecruitmentLeadRport(
       superAdminId,
-      dateRange     // 👈 replaced filterType
+      dateRange // 👈 replaced filterType
     );
 
     // 📝 Activity log
@@ -319,7 +510,6 @@ exports.getAllRecruitmentLeadRport = async (req, res) => {
     );
 
     return res.status(result.status ? 200 : 400).json(result);
-
   } catch (error) {
     console.error("❌ Controller Error getAllRecruitmentLeadRport:", error);
 
@@ -352,7 +542,9 @@ exports.getAllCoachAndVmRecruitmentLead = async (req, res) => {
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
-    const result = await RecruitmentLeadService.getAllCoachAndVmRecruitmentLead(superAdminId,); // ✅ pass adminId
+    const result = await RecruitmentLeadService.getAllCoachAndVmRecruitmentLead(
+      superAdminId
+    ); // ✅ pass adminId
     await logActivity(req, PANEL, MODULE, "list", result, result.status);
     return res.status(result.status ? 200 : 500).json(result);
   } catch (error) {
@@ -410,10 +602,13 @@ exports.getAllVenueManager = async (req, res) => {
   try {
     // const loggedInAdminId = req.admin?.id; // Get the current admin's ID
 
-    const result = await RecruitmentLeadService.getAllVenueManager(superAdminId); // Pass it to the service
+    const result = await RecruitmentLeadService.getAllVenueManager(
+      superAdminId
+    ); // Pass it to the service
 
     if (!result.status) {
-      if (DEBUG) console.log("❌ Failed to retrieve venue manager:", result.message);
+      if (DEBUG)
+        console.log("❌ Failed to retrieve venue manager:", result.message);
 
       await logActivity(req, PANEL, MODULE, "list", result, false);
       return res.status(500).json({

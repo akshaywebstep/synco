@@ -1,4 +1,12 @@
-const { RecruitmentLead, CandidateProfile, Venue, ClassSchedule, Admin, AdminRole } = require("../../../../models");
+const {
+  RecruitmentLead,
+  CandidateProfile,
+  Venue,
+  ClassSchedule,
+  Admin,
+  AdminRole,
+  sequelize,
+} = require("../../../../models");
 
 const { getEmailConfig } = require("../../../../services/email");
 const sendEmail = require("../../../../utils/email/sendEmail");
@@ -13,16 +21,185 @@ exports.createRecruitmentLead = async (data) => {
       console.log("▶️ Data passed to model:", data);
     }
 
+    // ----------------------------------
+    // 💾 CREATE LEAD
+    // ----------------------------------
     const recruitmentLead = await RecruitmentLead.create(data);
+    const lead = recruitmentLead.get({ plain: true });
 
+    // ----------------------------------
+    // 📧 SEND EMAIL (ALWAYS)
+    // ----------------------------------
+    try {
+      if (!lead.email) {
+        console.warn("⚠️ Email not found, skipping email send");
+      } else {
+        // 1️⃣ Load email template
+        const {
+          status: configStatus,
+          emailConfig,
+          htmlTemplate,
+          subject,
+        } = await emailModel.getEmailConfig("admin", "coach-lead");
+
+        if (!configStatus || !htmlTemplate) {
+          console.warn(
+            "⚠️ Email template not configured for coach lead creation"
+          );
+        } else {
+          // Build candidate full name
+          const candidateName = `${lead.firstName || ""} ${
+            lead.lastName || ""
+          }`.trim();
+
+          // Ensure applicationStatus fallback
+          const applicationStatus = lead.status || "Pending";
+
+          // 2️⃣ Build email body
+          const htmlBody = htmlTemplate
+            .replace(/{{candidateName}}/g, candidateName || "Coach Applicant")
+            .replace(/{{email}}/g, lead.email)
+            .replace(/{{source}}/g, lead.source || "website")
+            .replace(/{{applicationStatus}}/g, applicationStatus)
+            .replace(/{{year}}/g, new Date().getFullYear().toString());
+
+          // 3️⃣ Send email
+          await sendEmail(emailConfig, {
+            recipient: [
+              {
+                name: candidateName || "Coach Applicant",
+                email: lead.email,
+              },
+            ],
+            subject: subject || "Coach Application Received",
+            htmlBody,
+          });
+
+          console.log(`📧 Coach creation email sent to ${lead.email}`);
+        }
+      }
+    } catch (emailErr) {
+      // ❗ DO NOT FAIL CREATION IF EMAIL FAILS
+      console.error("❌ Error sending coach creation email:", emailErr.message);
+    }
     return {
       status: true,
       message: "Recuitment Lead Created Succesfully",
-      data: recruitmentLead.get({ plain: true })
+      data: recruitmentLead.get({ plain: true }),
     };
   } catch (error) {
     console.error("❌ Error creating recruitmentLead:", error);
     return { status: false, message: error.message };
+  }
+};
+
+// COMBINED SERVICE LEAD AND CANDIDATE PROFILE
+exports.createLeadAndCandidate = async (leadData, candidateData) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    // ----------------------------------
+    // 1️⃣ CREATE RECRUITMENT LEAD
+    // ----------------------------------
+    leadData.status = "pending";
+
+    if (process.env.DEBUG === "true") {
+      console.log("▶️ Lead Data:", leadData);
+    }
+
+    const recruitmentLead = await RecruitmentLead.create(leadData, {
+      transaction,
+    });
+
+    const lead = recruitmentLead.get({ plain: true });
+
+    // ----------------------------------
+    // 2️⃣ SEND EMAIL (NON-BLOCKING)
+    // ----------------------------------
+    (async () => {
+      try {
+        if (!lead.email) return;
+
+        const {
+          status: configStatus,
+          emailConfig,
+          htmlTemplate,
+          subject,
+        } = await emailModel.getEmailConfig("admin", "coach-lead");
+
+        if (!configStatus || !htmlTemplate) return;
+
+        const candidateName = `${lead.firstName || ""} ${
+          lead.lastName || ""
+        }`.trim();
+
+        const htmlBody = htmlTemplate
+          .replace(/{{candidateName}}/g, candidateName || "Coach Applicant")
+          .replace(/{{email}}/g, lead.email)
+          .replace(/{{source}}/g, lead.source || "website")
+          .replace(/{{applicationStatus}}/g, "pending")
+          .replace(/{{year}}/g, new Date().getFullYear());
+
+        await sendEmail(emailConfig, {
+          recipient: [
+            {
+              name: candidateName || "Coach Applicant",
+              email: lead.email,
+            },
+          ],
+          subject: subject || "Coach Application Update",
+          htmlBody,
+        });
+
+        console.log(`📧 Coach email sent to ${lead.email}`);
+      } catch (err) {
+        console.error("❌ Email send failed:", err.message);
+      }
+    })();
+
+    // ----------------------------------
+    // 3️⃣ CREATE CANDIDATE PROFILE (MANDATORY)
+    // ----------------------------------
+    candidateData.recruitmentLeadId = lead.id;
+    candidateData.status = "pending";
+
+    const candidateProfile = await CandidateProfile.create(candidateData, {
+      transaction,
+    });
+
+    // ----------------------------------
+    // 4️⃣ UPDATE LEAD STATUS
+    // ----------------------------------
+    await RecruitmentLead.update(
+      { status: "pending" },
+      { where: { id: lead.id }, transaction }
+    );
+
+    // ----------------------------------
+    // 5️⃣ COMMIT TRANSACTION
+    // ----------------------------------
+    await transaction.commit();
+
+    return {
+      status: true,
+      message: "Recruitment Lead and Candidate created successfully",
+      data: {
+        lead: {
+          ...lead,
+          status: "pending",
+        },
+        candidateProfile: candidateProfile.get({ plain: true }),
+      },
+    };
+  } catch (error) {
+    await transaction.rollback();
+
+    console.error("❌ Error in createLeadAndCandidate:", error);
+
+    return {
+      status: false,
+      message: error.message,
+    };
   }
 };
 
@@ -33,10 +210,10 @@ function calculateTelephoneCallScore(profile) {
     profile.telePhoneCallDeliveryCommunicationSkill,
     profile.telePhoneCallDeliveryPassionCoaching,
     profile.telePhoneCallDeliveryExperience,
-    profile.telePhoneCallDeliveryKnowledgeOfSSS
+    profile.telePhoneCallDeliveryKnowledgeOfSSS,
   ];
 
-  const validScores = scores.filter(s => typeof s === "number");
+  const validScores = scores.filter((s) => typeof s === "number");
 
   const maxScore = validScores.length * 5;
   const totalScore = validScores.reduce((a, b) => a + b, 0);
@@ -57,13 +234,15 @@ exports.getAllRecruitmentLead = async (adminId) => {
 
     const recruitmentLead = await RecruitmentLead.findAll({
       where: {
-        createdBy: Number(adminId),
-        appliedFor: "coach"  // ⭐ static filter added here
+        // createdBy: Number(adminId),
+        appliedFor: "coach", // ⭐ static filter added here
+        [Op.or]: [
+          { createdBy: Number(adminId) },
+          { createdBy: null }, // ✅ website leads
+        ],
       },
 
-      include: [
-        { model: CandidateProfile, as: "candidateProfile" }
-      ],
+      include: [{ model: CandidateProfile, as: "candidateProfile" }],
       order: [["createdAt", "DESC"]],
     });
 
@@ -80,26 +259,27 @@ exports.getAllRecruitmentLead = async (adminId) => {
 
           const venues = await Venue.findAll({
             where: {
-              id: venueIds
-            }
+              id: venueIds,
+            },
           });
 
           profile.availableVenueWork = {
             ids: venueIds,
-            venues: venues.map(v => v.toJSON())
+            venues: venues.map((v) => v.toJSON()),
           };
-
         } catch (err) {
           profile.availableVenueWork = {
             ids: [],
-            venues: []
+            venues: [],
           };
         }
       }
 
       if (profile?.bookPracticalAssessment) {
         try {
-          profile.bookPracticalAssessment = JSON.parse(profile.bookPracticalAssessment);
+          profile.bookPracticalAssessment = JSON.parse(
+            profile.bookPracticalAssessment
+          );
 
           for (let item of profile.bookPracticalAssessment) {
             // Fetch venue & class
@@ -120,9 +300,46 @@ exports.getAllRecruitmentLead = async (adminId) => {
               item.venueManager = null;
             }
           }
-
         } catch (err) {
           profile.bookPracticalAssessment = [];
+        }
+      }
+      // -------------------------------
+      // ✅ Format qualification
+      // -------------------------------
+      if (leadJson.qualification) {
+        try {
+          leadJson.qualification = Array.isArray(leadJson.qualification)
+            ? leadJson.qualification
+            : JSON.parse(leadJson.qualification);
+        } catch (err) {
+          leadJson.qualification = [];
+        }
+      }
+      // -------------------------------
+      // ✅ Resolve availableVenues
+      // -------------------------------
+      if (leadJson.availableVenues) {
+        try {
+          const venueIds = Array.isArray(leadJson.availableVenues)
+            ? leadJson.availableVenues
+            : JSON.parse(leadJson.availableVenues);
+
+          const venues = await Venue.findAll({
+            where: {
+              id: venueIds,
+            },
+          });
+
+          leadJson.availableVenues = {
+            ids: venueIds,
+            venues: venues.map((v) => v.toJSON()),
+          };
+        } catch (err) {
+          leadJson.availableVenues = {
+            ids: [],
+            venues: [],
+          };
         }
       }
 
@@ -134,13 +351,13 @@ exports.getAllRecruitmentLead = async (adminId) => {
 
     // current year leads
     const currentYearLeads = recruitmentLead.filter(
-      lead => new Date(lead.createdAt).getFullYear() === currentYear
+      (lead) => new Date(lead.createdAt).getFullYear() === currentYear
     );
 
     const totalApplications = currentYearLeads.length;
 
     const totalNewApplications = currentYearLeads.filter(
-      lead => new Date(lead.createdAt).getMonth() === currentMonth
+      (lead) => new Date(lead.createdAt).getMonth() === currentMonth
     ).length;
 
     const totalToAssessments = currentYearLeads.filter((lead) => {
@@ -158,7 +375,7 @@ exports.getAllRecruitmentLead = async (adminId) => {
     }).length;
 
     const totalToRecruitment = currentYearLeads.filter(
-      lead => lead.status === "recruited"
+      (lead) => lead.status === "recruited"
     ).length;
 
     const percent = (count) =>
@@ -172,27 +389,38 @@ exports.getAllRecruitmentLead = async (adminId) => {
         {
           name: "totalApplications",
           count: totalApplications,
-          percent: totalApplications > 0 ? "100%" : "0%"
+          percent: totalApplications > 0 ? "100%" : "0%",
         },
         {
           name: "totalNewApplications",
           count: totalNewApplications,
-          percent: totalApplications > 0 ? ((totalNewApplications / totalApplications) * 100).toFixed(2) + "%" : "0%"
+          percent:
+            totalApplications > 0
+              ? ((totalNewApplications / totalApplications) * 100).toFixed(2) +
+                "%"
+              : "0%",
         },
         {
           name: "totalToAssessments",
           count: totalToAssessments,
-          percent: totalApplications > 0 ? ((totalToAssessments / totalApplications) * 100).toFixed(2) + "%" : "0%"
+          percent:
+            totalApplications > 0
+              ? ((totalToAssessments / totalApplications) * 100).toFixed(2) +
+                "%"
+              : "0%",
         },
         {
           name: "totalToRecruitment",
           count: totalToRecruitment,
-          percent: totalApplications > 0 ? ((totalToRecruitment / totalApplications) * 100).toFixed(2) + "%" : "0%"
-        }
+          percent:
+            totalApplications > 0
+              ? ((totalToRecruitment / totalApplications) * 100).toFixed(2) +
+                "%"
+              : "0%",
+        },
       ],
-      data: formatted
+      data: formatted,
     };
-
   } catch (error) {
     return {
       status: false,
@@ -214,40 +442,56 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
     let startDate, endDate, prevStartDate, prevEndDate;
 
     if (!dateRange) {
-      startDate = moment().startOf("year").toDate();  // Jan 1 current year
-      endDate = moment().endOf("year").toDate();      // Dec 31 current year
+      startDate = moment().startOf("year").toDate(); // Jan 1 current year
+      endDate = moment().endOf("year").toDate(); // Dec 31 current year
 
-      prevStartDate = moment(startDate).subtract(1, "year").startOf("day").toDate();
+      prevStartDate = moment(startDate)
+        .subtract(1, "year")
+        .startOf("day")
+        .toDate();
       prevEndDate = moment(endDate).subtract(1, "year").endOf("day").toDate();
-
     } else if (dateRange === "thisMonth") {
       startDate = moment().startOf("month").toDate();
       endDate = moment().endOf("month").toDate();
 
-      prevStartDate = moment(startDate).subtract(1, "month").startOf("month").toDate();
-      prevEndDate = moment(endDate).subtract(1, "month").endOf("month").toDate();
-
+      prevStartDate = moment(startDate)
+        .subtract(1, "month")
+        .startOf("month")
+        .toDate();
+      prevEndDate = moment(endDate)
+        .subtract(1, "month")
+        .endOf("month")
+        .toDate();
     } else if (dateRange === "lastMonth") {
       startDate = moment().subtract(1, "month").startOf("month").toDate();
       endDate = moment().subtract(1, "month").endOf("month").toDate();
 
-      prevStartDate = moment(startDate).subtract(1, "month").startOf("month").toDate();
-      prevEndDate = moment(endDate).subtract(1, "month").endOf("month").toDate();
-
+      prevStartDate = moment(startDate)
+        .subtract(1, "month")
+        .startOf("month")
+        .toDate();
+      prevEndDate = moment(endDate)
+        .subtract(1, "month")
+        .endOf("month")
+        .toDate();
     } else if (dateRange === "last3Months") {
       startDate = moment().subtract(3, "months").startOf("month").toDate();
       endDate = moment().endOf("month").toDate();
 
-      prevStartDate = moment(startDate).subtract(3, "months").startOf("month").toDate();
+      prevStartDate = moment(startDate)
+        .subtract(3, "months")
+        .startOf("month")
+        .toDate();
       prevEndDate = moment(startDate).subtract(1, "day").endOf("day").toDate();
-
     } else if (dateRange === "last6Months") {
       startDate = moment().subtract(6, "months").startOf("month").toDate();
       endDate = moment().endOf("month").toDate();
 
-      prevStartDate = moment(startDate).subtract(6, "months").startOf("month").toDate();
+      prevStartDate = moment(startDate)
+        .subtract(6, "months")
+        .startOf("month")
+        .toDate();
       prevEndDate = moment(startDate).subtract(1, "day").endOf("day").toDate();
-
     } else {
       throw new Error("Invalid dateRange");
     }
@@ -259,7 +503,7 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
       where: {
         createdBy: Number(adminId),
         createdAt: {
-          [Op.between]: [combinedStart, combinedEnd]
+          [Op.between]: [combinedStart, combinedEnd],
         },
         appliedFor: "coach",
       },
@@ -280,36 +524,56 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
     const LAST_YEAR = CURRENT_YEAR - 1;
 
     const monthNames = [
-      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
     ];
 
     // ================= CHART DATA =================
     const chartData = {
       leads: {
-        currentYear: Object.fromEntries(monthNames.map(m => [m, 0])),
-        lastYear: Object.fromEntries(monthNames.map(m => [m, 0]))
+        currentYear: Object.fromEntries(monthNames.map((m) => [m, 0])),
+        lastYear: Object.fromEntries(monthNames.map((m) => [m, 0])),
       },
       hires: {
-        currentYear: Object.fromEntries(monthNames.map(m => [m, 0])),
-        lastYear: Object.fromEntries(monthNames.map(m => [m, 0]))
-      }
+        currentYear: Object.fromEntries(monthNames.map((m) => [m, 0])),
+        lastYear: Object.fromEntries(monthNames.map((m) => [m, 0])),
+      },
     };
 
     // ================= YEARLY REPORT COUNTERS =================
     // Keep original keys thisYear / lastYear as per your final response
     const yearlyCounters = {
-      thisYear: { totalLeads: 0, telephoneCalls: 0, practicalAssessments: 0, hires: 0 },
-      lastYear: { totalLeads: 0, telephoneCalls: 0, practicalAssessments: 0, hires: 0 }
+      thisYear: {
+        totalLeads: 0,
+        telephoneCalls: 0,
+        practicalAssessments: 0,
+        hires: 0,
+      },
+      lastYear: {
+        totalLeads: 0,
+        telephoneCalls: 0,
+        practicalAssessments: 0,
+        hires: 0,
+      },
     };
 
     const yearlyTelephoneLeadSet = {
       thisYear: new Set(),
-      lastYear: new Set()
+      lastYear: new Set(),
     };
     const yearlyHiredLeadSet = {
       thisYear: new Set(),
-      lastYear: new Set()
+      lastYear: new Set(),
     };
 
     // ================= OTHER STATS =================
@@ -317,7 +581,7 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
       faQualification: 0,
       dbsCertificate: 0,
       coachingExperience: 0,
-      noExperience: 0
+      noExperience: 0,
     };
 
     const ageCount = {};
@@ -329,9 +593,9 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
 
     const normalizePercent = (items) => {
       const total = items.reduce((s, i) => s + i.count, 0);
-      return items.map(i => ({
+      return items.map((i) => ({
         ...i,
-        percent: total > 0 ? ((i.count / total) * 100).toFixed(0) + "%" : "0%"
+        percent: total > 0 ? ((i.count / total) * 100).toFixed(0) + "%" : "0%",
       }));
     };
 
@@ -376,7 +640,11 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
       // ===== PRACTICAL / HIRES =====
       let booked = profile?.bookPracticalAssessment;
       if (typeof booked === "string") {
-        try { booked = JSON.parse(booked); } catch { booked = []; }
+        try {
+          booked = JSON.parse(booked);
+        } catch {
+          booked = [];
+        }
       }
 
       if (lead.status === "recruited") {
@@ -395,12 +663,16 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
 
       // ===== CHART DATA =====
       if (["pending", "recruited"].includes(lead.status)) {
-        if (created >= startDate && created <= endDate) chartData.leads.currentYear[monthName]++;
-        if (created >= prevStartDate && created <= prevEndDate) chartData.leads.lastYear[monthName]++;
+        if (created >= startDate && created <= endDate)
+          chartData.leads.currentYear[monthName]++;
+        if (created >= prevStartDate && created <= prevEndDate)
+          chartData.leads.lastYear[monthName]++;
       }
       if (lead.status === "recruited") {
-        if (created >= startDate && created <= endDate) chartData.hires.currentYear[monthName]++;
-        if (created >= prevStartDate && created <= prevEndDate) chartData.hires.lastYear[monthName]++;
+        if (created >= startDate && created <= endDate)
+          chartData.hires.currentYear[monthName]++;
+        if (created >= prevStartDate && created <= prevEndDate)
+          chartData.hires.lastYear[monthName]++;
       }
 
       // ===== AGE =====
@@ -428,8 +700,8 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
           profile.telePhoneCallDeliveryCommunicationSkill,
           profile.telePhoneCallDeliveryPassionCoaching,
           profile.telePhoneCallDeliveryExperience,
-          profile.telePhoneCallDeliveryKnowledgeOfSSS
-        ].filter(s => typeof s === "number");
+          profile.telePhoneCallDeliveryKnowledgeOfSSS,
+        ].filter((s) => typeof s === "number");
 
         if (skills.length) {
           totalCallScore += skills.reduce((a, b) => a + b, 0);
@@ -450,7 +722,8 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
         for (const b of booked) {
           if (b?.venueId) {
             venueCount[b.venueId] = (venueCount[b.venueId] || 0) + 1;
-            venueDemandCount[b.venueId] = (venueDemandCount[b.venueId] || 0) + 1;
+            venueDemandCount[b.venueId] =
+              (venueDemandCount[b.venueId] || 0) + 1;
           }
         }
       }
@@ -465,7 +738,7 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
             firstName: lead.creator.firstName,
             lastName: lead.creator.lastName,
             profile: lead.creator.profile,
-            totalHires: 0
+            totalHires: 0,
           };
         }
         topAgentCount[id].totalHires++;
@@ -473,100 +746,114 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
     }
 
     // ================= FINAL CALCS =================
-    const totalLeads = yearlyCounters.thisYear.totalLeads + yearlyCounters.lastYear.totalLeads;
+    const totalLeads =
+      yearlyCounters.thisYear.totalLeads + yearlyCounters.lastYear.totalLeads;
 
-    const averageCallGrade = totalCallMax > 0 ? Math.round((totalCallScore / totalCallMax) * 100) : 0;
+    const averageCallGrade =
+      totalCallMax > 0 ? Math.round((totalCallScore / totalCallMax) * 100) : 0;
 
-    const averagePracticalGrade = totalLeads > 0
-      ? Math.round((totalPracticalLeadsWithAssessment / totalLeads) * 100)
-      : 0;
+    const averagePracticalGrade =
+      totalLeads > 0
+        ? Math.round((totalPracticalLeadsWithAssessment / totalLeads) * 100)
+        : 0;
 
-    const calcRate = (v, t) => (t > 0 ? ((v / t) * 100).toFixed(0) + "%" : "0%");
+    const calcRate = (v, t) =>
+      t > 0 ? ((v / t) * 100).toFixed(0) + "%" : "0%";
 
     // ---- Normalize leadSource percent with rounding fix to sum 100%
-    const totalCounted = Object.values(leadSourceCount).reduce((sum, val) => sum + val, 0);
+    const totalCounted = Object.values(leadSourceCount).reduce(
+      (sum, val) => sum + val,
+      0
+    );
 
     let runningPercents = 0;
 
-    const byLeadSource = Object.keys(leadSourceCount).map((source, index, arr) => {
-      const count = leadSourceCount[source];
+    const byLeadSource = Object.keys(leadSourceCount).map(
+      (source, index, arr) => {
+        const count = leadSourceCount[source];
 
-      if (index < arr.length - 1) {
-        const percentNum = Math.round((count / totalCounted) * 100);
-        runningPercents += percentNum;
-        return {
-          source,
-          count,
-          percent: percentNum + "%"
-        };
-      } else {
-        const percentNum = 100 - runningPercents;
-        return {
-          source,
-          count,
-          percent: percentNum + "%"
-        };
+        if (index < arr.length - 1) {
+          const percentNum = Math.round((count / totalCounted) * 100);
+          runningPercents += percentNum;
+          return {
+            source,
+            count,
+            percent: percentNum + "%",
+          };
+        } else {
+          const percentNum = 100 - runningPercents;
+          return {
+            source,
+            count,
+            percent: percentNum + "%",
+          };
+        }
       }
-    });
+    );
 
     // ---- Other normalized percentages
     const byAge = normalizePercent(
-      Object.keys(ageCount).map(age => ({
+      Object.keys(ageCount).map((age) => ({
         age: Number(age),
-        count: ageCount[age]
+        count: ageCount[age],
       }))
     );
 
     const byGender = normalizePercent(
-      Object.keys(genderCount).map(g => ({
+      Object.keys(genderCount).map((g) => ({
         gender: g,
-        count: genderCount[g]
+        count: genderCount[g],
       }))
     );
 
     const venues = await Venue.findAll();
 
     const byVenue = normalizePercent(
-      Object.keys(venueCount).map(id => {
-        const venue = venues.find(v => v.id == id);
+      Object.keys(venueCount).map((id) => {
+        const venue = venues.find((v) => v.id == id);
         return {
           venueName: venue ? venue.name : "Unknown",
-          count: venueCount[id]
+          count: venueCount[id],
         };
       })
     );
 
     // ---- High demand venues with percent sum to 100%
-    const totalDemandCount = Object.values(venueDemandCount).reduce((sum, val) => sum + val, 0);
+    const totalDemandCount = Object.values(venueDemandCount).reduce(
+      (sum, val) => sum + val,
+      0
+    );
 
     let runningPercent = 0;
 
-    const highDemandVenues = Object.keys(venueDemandCount).map((id, index, arr) => {
-      const venue = venues.find(v => v.id == id);
-      const count = venueDemandCount[id];
+    const highDemandVenues = Object.keys(venueDemandCount).map(
+      (id, index, arr) => {
+        const venue = venues.find((v) => v.id == id);
+        const count = venueDemandCount[id];
 
-      if (index < arr.length - 1) {
-        const percentNum = Math.round((count / totalDemandCount) * 100);
-        runningPercent += percentNum;
-        return {
-          venueName: venue ? venue.name : "Unknown",
-          count,
-          percent: percentNum + "%"
-        };
-      } else {
-        const percentNum = 100 - runningPercent;
-        return {
-          venueName: venue ? venue.name : "Unknown",
-          count,
-          percent: percentNum + "%"
-        };
+        if (index < arr.length - 1) {
+          const percentNum = Math.round((count / totalDemandCount) * 100);
+          runningPercent += percentNum;
+          return {
+            venueName: venue ? venue.name : "Unknown",
+            count,
+            percent: percentNum + "%",
+          };
+        } else {
+          const percentNum = 100 - runningPercent;
+          return {
+            venueName: venue ? venue.name : "Unknown",
+            count,
+            percent: percentNum + "%",
+          };
+        }
       }
-    });
+    );
 
     const topAgents = Object.keys(topAgentCount)
-      .map(id => ({
+      .map((id) => ({
         agentId: id,
-        ...topAgentCount[id]
+        ...topAgentCount[id],
       }))
       .sort((a, b) => b.totalHires - a.totalHires);
 
@@ -578,31 +865,49 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
       totalLeads: {
         current: yearlyCounters.thisYear.totalLeads,
         previous: yearlyCounters.lastYear.totalLeads,
-        conversionRate: calcRate(yearlyCounters.thisYear.totalLeads, yearlyCounters.lastYear.totalLeads)
+        conversionRate: calcRate(
+          yearlyCounters.thisYear.totalLeads,
+          yearlyCounters.lastYear.totalLeads
+        ),
       },
 
       telephoneInterviews: {
         current: yearlyCounters.thisYear.telephoneCalls,
         previous: yearlyCounters.lastYear.telephoneCalls,
-        conversionRate: calcRate(yearlyTelephoneLeadSet.thisYear.size, yearlyCounters.thisYear.totalLeads)
+        conversionRate: calcRate(
+          yearlyTelephoneLeadSet.thisYear.size,
+          yearlyCounters.thisYear.totalLeads
+        ),
       },
 
       practicalAssessments: {
         current: yearlyCounters.thisYear.practicalAssessments,
         previous: yearlyCounters.lastYear.practicalAssessments,
-        conversionRate: calcRate(yearlyCounters.thisYear.practicalAssessments, yearlyTelephoneLeadSet.thisYear.size)
+        conversionRate: calcRate(
+          yearlyCounters.thisYear.practicalAssessments,
+          yearlyTelephoneLeadSet.thisYear.size
+        ),
       },
 
       hires: {
         current: yearlyCounters.thisYear.hires,
         previous: yearlyCounters.lastYear.hires,
-        conversionRate: calcRate(yearlyHiredLeadSet.thisYear.size, yearlyTelephoneLeadSet.thisYear.size)
+        conversionRate: calcRate(
+          yearlyHiredLeadSet.thisYear.size,
+          yearlyTelephoneLeadSet.thisYear.size
+        ),
       },
 
       conversionRate: {
-        current: calcRate(yearlyHiredLeadSet.thisYear.size, yearlyCounters.thisYear.totalLeads),
-        previous: calcRate(yearlyHiredLeadSet.lastYear.size, yearlyCounters.lastYear.totalLeads)
-      }
+        current: calcRate(
+          yearlyHiredLeadSet.thisYear.size,
+          yearlyCounters.thisYear.totalLeads
+        ),
+        previous: calcRate(
+          yearlyHiredLeadSet.lastYear.size,
+          yearlyCounters.lastYear.totalLeads
+        ),
+      },
     };
 
     return {
@@ -616,14 +921,13 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
         onboardingResults: {
           averageCallGrade: averageCallGrade + "%",
           averagePracticalAssessmentGrade: averagePracticalGrade + "%",
-          averageCoachEducationPassMark: averageCallGrade + "%"
+          averageCoachEducationPassMark: averageCallGrade + "%",
         },
         sourceOfLeads: byLeadSource,
         highDemandVenues,
-        topAgents
-      }
+        topAgents,
+      },
     };
-
   } catch (error) {
     return {
       status: false,
@@ -643,25 +947,65 @@ exports.getRecruitmentLeadById = async (id, adminId) => {
     }
 
     const recruitmentLead = await RecruitmentLead.findOne({
-      where: { id, createdBy: Number(adminId) },
-      include: [
-        { model: CandidateProfile, as: "candidateProfile" }
-      ],
+      where: { id, appliedFor: "coach" },
+      include: [{ model: CandidateProfile, as: "candidateProfile" }],
     });
 
     if (!recruitmentLead) {
-      return { status: false, message: "recruitmentLead not found or unauthorized." };
+      return {
+        status: false,
+        message: "recruitmentLead not found or unauthorized.",
+      };
     }
 
     const leadJson = recruitmentLead.toJSON();
     const profile = leadJson.candidateProfile;
 
+    // -------------------------------
+    // ✅ Format qualification
+    // -------------------------------
+    if (leadJson.qualification) {
+      try {
+        leadJson.qualification = Array.isArray(leadJson.qualification)
+          ? leadJson.qualification
+          : JSON.parse(leadJson.qualification);
+      } catch {
+        leadJson.qualification = [];
+      }
+    }
+
+    // -------------------------------
+    // ✅ Resolve availableVenues
+    // -------------------------------
+    if (leadJson.availableVenues) {
+      try {
+        const venueIds = Array.isArray(leadJson.availableVenues)
+          ? leadJson.availableVenues
+          : JSON.parse(leadJson.availableVenues);
+
+        const venues = await Venue.findAll({
+          where: { id: venueIds },
+        });
+
+        leadJson.availableVenues = {
+          ids: venueIds,
+          venues: venues.map((v) => v.toJSON()),
+        };
+      } catch {
+        leadJson.availableVenues = {
+          ids: [],
+          venues: [],
+        };
+      }
+    }
+
     if (profile?.bookPracticalAssessment) {
       try {
-        profile.bookPracticalAssessment = JSON.parse(profile.bookPracticalAssessment);
+        profile.bookPracticalAssessment = JSON.parse(
+          profile.bookPracticalAssessment
+        );
 
         for (let item of profile.bookPracticalAssessment) {
-
           const venue = await Venue.findByPk(item.venueId);
           const classInfo = await ClassSchedule.findByPk(item.classId);
 
@@ -678,17 +1022,16 @@ exports.getRecruitmentLeadById = async (id, adminId) => {
             item.venueManager = null;
           }
         }
-
       } catch (err) {
         profile.bookPracticalAssessment = [];
       }
     }
 
     // 🔥 Add telephone call score percentage
-    leadJson.telephoneCallScorePercentage = calculateTelephoneCallScore(profile);
+    leadJson.telephoneCallScorePercentage =
+      calculateTelephoneCallScore(profile);
 
     return { status: true, data: leadJson };
-
   } catch (error) {
     return {
       status: false,
@@ -741,7 +1084,6 @@ exports.rejectRecruitmentStatusById = async (id, adminId) => {
       message: "Recruitment lead status updated to rejected.",
       data: recruitmentLead.toJSON(),
     };
-
   } catch (error) {
     console.error("❌ rejectRecruitmentStatusById Error:", error);
     return {
@@ -760,15 +1102,27 @@ exports.sendEmail = async ({ recruitmentLeadId, admin }) => {
     });
 
     if (!lead) {
-      return { status: false, message: "Recruitment lead not found.", sentTo: [] };
+      return {
+        status: false,
+        message: "Recruitment lead not found.",
+        sentTo: [],
+      };
     }
 
     if (!lead.email) {
-      return { status: false, message: "Candidate email not found.", sentTo: [] };
+      return {
+        status: false,
+        message: "Candidate email not found.",
+        sentTo: [],
+      };
     }
 
-    const candidateName = `${lead.firstName || ""} ${lead.lastName || ""}`.trim();
-    const adminName = `${admin?.firstName || "Admin"} ${admin?.lastName || ""}`.trim();
+    const candidateName = `${lead.firstName || ""} ${
+      lead.lastName || ""
+    }`.trim();
+    const adminName = `${admin?.firstName || "Admin"} ${
+      admin?.lastName || ""
+    }`.trim();
 
     // ------------------------------------------
     // 2️⃣ Choose template based on lead.status
@@ -776,19 +1130,27 @@ exports.sendEmail = async ({ recruitmentLeadId, admin }) => {
     let templateType = "candidate-profile-reject"; // default
 
     if (lead.status === "venue manager") {
-      templateType = "venue-manager-reject";   // <-- your new template
+      templateType = "venue-manager-reject"; // <-- your new template
     } else if (lead.status === "coach") {
-      templateType = "coach-reject";           // <-- optional coach template
+      templateType = "coach-reject"; // <-- optional coach template
     }
 
     // ------------------------------------------
     // 3️⃣ Load email template
     // ------------------------------------------
-    const { status: configStatus, emailConfig, htmlTemplate, subject } =
-      await emailModel.getEmailConfig("admin", templateType);
+    const {
+      status: configStatus,
+      emailConfig,
+      htmlTemplate,
+      subject,
+    } = await emailModel.getEmailConfig("admin", templateType);
 
     if (!configStatus || !htmlTemplate) {
-      return { status: false, message: "Email template not configured.", sentTo: [] };
+      return {
+        status: false,
+        message: "Email template not configured.",
+        sentTo: [],
+      };
     }
 
     // 4️⃣ Prepare email body
@@ -806,11 +1168,19 @@ exports.sendEmail = async ({ recruitmentLeadId, admin }) => {
       htmlBody,
     });
 
-    return { status: true, message: "Email sent successfully.", sentTo: [lead.email] };
-
+    return {
+      status: true,
+      message: "Email sent successfully.",
+      sentTo: [lead.email],
+    };
   } catch (err) {
     console.error("❌ RecruitmentLeadService.sendEmail Error:", err);
-    return { status: false, message: "Failed to send email.", error: err.message, sentTo: [] };
+    return {
+      status: false,
+      message: "Failed to send email.",
+      error: err.message,
+      sentTo: [],
+    };
   }
 };
 
@@ -828,40 +1198,56 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
     let startDate, endDate, prevStartDate, prevEndDate;
 
     if (!dateRange) {
-      startDate = moment().startOf("year").toDate();  // Jan 1 current year
-      endDate = moment().endOf("year").toDate();      // Dec 31 current year
+      startDate = moment().startOf("year").toDate(); // Jan 1 current year
+      endDate = moment().endOf("year").toDate(); // Dec 31 current year
 
-      prevStartDate = moment(startDate).subtract(1, "year").startOf("day").toDate();
+      prevStartDate = moment(startDate)
+        .subtract(1, "year")
+        .startOf("day")
+        .toDate();
       prevEndDate = moment(endDate).subtract(1, "year").endOf("day").toDate();
-
     } else if (dateRange === "thisMonth") {
       startDate = moment().startOf("month").toDate();
       endDate = moment().endOf("month").toDate();
 
-      prevStartDate = moment(startDate).subtract(1, "month").startOf("month").toDate();
-      prevEndDate = moment(endDate).subtract(1, "month").endOf("month").toDate();
-
+      prevStartDate = moment(startDate)
+        .subtract(1, "month")
+        .startOf("month")
+        .toDate();
+      prevEndDate = moment(endDate)
+        .subtract(1, "month")
+        .endOf("month")
+        .toDate();
     } else if (dateRange === "lastMonth") {
       startDate = moment().subtract(1, "month").startOf("month").toDate();
       endDate = moment().subtract(1, "month").endOf("month").toDate();
 
-      prevStartDate = moment(startDate).subtract(1, "month").startOf("month").toDate();
-      prevEndDate = moment(endDate).subtract(1, "month").endOf("month").toDate();
-
+      prevStartDate = moment(startDate)
+        .subtract(1, "month")
+        .startOf("month")
+        .toDate();
+      prevEndDate = moment(endDate)
+        .subtract(1, "month")
+        .endOf("month")
+        .toDate();
     } else if (dateRange === "last3Months") {
       startDate = moment().subtract(3, "months").startOf("month").toDate();
       endDate = moment().endOf("month").toDate();
 
-      prevStartDate = moment(startDate).subtract(3, "months").startOf("month").toDate();
+      prevStartDate = moment(startDate)
+        .subtract(3, "months")
+        .startOf("month")
+        .toDate();
       prevEndDate = moment(startDate).subtract(1, "day").endOf("day").toDate();
-
     } else if (dateRange === "last6Months") {
       startDate = moment().subtract(6, "months").startOf("month").toDate();
       endDate = moment().endOf("month").toDate();
 
-      prevStartDate = moment(startDate).subtract(6, "months").startOf("month").toDate();
+      prevStartDate = moment(startDate)
+        .subtract(6, "months")
+        .startOf("month")
+        .toDate();
       prevEndDate = moment(startDate).subtract(1, "day").endOf("day").toDate();
-
     } else {
       throw new Error("Invalid dateRange");
     }
@@ -873,7 +1259,7 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
       where: {
         createdBy: Number(adminId),
         createdAt: {
-          [Op.between]: [combinedStart, combinedEnd]
+          [Op.between]: [combinedStart, combinedEnd],
         },
         appliedFor: "coach",
       },
@@ -894,36 +1280,56 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
     const LAST_YEAR = CURRENT_YEAR - 1;
 
     const monthNames = [
-      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
     ];
 
     // ================= CHART DATA =================
     const chartData = {
       leads: {
-        currentYear: Object.fromEntries(monthNames.map(m => [m, 0])),
-        lastYear: Object.fromEntries(monthNames.map(m => [m, 0]))
+        currentYear: Object.fromEntries(monthNames.map((m) => [m, 0])),
+        lastYear: Object.fromEntries(monthNames.map((m) => [m, 0])),
       },
       hires: {
-        currentYear: Object.fromEntries(monthNames.map(m => [m, 0])),
-        lastYear: Object.fromEntries(monthNames.map(m => [m, 0]))
-      }
+        currentYear: Object.fromEntries(monthNames.map((m) => [m, 0])),
+        lastYear: Object.fromEntries(monthNames.map((m) => [m, 0])),
+      },
     };
 
     // ================= YEARLY REPORT COUNTERS =================
     // Keep original keys thisYear / lastYear as per your final response
     const yearlyCounters = {
-      thisYear: { totalLeads: 0, telephoneCalls: 0, practicalAssessments: 0, hires: 0 },
-      lastYear: { totalLeads: 0, telephoneCalls: 0, practicalAssessments: 0, hires: 0 }
+      thisYear: {
+        totalLeads: 0,
+        telephoneCalls: 0,
+        practicalAssessments: 0,
+        hires: 0,
+      },
+      lastYear: {
+        totalLeads: 0,
+        telephoneCalls: 0,
+        practicalAssessments: 0,
+        hires: 0,
+      },
     };
 
     const yearlyTelephoneLeadSet = {
       thisYear: new Set(),
-      lastYear: new Set()
+      lastYear: new Set(),
     };
     const yearlyHiredLeadSet = {
       thisYear: new Set(),
-      lastYear: new Set()
+      lastYear: new Set(),
     };
 
     // ================= OTHER STATS =================
@@ -931,7 +1337,7 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
       faQualification: 0,
       dbsCertificate: 0,
       coachingExperience: 0,
-      noExperience: 0
+      noExperience: 0,
     };
 
     const ageCount = {};
@@ -943,9 +1349,9 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
 
     const normalizePercent = (items) => {
       const total = items.reduce((s, i) => s + i.count, 0);
-      return items.map(i => ({
+      return items.map((i) => ({
         ...i,
-        percent: total > 0 ? ((i.count / total) * 100).toFixed(0) + "%" : "0%"
+        percent: total > 0 ? ((i.count / total) * 100).toFixed(0) + "%" : "0%",
       }));
     };
 
@@ -990,7 +1396,11 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
       // ===== PRACTICAL / HIRES =====
       let booked = profile?.bookPracticalAssessment;
       if (typeof booked === "string") {
-        try { booked = JSON.parse(booked); } catch { booked = []; }
+        try {
+          booked = JSON.parse(booked);
+        } catch {
+          booked = [];
+        }
       }
 
       if (lead.status === "recruited") {
@@ -1009,12 +1419,16 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
 
       // ===== CHART DATA =====
       if (["pending", "recruited"].includes(lead.status)) {
-        if (created >= startDate && created <= endDate) chartData.leads.currentYear[monthName]++;
-        if (created >= prevStartDate && created <= prevEndDate) chartData.leads.lastYear[monthName]++;
+        if (created >= startDate && created <= endDate)
+          chartData.leads.currentYear[monthName]++;
+        if (created >= prevStartDate && created <= prevEndDate)
+          chartData.leads.lastYear[monthName]++;
       }
       if (lead.status === "recruited") {
-        if (created >= startDate && created <= endDate) chartData.hires.currentYear[monthName]++;
-        if (created >= prevStartDate && created <= prevEndDate) chartData.hires.lastYear[monthName]++;
+        if (created >= startDate && created <= endDate)
+          chartData.hires.currentYear[monthName]++;
+        if (created >= prevStartDate && created <= prevEndDate)
+          chartData.hires.lastYear[monthName]++;
       }
 
       // ===== AGE =====
@@ -1042,8 +1456,8 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
           profile.telePhoneCallDeliveryCommunicationSkill,
           profile.telePhoneCallDeliveryPassionCoaching,
           profile.telePhoneCallDeliveryExperience,
-          profile.telePhoneCallDeliveryKnowledgeOfSSS
-        ].filter(s => typeof s === "number");
+          profile.telePhoneCallDeliveryKnowledgeOfSSS,
+        ].filter((s) => typeof s === "number");
 
         if (skills.length) {
           totalCallScore += skills.reduce((a, b) => a + b, 0);
@@ -1064,7 +1478,8 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
         for (const b of booked) {
           if (b?.venueId) {
             venueCount[b.venueId] = (venueCount[b.venueId] || 0) + 1;
-            venueDemandCount[b.venueId] = (venueDemandCount[b.venueId] || 0) + 1;
+            venueDemandCount[b.venueId] =
+              (venueDemandCount[b.venueId] || 0) + 1;
           }
         }
       }
@@ -1084,111 +1499,124 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
             firstName: lead.creator.firstName || "",
             lastName: lead.creator.lastName || "",
             profile: lead.creator.profile || "",
-            totalHires: 0
+            totalHires: 0,
           };
         }
 
         // Increment current year hires
         topAgentCount[agentId].totalHires++;
       }
-
     }
 
     // ================= FINAL CALCS =================
-    const totalLeads = yearlyCounters.thisYear.totalLeads + yearlyCounters.lastYear.totalLeads;
+    const totalLeads =
+      yearlyCounters.thisYear.totalLeads + yearlyCounters.lastYear.totalLeads;
 
-    const averageCallGrade = totalCallMax > 0 ? Math.round((totalCallScore / totalCallMax) * 100) : 0;
+    const averageCallGrade =
+      totalCallMax > 0 ? Math.round((totalCallScore / totalCallMax) * 100) : 0;
 
-    const averagePracticalGrade = totalLeads > 0
-      ? Math.round((totalPracticalLeadsWithAssessment / totalLeads) * 100)
-      : 0;
+    const averagePracticalGrade =
+      totalLeads > 0
+        ? Math.round((totalPracticalLeadsWithAssessment / totalLeads) * 100)
+        : 0;
 
-    const calcRate = (v, t) => (t > 0 ? ((v / t) * 100).toFixed(0) + "%" : "0%");
+    const calcRate = (v, t) =>
+      t > 0 ? ((v / t) * 100).toFixed(0) + "%" : "0%";
 
     // ---- Normalize leadSource percent with rounding fix to sum 100%
-    const totalCounted = Object.values(leadSourceCount).reduce((sum, val) => sum + val, 0);
+    const totalCounted = Object.values(leadSourceCount).reduce(
+      (sum, val) => sum + val,
+      0
+    );
 
     let runningPercents = 0;
 
-    const byLeadSource = Object.keys(leadSourceCount).map((source, index, arr) => {
-      const count = leadSourceCount[source];
+    const byLeadSource = Object.keys(leadSourceCount).map(
+      (source, index, arr) => {
+        const count = leadSourceCount[source];
 
-      if (index < arr.length - 1) {
-        const percentNum = Math.round((count / totalCounted) * 100);
-        runningPercents += percentNum;
-        return {
-          source,
-          count,
-          percent: percentNum + "%"
-        };
-      } else {
-        const percentNum = 100 - runningPercents;
-        return {
-          source,
-          count,
-          percent: percentNum + "%"
-        };
+        if (index < arr.length - 1) {
+          const percentNum = Math.round((count / totalCounted) * 100);
+          runningPercents += percentNum;
+          return {
+            source,
+            count,
+            percent: percentNum + "%",
+          };
+        } else {
+          const percentNum = 100 - runningPercents;
+          return {
+            source,
+            count,
+            percent: percentNum + "%",
+          };
+        }
       }
-    });
+    );
 
     // ---- Other normalized percentages
     const byAge = normalizePercent(
-      Object.keys(ageCount).map(age => ({
+      Object.keys(ageCount).map((age) => ({
         age: Number(age),
-        count: ageCount[age]
+        count: ageCount[age],
       }))
     );
 
     const byGender = normalizePercent(
-      Object.keys(genderCount).map(g => ({
+      Object.keys(genderCount).map((g) => ({
         gender: g,
-        count: genderCount[g]
+        count: genderCount[g],
       }))
     );
 
     const venues = await Venue.findAll();
 
     const byVenue = normalizePercent(
-      Object.keys(venueCount).map(id => {
-        const venue = venues.find(v => v.id == id);
+      Object.keys(venueCount).map((id) => {
+        const venue = venues.find((v) => v.id == id);
         return {
           venueName: venue ? venue.name : "Unknown",
-          count: venueCount[id]
+          count: venueCount[id],
         };
       })
     );
 
     // ---- High demand venues with percent sum to 100%
-    const totalDemandCount = Object.values(venueDemandCount).reduce((sum, val) => sum + val, 0);
+    const totalDemandCount = Object.values(venueDemandCount).reduce(
+      (sum, val) => sum + val,
+      0
+    );
 
     let runningPercent = 0;
 
-    const highDemandVenues = Object.keys(venueDemandCount).map((id, index, arr) => {
-      const venue = venues.find(v => v.id == id);
-      const count = venueDemandCount[id];
+    const highDemandVenues = Object.keys(venueDemandCount).map(
+      (id, index, arr) => {
+        const venue = venues.find((v) => v.id == id);
+        const count = venueDemandCount[id];
 
-      if (index < arr.length - 1) {
-        const percentNum = Math.round((count / totalDemandCount) * 100);
-        runningPercent += percentNum;
-        return {
-          venueName: venue ? venue.name : "Unknown",
-          count,
-          percent: percentNum + "%"
-        };
-      } else {
-        const percentNum = 100 - runningPercent;
-        return {
-          venueName: venue ? venue.name : "Unknown",
-          count,
-          percent: percentNum + "%"
-        };
+        if (index < arr.length - 1) {
+          const percentNum = Math.round((count / totalDemandCount) * 100);
+          runningPercent += percentNum;
+          return {
+            venueName: venue ? venue.name : "Unknown",
+            count,
+            percent: percentNum + "%",
+          };
+        } else {
+          const percentNum = 100 - runningPercent;
+          return {
+            venueName: venue ? venue.name : "Unknown",
+            count,
+            percent: percentNum + "%",
+          };
+        }
       }
-    });
+    );
 
     const topAgents = Object.keys(topAgentCount)
-      .map(id => ({
+      .map((id) => ({
         agentId: id,
-        ...topAgentCount[id]
+        ...topAgentCount[id],
       }))
       .sort((a, b) => b.totalHires - a.totalHires);
 
@@ -1200,31 +1628,49 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
       totalLeads: {
         current: yearlyCounters.thisYear.totalLeads,
         previous: yearlyCounters.lastYear.totalLeads,
-        conversionRate: calcRate(yearlyCounters.thisYear.totalLeads, yearlyCounters.lastYear.totalLeads)
+        conversionRate: calcRate(
+          yearlyCounters.thisYear.totalLeads,
+          yearlyCounters.lastYear.totalLeads
+        ),
       },
 
       telephoneInterviews: {
         current: yearlyCounters.thisYear.telephoneCalls,
         previous: yearlyCounters.lastYear.telephoneCalls,
-        conversionRate: calcRate(yearlyTelephoneLeadSet.thisYear.size, yearlyCounters.thisYear.totalLeads)
+        conversionRate: calcRate(
+          yearlyTelephoneLeadSet.thisYear.size,
+          yearlyCounters.thisYear.totalLeads
+        ),
       },
 
       practicalAssessments: {
         current: yearlyCounters.thisYear.practicalAssessments,
         previous: yearlyCounters.lastYear.practicalAssessments,
-        conversionRate: calcRate(yearlyCounters.thisYear.practicalAssessments, yearlyTelephoneLeadSet.thisYear.size)
+        conversionRate: calcRate(
+          yearlyCounters.thisYear.practicalAssessments,
+          yearlyTelephoneLeadSet.thisYear.size
+        ),
       },
 
       hires: {
         current: yearlyCounters.thisYear.hires,
         previous: yearlyCounters.lastYear.hires,
-        conversionRate: calcRate(yearlyHiredLeadSet.thisYear.size, yearlyTelephoneLeadSet.thisYear.size)
+        conversionRate: calcRate(
+          yearlyHiredLeadSet.thisYear.size,
+          yearlyTelephoneLeadSet.thisYear.size
+        ),
       },
 
       conversionRate: {
-        current: calcRate(yearlyHiredLeadSet.thisYear.size, yearlyCounters.thisYear.totalLeads),
-        previous: calcRate(yearlyHiredLeadSet.lastYear.size, yearlyCounters.lastYear.totalLeads)
-      }
+        current: calcRate(
+          yearlyHiredLeadSet.thisYear.size,
+          yearlyCounters.thisYear.totalLeads
+        ),
+        previous: calcRate(
+          yearlyHiredLeadSet.lastYear.size,
+          yearlyCounters.lastYear.totalLeads
+        ),
+      },
     };
 
     return {
@@ -1238,14 +1684,13 @@ exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
         onboardingResults: {
           averageCallGrade: averageCallGrade + "%",
           averagePracticalAssessmentGrade: averagePracticalGrade + "%",
-          averageCoachEducationPassMark: averageCallGrade + "%"
+          averageCoachEducationPassMark: averageCallGrade + "%",
         },
         sourceOfLeads: byLeadSource,
         highDemandVenues,
-        topAgents
-      }
+        topAgents,
+      },
     };
-
   } catch (error) {
     return {
       status: false,
@@ -1267,15 +1712,16 @@ exports.getAllCoachAndVmRecruitmentLead = async (adminId) => {
 
     const recruitmentLead = await RecruitmentLead.findAll({
       where: {
-        createdBy: Number(adminId),
         appliedFor: {
-          [Op.in]: ["coach", "venue manager"]   // ⭐ get both
-        }
+          [Op.in]: ["coach", "venue manager"], // ⭐ get both
+        },
+        [Op.or]: [
+          { createdBy: Number(adminId) },
+          { createdBy: null }, // ✅ website leads
+        ],
       },
 
-      include: [
-        { model: CandidateProfile, as: "candidateProfile" }
-      ],
+      include: [{ model: CandidateProfile, as: "candidateProfile" }],
       order: [["createdAt", "DESC"]],
     });
 
@@ -1292,25 +1738,26 @@ exports.getAllCoachAndVmRecruitmentLead = async (adminId) => {
 
           const venues = await Venue.findAll({
             where: {
-              id: venueIds
-            }
+              id: venueIds,
+            },
           });
 
           profile.availableVenueWork = {
             ids: venueIds,
-            venues: venues.map(v => v.toJSON())
+            venues: venues.map((v) => v.toJSON()),
           };
-
         } catch (err) {
           profile.availableVenueWork = {
             ids: [],
-            venues: []
+            venues: [],
           };
         }
       }
       if (profile?.bookPracticalAssessment) {
         try {
-          profile.bookPracticalAssessment = JSON.parse(profile.bookPracticalAssessment);
+          profile.bookPracticalAssessment = JSON.parse(
+            profile.bookPracticalAssessment
+          );
 
           for (let item of profile.bookPracticalAssessment) {
             // Fetch venue & class
@@ -1331,9 +1778,46 @@ exports.getAllCoachAndVmRecruitmentLead = async (adminId) => {
               item.venueManager = null;
             }
           }
-
         } catch (err) {
           profile.bookPracticalAssessment = [];
+        }
+      }
+      // -------------------------------
+      // ✅ Format qualification
+      // -------------------------------
+      if (leadJson.qualification) {
+        try {
+          leadJson.qualification = Array.isArray(leadJson.qualification)
+            ? leadJson.qualification
+            : JSON.parse(leadJson.qualification);
+        } catch (err) {
+          leadJson.qualification = [];
+        }
+      }
+      // -------------------------------
+      // ✅ Resolve availableVenues
+      // -------------------------------
+      if (leadJson.availableVenues) {
+        try {
+          const venueIds = Array.isArray(leadJson.availableVenues)
+            ? leadJson.availableVenues
+            : JSON.parse(leadJson.availableVenues);
+
+          const venues = await Venue.findAll({
+            where: {
+              id: venueIds,
+            },
+          });
+
+          leadJson.availableVenues = {
+            ids: venueIds,
+            venues: venues.map((v) => v.toJSON()),
+          };
+        } catch (err) {
+          leadJson.availableVenues = {
+            ids: [],
+            venues: [],
+          };
         }
       }
 
@@ -1417,7 +1901,6 @@ exports.getAllCoachAndVmRecruitmentLead = async (adminId) => {
       ],
       data: formatted,
     };
-
   } catch (error) {
     return {
       status: false,
@@ -1492,7 +1975,10 @@ exports.getAllVenues = async (createdBy) => {
 };
 
 // Get all admins
-exports.getAllVenueManager = async (superAdminId, includeSuperAdmin = false) => {
+exports.getAllVenueManager = async (
+  superAdminId,
+  includeSuperAdmin = false
+) => {
   if (!superAdminId || isNaN(Number(superAdminId))) {
     return {
       status: false,
@@ -1504,11 +1990,11 @@ exports.getAllVenueManager = async (superAdminId, includeSuperAdmin = false) => 
   try {
     const whereCondition = includeSuperAdmin
       ? {
-        [Op.or]: [
-          { superAdminId: Number(superAdminId) },
-          { id: Number(superAdminId) },
-        ],
-      }
+          [Op.or]: [
+            { superAdminId: Number(superAdminId) },
+            { id: Number(superAdminId) },
+          ],
+        }
       : { superAdminId: Number(superAdminId) };
 
     const admins = await Admin.findAll({
@@ -1519,7 +2005,7 @@ exports.getAllVenueManager = async (superAdminId, includeSuperAdmin = false) => 
           model: AdminRole,
           as: "role",
           attributes: ["id", "role"],
-          where: { role: "admin" },  // 🔥 Filter only COACH role
+          where: { role: "admin" }, // 🔥 Filter only COACH role
         },
       ],
       order: [["createdAt", "DESC"]],

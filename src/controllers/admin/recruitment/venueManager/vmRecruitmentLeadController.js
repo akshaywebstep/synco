@@ -2,7 +2,9 @@ const { validateFormData } = require("../../../../utils/validateFormData");
 const { logActivity } = require("../../../../utils/admin/activityLogger");
 
 const RecruitmentLeadService = require("../../../../services/admin/recruitment/venueManager/vmRecruitmentLead");
-const { createNotification } = require("../../../../utils/admin/notificationHelper");
+const {
+  createNotification,
+} = require("../../../../utils/admin/notificationHelper");
 const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
 
 const DEBUG = process.env.DEBUG === "true";
@@ -95,7 +97,6 @@ exports.createVmRecruitmentLead = async (req, res) => {
     );
 
     return res.status(result.status ? 201 : 500).json(result);
-
   } catch (error) {
     console.error("❌ Error in createRecruitmentLead:", error);
 
@@ -108,6 +109,79 @@ exports.createVmRecruitmentLead = async (req, res) => {
       false
     );
 
+    return res.status(500).json({
+      status: false,
+      message: "Server error.",
+      error: DEBUG ? error.message : undefined,
+    });
+  }
+};
+
+exports.createWebsiteVmLead = async (req, res) => {
+  if (DEBUG) console.log("▶️ Website Lead Request:", req.body);
+
+  // ----------------------------------
+  // 🔍 VALIDATE LEAD INPUT
+  // ----------------------------------
+  const validation = validateFormData(req.body.lead, {
+    requiredFields: [
+      "firstName",
+      "lastName",
+      "dob",
+      "email",
+      "phoneNumber",
+      "postcode",
+    ],
+  });
+
+  if (!validation.isValid) {
+    return res.status(400).json({ status: false, ...validation });
+  }
+
+  try {
+    // ----------------------------------
+    // 📦 BUILD LEAD PAYLOAD (WEBSITE)
+    // ----------------------------------
+    const leadPayload = {
+      firstName: req.body.lead.firstName,
+      lastName: req.body.lead.lastName,
+      dob: req.body.lead.dob,
+      email: req.body.lead.email,
+      phoneNumber: req.body.lead.phoneNumber || null,
+      postcode: req.body.lead.postcode || null,
+      qualification: req.body.lead.qualification || null,
+      // 🔒 WEBSITE FIXED VALUES
+      status: "pending",
+      appliedFor: "venue manager",
+      source: "website",
+      createdBy: null,
+    };
+
+    // ----------------------------------
+    // 📦 BUILD CANDIDATE PAYLOAD
+    // ----------------------------------
+    const candidatePayload = {
+      howDidYouHear: req.body.candidate.howDidYouHear,
+      ageGroupExperience: req.body.candidate.ageGroupExperience,
+      accessToOwnVehicle: req.body.candidate.accessToOwnVehicle,
+      whichQualificationYouHave: req.body.candidate.whichQualificationYouHave,
+      footballExperience: req.body.candidate.footballExperience,
+      fullWeekendAvailablity: req.body.candidate.fullWeekendAvailablity,
+      uploadCv: req.body.candidate.uploadCv,
+      coverNote: req.body.candidate.coverNote,
+    };
+
+    // ----------------------------------
+    // 🚀 CALL WEBSITE SERVICE
+    // ----------------------------------
+    const result = await RecruitmentLeadService.createLeadAndCandidate(
+      leadPayload,
+      candidatePayload
+    );
+
+    return res.status(201).json(result);
+  } catch (error) {
+    console.error("❌ Website lead error:", error);
     return res.status(500).json({
       status: false,
       message: "Server error.",
@@ -129,7 +203,9 @@ exports.getAllVmRecruitmentLead = async (req, res) => {
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
-    const result = await RecruitmentLeadService.getAllVmRecruitmentLead(superAdminId,); // ✅ pass adminId
+    const result = await RecruitmentLeadService.getAllVmRecruitmentLead(
+      superAdminId
+    ); // ✅ pass adminId
     await logActivity(req, PANEL, MODULE, "list", result, result.status);
     return res.status(result.status ? 200 : 500).json(result);
   } catch (error) {
@@ -164,7 +240,10 @@ exports.getVmRecruitmentLeadById = async (req, res) => {
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
-    const result = await RecruitmentLeadService.getVmRecruitmentLeadById(id, superAdminId); // ✅ pass adminId
+    const result = await RecruitmentLeadService.getVmRecruitmentLeadById(
+      id,
+      superAdminId
+    ); // ✅ pass adminId
     await logActivity(req, PANEL, MODULE, "getById", result, result.status);
     return res.status(result.status ? 200 : 404).json(result);
   } catch (error) {
@@ -182,11 +261,13 @@ exports.getVmRecruitmentLeadById = async (req, res) => {
 };
 
 exports.rejectRecruitmentLeadStatus = async (req, res) => {
-  const { id } = req.params;  // recruitment lead id
+  const { id } = req.params; // recruitment lead id
   const adminId = req.admin?.id;
 
   if (!id) {
-    return res.status(400).json({ status: false, message: "Recruitment Lead ID is required." });
+    return res
+      .status(400)
+      .json({ status: false, message: "Recruitment Lead ID is required." });
   }
 
   if (!adminId) {
@@ -199,13 +280,15 @@ exports.rejectRecruitmentLeadStatus = async (req, res) => {
     // -----------------------------------
     // 🔧 SERVICE CALL
     // -----------------------------------
-    const result = await RecruitmentLeadService.rejectRecruitmentStatusById(id, adminId);
+    const result = await RecruitmentLeadService.rejectRecruitmentStatusById(
+      id,
+      adminId
+    );
 
     // Log Activity
     await logActivity(req, PANEL, MODULE, "reject", result, result.status);
 
     return res.status(result.status ? 200 : 400).json(result);
-
   } catch (error) {
     console.error("❌ Error in rejectRecruitmentLeadStatus:", error);
 
@@ -245,7 +328,9 @@ exports.sendEmail = async (req, res) => {
           PANEL,
           MODULE,
           "send",
-          { message: `Email attempt for recruitmentLeadId ${leadId}: ${result.message}` },
+          {
+            message: `Email attempt for recruitmentLeadId ${leadId}: ${result.message}`,
+          },
           result.status
         );
 
@@ -317,7 +402,6 @@ exports.getAllVmRecruitmentLeadRport = async (req, res) => {
     );
 
     return res.status(result.status ? 200 : 400).json(result);
-
   } catch (error) {
     console.error("❌ Controller Error getAllRecruitmentLeadRport:", error);
 

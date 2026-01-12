@@ -4,6 +4,7 @@ const {
   Venue,
   ClassSchedule,
   Admin,
+  sequelize,
 } = require("../../../../models");
 
 const { getEmailConfig } = require("../../../email");
@@ -292,6 +293,82 @@ exports.getAllFranchiseRecruitmentLead = async (adminId) => {
   }
 };
 
+exports.assignLeadToAgent = async ({ leadIds, createdBy }) => {
+  const t = await sequelize.transaction();
+
+  try {
+    // ✅ Validation
+    if (!Array.isArray(leadIds) || leadIds.length === 0) {
+      throw new Error("At least one lead ID is required");
+    }
+
+    if (!createdBy || isNaN(Number(createdBy))) {
+      throw new Error("Valid agent ID is required");
+    }
+
+    // ✅ Check agent exists
+    const agent = await Admin.findByPk(createdBy, { transaction: t });
+    if (!agent) {
+      throw new Error("Agent not found");
+    }
+
+    // ✅ Fetch leads (parentName already exists here)
+    const leads = await RecruitmentLead.findAll({
+      where: {
+        id: { [Op.in]: leadIds },
+      },
+      attributes: ["id", "firstName", "lastName", "createdBy"],
+      transaction: t,
+    });
+
+    if (leads.length !== leadIds.length) {
+      throw new Error("One or more leads were not found");
+    }
+
+    // ✅ Check already assigned leads
+    const alreadyAssigned = leads.filter((lead) => lead.createdBy !== null);
+
+    if (alreadyAssigned.length > 0) {
+      const names = alreadyAssigned
+        .map((lead) => lead.firstName + " " + lead.lastName || "Unknown Parent")
+        .join(", ");
+
+      throw new Error(`${names} lead already assigned`);
+    }
+
+    // ✅ Assign agent
+    await RecruitmentLead.update(
+      {
+        createdBy,
+        updatedAt: new Date(),
+      },
+      {
+        where: {
+          id: { [Op.in]: leadIds },
+        },
+        transaction: t,
+      }
+    );
+
+    await t.commit();
+
+    return {
+      status: true,
+      message: "Leads successfully assigned to agent",
+      data: {
+        leadIds,
+        createdBy,
+        totalAssigned: leadIds.length,
+      },
+    };
+  } catch (error) {
+    await t.rollback();
+    return {
+      status: false,
+      message: error.message,
+    };
+  }
+};
 // GET BY ID
 exports.getFranchiseRecruitmentLeadById = async (id, adminId) => {
   try {

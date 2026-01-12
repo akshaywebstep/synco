@@ -36,6 +36,6 @@ router.use(
 );
 
 // Franchise
-router.use("/franchise", require("./franchise/franchiseRoutes"));
+router.use("/recruitment", require("./recruitments/recruitmentsRoutes"));
 
 module.exports = router;
