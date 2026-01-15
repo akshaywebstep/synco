@@ -1116,6 +1116,8 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
       })
     );
 
+    const allBookingsForStats = [...parsedBookings]; // ✅ ADD THIS
+
     // Student filter
     let finalBookings = parsedBookings;
     if (filters.studentName) {
@@ -1200,50 +1202,113 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
     });
     const allAdmins = Object.values(adminMap);
 
-    // Stats
-    const totalStudents = finalBookings.reduce(
-      (acc, b) => acc + (b.students?.length || 0),
-      0
+    const calculatePercentageChange = (current, previous) => {
+      if (!previous || previous === 0) {
+        return current > 0 ? 100 : 0; // first-time growth
+      }
+
+      return Math.round(((current - previous) / previous) * 100);
+    };
+
+    const now = new Date();
+    const currentYearStart = new Date(now.getFullYear(), 0, 1);
+    const currentYearEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
+
+    const previousYearStart = new Date(now.getFullYear() - 1, 0, 1);
+    const previousYearEnd = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59);
+    const currentYearBookings = allBookingsForStats.filter(
+      b =>
+        new Date(b.createdAt) >= currentYearStart &&
+        new Date(b.createdAt) <= currentYearEnd
     );
 
-    // ✅ Calculate revenue only from PaymentPlan (price + joiningFee) * student count
-    const totalRevenue = finalBookings.reduce((acc, b) => {
-      const plan = b.paymentPlans?.[0];
-      if (plan?.price != null) {
-        const studentsCount = b.students?.length || 1;
-        return acc + (plan.price + (plan.joiningFee || 0)) * studentsCount;
-      }
-      return acc;
-    }, 0);
+    const previousYearBookings = allBookingsForStats.filter(
+      b =>
+        new Date(b.createdAt) >= previousYearStart &&
+        new Date(b.createdAt) <= previousYearEnd
+    );
 
-    // ✅ Average monthly fee (spread over duration)
-    const avgMonthlyFeeRaw =
-      finalBookings.reduce((acc, b) => {
+    // Stats
+    const calculateStats = (bookings) => {
+      const totalStudents = bookings.reduce(
+        (acc, b) => acc + (b.students?.length || 0),
+        0
+      );
+
+      const totalRevenue = bookings.reduce((acc, b) => {
         const plan = b.paymentPlans?.[0];
-        if (plan?.duration && plan.price != null) {
+        if (plan?.price != null) {
           const studentsCount = b.students?.length || 1;
-          return (
-            acc +
-            ((plan.price + (plan.joiningFee || 0)) / plan.duration) *
-            studentsCount
-          );
+          return acc + (plan.price + (plan.joiningFee || 0)) * studentsCount;
         }
         return acc;
-      }, 0) / (totalStudents || 1);
+      }, 0);
 
-    // Round to 2 decimals (returns Number)
-    const avgMonthlyFee = Math.round(avgMonthlyFeeRaw * 100) / 100;
+      const avgMonthlyFee =
+        bookings.reduce((acc, b) => {
+          const plan = b.paymentPlans?.[0];
+          if (plan?.duration && plan.price != null) {
+            const studentsCount = b.students?.length || 1;
+            return (
+              acc +
+              ((plan.price + (plan.joiningFee || 0)) / plan.duration) *
+              studentsCount
+            );
+          }
+          return acc;
+        }, 0) / (totalStudents || 1);
 
-    // ✅ Average lifecycle (duration * student count)
-    const avgLifeCycle =
-      finalBookings.reduce((acc, b) => {
-        const plan = b.paymentPlans?.[0];
-        if (plan?.duration != null) {
-          const studentsCount = b.students?.length || 1;
-          return acc + plan.duration * studentsCount;
-        }
-        return acc;
-      }, 0) / (totalStudents || 1);
+      const avgLifeCycle =
+        bookings.reduce((acc, b) => {
+          const plan = b.paymentPlans?.[0];
+          if (plan?.duration != null) {
+            const studentsCount = b.students?.length || 1;
+            return acc + plan.duration * studentsCount;
+          }
+          return acc;
+        }, 0) / (totalStudents || 1);
+
+      return {
+        totalStudents,
+        totalRevenue,
+        avgMonthlyFee: Math.round(avgMonthlyFee * 100) / 100,
+        avgLifeCycle: Math.round(avgLifeCycle * 100) / 100,
+      };
+    };
+    const currentStats = calculateStats(currentYearBookings);
+    const previousStats = calculateStats(previousYearBookings);
+
+    const stats = {
+      totalStudents: {
+        totalStudents: currentStats.totalStudents,
+        percentage: calculatePercentageChange(
+          currentStats.totalStudents,
+          previousStats.totalStudents
+        ),
+      },
+      totalRevenue: {
+        totalRevenue: currentStats.totalRevenue,
+        percentage: calculatePercentageChange(
+          currentStats.totalRevenue,
+          previousStats.totalRevenue
+        ),
+      },
+      avgMonthlyFee: {
+        avgMonthlyFee: currentStats.avgMonthlyFee,
+        percentage: calculatePercentageChange(
+          currentStats.avgMonthlyFee,
+          previousStats.avgMonthlyFee
+        ),
+      },
+      avgLifeCycle: {
+        avgLifeCycle: currentStats.avgLifeCycle,
+        percentage: calculatePercentageChange(
+          currentStats.avgLifeCycle,
+          previousStats.avgLifeCycle
+        ),
+      },
+    };
+
     // ✅ New: Fetch all venues from DB (including those with no bookings)
     const allVenuesFromDB = await Venue.findAll({
       order: [["name", "ASC"]],
@@ -1266,7 +1331,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
         bookedByAdmins: allAdmins, // ✅ unique list of admins like venues
         allVenues: allVenuesFromDB,
       },
-      stats: { totalStudents, totalRevenue, avgMonthlyFee, avgLifeCycle },
+      stats,
     };
   } catch (error) {
     console.error("❌ getAllBookingsWithStats Error:", error.message);
