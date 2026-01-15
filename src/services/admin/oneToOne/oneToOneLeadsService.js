@@ -881,29 +881,41 @@ exports.getAllOnetoOneLeadsSales = async (
     });
     const locations = Object.keys(locationSummary);
 
-    const startOfThisMonth = moment().startOf("month").toDate();
-    const endOfThisMonth = moment().endOf("month").toDate();
+    const startOfThisYear = moment().startOf("year").toDate();
+    const endOfThisYear = moment().endOf("year").toDate();
 
-    const startOfLastMonth = moment().subtract(1, "month").startOf("month").toDate();
-    const endOfLastMonth = moment().subtract(1, "month").endOf("month").toDate();
+    const startOfLastYear = moment().subtract(1, "year").startOf("year").toDate();
+    const endOfLastYear = moment().subtract(1, "year").endOf("year").toDate();
 
     const percent = (curr, prev) => {
-      if (!prev) return "+100%";
-      const val = Math.round(((curr - prev) / prev) * 100);
-      return `${val >= 0 ? "+" : ""}${val}%`;
+      curr = Number(curr) || 0;
+      prev = Number(prev) || 0;
+
+      // No data last year → treat as 100% growth max
+      if (prev === 0 && curr > 0) return "+100%";
+      if (prev === 0 && curr === 0) return "0%";
+
+      let change = ((curr - prev) / prev) * 100;
+
+      // 🔒 Cap growth to realistic range
+      if (change > 100) change = 100;
+      if (change < -100) change = -100;
+
+      const rounded = Math.round(change);
+      return `${rounded >= 0 ? "+" : ""}${rounded}%`;
     };
 
-    const totalRevenueThisMonth = await OneToOnePayment.sum("amount", {
+    const totalRevenueThisYear = await OneToOnePayment.sum("amount", {
       where: {
         paymentStatus: "paid",
-        createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
+        createdAt: { [Op.between]: [startOfThisYear, endOfThisYear] },
       },
     });
 
-    const totalRevenueLastMonth = await OneToOnePayment.sum("amount", {
+    const totalRevenueLastYear = await OneToOnePayment.sum("amount", {
       where: {
         paymentStatus: "paid",
-        createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
+        createdAt: { [Op.between]: [startOfLastYear, endOfLastYear] },
       },
     });
 
@@ -935,10 +947,11 @@ exports.getAllOnetoOneLeadsSales = async (
       });
     };
 
-    const goldThisMonth = await getSourceRevenue("gold", startOfThisMonth, endOfThisMonth);
-    const goldLastMonth = await getSourceRevenue("gold", startOfLastMonth, endOfLastMonth);
-    const silverThisMonth = await getSourceRevenue("silver", startOfThisMonth, endOfThisMonth);
-    const silverLastMonth = await getSourceRevenue("silver", startOfLastMonth, endOfLastMonth);
+    const goldThisYear = await getSourceRevenue("gold", startOfThisYear, endOfThisYear);
+    const goldLastYear = await getSourceRevenue("gold", startOfLastYear, endOfLastYear);
+
+    const silverThisYear = await getSourceRevenue("silver", startOfThisYear, endOfThisYear);
+    const silverLastYear = await getSourceRevenue("silver", startOfLastYear, endOfLastYear);
     const topSalesAgent = await oneToOneLeads.findOne({
       attributes: [
         "createdBy",
@@ -967,16 +980,19 @@ exports.getAllOnetoOneLeadsSales = async (
       : null;
     const summary = {
       totalRevenue: {
-        amount: Number(totalRevenueThisMonth || 0),
-        percentage: percent(totalRevenueThisMonth || 0, totalRevenueLastMonth || 0),
+        amount: Number(totalRevenueThisYear || 0),
+        percentage: percent(
+          totalRevenueThisYear || 0,
+          totalRevenueLastYear || 0
+        ),
       },
       goldPackageRevenue: {
-        amount: Number(goldThisMonth || 0),
-        percentage: percent(goldThisMonth || 0, goldLastMonth || 0),
+        amount: Number(goldThisYear || 0),
+        percentage: percent(goldThisYear || 0, goldLastYear || 0),
       },
       silverPackageRevenue: {
-        amount: Number(silverThisMonth || 0),
-        percentage: percent(silverThisMonth || 0, silverLastMonth || 0),
+        amount: Number(silverThisYear || 0),
+        percentage: percent(silverThisYear || 0, silverLastYear || 0),
       },
       topSalesAgent: topAgent,
     };

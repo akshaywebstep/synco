@@ -32,8 +32,8 @@ exports.createRecruitmentLead = async (req, res) => {
       "gender",
       "managementExperience",
       "qualification",
-      "availableVenues",
-      "heardFrom",
+      // "availableVenues",
+      // "heardFrom",
     ],
   });
 
@@ -57,8 +57,8 @@ exports.createRecruitmentLead = async (req, res) => {
       postcode: req.body.postcode || null,
       managementExperience: req.body.managementExperience,
       qualification: req.body.qualification, // JSON / array
-      availableVenues: req.body.availableVenues, // JSON / array
-      heardFrom: req.body.heardFrom,
+      // availableVenues: req.body.availableVenues, // JSON / array
+      // heardFrom: req.body.heardFrom,
       status: "pending",
       appliedFor: "coach",
       message: req.body.message || null,
