@@ -428,6 +428,7 @@ exports.getAllRecruitmentLead = async (adminId) => {
     };
   }
 };
+
 exports.getAllRecruitmentLeadRport = async (adminId, dateRange) => {
   try {
     if (!adminId || isNaN(Number(adminId))) {
@@ -947,7 +948,7 @@ exports.getRecruitmentLeadById = async (id, adminId) => {
     }
 
     const recruitmentLead = await RecruitmentLead.findOne({
-      where: { id, appliedFor: "coach" },
+      where: { id},
       include: [{ model: CandidateProfile, as: "candidateProfile" }],
     });
 

@@ -62,15 +62,15 @@ exports.createRecruitmentFranchiseLead = async (req, res) => {
       payload.gender = req.body.gender;
       payload.postcode = req.body.postcode;
       payload.managementExperience = req.body.managementExperience;
-      payload.dbs = req.body.dbs;
-      payload.level = req.body.level;
+      // payload.dbs = req.body.dbs;
+      // payload.level = req.body.level;
     }
 
     // ----------------------------------
     // 🔹 Public Website (Franchise Enquiry)
     // ----------------------------------
     if (!isAdminRequest) {
-      payload.desiredFranchiseLocation = req.body.desiredFranchiseLocation;
+      payload.desiredFranchiseLocatxion = req.body.desiredFranchiseLocation;
       payload.liquidCapital = req.body.liquidCapital;
       payload.message = req.body.message;
     }

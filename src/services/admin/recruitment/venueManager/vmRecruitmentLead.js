@@ -243,6 +243,18 @@ exports.getAllVmRecruitmentLead = async (adminId) => {
           profile.bookPracticalAssessment = [];
         }
       }
+      // -------------------------------
+      // ✅ Format qualification
+      // -------------------------------
+      if (leadJson.qualification) {
+        try {
+          leadJson.qualification = Array.isArray(leadJson.qualification)
+            ? leadJson.qualification
+            : JSON.parse(leadJson.qualification);
+        } catch (err) {
+          leadJson.qualification = [];
+        }
+      }
 
       formatted.push(leadJson);
     }
