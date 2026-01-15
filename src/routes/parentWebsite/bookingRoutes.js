@@ -13,6 +13,6 @@ const {
 } = require("../../controllers/admin/booking/bookFreeTrialController");
 
 // Create Free Trial Booking From Parent Portal
-router.post("/:paremtAdminId", authMiddleware, createBooking); 
+router.post("/create/:paremtAdminId", authMiddleware, createBooking); 
 
 module.exports = router;

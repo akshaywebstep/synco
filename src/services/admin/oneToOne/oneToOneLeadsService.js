@@ -2641,7 +2641,10 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType = "th
           model: oneToOneLeads,
           as: "lead",
           attributes: [],
-          where: whereLead,
+          where: {
+            ...whereLead,
+            packageInterest: { [Op.in]: ["Gold", "Silver"] }
+          },
           required: true,
         }],
         required: true,
@@ -2663,7 +2666,10 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType = "th
           model: oneToOneLeads,
           as: "lead",
           attributes: [],
-          where: whereLead,
+          where: {
+            ...whereLead,
+            packageInterest: { [Op.in]: ["Gold", "Silver"] }
+          },
           required: true,
         }],
         required: true,
@@ -3118,7 +3124,10 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType = "th
       raw: true,
     });
 
-    const totalSources = marketChannelRaw.r
+    const totalSources = marketChannelRaw.reduce(
+      (sum, s) => sum + parseInt(s.count, 10),
+      0
+    );
 
     const marketChannelPerformance = marketChannelRaw.map((s) => {
       const count = parseInt(s.count, 10);
@@ -3126,9 +3135,9 @@ exports.getAllOneToOneAnalytics = async (superAdminId, adminId, filterType = "th
         totalSources > 0 ? ((count / totalSources) * 100).toFixed(2) : 0;
 
       return {
-        name: s.source, // e.g. "Facebook"
-        count, // e.g. 23456
-        percentage: parseFloat(percentage), // e.g. 50.00
+        name: s.source,
+        count,
+        percentage: parseFloat(percentage),
       };
     });
 

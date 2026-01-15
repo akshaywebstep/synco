@@ -1,5 +1,4 @@
 
-
 const {
     Booking,
     BookingStudentMeta,
@@ -461,4 +460,212 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
         };
     }
 };
-;
+
+// exports.createBooking = async (data, options) => {
+//     const t = await sequelize.transaction();
+
+//     try {
+//         const adminId = options?.adminId || null;
+//         const parentPortalAdminId = options?.parentAdminId || null;
+//         const leadId = options?.leadId || null;
+
+//         let parentAdminId = null;
+
+//         // --------------------------------------------------
+//         // SOURCE RESOLUTION
+//         // --------------------------------------------------
+//         let source = "website";      // default = website
+//         let bookedBy = null;         // always null for website
+
+//         if (adminId) {
+//             source = "admin";
+//             bookedBy = adminId;
+//         }
+
+//         // --------------------------------------------------
+//         // PARENT RESOLUTION (MOST IMPORTANT FIX)
+//         // --------------------------------------------------
+//         if (parentPortalAdminId) {
+//             // ✅ Parent already exists → NEVER create Admin
+//             parentAdminId = parentPortalAdminId;
+
+//             if (DEBUG) {
+//                 console.log("🔍 [DEBUG] Using existing parentAdminId:", parentAdminId);
+//             }
+//         }
+
+//         // --------------------------------------------------
+//         // ONLY CREATE/FIND PARENT IF parentAdminId DOES NOT EXIST
+//         // --------------------------------------------------
+//         // ✅ ONLY create/find parent IF parentAdminId DOES NOT EXIST
+//         else if (!parentPortalAdminId && data.parents?.length > 0) {
+//             const firstParent = data.parents[0];
+//             const email = firstParent.parentEmail?.trim()?.toLowerCase();
+
+//             if (!email) throw new Error("Parent email is required");
+
+//             const parentRole = await AdminRole.findOne({
+//                 where: { role: "Parents" },
+//                 transaction: t,
+//             });
+
+//             if (!parentRole) {
+//                 throw new Error("Parent role not found");
+//             }
+
+//             const hashedPassword = await bcrypt.hash("Synco123", 10);
+
+//             if (source === "admin") {
+//                 const admin = await Admin.create(
+//                     {
+//                         firstName: firstParent.parentFirstName || "Parent",
+//                         lastName: firstParent.parentLastName || "",
+//                         phoneNumber: firstParent.parentPhoneNumber || "",
+//                         email,
+//                         password: hashedPassword,
+//                         roleId: parentRole.id,
+//                         status: "active",
+//                     },
+//                     { transaction: t }
+//                 );
+
+//                 parentAdminId = admin.id;
+//             } else {
+//                 const [admin] = await Admin.findOrCreate({
+//                     where: { email },
+//                     defaults: {
+//                         firstName: firstParent.parentFirstName || "Parent",
+//                         lastName: firstParent.parentLastName || "",
+//                         phoneNumber: firstParent.parentPhoneNumber || "",
+//                         email,
+//                         password: hashedPassword,
+//                         roleId: parentRole.id,
+//                         status: "active",
+//                     },
+//                     transaction: t,
+//                 });
+
+//                 parentAdminId = admin.id;
+//             }
+//         }
+
+//         if (!parentAdminId) {
+//             throw new Error("parentAdminId could not be resolved");
+//         }
+
+//         // --------------------------------------------------
+//         // CREATE BOOKING
+//         // --------------------------------------------------
+//         const booking = await Booking.create(
+//             {
+//                 venueId: data.venueId,
+//                 parentAdminId,
+//                 bookingId: generateBookingId(12),
+//                 leadId,
+//                 totalStudents: data.totalStudents,
+//                 classScheduleId: data.classScheduleId,
+//                 trialDate: data.trialDate,
+//                 className: data.className,
+//                 serviceType: "weekly class trial",
+//                 attempt: 1,
+//                 classTime: data.classTime,
+//                 status: data.status || "active",
+//                 bookedBy,              // ✅ NULL for website
+//                 source,                // ✅ website
+//                 createdAt: new Date(),
+//                 updatedAt: new Date(),
+//             },
+//             { transaction: t }
+//         );
+
+//         // --------------------------------------------------
+//         // CREATE STUDENTS
+//         // --------------------------------------------------
+//         const studentIds = [];
+
+//         for (const student of data.students || []) {
+//             const studentMeta = await BookingStudentMeta.create(
+//                 {
+//                     bookingTrialId: booking.id,
+//                     studentFirstName: student.studentFirstName,
+//                     studentLastName: student.studentLastName,
+//                     dateOfBirth: student.dateOfBirth,
+//                     age: student.age,
+//                     gender: student.gender,
+//                     medicalInformation: student.medicalInformation,
+//                 },
+//                 { transaction: t }
+//             );
+//             studentIds.push(studentMeta);
+//         }
+
+//         const firstStudent = studentIds[0];
+
+//         // --------------------------------------------------
+//         // ALWAYS CREATE BookingParentMeta
+//         // --------------------------------------------------
+//         for (const parent of data.parents || []) {
+//             await BookingParentMeta.create(
+//                 {
+//                     studentId: firstStudent.id,
+//                     parentFirstName: parent.parentFirstName,
+//                     parentLastName: parent.parentLastName,
+//                     parentEmail: parent.parentEmail?.trim()?.toLowerCase(),
+//                     parentPhoneNumber: parent.parentPhoneNumber,
+//                     relationToChild: parent.relationToChild,
+//                     howDidYouHear: parent.howDidYouHear,
+//                 },
+//                 { transaction: t }
+//             );
+//         }
+
+//         // --------------------------------------------------
+//         // EMERGENCY CONTACT (OPTIONAL)
+//         // --------------------------------------------------
+//         if (
+//             data.emergency?.emergencyFirstName &&
+//             data.emergency?.emergencyPhoneNumber
+//         ) {
+//             await BookingEmergencyMeta.create(
+//                 {
+//                     studentId: firstStudent.id,
+//                     emergencyFirstName: data.emergency.emergencyFirstName,
+//                     emergencyLastName: data.emergency.emergencyLastName,
+//                     emergencyPhoneNumber: data.emergency.emergencyPhoneNumber,
+//                     emergencyRelation: data.emergency.emergencyRelation,
+//                 },
+//                 { transaction: t }
+//             );
+//         }
+
+//         // --------------------------------------------------
+//         // UPDATE CAPACITY
+//         // --------------------------------------------------
+//         const classSchedule = await ClassSchedule.findByPk(
+//             data.classScheduleId,
+//             { transaction: t }
+//         );
+
+//         const newCapacity = classSchedule.capacity - data.totalStudents;
+//         if (newCapacity < 0) throw new Error("Not enough capacity left.");
+
+//         await classSchedule.update({ capacity: newCapacity }, { transaction: t });
+
+//         await t.commit();
+
+//         return {
+//             status: true,
+//             data: {
+//                 bookingId: booking.bookingId,
+//                 booking,
+//                 studentId: firstStudent.id,
+//                 studentFirstName: firstStudent.studentFirstName,
+//                 studentLastName: firstStudent.studentLastName,
+//             },
+//         };
+//     } catch (error) {
+//         await t.rollback();
+//         console.error("❌ createBooking Error:", error);
+//         return { status: false, message: error.message };
+//     }
+// };
