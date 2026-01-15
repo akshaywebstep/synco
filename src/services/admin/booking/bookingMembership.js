@@ -1366,6 +1366,16 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
         },
       ];
     }
+    const now = new Date();
+    const currentYearStart = new Date(now.getFullYear(), 0, 1);
+    const currentYearEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
+
+    // If no explicit date filter → default to current year
+    if (!filters.fromDate && !filters.toDate && !filters.dateBooked) {
+      whereBooking.createdAt = {
+        [Op.between]: [currentYearStart, currentYearEnd],
+      };
+    }
 
     // ✅ Date filters
     if (filters.dateBooked) {
@@ -1605,6 +1615,37 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
     const allAdmins = Object.values(adminMap);
 
     // -------------------------------
+    // Previous Period Stats
+    // -------------------------------
+
+    let prevMemberShipSales = [];
+
+    // -------------------------------
+    // Previous YEAR Stats
+    // -------------------------------
+    const calcChange = (current, previousAvg) => {
+      if (!previousAvg) return 0;
+      return Math.round((current - previousAvg) * 100) / 100;
+    };
+
+    const prevYearStart = new Date(now.getFullYear() - 1, 0, 1);
+    const prevYearEnd = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59);
+
+    const prevBookings = await Booking.findAll({
+      where: {
+        ...whereBooking,
+        serviceType: "weekly class membership",
+        createdAt: {
+          [Op.between]: [prevYearStart, prevYearEnd],
+        },
+      },
+      include: [
+        { model: BookingStudentMeta, as: "students", required: true },
+        { model: PaymentPlan, as: "paymentPlan", required: false },
+      ],
+    });
+
+    // -------------------------------
     // Stats Calculation
     // -------------------------------
     const totalSales = memberShipSales.length;
@@ -1634,12 +1675,57 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
     const avgMonthlyFee = Math.round(avgMonthlyFeeRaw * 100) / 100;
 
     const topSaleAgent = memberShipSales.length > 0 ? 1 : 0; // placeholder
+    const prevTotalSales = prevBookings.length;
+
+    const prevTotalRevenue = prevBookings.reduce((acc, b) => {
+      const plan = b.paymentPlan;
+      if (plan && plan.price != null) {
+        const studentsCount = b.students?.length || 1;
+        return acc + (plan.price + (plan.joiningFee || 0)) * studentsCount;
+      }
+      return acc;
+    }, 0);
+
+    // 👇 YEARLY AVERAGE (not total)
+    const prevRevenueAvg =
+      prevTotalSales > 0
+        ? Math.round((prevTotalRevenue / prevTotalSales) * 100) / 100
+        : 0;
+
+    const prevAvgMonthlyFeeRaw =
+      prevBookings.reduce((acc, b) => {
+        const plan = b.paymentPlan;
+        if (plan && plan.duration && plan.price != null) {
+          const studentsCount = b.students?.length || 1;
+          return (
+            acc +
+            ((plan.price + (plan.joiningFee || 0)) / plan.duration) *
+            studentsCount
+          );
+        }
+        return acc;
+      }, 0) / (prevTotalSales || 1);
+
+    const prevAvgMonthlyFee =
+      Math.round(prevAvgMonthlyFeeRaw * 100) / 100;
 
     const stats = {
-      totalSales: { value: totalSales, change: 0 },
-      totalRevenue: { value: totalRevenue, change: 0 },
-      avgMonthlyFee: { value: avgMonthlyFee, change: 0 },
-      topSaleAgent: { value: topSaleAgent, change: 0 },
+      totalSales: {
+        value: totalSales,
+        change: calcChange(totalSales, prevTotalSales),
+      },
+      totalRevenue: {
+        value: totalRevenue,
+        change: calcChange(totalRevenue, prevTotalRevenue),
+      },
+      avgMonthlyFee: {
+        value: avgMonthlyFee,
+        change: calcChange(avgMonthlyFee, prevAvgMonthlyFee),
+      },
+      topSaleAgent: {
+        value: topSaleAgent,
+        change: 0,
+      },
     };
 
     // -------------------------------

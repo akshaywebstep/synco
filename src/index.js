@@ -27,6 +27,8 @@ app.use("/uploads", express.static("uploads"));
 
 app.use("/api/open", require("./routes/open")); // Public routes
 
+app.use("/api/parent", require("./routes/parentWebsite/"));
+
 // ✅ Auth & Profile
 app.use("/api/admin/auth", require("./routes/admin/authRoutes")); // Login, Logout, etc.
 app.use("/api/admin/profile", require("./routes/admin/profileRoutes")); // Admin profile CRUD

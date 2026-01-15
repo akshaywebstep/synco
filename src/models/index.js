@@ -134,6 +134,8 @@ const models = {
   Course: require("./admin/coaches/Course"),
   Contracts: require("./admin/coaches/Contracts"),
   StudentCourse: require("./admin/coaches/StudentCourse"),
+  Referral: require("./admin/referrals/Referral"),
+  ContactUs: require("./admin/contactUs/ContactUs"),
 };
 
 // =================== Apply Model-Level Associations =================== //
@@ -243,6 +245,8 @@ const {
 
   Contracts,
   StudentCourse,
+  Referral,
+  ContactUs,
 } = models;
 
 // Many-to-Many
@@ -556,32 +560,32 @@ Feedback.belongsTo(Booking, {
   as: "booking",
 });
 // One to One
-  Feedback.belongsTo(models.OneToOneBooking, {
-    foreignKey: "oneToOneBookingId",
-    as: "oneToOneBooking",
-  });
+Feedback.belongsTo(models.OneToOneBooking, {
+  foreignKey: "oneToOneBookingId",
+  as: "oneToOneBooking",
+});
 
-  // Birthday Party
-  Feedback.belongsTo(models.BirthdayPartyBooking, {
-    foreignKey: "birthdayPartyBookingId",
-    as: "birthdayPartyBooking",
-  });
+// Birthday Party
+Feedback.belongsTo(models.BirthdayPartyBooking, {
+  foreignKey: "birthdayPartyBookingId",
+  as: "birthdayPartyBooking",
+});
 
-  // Holiday Camp
-  Feedback.belongsTo(models.HolidayBooking, {
-    foreignKey: "holidayBookingId",
-    as: "holidayBooking",
-  });
+// Holiday Camp
+Feedback.belongsTo(models.HolidayBooking, {
+  foreignKey: "holidayBookingId",
+  as: "holidayBooking",
+});
 
-  Feedback.belongsTo(models.HolidayClassSchedule, {
-    foreignKey: "holidayClassScheduleId",
-    as: "holidayClassSchedule",
-  });
+Feedback.belongsTo(models.HolidayClassSchedule, {
+  foreignKey: "holidayClassScheduleId",
+  as: "holidayClassSchedule",
+});
 
-  Feedback.belongsTo(models.HolidayVenue, {
-    foreignKey: "holidayVenueId",
-    as: "holidayVenue",
-  });
+Feedback.belongsTo(models.HolidayVenue, {
+  foreignKey: "holidayVenueId",
+  as: "holidayVenue",
+});
 
 // Booking.belongsTo(Admin, {
 //   foreignKey: "updatedBy",
@@ -699,4 +703,6 @@ module.exports = {
   Course,
   Contracts,
   StudentCourse,
+  Referral,
+  ContactUs,
 };

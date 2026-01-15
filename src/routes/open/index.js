@@ -35,7 +35,13 @@ router.use(
   require("./holidayFindACamp/holidayBookingRoutes")
 );
 
+// Referral
+router.use("/referral", require("./referrals/referralRoutes"));
+
 // Franchise
 router.use("/recruitment", require("./recruitments/recruitmentsRoutes"));
+
+// Contact Us
+router.use("/contact-us", require("./contactUs/contactUsRoutes"));
 
 module.exports = router;
