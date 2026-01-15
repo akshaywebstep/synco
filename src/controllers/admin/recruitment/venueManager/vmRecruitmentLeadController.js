@@ -28,8 +28,9 @@ exports.createVmRecruitmentLead = async (req, res) => {
     phoneNumber,
     postcode,
     managementExperience,
-    dbs,
-    level,
+    qualification,
+    // dbs,
+    // level,
   } = req.body;
 
   const adminId = req.admin?.id;
@@ -45,8 +46,9 @@ exports.createVmRecruitmentLead = async (req, res) => {
       "dob",
       "email",
       "managementExperience",
-      "dbs",
-      "level",
+      "qualification",
+      // "dbs",
+      // "level",
       "gender",
     ],
   });
@@ -74,9 +76,10 @@ exports.createVmRecruitmentLead = async (req, res) => {
       phoneNumber,
       postcode,
       managementExperience,
-      dbs,
+      qualification,
+      // dbs,
       status: "pending",
-      level,
+      // level,
       createdBy: adminId,
       appliedFor: "venue manager",
     });
