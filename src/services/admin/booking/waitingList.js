@@ -332,11 +332,6 @@ exports.getBookingById = async (id, adminId, superAdminId) => {
 exports.getWaitingList = async (filters = {}) => {
   await updateBookingStats();
   try {
-    // const trialWhere = {
-    //   bookingType: {
-    //     [Op.in]: ["waiting list", "paid"],
-    //   },
-    // };
     const trialWhere = {};
 
     const statusFilter = filters.status
@@ -449,8 +444,12 @@ exports.getWaitingList = async (filters = {}) => {
 
     const bookings = await Booking.findAll({
       order: [["id", "DESC"]],
-      where: whereClause,
-      // where: trialWhere,
+      // where: whereClause,
+      // // where: trialWhere,
+      where: {
+        ...trialWhere,
+        ...whereClause,
+      },
       include: [
         {
           model: BookingStudentMeta,
@@ -574,33 +573,101 @@ exports.getWaitingList = async (filters = {}) => {
     });
 
     // ---- Stats Calculation ----
-    const totalOnWaitingList = parsedBookings.length;
 
-    // Avg. interest (based on students’ interest field)
-    const allInterests = parsedBookings.flatMap((b) =>
-      b.students.map((s) => parseInt(s.interest) || 0)
+    const calculatePercentageChange = (current, previous) => {
+      if (!previous || previous === 0) {
+        return current > 0 ? 100 : 0;
+      }
+      return Math.round(((current - previous) / previous) * 100);
+    };
+    // const totalOnWaitingList = parsedBookings.length;
+
+    const now = new Date();
+
+    const currentYearStart = new Date(now.getFullYear(), 0, 1);
+    const currentYearEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
+
+    const previousYearStart = new Date(now.getFullYear() - 1, 0, 1);
+    const previousYearEnd = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59);
+
+    const currentYearBookings = parsedBookings.filter(
+      b =>
+        new Date(b.createdAt) >= currentYearStart &&
+        new Date(b.createdAt) <= currentYearEnd
     );
-    const avgInterest =
-      allInterests.length > 0
-        ? (
-          allInterests.reduce((a, b) => a + b, 0) / allInterests.length
-        ).toFixed(2)
-        : 0;
 
-    // Avg. days waiting (currentDate - createdAt)
-    const avgDaysWaiting =
-      parsedBookings.length > 0
-        ? (
-          parsedBookings.reduce((sum, b) => {
-            const created = new Date(b.createdAt);
-            const now = new Date();
-            const diffDays = Math.floor(
-              (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)
-            );
-            return sum + diffDays;
-          }, 0) / parsedBookings.length
-        ).toFixed(0)
-        : 0;
+    const previousYearBookings = parsedBookings.filter(
+      b =>
+        new Date(b.createdAt) >= previousYearStart &&
+        new Date(b.createdAt) <= previousYearEnd
+    );
+
+    const getTopWithCount = (bookings, type) => {
+      const counter = {};
+
+      bookings.forEach(b => {
+        let key = null;
+
+        if (type === "admin" && b.bookedByAdmin) {
+          key = `${b.bookedByAdmin.firstName} ${b.bookedByAdmin.lastName}`;
+        }
+
+        if (type === "venue" && b.venue) {
+          key = b.venue.name;
+        }
+
+        if (key) {
+          counter[key] = (counter[key] || 0) + 1;
+        }
+      });
+
+      const sorted = Object.entries(counter).sort((a, b) => b[1] - a[1])[0];
+
+      return sorted
+        ? { name: sorted[0], count: sorted[1] }
+        : { name: null, count: 0 };
+    };
+
+    const calculateWaitingStats = (bookings) => {
+      const totalOnWaitingList = bookings.length;
+
+      const allInterests = bookings.flatMap(b =>
+        // b.students.map(s => parseInt(s.interest) || 0)
+        b.students.map(s => Number(s.interest) || 0)
+      );
+
+      const avgInterest =
+        allInterests.length > 0
+          ? Number(
+            (
+              allInterests.reduce((a, b) => a + b, 0) / allInterests.length
+            ).toFixed(2)
+          )
+          : 0;
+
+      const avgDaysWaiting =
+        bookings.length > 0
+          ? Math.round(
+            bookings.reduce((sum, b) => {
+              const created = new Date(b.createdAt);
+              const today = new Date();
+              return (
+                sum +
+                Math.floor(
+                  (today.getTime() - created.getTime()) /
+                  (1000 * 60 * 60 * 24)
+                )
+              );
+            }, 0) / bookings.length
+          )
+          : 0;
+
+      return {
+        totalOnWaitingList,
+        avgInterest,
+        avgDaysWaiting,
+      };
+    };
 
     // Top Referrer (admin with most bookings)
     const adminCount = {};
@@ -620,8 +687,55 @@ exports.getWaitingList = async (filters = {}) => {
         venueCount[b.venue.name] = (venueCount[b.venue.name] || 0) + 1;
       }
     });
+
     const mostRequestedVenue =
       Object.entries(venueCount).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+    const currentStats = calculateWaitingStats(currentYearBookings);
+    const previousStats = calculateWaitingStats(previousYearBookings);
+    const currentTopReferrer = getTopWithCount(currentYearBookings, "admin");
+    const previousTopReferrer = getTopWithCount(previousYearBookings, "admin");
+
+    const currentTopVenue = getTopWithCount(currentYearBookings, "venue");
+    const previousTopVenue = getTopWithCount(previousYearBookings, "venue");
+
+    const stats = {
+      totalOnWaitingList: {
+        totalOnWaitingList: currentStats.totalOnWaitingList,
+        percentage: calculatePercentageChange(
+          currentStats.totalOnWaitingList,
+          previousStats.totalOnWaitingList
+        ),
+      },
+      avgInterest: {
+        avgInterest: currentStats.avgInterest,
+        percentage: calculatePercentageChange(
+          currentStats.avgInterest,
+          previousStats.avgInterest
+        ),
+      },
+      avgDaysWaiting: {
+        avgDaysWaiting: currentStats.avgDaysWaiting,
+        percentage: calculatePercentageChange(
+          currentStats.avgDaysWaiting,
+          previousStats.avgDaysWaiting
+        ),
+      },
+      topReferrer: {
+        name: currentTopReferrer.name,
+        percentage: calculatePercentageChange(
+          currentTopReferrer.count,
+          previousTopReferrer.count
+        ),
+      },
+      mostRequestedVenue: {
+        name: currentTopVenue.name,
+        percentage: calculatePercentageChange(
+          currentTopVenue.count,
+          previousTopVenue.count
+        ),
+      },
+
+    };
 
     return {
       status: true,
@@ -630,13 +744,7 @@ exports.getWaitingList = async (filters = {}) => {
         waitingList: parsedBookings,
         venue: venues,
         bookedByAdmins,
-        stats: {
-          totalOnWaitingList,
-          avgInterest,
-          avgDaysWaiting,
-          topReferrer,
-          mostRequestedVenue,
-        },
+        stats,
       },
     };
   } catch (error) {
@@ -648,13 +756,7 @@ exports.getWaitingList = async (filters = {}) => {
         waitingList: [],
         venue: [],
         bookedByAdmins: [],
-        stats: {
-          totalOnWaitingList: 0,
-          avgInterest: 0,
-          avgDaysWaiting: 0,
-          topReferrer: null,
-          mostRequestedVenue: null,
-        },
+        stats,
       },
     };
   }
