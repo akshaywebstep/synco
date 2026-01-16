@@ -909,7 +909,14 @@ exports.updateBooking = async (payload, adminId, id) => {
     // 🔹 Step 4: Payment processing
     if (booking.paymentPlanId && payload.payment?.paymentType) {
       const paymentType = payload.payment.paymentType;
+      // let paymentStatusFromGateway = "pending";
       let paymentStatusFromGateway = "pending";
+
+      // ✅ ADD THESE (IMPORTANT)
+      let customerId = null;
+      let contractRes = null;
+      let matchedSchedule = null;
+      let customerRes = null; // ✅ ADD THIS
 
       try {
         const paymentPlan = await PaymentPlan.findByPk(booking.paymentPlanId, {
@@ -940,7 +947,8 @@ exports.updateBooking = async (payload, adminId, id) => {
             (service) => service.Schedules || []
           );
 
-          let matchedSchedule = findMatchingSchedule(schedules, paymentPlan);
+          // let matchedSchedule = findMatchingSchedule(schedules, paymentPlan);
+          matchedSchedule = findMatchingSchedule(schedules, paymentPlan);
 
           if (!matchedSchedule) {
             // DO NOT try to create the schedule
@@ -960,7 +968,9 @@ exports.updateBooking = async (payload, adminId, id) => {
               payload.payment?.firstName ||
               payload.parents?.[0]?.parentFirstName,
             surname:
-              payload.payment?.lastName || payload.parents?.[0]?.parentLastName,
+              payload.payment?.lastName ??
+              payload.parents?.[0]?.parentLastName ??
+              "Unknown",
             line1: payload.payment?.addressLine1 || "N/A",
             postCode: payload.payment?.postalCode || "N/A",
             accountNumber: payload.payment?.account_number,
@@ -970,13 +980,39 @@ exports.updateBooking = async (payload, adminId, id) => {
               `${payload.parents?.[0]?.parentFirstName} ${payload.parents?.[0]?.parentLastName}`,
           };
 
-          const customerRes = await createAccessPaySuiteCustomer(
-            customerPayload
-          );
+          // const customerRes = await createAccessPaySuiteCustomer(
+          //   customerPayload
+          // );
+          if (!payload.payment?.email?.includes("@")) {
+            throw new Error("Invalid email address for Access PaySuite");
+          }
+
+          if (!payload.payment?.firstName) {
+            throw new Error("First name is required for Access PaySuite");
+          }
+
+          if (
+            !payload.parents?.[0]?.parentLastName &&
+            !payload.payment?.lastName
+          ) {
+            throw new Error("Surname is required for Access PaySuite");
+          }
+
+          // const customerRes = await createAccessPaySuiteCustomer(customerPayload);
+          customerRes = await createAccessPaySuiteCustomer(customerPayload);
+
+          if (!customerRes.status) {
+            console.error("APS CUSTOMER ERROR:", customerRes);
+            throw new Error(
+              customerRes.message ||
+              customerRes.data?.Message ||
+              "Access PaySuite: Customer creation failed"
+            );
+          }
           if (!customerRes.status)
             throw new Error("Access PaySuite: Customer creation failed");
 
-          const customerId =
+          customerId =
             customerRes.data?.CustomerId ||
             customerRes.data?.Id ||
             customerRes.data?.customerId ||
@@ -1069,31 +1105,57 @@ exports.updateBooking = async (payload, adminId, id) => {
         }
         console.log("APS PAYMENT DATA", {
           customerId,
-          contract: contractRes.data,
+          contract: contractRes?.data,
           schedule: matchedSchedule,
         });
+        const payerFirstName =
+          payload.payment?.firstName ||
+          payload.parents?.[0]?.parentFirstName ||
+          "Unknown";
+
+        const payerLastName =
+          payload.payment?.lastName ||
+          payload.parents?.[0]?.parentLastName ||
+          "Unknown";
+
+        const payerEmail =
+          payload.payment?.email ||
+          payload.parents?.[0]?.parentEmail ||
+          "no-reply@example.com";
+
         // Save booking payment
         await BookingPayment.create(
           {
             bookingId: booking.id,
             paymentPlanId: booking.paymentPlanId,
             studentId: booking.students?.[0]?.id,
+
+            firstName: payerFirstName,
+            lastName: payerLastName,
+            email: payerEmail,
+
             paymentType,
             amount: paymentPlan.price,
             paymentStatus: paymentStatusFromGateway,
             merchantRef,
             description: `${venue?.name} - ${classSchedule?.className}`,
+            currency: "GBP",
 
-            // ✅ APS fields
-            gateway: "accesspaysuite",
-            gatewayCustomerId: customerId,
-            gatewayContractId: contractRes.data?.ContractId,
-            gatewayScheduleId: matchedSchedule?.ScheduleId,
-            gatewayPayload: {
-              customer: customerRes.data,
-              contract: contractRes.data,
+            // ✅ CORRECT DB COLUMNS
+            gatewayResponse: ({
+              gateway: "accesspaysuite",
+              customerId,
+              contractId: contractRes?.data?.ContractId,
+              scheduleId: matchedSchedule?.ScheduleId,
+              customer: customerRes?.data,
+              contract: contractRes?.data,
               schedule: matchedSchedule,
-            },
+            }),
+
+            transactionMeta: JSON.stringify({
+              status: paymentStatusFromGateway,
+              provider: "accesspaysuite",
+            }),
           },
           { transaction: t }
         );
@@ -1102,13 +1164,7 @@ exports.updateBooking = async (payload, adminId, id) => {
           throw new Error("Payment failed. Booking not updated.");
         }
       } catch (err) {
-        await t.rollback();
-        const msg =
-          err.response?.data?.reasonMessage ||
-          err.response?.data?.error?.message ||
-          err.message ||
-          "Payment failed.";
-        return { status: false, message: msg };
+        throw err; // let outer catch handle rollback
       }
     }
     booking.status = "active";
