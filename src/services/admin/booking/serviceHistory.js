@@ -1040,15 +1040,33 @@ exports.updateBooking = async (payload, adminId, id) => {
             contractPayload.TerminationDate = end.toISOString().split("T")[0];
           }
 
-          const contractRes = await createContract(customerId, contractPayload);
+          contractRes = await createContract(customerId, contractPayload);
+          console.log("DEBUG contractRes:", contractRes);
           if (!contractRes.status)
             throw new Error("Access PaySuite: Contract creation failed");
 
+          // ✅ Safe gatewayResponse save (FIXED)
+          const contractId =
+            contractRes?.data?.ContractId ||  // Preferred key
+            contractRes?.ContractId ||        // Fallback
+            contractRes?.data?.Id ||          // APS sometimes returns Id at top level
+            contractRes?.Id ||                // Another fallback
+            null;
+
+          // gatewayResponse = {
+          //   gateway: "accesspaysuite",
+          //   customerId,
+          //   contractId,
+          //   scheduleId: matchedSchedule?.ScheduleId,
+          //   customer: customerRes?.data || customerRes || {},
+          //   contract: contractRes?.data || contractRes || {},
+          //   schedule: matchedSchedule,
+          // };
           gatewayResponse = {
             gateway: "accesspaysuite",
             schedule: matchedSchedule,
-            customer: customerRes.data,
-            contract: contractRes.data,
+            customer: customerRes?.data || {},
+            contract: contractRes?.data || {},
           };
 
           paymentStatusFromGateway = "active";
@@ -1141,22 +1159,19 @@ exports.updateBooking = async (payload, adminId, id) => {
             merchantRef,
             description: `${venue?.name} - ${classSchedule?.className}`,
             currency: "GBP",
-
-            // ✅ CORRECT DB COLUMNS
-            // ✅ Minimal change: stringify the full object for DB save
-            gatewayResponse: JSON.stringify({
-              gateway: "accesspaysuite",
-              customerId,
-              contractId: contractRes?.data?.ContractId,
-              scheduleId: matchedSchedule?.ScheduleId,
-              customer: customerRes?.data,
-              contract: contractRes?.data,
-              schedule: matchedSchedule,
-            }),
+            // ✅ Minimal clean gateway response
+            gatewayResponse: JSON.stringify(gatewayResponse),
             transactionMeta: JSON.stringify({
               status: paymentStatusFromGateway,
               provider: "accesspaysuite",
             }),
+            // ✅ CORRECT DB COLUMNS
+            // ✅ Minimal change: stringify the full object for DB save
+            // gatewayResponse: JSON.stringify(gatewayResponse),
+            // transactionMeta: JSON.stringify({
+            //   status: paymentStatusFromGateway,
+            //   provider: "accesspaysuite",
+            // }),
           },
           { transaction: t }
         );

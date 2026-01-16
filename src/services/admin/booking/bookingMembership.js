@@ -654,10 +654,7 @@ exports.createBooking = async (data, options) => {
           if (!customerId)
             throw new Error("Access PaySuite: Customer ID missing");
 
-          // const normalizedStartDate = normalizeContractStartDate(
-          //   data.startDate,
-          //   matchedSchedule
-          // );
+          
           const contractStartDate = calculateContractStartDate(18);
 
           const contractPayload = {
