@@ -76,15 +76,25 @@ exports.createFreezeBooking = async ({
     if (bookingPayment.paymentType === "accesspaysuite") {
       let gatewayResponse = bookingPayment.gatewayResponse;
 
-      if (typeof gatewayResponse === "string") {
-        gatewayResponse = JSON.parse(gatewayResponse);
+      // ✅ Handle both normal JSON object and escaped JSON string
+      try {
+        if (typeof gatewayResponse === "string") {
+          gatewayResponse = JSON.parse(gatewayResponse);
+
+          // If it was double-escaped (like your example), parse again
+          if (typeof gatewayResponse === "string" && gatewayResponse.startsWith("{")) {
+            gatewayResponse = JSON.parse(gatewayResponse);
+          }
+        }
+      } catch (err) {
+        console.warn("⚠️ Failed to parse gatewayResponse, using as-is:", err);
       }
 
       // ✅ Resolve contractId correctly
       const contractId =
-        bookingPayment.contractId ||
-        gatewayResponse?.contract?.Id ||
-        gatewayResponse?.contract?.id;
+        bookingPayment.contractId || // direct column
+        gatewayResponse?.contract?.Id || // APS v1 style
+        gatewayResponse?.contract?.id; // APS v2 style
 
       if (!contractId) {
         await t.rollback();
