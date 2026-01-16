@@ -1067,23 +1067,33 @@ exports.updateBooking = async (payload, adminId, id) => {
             );
           }
         }
-
+        console.log("APS PAYMENT DATA", {
+          customerId,
+          contract: contractRes.data,
+          schedule: matchedSchedule,
+        });
         // Save booking payment
         await BookingPayment.create(
           {
             bookingId: booking.id,
             paymentPlanId: booking.paymentPlanId,
-            billingAddress: payload.payment.billingAddress || null,
             studentId: booking.students?.[0]?.id,
             paymentType,
-            firstName: payload.payment.firstName || "",
-            lastName: payload.payment.lastName || "",
-            email: payload.payment.email || "",
             amount: paymentPlan.price,
             paymentStatus: paymentStatusFromGateway,
             merchantRef,
-            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-              }`,
+            description: `${venue?.name} - ${classSchedule?.className}`,
+
+            // ✅ APS fields
+            gateway: "accesspaysuite",
+            gatewayCustomerId: customerId,
+            gatewayContractId: contractRes.data?.ContractId,
+            gatewayScheduleId: matchedSchedule?.ScheduleId,
+            gatewayPayload: {
+              customer: customerRes.data,
+              contract: contractRes.data,
+              schedule: matchedSchedule,
+            },
           },
           { transaction: t }
         );
