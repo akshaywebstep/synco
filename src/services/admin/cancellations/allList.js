@@ -107,6 +107,9 @@ function calcStats(records) {
     highestRisk,
   };
 }
+function getExactChange(current, previous) {
+  return (Number(current) || 0) - (Number(previous) || 0);
+}
 
 exports.getFullCancelBooking = async ({
   bookingType,
@@ -378,33 +381,38 @@ exports.getFullCancelBooking = async ({
 
     const stats = {
       totalRequests: {
-        value: [currentStats.totalRequests], // wrapped in array
-        change: `${getTrend(
+        value: [currentStats.totalRequests],
+        change: `${getExactChange(
           currentStats.totalRequests,
           previousStats.totalRequests
         )}%`,
       },
       avgTenure: {
-        value: [currentStats.avgTenure.toFixed(1)], // wrapped in array
-        change: `${getTrend(currentStats.avgTenure, previousStats.avgTenure)}%`,
+        value: [Number(currentStats.avgTenure.toFixed(1))],
+        change: `${Number(
+          getExactChange(
+            currentStats.avgTenure,
+            previousStats.avgTenure
+          ).toFixed(1)
+        )}%`,
       },
       mostRequestedVenue: {
-        value: [currentStats.mostRequestedVenue?.[0] || "N/A"], // array with label only
-        change: `${getTrend(
+        value: [currentStats.mostRequestedVenue?.[0] || "N/A"],
+        change: `${getExactChange(
           currentStats.mostRequestedVenue?.[1] || 0,
           previousStats.mostRequestedVenue?.[1] || 0
         )}%`,
       },
       commonReason: {
-        value: [currentStats.commonReason?.[0] || "N/A"], // array with reason only
-        change: `${getTrend(
+        value: [currentStats.commonReason?.[0] || "N/A"],
+        change: `${getExactChange(
           currentStats.commonReason?.[1] || 0,
           previousStats.commonReason?.[1] || 0
         )}%`,
       },
       highestRiskAgeGroup: {
-        value: [currentStats.highestRisk?.[0] || "N/A"], // array with group only
-        change: `${getTrend(
+        value: [currentStats.highestRisk?.[0] || "N/A"],
+        change: `${getExactChange(
           currentStats.highestRisk?.[1] || 0,
           previousStats.highestRisk?.[1] || 0
         )}%`,

@@ -93,6 +93,9 @@ function calcStats(records) {
     highestRisk,
   };
 }
+function getExactChange(current, previous) {
+  return (Number(current) || 0) - (Number(previous) || 0);
+}
 
 exports.getRequestToCancel = async ({
   bookingType,
@@ -347,33 +350,38 @@ exports.getRequestToCancel = async ({
 
     const stats = {
       totalRequests: {
-        value: currentStats.totalRequests, // plain number
-        change: `${getTrend(
+        value: currentStats.totalRequests,
+        change: `${getExactChange(
           currentStats.totalRequests,
           previousStats.totalRequests
         )}%`,
       },
       avgTenure: {
-        value: currentStats.avgTenure.toFixed(1), // plain number (stringified to 1 decimal)
-        change: `${getTrend(currentStats.avgTenure, previousStats.avgTenure)}%`,
+        value: Number(currentStats.avgTenure.toFixed(1)),
+        change: `${Number(
+          getExactChange(
+            currentStats.avgTenure,
+            previousStats.avgTenure
+          ).toFixed(1)
+        )}%`,
       },
       mostRequestedVenue: {
-        value: [currentStats.mostRequestedVenue?.[0] || "N/A"], // only label in array
-        change: `${getTrend(
+        value: [currentStats.mostRequestedVenue?.[0] || "N/A"],
+        change: `${getExactChange(
           currentStats.mostRequestedVenue?.[1] || 0,
           previousStats.mostRequestedVenue?.[1] || 0
         )}%`,
       },
       commonReason: {
-        value: [currentStats.commonReason?.[0] || "N/A"], // only reason in array
-        change: `${getTrend(
+        value: [currentStats.commonReason?.[0] || "N/A"],
+        change: `${getExactChange(
           currentStats.commonReason?.[1] || 0,
           previousStats.commonReason?.[1] || 0
         )}%`,
       },
       highestRiskAgeGroup: {
-        value: [currentStats.highestRisk?.[0] || "N/A"], // only group in array
-        change: `${getTrend(
+        value: [currentStats.highestRisk?.[0] || "N/A"],
+        change: `${getExactChange(
           currentStats.highestRisk?.[1] || 0,
           previousStats.highestRisk?.[1] || 0
         )}%`,
@@ -487,7 +495,7 @@ exports.sendCancelBookingEmailToParents = async ({ bookingIds }) => {
               noteHtml = `
         <p><strong>Reason for Cancellation:</strong> ${cancelReason}</p>
       `;
-            } 
+            }
 
             const finalHtml = htmlTemplate
               .replace(/{{parentName}}/g, parent.parentFirstName || "")

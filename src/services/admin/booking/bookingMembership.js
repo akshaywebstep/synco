@@ -1347,7 +1347,12 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
     console.log("🔹 Filters received in service:", filters);
 
     // ✅ Default filter: active + paid bookings
-    const whereBooking = { bookingType: "paid", status: "active" };
+    // const whereBooking = { bookingType: "paid", status: "active" };
+    const whereBooking = {
+      bookingType: "paid",
+      status: filters.status || "active",
+    };
+
     const whereVenue = {};
 
     // 🔹 Apply filters
@@ -1789,7 +1794,7 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
       },
       topSaleAgent: {
         value: topSaleAgent,
-        change: 0,
+        change: totalSales,
       },
     };
 
