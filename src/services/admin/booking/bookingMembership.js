@@ -29,6 +29,29 @@ const {
 const {
   createBillingRequest,
 } = require("../../../utils/payment/pay360/payment");
+function safeJsonParse(value, label = "JSON") {
+  if (!value) return {};
+
+  try {
+    let parsed = value;
+
+    // First parse if string
+    if (typeof parsed === "string") {
+      parsed = JSON.parse(parsed);
+
+      // Handle double-stringified JSON
+      if (typeof parsed === "string") {
+        parsed = JSON.parse(parsed);
+      }
+    }
+
+    // Ensure object
+    return typeof parsed === "object" && parsed !== null ? parsed : {};
+  } catch (error) {
+    console.error(`❌ Invalid ${label}`, error, value);
+    return {};
+  }
+}
 
 const DEBUG = process.env.DEBUG === "true";
 
@@ -46,37 +69,6 @@ function calculateContractStartDate(delayDays = 18) {
   start.setHours(0, 0, 0, 0);
   return start.toISOString().split("T")[0];
 }
-
-// function normalizeContractStartDate(requestedStartDate, matchedSchedule) {
-//   const requested = new Date(requestedStartDate);
-//   requested.setHours(0, 0, 0, 0);
-
-//   // Rule 1: must be from tomorrow onwards
-//   const tomorrow = new Date();
-//   tomorrow.setDate(tomorrow.getDate() + 1);
-//   tomorrow.setHours(0, 0, 0, 0);
-
-//   if (requested < tomorrow) {
-//     throw new Error(
-//       "Start date must be from tomorrow onwards"
-//     );
-//   }
-
-//   // Rule 2: must respect schedule minimum start date (APS rule)
-//   if (matchedSchedule?.Start) {
-//     const scheduleStart = new Date(matchedSchedule.Start);
-//     scheduleStart.setHours(0, 0, 0, 0);
-
-//     if (requested < scheduleStart) {
-//       throw new Error(
-//         `Start date must be on or after ${matchedSchedule.Start.split("T")[0]}`
-//       );
-//     }
-//   }
-
-//   // APS expects YYYY-MM-DD
-//   return requested.toISOString().split("T")[0];
-// }
 
 function findMatchingSchedule(schedules) {
   if (!Array.isArray(schedules)) return null;
@@ -654,7 +646,6 @@ exports.createBooking = async (data, options) => {
           if (!customerId)
             throw new Error("Access PaySuite: Customer ID missing");
 
-          
           const contractStartDate = calculateContractStartDate(18);
 
           const contractPayload = {
@@ -1031,41 +1022,25 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
         const paymentPlans = plan ? [plan] : [];
 
         // PaymentData with parsed gatewayResponse & transactionMeta
-        let parsedGatewayResponse = {};
-        let parsedTransactionMeta = {};
-        let parsedGoCardlessBillingRequest = {};
+        // let parsedGatewayResponse = {};
+        // let parsedTransactionMeta = {};
+        // let parsedGoCardlessBillingRequest = {};
 
-        try {
-          if (payment?.gatewayResponse) {
-            parsedGatewayResponse =
-              typeof payment.gatewayResponse === "string"
-                ? JSON.parse(payment.gatewayResponse)
-                : payment.gatewayResponse;
-          }
-        } catch (e) {
-          console.error("❌ Invalid gatewayResponse JSON", e);
-        }
+        // PaymentData with parsed gatewayResponse & transactionMeta
+        const parsedGatewayResponse = safeJsonParse(
+          payment?.gatewayResponse,
+          "gatewayResponse"
+        );
 
-        try {
-          if (payment?.goCardlessBillingRequest) {
-            parsedGoCardlessBillingRequest =
-              typeof payment.goCardlessBillingRequest === "string"
-                ? JSON.parse(payment.goCardlessBillingRequest)
-                : payment.goCardlessBillingRequest;
-          }
-        } catch (e) {
-          console.error("Invalid goCardlessBillingRequest JSON", e);
-        }
-        try {
-          if (payment?.transactionMeta) {
-            parsedTransactionMeta =
-              typeof payment.transactionMeta === "string"
-                ? JSON.parse(payment.transactionMeta)
-                : payment.transactionMeta;
-          }
-        } catch (e) {
-          console.error("Invalid transactionMeta JSON", e);
-        }
+        const parsedTransactionMeta = safeJsonParse(
+          payment?.transactionMeta,
+          "transactionMeta"
+        );
+
+        const parsedGoCardlessBillingRequest = safeJsonParse(
+          payment?.goCardlessBillingRequest,
+          "goCardlessBillingRequest"
+        );
 
         const paymentData = payment
           ? {
@@ -1563,27 +1538,15 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
       let parsedGatewayResponse = {};
       let parsedTransactionMeta = {};
 
-      try {
-        if (payment?.gatewayResponse) {
-          parsedGatewayResponse =
-            typeof payment.gatewayResponse === "string"
-              ? JSON.parse(payment.gatewayResponse)
-              : payment.gatewayResponse;
-        }
-      } catch (e) {
-        console.error("Invalid gatewayResponse JSON", e);
-      }
+      parsedGatewayResponse = safeJsonParse(
+        payment?.gatewayResponse,
+        "gatewayResponse"
+      );
 
-      try {
-        if (payment?.transactionMeta) {
-          parsedTransactionMeta =
-            typeof payment.transactionMeta === "string"
-              ? JSON.parse(payment.transactionMeta)
-              : payment.transactionMeta;
-        }
-      } catch (e) {
-        console.error("Invalid transactionMeta JSON", e);
-      }
+      parsedTransactionMeta = safeJsonParse(
+        payment?.transactionMeta,
+        "transactionMeta"
+      );
 
       // Combine all payment info into a fully structured object
       const paymentData = payment

@@ -89,41 +89,85 @@ const parseSessionPlanGroupLevels = async (sessionPlanGroup) => {
   sessionPlanGroup.dataValues.levels = parsedLevels;
 };
 
-async function geocodeAddress(address, fallbackArea) {
-  const agent = new https.Agent({ family: 4 }); // force IPv4
-  const queries = [address]; // try main address first
-  if (fallbackArea) queries.push(fallbackArea); // then area if needed
+async function geocodeAddress(address, area) {
+  const query = area ? `${address}, ${area}` : address;
+  const url = "https://maps.googleapis.com/maps/api/geocode/json";
 
-  for (let q of queries) {
-    const cleanQuery = encodeURIComponent(q.trim());
-    const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=1&q=${cleanQuery}`;
-    console.log("🌍 Geocoding:", url);
+  try {
+    const res = await axios.get(url, {
+      params: {
+        address: query,
+        key: process.env.GOOGLE_MAPS_API_KEY, // ✅ SAME KEY
+      },
+      timeout: 7000,
+    });
 
-    try {
-      const res = await axios.get(url, {
-        headers: { "User-Agent": "VenueApp/1.0 (admin@yourapp.com)" },
-        timeout: 7000, // 7 sec per request
-        httpsAgent: agent,
-      });
+    if (
+      res.data.status === "OK" &&
+      res.data.results &&
+      res.data.results.length > 0
+    ) {
+      const result = res.data.results[0];
+      const location = result.geometry.location;
 
-      if (res.data && res.data.length > 0) {
-        const place = res.data[0];
-        return {
-          latitude: parseFloat(place.lat),
-          longitude: parseFloat(place.lon),
-          postal_code: place.address?.postcode
-            ? String(place.address.postcode).trim()
-            : null,
-        };
+      let postalCode = null;
+      for (const component of result.address_components) {
+        if (component.types.includes("postal_code")) {
+          postalCode = component.long_name;
+          break;
+        }
       }
-    } catch (err) {
-      console.warn("⚠ Geocode attempt failed:", err.code || err.message);
-    }
-  }
 
-  // If nothing found
-  return null;
+      return {
+        latitude: location.lat,
+        longitude: location.lng,
+        postal_code: postalCode,
+      };
+    }
+
+    console.warn("⚠ Google Geocode failed:", res.data.status);
+    return null;
+  } catch (err) {
+    console.error("❌ Google Geocode error:", err.message);
+    return null;
+  }
 }
+
+// async function geocodeAddress(address, fallbackArea) {
+//   const agent = new https.Agent({ family: 4 }); // force IPv4
+//   const queries = [address]; // try main address first
+//   if (fallbackArea) queries.push(fallbackArea); // then area if needed
+
+//   for (let q of queries) {
+//     const cleanQuery = encodeURIComponent(q.trim());
+//     const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=1&q=${cleanQuery}`;
+//     console.log("🌍 Geocoding:", url);
+
+//     try {
+//       const res = await axios.get(url, {
+//         headers: { "User-Agent": "VenueApp/1.0 (admin@yourapp.com)" },
+//         timeout: 7000, // 7 sec per request
+//         httpsAgent: agent,
+//       });
+
+//       if (res.data && res.data.length > 0) {
+//         const place = res.data[0];
+//         return {
+//           latitude: parseFloat(place.lat),
+//           longitude: parseFloat(place.lon),
+//           postal_code: place.address?.postcode
+//             ? String(place.address.postcode).trim()
+//             : null,
+//         };
+//       }
+//     } catch (err) {
+//       console.warn("⚠ Geocode attempt failed:", err.code || err.message);
+//     }
+//   }
+
+//   // If nothing found
+//   return null;
+// }
 
 exports.createHolidayVenue = async (data) => {
   try {
