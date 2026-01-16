@@ -42,10 +42,12 @@ exports.createBooking = async (data, options) => {
 
     let source = "open"; // default = website
 
-    if (adminId) {
-      source = "admin";
-    } else if (parentPortalAdminId) {
+    // Parent portal MUST win first
+    if (parentPortalAdminId) {
       source = "parent";
+    }
+    else if (adminId) {
+      source = "admin";
     }
 
     const leadId = options?.leadId || null;

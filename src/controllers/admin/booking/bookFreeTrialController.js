@@ -21,6 +21,18 @@ const MODULE = "book-free-trial";
 exports.createBooking = async (req, res) => {
   if (DEBUG) console.log("📥 Received booking request");
   const formData = req.body;
+  const isParentPortalBooking = !!req.params.parentAdminId;
+  if (
+    isParentPortalBooking &&
+    req.admin &&
+    req.admin.role === "parent" &&
+    req.admin.id !== parseInt(req.params.parentAdminId, 10)
+  ) {
+    return res.status(403).json({
+      status: false,
+      message: "You are not authorized to create booking for this parent.",
+    });
+  }
 
   // formData.createdBy = req.admin.id;
 
@@ -203,15 +215,26 @@ exports.createBooking = async (req, res) => {
       }
 
       const email = parent.parentEmail.trim().toLowerCase();
+      // if (emailMap.has(email)) continue;
+
+      // const exists = await Admin.findOne({ where: { email } });
+      // if (exists) {
+      //   if (DEBUG) console.warn(`⚠️ Duplicate email found: ${email}`);
+      //   duplicateEmails.push(email);
+      // } else {
+      //   emailMap.set(email, parent);
+      // }
       if (emailMap.has(email)) continue;
 
-      const exists = await Admin.findOne({ where: { email } });
-      if (exists) {
-        if (DEBUG) console.warn(`⚠️ Duplicate email found: ${email}`);
-        duplicateEmails.push(email);
-      } else {
-        emailMap.set(email, parent);
+      emailMap.set(email, parent);
+
+      if (!isParentPortalBooking) {
+        const exists = await Admin.findOne({ where: { email } });
+        if (exists) {
+          duplicateEmails.push(email);
+        }
       }
+
     }
   }
 
@@ -232,10 +255,13 @@ exports.createBooking = async (req, res) => {
     if (DEBUG) console.log("🚀 Creating booking...");
     // const result = await BookingTrialService.createBooking(formData);
     const leadId = req.params.leadId || null;
-
+    const parentAdminId = req.params.parentAdminId
+      ? parseInt(req.params.parentAdminId, 10)
+      : null;
     const result = await BookingTrialService.createBooking(formData, {
       // source: req.source,
       adminId: req.admin?.id, // <-- pass adminId here
+      parentAdminId,
       adminFirstName: req.admin?.firstName || "Unknown",
       leadId,
     });
