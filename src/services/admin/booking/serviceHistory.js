@@ -1103,6 +1103,7 @@ exports.updateBooking = async (payload, adminId, id) => {
             );
           }
         }
+        console.log("Contract Response:", contractRes);
         console.log("APS PAYMENT DATA", {
           customerId,
           contract: contractRes?.data,
@@ -1142,8 +1143,8 @@ exports.updateBooking = async (payload, adminId, id) => {
             currency: "GBP",
 
             // ✅ CORRECT DB COLUMNS
-            // ✅ Save full response as JSON
-            gatewayResponse: {
+            // ✅ Minimal change: stringify the full object for DB save
+            gatewayResponse: JSON.stringify({
               gateway: "accesspaysuite",
               customerId,
               contractId: contractRes?.data?.ContractId,
@@ -1151,8 +1152,7 @@ exports.updateBooking = async (payload, adminId, id) => {
               customer: customerRes?.data,
               contract: contractRes?.data,
               schedule: matchedSchedule,
-            },
-
+            }),
             transactionMeta: JSON.stringify({
               status: paymentStatusFromGateway,
               provider: "accesspaysuite",
