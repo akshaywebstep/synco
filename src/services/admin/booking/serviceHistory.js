@@ -1142,7 +1142,8 @@ exports.updateBooking = async (payload, adminId, id) => {
             currency: "GBP",
 
             // ✅ CORRECT DB COLUMNS
-            gatewayResponse: ({
+            // ✅ Save full response as JSON
+            gatewayResponse: {
               gateway: "accesspaysuite",
               customerId,
               contractId: contractRes?.data?.ContractId,
@@ -1150,7 +1151,7 @@ exports.updateBooking = async (payload, adminId, id) => {
               customer: customerRes?.data,
               contract: contractRes?.data,
               schedule: matchedSchedule,
-            }),
+            },
 
             transactionMeta: JSON.stringify({
               status: paymentStatusFromGateway,
