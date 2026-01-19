@@ -1,5 +1,5 @@
-const axios = require("axios");
 const { AppConfig } = require("../../models");
+const axios = require("axios");
 
 const DEBUG = process.env.DEBUG === "true";
 const CLICK_SEND_URL = "https://rest.clicksend.com/v3/sms/send";
