@@ -1,4 +1,4 @@
-const { AppConfig } = require("../models");
+const { AppConfig } = require("../../models");
 const axios = require("axios");
 
 const DEBUG = process.env.DEBUG === "true";
