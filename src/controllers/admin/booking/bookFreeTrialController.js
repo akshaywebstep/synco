@@ -17,6 +17,48 @@ const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "book-free-trial";
 
+exports.sendBookingSMSToParents = async (req, res) => {
+  try {
+    const { bookingId } = req.body;
+
+    if (!bookingId) {
+      return res.status(400).json({
+        status: false,
+        message: "bookingId is required",
+      });
+    }
+
+    const result = await BookingTrialService.sendAllSMSToParents({ bookingId });
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "send-sms",
+      { bookingId, result },
+      result.status
+    );
+
+    return res.status(result.status ? 200 : 400).json(result);
+  } catch (error) {
+    console.error("❌ sendBookingSMSToParents Error:", error);
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "send-sms",
+      { error: error.message },
+      false
+    );
+
+    return res.status(500).json({
+      status: false,
+      message: "Internal server error",
+    });
+  }
+};
+
 // Create Book a Free Trial
 exports.createBooking = async (req, res) => {
   if (DEBUG) console.log("📥 Received booking request");

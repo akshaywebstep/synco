@@ -44,6 +44,67 @@ exports.createBooking = async (req, res) => {
         message: `Only ${classData.capacity} slot(s) left for this class.`,
       });
     }
+    // if (!classWithVenue || !classWithVenue.venue) {
+    //   return res.status(400).json({
+    //     status: false,
+    //     message: "Invalid class or venue.",
+    //   });
+    // }
+
+    // // 🔹 Validate venue term groups
+    // const termGroupIds = classWithVenue.venue.termGroupId;
+
+    // if (!Array.isArray(termGroupIds) || termGroupIds.length === 0) {
+    //   return res.status(400).json({
+    //     status: false,
+    //     message: "Venue is not linked to any term groups.",
+    //   });
+    // }
+
+    // // 🔹 Fetch terms for venue
+    // const terms = await Term.findAll({
+    //   where: {
+    //     termGroupId: {
+    //       [Op.in]: termGroupIds,
+    //     },
+    //   },
+    // });
+
+    // if (!terms.length) {
+    //   return res.status(400).json({
+    //     status: false,
+    //     message: "No terms found for this venue.",
+    //   });
+    // }
+
+    // // 🔹 Count sessions passed in last 1 month
+    // const today = new Date();
+    // const oneMonthAgo = new Date();
+    // oneMonthAgo.setMonth(today.getMonth() - 1);
+
+    // let passedSessions = 0;
+
+    // for (const term of terms) {
+    //   if (!Array.isArray(term.sessionsMap)) continue;
+
+    //   for (const session of term.sessionsMap) {
+    //     if (!session.sessionDate) continue;
+
+    //     const sessionDate = new Date(session.sessionDate);
+
+    //     if (sessionDate < today && sessionDate >= oneMonthAgo) {
+    //       passedSessions++;
+    //     }
+    //   }
+    // }
+
+    // // 🔹 FINAL RULE (change threshold if needed)
+    // if (passedSessions > 0) {
+    //   return res.status(400).json({
+    //     status: false,
+    //     message: `Booking not allowed. ${passedSessions} session(s) already passed in the last month.`,
+    //   });
+    // }
 
     // ✅ Validate form
     const { isValid, error } = validateFormData(formData, {

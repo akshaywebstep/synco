@@ -261,6 +261,9 @@ router.use("/contract/", require("./coach/contractRoutes"));
 router.use("/student-course/", require("./coach/studentCourseRoutes"));
 router.use("/feedback/", require("./feedbackRoutes"));
 
+// Send Text Route
+// router.use("/send/", require("./sendTextAllBookingRoutes/sendTextRoutes"));
+
 // Base: /api/admin/admin
 // Assign Agent List
 router.get(

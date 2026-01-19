@@ -15,6 +15,7 @@ const {
   Term,
 } = require("../../../models");
 const DEBUG = process.env.DEBUG === "true";
+const sendSMS = require("../../../utils/sms/clicksend");
 
 const { Op } = require("sequelize");
 const bcrypt = require("bcrypt");
@@ -1274,6 +1275,104 @@ exports.sendAllEmailToParents = async ({ bookingId }) => {
     };
   } catch (error) {
     console.error("❌ sendEmailToParents Error:", error);
+    return { status: false, message: error.message };
+  }
+};
+
+exports.sendAllSMSToParents = async ({ bookingId }) => {
+  try {
+    const bookingIds = Array.isArray(bookingId) ? bookingId : [bookingId];
+    let sentTo = [];
+
+    for (const id of bookingIds) {
+      // 1️⃣ Fetch booking
+      const booking = await Booking.findByPk(id);
+      if (!booking) {
+        console.warn(`⚠️ Booking not found: ${id}`);
+        continue;
+      }
+
+      // 2️⃣ Fetch students
+      const studentMetas = await BookingStudentMeta.findAll({
+        where: { bookingTrialId: id },
+      });
+      if (!studentMetas.length) {
+        console.warn(`⚠️ No students for booking: ${id}`);
+        continue;
+      }
+
+      // 3️⃣ First parent only
+      const firstParent = await BookingParentMeta.findOne({
+        where: { studentId: studentMetas[0].id },
+        order: [["id", "ASC"]],
+      });
+      if (!firstParent?.parentPhoneNumber) {
+        console.warn(`⚠️ No parent phone for booking: ${id}`);
+        continue;
+      }
+
+      const phone = firstParent.parentPhoneNumber;
+
+      // 4️⃣ Validate phone format
+      if (!phone.startsWith("+")) {
+        console.warn("⚠️ Invalid phone format:", phone);
+        continue;
+      }
+
+      // 5️⃣ Build professional message based on booking type & status
+      let message = `Hello, this is Synco. `;
+
+      switch (booking.bookingType) {
+        case "free":
+          message += `Your trial booking on ${booking.trialDate} `;
+          if (booking.status === "attended") {
+            message += `was attended. We hope your child enjoyed the class.`;
+          } else if (booking.status === "not attended") {
+            message += `was missed. Please contact us to reschedule.`;
+          } else {
+            message += `is confirmed. We look forward to seeing your child.`;
+          }
+          break;
+
+        case "paid":
+          message += `Your membership booking `;
+          if (booking.startDate) message += `starting on ${booking.startDate} `;
+          message += `is ${booking.status}. Thank you for choosing Synco.`;
+          break;
+
+        case "waiting list":
+          message += `Your request to join is on the waiting list. We will notify you once a spot becomes available.`;
+          break;
+
+        default:
+          message += `Your booking is confirmed. Thank you for being with Synco.`;
+      }
+
+      // 6️⃣ Send SMS
+      const smsResult = await sendSMS(phone, message);
+
+      if (smsResult.success) {
+        sentTo.push({ bookingId: id, phone });
+
+        // Log SMS cost (optional)
+        const cost = smsResult?.data?.data?.messages?.[0]?.message_price;
+        if (DEBUG && cost) {
+          console.log(`💰 SMS Cost for booking ${id}:`, cost);
+        }
+      }
+
+      if (DEBUG) {
+        console.log("📲 SMS sent:", { bookingId: id, phone, success: smsResult.success });
+      }
+    }
+
+    return {
+      status: true,
+      message: `SMS sent for ${sentTo.length} booking(s)`,
+      sentTo,
+    };
+  } catch (error) {
+    console.error("❌ sendAllSMSToParents Error:", error);
     return { status: false, message: error.message };
   }
 };
