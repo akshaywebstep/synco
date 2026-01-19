@@ -7,6 +7,7 @@ const permissionMiddleware = require("../../../middleware/admin/permission");
 const {
   createOnetoOneBooking,
   getAdminsPaymentPlanDiscount,
+  sendBookingSMSToParents
 } = require("../../../controllers/admin/oneToOne/booking/oneToOneBookingController");
 
 // ✅ Get All Session Plan Groups
@@ -23,6 +24,12 @@ router.get(
   authMiddleware,
   permissionMiddleware("one-to-one-lead", "view-listing"),
   getAdminsPaymentPlanDiscount
+);
+
+router.post(
+  "/booking/send-text",
+  authMiddleware,
+  sendBookingSMSToParents
 );
 
 module.exports = router;

@@ -772,6 +772,8 @@ exports.updateBooking = async (payload, adminId, id) => {
 
     // Recompute after updates
     const wasTrial = booking.bookingType === "free";
+    let paymentStatusFromGateway = null;
+    let merchantRef = null;
     booking.bookingType = booking.paymentPlanId ? "paid" : "free";
     booking.status = payload.status || booking.status || "active";
     booking.trialDate = null;
@@ -909,8 +911,7 @@ exports.updateBooking = async (payload, adminId, id) => {
     // 🔹 Step 4: Payment processing
     if (booking.paymentPlanId && payload.payment?.paymentType) {
       const paymentType = payload.payment.paymentType;
-      // let paymentStatusFromGateway = "pending";
-      let paymentStatusFromGateway = "pending";
+      paymentStatusFromGateway = "pending";
 
       // ✅ ADD THESE (IMPORTANT)
       let customerId = null;
@@ -930,8 +931,8 @@ exports.updateBooking = async (payload, adminId, id) => {
           payload.classScheduleId,
           { transaction: t }
         );
-        const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
-        const firstStudentId = booking.students?.[0]?.id;
+        // const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
+        // const firstStudentId = booking.students?.[0]?.id;
 
         if (paymentType === "accesspaysuite") {
           if (DEBUG)
@@ -958,7 +959,7 @@ exports.updateBooking = async (payload, adminId, id) => {
           }
 
           // Use matchedSchedule.id for contract creation
-          const scheduleId = matchedSchedule.ScheduleId;
+          // const scheduleId = matchedSchedule.ScheduleId;
 
           const customerPayload = {
             email: payload.payment?.email || payload.parents?.[0]?.parentEmail,
@@ -1053,23 +1054,8 @@ exports.updateBooking = async (payload, adminId, id) => {
             contractRes?.Id ||                // Another fallback
             null;
 
-          // gatewayResponse = {
-          //   gateway: "accesspaysuite",
-          //   customerId,
-          //   contractId,
-          //   scheduleId: matchedSchedule?.ScheduleId,
-          //   customer: customerRes?.data || customerRes || {},
-          //   contract: contractRes?.data || contractRes || {},
-          //   schedule: matchedSchedule,
-          // };
-          gatewayResponse = {
-            gateway: "accesspaysuite",
-            schedule: matchedSchedule,
-            customer: customerRes?.data || {},
-            contract: contractRes?.data || {},
-          };
-
           paymentStatusFromGateway = "active";
+          merchantRef = `TXN-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
         } else if (paymentType === "bank") {
           // ⚠️ Fixed bug: replaced 'data' references with 'payload'
           const customerPayload = {
@@ -1142,6 +1128,22 @@ exports.updateBooking = async (payload, adminId, id) => {
           payload.parents?.[0]?.parentEmail ||
           "no-reply@example.com";
 
+        let gatewayResponse = null;
+
+        if (paymentType === "accesspaysuite") {
+          gatewayResponse = {
+            gateway: "accesspaysuite",
+            schedule: matchedSchedule,
+            customer: customerRes?.data || {},
+            contract: contractRes?.data || {},
+          };
+        }
+
+        const transactionMeta = {
+          status: paymentStatusFromGateway,
+        };
+        merchantRef = `TRX-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
         // Save booking payment
         await BookingPayment.create(
           {
@@ -1160,18 +1162,9 @@ exports.updateBooking = async (payload, adminId, id) => {
             description: `${venue?.name} - ${classSchedule?.className}`,
             currency: "GBP",
             // ✅ Minimal clean gateway response
-            gatewayResponse: JSON.stringify(gatewayResponse),
-            transactionMeta: JSON.stringify({
-              status: paymentStatusFromGateway,
-              provider: "accesspaysuite",
-            }),
-            // ✅ CORRECT DB COLUMNS
-            // ✅ Minimal change: stringify the full object for DB save
-            // gatewayResponse: JSON.stringify(gatewayResponse),
-            // transactionMeta: JSON.stringify({
-            //   status: paymentStatusFromGateway,
-            //   provider: "accesspaysuite",
-            // }),
+            // ✅ EXACT MATCH
+            gatewayResponse,
+            transactionMeta,
           },
           { transaction: t }
         );
@@ -1183,9 +1176,10 @@ exports.updateBooking = async (payload, adminId, id) => {
         throw err; // let outer catch handle rollback
       }
     }
-    booking.status = "active";
-    await booking.save({ transaction: t });
-
+    if (paymentStatusFromGateway === "active") {
+      booking.status = "active";
+      await booking.save({ transaction: t });
+    }
     // Commit if all good
     await t.commit();
 

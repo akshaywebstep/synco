@@ -759,8 +759,7 @@ exports.getAllOnetoOneLeadsSales = async (
 
         // Parents
         const parents = (booking.students || [])
-          .map((s) => s.parentDetails)
-          .filter(Boolean)
+          .flatMap((s) => Array.isArray(s.parentDetails) ? s.parentDetails : [])
           .map((p) => ({
             parentFirstName: p.parentFirstName,
             parentLastName: p.parentLastName,
@@ -1329,8 +1328,7 @@ exports.getAllOnetoOneLeadsSalesAll = async (
 
         // Parents
         const parents = (booking.students || [])
-          .map((s) => s.parentDetails)
-          .filter(Boolean)
+          .flatMap((s) => Array.isArray(s.parentDetails) ? s.parentDetails : [])
           .map((p) => ({
             parentFirstName: p.parentFirstName,
             parentLastName: p.parentLastName,

@@ -16,6 +16,9 @@ const {
   oneToOneLeads,
 } = require("../../../../models");
 const { sequelize } = require("../../../../models");
+const sendSMS = require("../../../../utils/sms/clickSend");
+const DEBUG = process.env.DEBUG === "true";
+
 const bcrypt = require("bcrypt");
 
 const stripePromise = require("../../../../utils/payment/pay360/stripe");
@@ -515,6 +518,99 @@ exports.getAdminsPaymentPlanDiscount = async ({
       status: false,
       message:
         error.message || "Failed to fetch admin payment plan discount data.",
+    };
+  }
+};
+
+exports.sendAllSMSToParents = async ({ bookingId }) => {
+  try {
+    const bookingIds = Array.isArray(bookingId) ? bookingId : [bookingId];
+    const sentTo = [];
+
+    for (const id of bookingIds) {
+      // 1️⃣ Fetch booking
+      const booking = await OneToOneBooking.findByPk(id);
+      if (!booking) {
+        console.warn(`⚠️ Booking not found: ${id}`);
+        continue;
+      }
+
+      // 2️⃣ Only PAID bookings
+      if (booking.type !== "paid") {
+        console.warn(`⚠️ Skipping booking ${id} (not paid)`);
+        continue;
+      }
+
+      // 3️⃣ Only ACTIVE or CANCEL
+      if (!["active", "cancel"].includes(booking.status)) {
+        console.warn(`⚠️ Skipping booking ${id} (invalid status)`);
+        continue;
+      }
+
+      // 4️⃣ Fetch students
+      const students = await OneToOneStudent.findAll({
+        where: { oneToOneBookingId: id },
+      });
+
+      if (!students.length) {
+        console.warn(`⚠️ No students for booking: ${id}`);
+        continue;
+      }
+
+      // 5️⃣ Fetch first parent
+      const parent = await OneToOneParent.findOne({
+        where: { studentId: students[0].id },
+        order: [["id", "ASC"]],
+      });
+
+      if (!parent?.phoneNumber) {
+        console.warn(`⚠️ No parent phone for booking: ${id}`);
+        continue;
+      }
+
+      const phone = parent.phoneNumber.trim();
+
+      // 6️⃣ Validate phone
+      if (!/^\+\d{8,15}$/.test(phone)) {
+        console.warn(`⚠️ Invalid phone format: ${phone}`);
+        continue;
+      }
+
+      // 7️⃣ Build message
+      let message = "Hello, this is Synco. ";
+
+      if (booking.status === "active") {
+        message += `Your session on ${booking.date} at ${booking.time} is confirmed.`;
+      } else {
+        message += `Your paid booking has been cancelled. Please contact support.`;
+      }
+
+      // 8️⃣ Send SMS
+      const smsResult = await sendSMS(phone, message);
+
+      if (smsResult?.success) {
+        sentTo.push({ bookingId: id, phone });
+      }
+
+      if (DEBUG) {
+        console.log("📲 SMS attempt:", {
+          bookingId: id,
+          phone,
+          success: smsResult?.success,
+        });
+      }
+    }
+
+    return {
+      status: true,
+      message: `SMS sent for ${sentTo.length} booking(s)`,
+      sentTo,
+    };
+  } catch (error) {
+    console.error("❌ sendAllSMSToParents Error:", error);
+    return {
+      status: false,
+      message: error.message || "Unexpected error occurred",
     };
   }
 };
