@@ -15,7 +15,7 @@ const {
   Term,
 } = require("../../../models");
 const DEBUG = process.env.DEBUG === "true";
-const sendSMS = require("../../../utils/sms/clickSend");
+const sendSMS = require("../../../utils/sms/clickSend.js");
 
 const { Op } = require("sequelize");
 const bcrypt = require("bcrypt");
