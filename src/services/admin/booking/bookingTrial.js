@@ -21,7 +21,7 @@ const bcrypt = require("bcrypt");
 
 const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
-const sendSMS = require("../../../utils/sms/clickSend");
+const sendSMS = require("../../../utils/clickSend");
 
 function generateBookingId(length = 12) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
