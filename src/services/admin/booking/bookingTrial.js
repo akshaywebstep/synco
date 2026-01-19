@@ -15,13 +15,13 @@ const {
   Term,
 } = require("../../../models");
 const DEBUG = process.env.DEBUG === "true";
-const sendSMS = require("../../../utils/sms/clickSend.js");
 
 const { Op } = require("sequelize");
 const bcrypt = require("bcrypt");
 
 const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
+const sendSMS = require("../../../utils/sms/clickSend.js");
 
 function generateBookingId(length = 12) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
