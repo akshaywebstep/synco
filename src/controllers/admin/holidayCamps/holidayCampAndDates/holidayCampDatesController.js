@@ -25,7 +25,7 @@ exports.createHolidayCampDates = async (req, res) => {
 
   const validation = validateFormData(req.body, {
     requiredFields: [
-      "holidayCampId",
+      // "holidayCampId",
       "startDate",
       "endDate",
       "totalDays",

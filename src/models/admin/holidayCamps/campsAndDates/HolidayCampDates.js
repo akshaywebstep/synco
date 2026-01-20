@@ -36,7 +36,7 @@ const HolidayCampDates = sequelize.define(
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
-        model: "holiday_Camp", // 🔥 UPDATED FK
+        model: "holiday_camp", // 🔥 UPDATED FK
         key: "id",
       },
       onUpdate: "CASCADE",

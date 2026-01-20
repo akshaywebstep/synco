@@ -24,8 +24,6 @@ app.use(cors({
 }));
 */
 
-// app.options("/*", cors());
-
 // ⚙️ Practically remove payload limit (1GB+)
 app.use(bodyParser.json({ limit: "1000mb" }));
 app.use(
