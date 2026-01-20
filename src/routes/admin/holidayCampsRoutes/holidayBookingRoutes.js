@@ -14,6 +14,7 @@ const {
   cancelHolidayBookingById,
   getAllDiscounts,
   assignBookings,
+  sendBookingSMSToParents,
 } = require("../../../controllers/admin/holidayCamps/booking/holidayBookingController");
 
 // ➕ Create Camp
@@ -24,6 +25,12 @@ router.post(
   permissionMiddleware("holiday-booking", "create"),
   createHolidayBooking
 );
+
+router.post(
+  "/send-text",
+  authMiddleware,
+  sendBookingSMSToParents
+)
 
 router.put(
   "/assign-booking",

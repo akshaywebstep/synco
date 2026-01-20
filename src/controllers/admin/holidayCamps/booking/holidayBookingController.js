@@ -978,3 +978,45 @@ exports.getAllDiscounts = async (req, res) => {
     });
   }
 };
+
+exports.sendBookingSMSToParents = async (req, res) => {
+  try {
+    const { bookingId } = req.body;
+
+    if (!bookingId) {
+      return res.status(400).json({
+        status: false,
+        message: "bookingId is required",
+      });
+    }
+
+    const result = await holidayBookingService.sendAllSMSToParents({ bookingId });
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "send-sms",
+      { bookingId, result },
+      result.status
+    );
+
+    return res.status(result.status ? 200 : 400).json(result);
+  } catch (error) {
+    console.error("❌ sendBookingSMSToParents Error:", error);
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "send-sms",
+      { error: error.message },
+      false
+    );
+
+    return res.status(500).json({
+      status: false,
+      message: "Internal server error",
+    });
+  }
+};
