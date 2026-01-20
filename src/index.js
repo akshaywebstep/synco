@@ -14,7 +14,8 @@ const port = process.env.PORT || 3000;
 app.use(cors({
   origin: [
     "http://localhost:5173",
-    "https://grabbite.com"
+    // "https://grabbite.com"
+    "https://api.grabbite.com/"
   ],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
