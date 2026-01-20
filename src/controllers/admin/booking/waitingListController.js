@@ -221,11 +221,10 @@ exports.createBooking = async (req, res) => {
     const studentId = result.data.studentId;
 
     // Send confirmation email to parents
-    /*
     const parentMetas = await BookingParentMeta.findAll({
       where: { studentId },
     });
-    
+
     if (parentMetas && parentMetas.length > 0) {
       const {
         status: configStatus,
@@ -290,7 +289,6 @@ exports.createBooking = async (req, res) => {
         }
       }
     }
-      */
 
     if (DEBUG) console.log("📝 Logging activity...");
     await logActivity(req, PANEL, MODULE, "create", result, true);
