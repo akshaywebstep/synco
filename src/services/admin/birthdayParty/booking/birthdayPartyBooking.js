@@ -520,375 +520,98 @@ exports.createBirthdayPartyBooking = async (data) => {
     }
 };
 
-// exports.createBirthdayPartyBooking = async (data) => {
-//     const transaction = await sequelize.transaction();
-//     try {
-//         // ✅ 0️⃣ Check if lead already booked
-//         if (data.leadId) {
-//             const existingBooking = await BirthdayPartyBooking.findOne({
-//                 where: { leadId: data.leadId },
-//             });
+exports.sendAllSMSToParents = async ({ bookingId }) => {
+  try {
+    const bookingIds = Array.isArray(bookingId) ? bookingId : [bookingId];
+    const sentTo = [];
 
-//             if (existingBooking) {
-//                 console.warn(
-//                     `⚠️ Lead ID ${data.leadId} is already associated with Booking ID ${existingBooking.id}`
-//                 );
+    for (const id of bookingIds) {
+      // 1️⃣ Fetch booking
+      const booking = await BirthdayPartyBooking.findByPk(id);
+      if (!booking) {
+        console.warn(`⚠️ Booking not found: ${id}`);
+        continue;
+      }
 
-//                 return {
-//                     success: false,
-//                     message: "You have already booked this lead.",
-//                 };
-//             }
-//         }
+      // 2️⃣ Only PAID bookings
+      if (booking.type !== "paid") {
+        console.warn(`⚠️ Skipping booking ${id} (not paid)`);
+        continue;
+      }
 
-//         // 1️⃣ Calculate base amount & discount
-//         let paymentPlan = null;
-//         let baseAmount = 0;
+      // 3️⃣ Only ACTIVE or CANCEL
+      if (!["active", "cancel"].includes(booking.status)) {
+        console.warn(`⚠️ Skipping booking ${id} (invalid status)`);
+        continue;
+      }
 
-//         // ------------------------
-//         // BASE AMOUNT
-//         // ------------------------
-//         if (data.paymentPlanId) {
-//             paymentPlan = await PaymentPlan.findByPk(data.paymentPlanId);
-//             if (!paymentPlan) throw new Error("Invalid payment plan ID");
-//             baseAmount = paymentPlan.price || 0;
-//         }
+      // 4️⃣ Fetch students
+      const students = await BirthdayPartyStudent.findAll({
+        where: { birthdayPartyBookingId: id },
+      });
 
-//         let discount = null;
-//         let discount_amount = 0;
-//         let finalAmount = baseAmount;
+      if (!students.length) {
+        console.warn(`⚠️ No students for booking: ${id}`);
+        continue;
+      }
 
-//         // ==================================================
-//         //  DISCOUNT LOGIC (CLEANED & FIXED)
-//         // ==================================================
-//         if (data.discountId) {
-//             discount = await Discount.findByPk(data.discountId, {
-//                 include: [{ model: DiscountAppliesTo, as: "appliesTo" }]
-//             });
-//             if (!discount) throw new Error("Invalid discount ID");
+      // 5️⃣ Fetch first parent
+      const parent = await BirthdayPartyParent.findOne({
+        where: { studentId: students[0].id },
+        order: [["id", "ASC"]],
+      });
 
-//             const now = new Date();
+      if (!parent?.phoneNumber) {
+        console.warn(`⚠️ No parent phone for booking: ${id}`);
+        continue;
+      }
 
-//             // Validate date
-//             if (discount.startDatetime && now < new Date(discount.startDatetime))
-//                 throw new Error(`Discount ${discount.code} is not active yet.`);
+      const phone = parent.phoneNumber.trim();
 
-//             if (discount.endDatetime && now > new Date(discount.endDatetime))
-//                 throw new Error(`Discount ${discount.code} has expired.`);
+      // 6️⃣ Validate phone
+      if (!/^\+\d{8,15}$/.test(phone)) {
+        console.warn(`⚠️ Invalid phone format: ${phone}`);
+        continue;
+      }
 
-//             // Validate applies-to
-//             const targets = discount.appliesTo.map(a => a.target);
-//             if (!targets.includes("birthday_party")) {
-//                 throw new Error(`Discount ${discount.code} is not valid for one-to-one bookings.`);
-//             }
+      // 7️⃣ Build message
+      let message = "Hello, this is Synco. ";
 
-//             // Validate total uses
-//             if (discount.limitTotalUses !== null) {
-//                 const totalUsed = await BirthdayPartyBooking.count({
-//                     where: { discountId: discount.id }
-//                 });
+      if (booking.status === "active") {
+        message += `Your session on ${booking.date} at ${booking.time} is confirmed.`;
+      } else {
+        message += `Your paid booking has been cancelled. Please contact support.`;
+      }
 
-//                 if (totalUsed >= discount.limitTotalUses) {
-//                     throw new Error(`Discount ${discount.code} reached total usage limit.`);
-//                 }
-//             }
+      // 8️⃣ Send SMS
+      const smsResult = await sendSMS(phone, message);
 
-//             // Apply discount
-//             if (discount.valueType === "percentage") {
-//                 discount_amount = (baseAmount * Number(discount.value)) / 100;
-//             } else {
-//                 discount_amount = Number(discount.value);
-//             }
+      if (smsResult?.success) {
+        sentTo.push({ bookingId: id, phone });
+      }
 
-//             finalAmount = Math.max(baseAmount - discount_amount, 0);
-//         }
+      if (DEBUG) {
+        console.log("📲 SMS attempt:", {
+          bookingId: id,
+          phone,
+          success: smsResult?.success,
+        });
+      }
+    }
 
-//         // 2️⃣ Create booking
-//         const booking = await BirthdayPartyBooking.create(
-//             {
-//                 leadId: data.leadId || null,
-//                 coachId: data.coachId,
-//                 address: data.address,
-//                 date: data.date,
-//                 time: data.time,
-//                 paymentPlanId: data.paymentPlanId || null,
-//                 discountId: data.discountId || null,
-//                 status: "pending",
-//                 type: "paid",
-//                 serviceType: "birthday party"
-//             },
-//             { transaction }
-//         );
-
-//         // 3️⃣ Create students, parents, emergency
-//         const students = await Promise.all(
-//             (data.students || []).map((s) =>
-//                 BirthdayPartyStudent.create(
-//                     {
-//                         birthdayPartyBookingId: booking.id,
-//                         studentFirstName: s.studentFirstName,
-//                         studentLastName: s.studentLastName,
-//                         dateOfBirth: s.dateOfBirth,
-//                         age: s.age,
-//                         gender: s.gender,
-//                         medicalInfo: s.medicalInfo,
-//                     },
-//                     { transaction }
-//                 )
-//             )
-//         );
-
-//         const firstStudent = students[0];
-//         if (firstStudent) {
-//             if (data.parents?.length) {
-//                 await Promise.all(
-//                     data.parents.map((p) =>
-//                         BirthdayPartyParent.create(
-//                             {
-//                                 studentId: firstStudent.id,
-//                                 parentFirstName: p.parentFirstName,
-//                                 parentLastName: p.parentLastName,
-//                                 parentEmail: p.parentEmail,
-//                                 phoneNumber: p.phoneNumber,
-//                                 relationChild: p.relationChild,
-//                                 howDidHear: p.howDidHear,
-//                             },
-//                             { transaction }
-//                         )
-//                     )
-//                 );
-//             }
-
-//             if (data.emergency) {
-//                 await BirthdayPartyEmergency.create(
-//                     {
-//                         studentId: firstStudent.id,
-//                         emergencyFirstName: data.emergency.emergencyFirstName,
-//                         emergencyLastName: data.emergency.emergencyLastName,
-//                         emergencyPhoneNumber: data.emergency.emergencyPhoneNumber,
-//                         emergencyRelation: data.emergency.emergencyRelation,
-//                     },
-//                     { transaction }
-//                 );
-//             }
-//         }
-
-//         // 4️⃣ Stripe Payment Logic
-//         let paymentStatus = "failed";
-//         let stripeChargeId = null;
-//         let errorMessage = null;
-
-//         try {
-//             let customerId = data.payment?.customer_id;
-//             let cardId = data.payment?.card_id;
-
-//             // 🧩 Step 1: Create Customer if not exists
-//             if (!customerId) {
-//                 const customerRes = await createCustomer({
-//                     body: {
-//                         name: `${data.payment.firstName} ${data.payment.lastName}`,
-//                         email: data.payment.email,
-//                     },
-//                 });
-//                 customerId = customerRes.customer_id;
-//             }
-
-//             // 🧩 Step 2: Create Card Token and attach to Customer
-//             if (!cardId) {
-//                 const cardTokenRes = await createCardToken({
-//                     body: {
-//                         cardNumber: data.payment.cardNumber,
-//                         expiryDate: data.payment.expiryDate,
-//                         securityCode: data.payment.securityCode,
-//                     },
-//                 });
-//                 const token_id = cardTokenRes.token_id;
-
-//                 const addCardRes = await addNewCard({
-//                     body: {
-//                         customer_id: customerId,
-//                         card_token: token_id,
-//                     },
-//                 });
-
-//                 cardId = addCardRes.card_id;
-//             }
-
-//             // 🧩 Step 3: Create Charge
-//             const chargeRes = await createCharges({
-//                 body: {
-//                     amount: finalAmount,
-//                     customer_id: customerId,
-//                     card_id: cardId,
-//                 },
-//             });
-
-//             if (chargeRes.status === "succeeded") {
-//                 paymentStatus = "paid";
-//                 stripeChargeId = chargeRes.charge_id;
-//             }
-//         } catch (err) {
-//             console.error("❌ Stripe Payment Error:", err.message);
-//             errorMessage = err.message;
-//         }
-
-//         // 5️⃣ Record payment
-//         await BirthdayPartyPayment.create(
-//             {
-//                 birthdayPartyBookingId: booking.id,
-//                 amount: finalAmount,
-//                 discountAmount,
-//                 baseAmount,
-//                 paymentStatus, // ✅ comes directly from gateway
-//                 stripePaymentIntentId: stripeChargeId,
-//                 paymentDate: new Date(),
-//                 failureReason: errorMessage,
-//             },
-//             { transaction }
-//         );
-
-//         booking.status = "pending";
-//         (booking.type = "paid"), await booking.save({ transaction });
-//         console.log("🟡 Before save:", booking.status);
-//         await booking.save({ transaction });
-//         console.log("🟢 After save, re-fetching...");
-
-//         let stripeChargeDetails = null;
-
-//         if (stripeChargeId) {
-//             try {
-//                 // ✅ Wait for Stripe to be ready
-//                 const stripe = await stripePromise;
-//                 stripeChargeDetails = await stripe.charges.retrieve(stripeChargeId);
-//             } catch (err) {
-//                 console.error("⚠️ Failed to fetch charge details:", err.message);
-//             }
-//         }
-
-//         // ⭐ RECORD DISCOUNT USAGE (before commit)
-//         if (discount && paymentStatus === "paid" && data.adminId) {
-//             await DiscountUsage.create(
-//                 {
-//                     discountId: discount.id,
-//                     adminId: data.adminId,
-//                     usedAt: new Date()
-//                 },
-//                 { transaction }
-//             );
-//         }
-//         await transaction.commit();
-
-//         // ✅ Send confirmation email to first parent (only if payment succeeded)
-//         try {
-//             if (paymentStatus === "paid") {
-//                 const {
-//                     status: configStatus,
-//                     emailConfig,
-//                     htmlTemplate,
-//                     subject,
-//                 } = await emailModel.getEmailConfig(PANEL, "birthday-party-booking"); // from your DB
-
-//                 if (configStatus && htmlTemplate) {
-//                     const firstStudent = students?.[0];
-//                     const firstParent = data.parents?.[0];
-
-//                     if (firstParent?.parentEmail) {
-//                         // Build HTML for all students
-//                         let studentsHtml = students.map(student => {
-//                             return `
-//       <tr>
-//         <td style="padding:5px; vertical-align:top;">
-//           <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Student Name:</p>
-//           <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.studentFirstName || ""} ${student.studentLastName || ""}</p>
-//         </td>
-//         <td style="padding:5px; vertical-align:top;">
-//           <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Age:</p>
-//           <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.age || ""}</p>
-//         </td>
-//         <td style="padding:5px; vertical-align:top;">
-//           <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Gender:</p>
-//           <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.gender || ""}</p>
-//         </td>
-//       </tr>
-//     `;
-//                         }).join("");
-
-//                         // Build HTML email body using booking data
-//                         let htmlBody = htmlTemplate
-//                             .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`)
-//                             .replace(/{{address}}/g, booking?.address || booking?.location || data.address || "")
-//                             .replace(/{{relationChild}}/g, firstParent.relationChild || "")
-//                             .replace(/{{phoneNumber}}/g, firstParent.phoneNumber || "")
-//                             .replace(/{{className}}/g, "Birthday Party Coaching")
-//                             .replace(/{{classTime}}/g, data.time || "")
-//                             .replace(/{{startDate}}/g, data.date || "")
-//                             .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
-//                             .replace(/{{parentPassword}}/g, "Synco123")
-//                             .replace(/{{appName}}/g, "Synco")
-//                             .replace(/{{year}}/g, new Date().getFullYear().toString())
-//                             .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
-//                             .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png")
-//                             .replace(/{{studentsTable}}/g, studentsHtml); // NEW: placeholder for multiple students
-
-//                         // Send email
-//                         await sendEmail(emailConfig, {
-//                             recipient: [
-//                                 {
-//                                     name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
-//                                     email: firstParent.parentEmail,
-//                                 },
-//                             ],
-//                             subject,
-//                             htmlBody,
-//                         });
-
-//                         console.log(`📧 Confirmation email sent to ${firstParent.parentEmail}`);
-//                     }
-//                     else {
-//                         console.warn(
-//                             "⚠️ No parent email found for sending booking confirmation"
-//                         );
-//                     }
-//                 } else {
-//                     console.warn(
-//                         "⚠️ Email template config not found for 'book-paid-trial'"
-//                     );
-//                 }
-//             } else {
-//                 console.log("ℹ️ Payment not successful — skipping email send.");
-//             }
-//         } catch (emailErr) {
-//             console.error("❌ Error sending email to parent:", emailErr.message);
-//         }
-//         // ✅ Return response including Stripe details
-//         return {
-//             success: true,
-//             bookingId: booking.id,
-//             paymentStatus, // "paid" or "failed"
-//             stripePaymentIntentId: stripeChargeId, // ✅ charge id like ch_xxx
-//             baseAmount,
-//             discountAmount,
-//             finalAmount,
-//             stripeChargeDetails: stripeChargeDetails
-//                 ? {
-//                     id: stripeChargeDetails.id,
-//                     amount: stripeChargeDetails.amount / 100,
-//                     currency: stripeChargeDetails.currency,
-//                     status: stripeChargeDetails.status,
-//                     paymentMethod:
-//                         stripeChargeDetails.payment_method_details?.card?.brand,
-//                     last4: stripeChargeDetails.payment_method_details?.card?.last4,
-//                     receiptUrl: stripeChargeDetails.receipt_url,
-//                     fullResponse: stripeChargeDetails,
-//                 }
-//                 : null,
-//         };
-//     } catch (error) {
-//         await transaction.rollback();
-//         console.error("❌ Error creating One-to-One booking:", error);
-//         throw error;
-//     }
-// };
+    return {
+      status: true,
+      message: `SMS sent for ${sentTo.length} booking(s)`,
+      sentTo,
+    };
+  } catch (error) {
+    console.error("❌ sendAllSMSToParents Error:", error);
+    return {
+      status: false,
+      message: error.message || "Unexpected error occurred",
+    };
+  }
+};
 
 exports.getAdminsPaymentPlanDiscount = async ({
     superAdminId,

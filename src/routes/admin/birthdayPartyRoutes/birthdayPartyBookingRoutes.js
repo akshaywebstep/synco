@@ -7,6 +7,7 @@ const permissionMiddleware = require("../../../middleware/admin/permission");
 const {
   createBirthdayPartyBooking,
   getAdminsPaymentPlanDiscount,
+  sendBookingSMSToParents,
 } = require("../../../controllers/admin/birthdayParty/booking/birthdayPartyBookingController");
 
 // ✅ Get All Session Plan Groups
@@ -23,6 +24,12 @@ router.get(
   authMiddleware,
   permissionMiddleware("birthday-party-booking", "view-listing"),
   getAdminsPaymentPlanDiscount
+);
+
+router.post(
+  "/booking/send-text",
+  authMiddleware,
+  sendBookingSMSToParents
 );
 
 module.exports = router;
