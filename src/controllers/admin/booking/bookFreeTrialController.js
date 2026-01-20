@@ -20,7 +20,6 @@ const MODULE = "book-free-trial";
 // Create Book a Free Trial
 exports.createBooking = async (req, res) => {
   if (DEBUG) console.log("📥 Received booking request");
-  try {
     const formData = req.body;
     const isParentPortalBooking = !!req.params.parentAdminId;
     if (
@@ -243,7 +242,7 @@ exports.createBooking = async (req, res) => {
       return res.status(409).json({ status: false, message });
     }
 
-    // try {
+    try {
     if (DEBUG) console.log("🚀 Creating booking...");
     // const result = await BookingTrialService.createBooking(formData);
     const leadId = req.params.leadId || null;
@@ -271,7 +270,7 @@ exports.createBooking = async (req, res) => {
 
     // Send email to only the first parent
     // Send email
-    const parentMetas = await BookingParentMeta.findAll({
+    /*const parentMetas = await BookingParentMeta.findAll({
       where: { studentId },
     });
 
@@ -349,6 +348,7 @@ exports.createBooking = async (req, res) => {
         }
       }
     }
+      */
 
     if (DEBUG) console.log("📝 Logging activity...");
     await logActivity(req, PANEL, MODULE, "create", result, true);

@@ -221,6 +221,7 @@ exports.createBooking = async (req, res) => {
     const studentId = result.data.studentId;
 
     // Send confirmation email to parents
+    /*
     const parentMetas = await BookingParentMeta.findAll({
       where: { studentId },
     });
@@ -289,7 +290,7 @@ exports.createBooking = async (req, res) => {
         }
       }
     }
-
+    */
     if (DEBUG) console.log("📝 Logging activity...");
     await logActivity(req, PANEL, MODULE, "create", result, true);
 
@@ -816,11 +817,11 @@ exports.convertToMembership = async (req, res) => {
             // ✅ Generate HTML list of all students
             const studentsHtml = allStudents.length
               ? allStudents
-                  .map(
-                    (s) =>
-                      `<p style="margin:0; font-size:13px; color:#5F5F6D;">${s.studentFirstName} ${s.studentLastName}</p>`
-                  )
-                  .join("")
+                .map(
+                  (s) =>
+                    `<p style="margin:0; font-size:13px; color:#5F5F6D;">${s.studentFirstName} ${s.studentLastName}</p>`
+                )
+                .join("")
               : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
 
             // ✅ Replace placeholders in template
