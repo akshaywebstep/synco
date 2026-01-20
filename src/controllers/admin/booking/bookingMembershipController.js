@@ -26,10 +26,12 @@ const PANEL = "admin";
 const MODULE = "book-paid-trial";
 
 // Controller: Create Booking (Paid )
+
 exports.createBooking = async (req, res) => {
-  const formData = req.body;
-  let paymentPlan;
   try {
+    const formData = req.body;
+    let paymentPlan;
+
     // ✅ Check class
     const classData = await ClassSchedule.findByPk(formData.classScheduleId);
     if (!classData)
@@ -44,67 +46,6 @@ exports.createBooking = async (req, res) => {
         message: `Only ${classData.capacity} slot(s) left for this class.`,
       });
     }
-    // if (!classWithVenue || !classWithVenue.venue) {
-    //   return res.status(400).json({
-    //     status: false,
-    //     message: "Invalid class or venue.",
-    //   });
-    // }
-
-    // // 🔹 Validate venue term groups
-    // const termGroupIds = classWithVenue.venue.termGroupId;
-
-    // if (!Array.isArray(termGroupIds) || termGroupIds.length === 0) {
-    //   return res.status(400).json({
-    //     status: false,
-    //     message: "Venue is not linked to any term groups.",
-    //   });
-    // }
-
-    // // 🔹 Fetch terms for venue
-    // const terms = await Term.findAll({
-    //   where: {
-    //     termGroupId: {
-    //       [Op.in]: termGroupIds,
-    //     },
-    //   },
-    // });
-
-    // if (!terms.length) {
-    //   return res.status(400).json({
-    //     status: false,
-    //     message: "No terms found for this venue.",
-    //   });
-    // }
-
-    // // 🔹 Count sessions passed in last 1 month
-    // const today = new Date();
-    // const oneMonthAgo = new Date();
-    // oneMonthAgo.setMonth(today.getMonth() - 1);
-
-    // let passedSessions = 0;
-
-    // for (const term of terms) {
-    //   if (!Array.isArray(term.sessionsMap)) continue;
-
-    //   for (const session of term.sessionsMap) {
-    //     if (!session.sessionDate) continue;
-
-    //     const sessionDate = new Date(session.sessionDate);
-
-    //     if (sessionDate < today && sessionDate >= oneMonthAgo) {
-    //       passedSessions++;
-    //     }
-    //   }
-    // }
-
-    // // 🔹 FINAL RULE (change threshold if needed)
-    // if (passedSessions > 0) {
-    //   return res.status(400).json({
-    //     status: false,
-    //     message: `Booking not allowed. ${passedSessions} session(s) already passed in the last month.`,
-    //   });
-    // }
 
     // ✅ Validate form
     const { isValid, error } = validateFormData(formData, {
@@ -337,22 +278,29 @@ exports.createBooking = async (req, res) => {
 
             console.log("Generated htmlBody length:", htmlBody.length);
 
-            const emailResp = await sendEmail(emailConfig, {
-              recipient: [
-                {
-                  name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
-                  email: firstParent.parentEmail,
-                },
-              ],
-              subject,
-              htmlBody,
-            });
+            /*
+            try {
+              const emailResp = await sendEmail(emailConfig, {
+                recipient: [
+                  {
+                    name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
+                    email: firstParent.parentEmail,
+                  },
+                ],
+                subject,
+                htmlBody,
+              });
 
-            console.log(
-              "📧 Email sent successfully to first parent:",
-              firstParent.parentEmail,
-              emailResp
-            );
+              console.log(
+                "📧 Email sent successfully to first parent:",
+                firstParent.parentEmail,
+                emailResp
+              );
+            } catch (err) {
+              console.error("Failed to send email:", err.message);
+            }
+            */
+
           } catch (err) {
             console.error(
               `❌ Failed to send email to ${firstParent.parentEmail}:`,
@@ -392,6 +340,7 @@ exports.createBooking = async (req, res) => {
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };
+
 // exports.createBooking = async (req, res) => {
 //   const formData = req.body;
 //   let paymentPlan;
@@ -410,6 +359,67 @@ exports.createBooking = async (req, res) => {
 //         message: `Only ${classData.capacity} slot(s) left for this class.`,
 //       });
 //     }
+//     // if (!classWithVenue || !classWithVenue.venue) {
+//     //   return res.status(400).json({
+//     //     status: false,
+//     //     message: "Invalid class or venue.",
+//     //   });
+//     // }
+
+//     // // 🔹 Validate venue term groups
+//     // const termGroupIds = classWithVenue.venue.termGroupId;
+
+//     // if (!Array.isArray(termGroupIds) || termGroupIds.length === 0) {
+//     //   return res.status(400).json({
+//     //     status: false,
+//     //     message: "Venue is not linked to any term groups.",
+//     //   });
+//     // }
+
+//     // // 🔹 Fetch terms for venue
+//     // const terms = await Term.findAll({
+//     //   where: {
+//     //     termGroupId: {
+//     //       [Op.in]: termGroupIds,
+//     //     },
+//     //   },
+//     // });
+
+//     // if (!terms.length) {
+//     //   return res.status(400).json({
+//     //     status: false,
+//     //     message: "No terms found for this venue.",
+//     //   });
+//     // }
+
+//     // // 🔹 Count sessions passed in last 1 month
+//     // const today = new Date();
+//     // const oneMonthAgo = new Date();
+//     // oneMonthAgo.setMonth(today.getMonth() - 1);
+
+//     // let passedSessions = 0;
+
+//     // for (const term of terms) {
+//     //   if (!Array.isArray(term.sessionsMap)) continue;
+
+//     //   for (const session of term.sessionsMap) {
+//     //     if (!session.sessionDate) continue;
+
+//     //     const sessionDate = new Date(session.sessionDate);
+
+//     //     if (sessionDate < today && sessionDate >= oneMonthAgo) {
+//     //       passedSessions++;
+//     //     }
+//     //   }
+//     // }
+
+//     // // 🔹 FINAL RULE (change threshold if needed)
+//     // if (passedSessions > 0) {
+//     //   return res.status(400).json({
+//     //     status: false,
+//     //     message: `Booking not allowed. ${passedSessions} session(s) already passed in the last month.`,
+//     //   });
+//     // }
 
 //     // ✅ Validate form
 //     const { isValid, error } = validateFormData(formData, {
@@ -425,56 +435,56 @@ exports.createBooking = async (req, res) => {
 //         .status(400)
 //         .json({ status: false, message: "At least one student is required." });
 //     }
-
+//     const isFromWebsite = req.source === "open";
 //     // ✅ Inject venue
 //     formData.venueId = classData.venueId;
-//     let skipped = [];
-//     const adminId = req.admin?.id;
-//     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-//     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
-//     // 🔹 Attach payment gateway response so the service can save it
-//     // if (formData.paymentPlanId) {
 
-//     //   const planCheck = await PaymentPlan.getPlanById(paymentPlanId, createdBy); // ✅ add createdBy here
-//     const paymentPlanId = formData.paymentPlanId; // ✅ define it first
+//     let skipped = [];
+//     const adminId = req.admin?.id || null;
+
+//     // 🔹 Super admin only applies for admin-panel bookings
+//     let superAdminId = null;
+//     if (!isFromWebsite && adminId) {
+//       const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+//       superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+//     }
+
+//     const paymentPlanId = formData.paymentPlanId;
+
+//     // 🔹 Fetch payment plan for BOTH flows (needed for email)
 //     if (paymentPlanId) {
-//       const planCheck = await PaymentPlan.getPlanById(
-//         paymentPlanId,
-//         superAdminId
-//       );
-//       console.log(`planCheck - `, planCheck);
-//       if (!planCheck.status) {
-//         skipped.push({ paymentPlanId, reason: "Plan does not exist" });
-//         if (DEBUG) {
-//           console.log(`⛔ Skipped plan ID ${paymentPlanId}: Not found`);
-//           console.log(
-//             "🔍 Fetching payment plan:",
-//             paymentPlanId,
-//             "createdBy:",
-//             req.admin?.id
-//           );
-//         }
-//         return res
-//           .status(400)
-//           .json({ status: false, message: planCheck.message });
+//       let planCheck;
+
+//       if (isFromWebsite) {
+//         // ✅ PUBLIC lookup (no admin scope)
+//         planCheck = await PaymentPlan.getPublicPlanById(paymentPlanId);
+//       } else {
+//         // ✅ ADMIN scoped lookup
+//         planCheck = await PaymentPlan.getPlanById(paymentPlanId, superAdminId);
 //       }
 
-//       paymentPlan = planCheck.data;
+//       // ❌ Block admin if invalid
+//       if (!isFromWebsite && !planCheck.data) {
+//         return res.status(400).json({
+//           status: false,
+//           message: planCheck.message,
+//         });
+//       }
+
+//       // 🔹 Website flow → allow booking but still use plan if exists
+//       paymentPlan = planCheck.data || null;
 
 //       let incomingGatewayResponse =
 //         formData.paymentResponse || formData.gatewayResponse || null;
 
-//       if (
-//         incomingGatewayResponse &&
-//         typeof incomingGatewayResponse === "string"
-//       ) {
+//       if (typeof incomingGatewayResponse === "string") {
 //         try {
 //           incomingGatewayResponse = JSON.parse(incomingGatewayResponse);
-//         } catch (_) { }
+//         } catch { }
 //       }
 
-//       formData.paymentResponse = incomingGatewayResponse || null;
-//       formData.gatewayResponse = incomingGatewayResponse || null;
+//       formData.paymentResponse = incomingGatewayResponse;
+//       formData.gatewayResponse = incomingGatewayResponse;
 //     }
 
 //     const leadId = req.params.leadId || null;
@@ -527,11 +537,20 @@ exports.createBooking = async (req, res) => {
 
 //     let paymentPlanType = null;
 
-//     if (paymentPlan?.interval && paymentPlan?.duration) {
-//       const interval = paymentPlan.interval.toLowerCase();
-//       const duration = parseInt(paymentPlan.duration, 10);
+//     // 🔹 Normalize paymentPlan (handles Sequelize + nesting)
+//     const normalizedPlan =
+//       paymentPlan?.dataValues ||
+//       paymentPlan?.plan ||
+//       paymentPlan ||
+//       null;
 
-//       if (["month", "quarter", "year"].includes(interval)) {
+//     console.log("🧾 Normalized paymentPlan:", normalizedPlan);
+
+//     if (normalizedPlan?.interval && normalizedPlan?.duration) {
+//       const interval = String(normalizedPlan.interval).toLowerCase();
+//       const duration = parseInt(normalizedPlan.duration, 10);
+
+//       if (["month", "quarter", "year"].includes(interval) && duration > 0) {
 //         paymentPlanType = `${duration}-${interval}`;
 //       }
 //     }
@@ -661,12 +680,14 @@ exports.createBooking = async (req, res) => {
 //       console.log("❌ paymentPlanType is falsy. Skipping email sending block.");
 //     }
 //     // 🔹 Step 4: Notifications & Logging
-//     await createNotification(
-//       req,
-//       "New Booking Created",
-//       `Booking "${classData.className}" scheduled on ${formData.startDate}`,
-//       "System"
-//     );
+//     if (!isFromWebsite && adminId) {
+//       await createNotification(
+//         req,
+//         "New Booking Created",
+//         `Booking "${classData.className}" scheduled on ${formData.startDate}`,
+//         "System"
+//       );
+//     }
 //     await logActivity(req, PANEL, MODULE, "create", result, true);
 
 //     return res.status(201).json({
