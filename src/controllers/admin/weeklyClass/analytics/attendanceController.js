@@ -51,14 +51,14 @@ exports.getMonthlyReport = async (req, res) => {
     if (DEBUG) console.log("✅", successMessage);
 
     // ✅ Log success
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "view-attendance-report",
-      { oneLineMessage: successMessage },
-      true
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "view-attendance-report",
+    //   { oneLineMessage: successMessage },
+    //   true
+    // );
 
     // ✅ Send clean response
     return res.status(200).json({
@@ -70,14 +70,14 @@ exports.getMonthlyReport = async (req, res) => {
     console.error("❌ Attendance Analytics Report Error:", error);
 
     // ❌ Log failure
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "view-attendance-report",
-      { oneLineMessage: "Attendance analytics generation failed." },
-      false
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "view-attendance-report",
+    //   { oneLineMessage: "Attendance analytics generation failed." },
+    //   false
+    // );
 
     return res.status(500).json({
       status: false,

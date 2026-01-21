@@ -125,14 +125,14 @@ exports.createBirthdayPartyLeads = async (req, res) => {
 
     // ✅ ONLY ADMIN-CREATED → log + notify
     if (createdBy) {
-      await logActivity(
-        req,
-        PANEL,
-        MODULE,
-        "create",
-        createResult.data,
-        true
-      );
+      // await logActivity(
+      //   req,
+      //   PANEL,
+      //   MODULE,
+      //   "create",
+      //   createResult.data,
+      //   true
+      // );
 
       await createNotification(
         req,
@@ -185,7 +185,7 @@ exports.assignBookings = async (req, res) => {
 
     // ❌ Service failed (e.g. already assigned)
     if (!result.status) {
-      await logActivity(req, PANEL, MODULE, "update", result, false);
+      // await logActivity(req, PANEL, MODULE, "update", result, false);
       return res.status(400).json(result);
     }
 
@@ -198,16 +198,16 @@ exports.assignBookings = async (req, res) => {
     );
 
     // ✅ Activity log (success)
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "update",
-      {
-        oneLineMessage: `Assigned ${leadIds.length} lead(s) to admin ${createdBy}`,
-      },
-      true
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "update",
+    //   {
+    //     oneLineMessage: `Assigned ${leadIds.length} lead(s) to admin ${createdBy}`,
+    //   },
+    //   true
+    // );
 
     return res.status(200).json(result);
   } catch (error) {
@@ -253,7 +253,7 @@ exports.getAllBirthdayPartyLeads = async (req, res) => {
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Fetch failed:", result.message);
-      await logActivity(req, PANEL, MODULE, "list", result, false);
+      // await logActivity(req, PANEL, MODULE, "list", result, false);
       return res.status(500).json({
         status: false,
         message: result.message || "Failed to fetch leads.",

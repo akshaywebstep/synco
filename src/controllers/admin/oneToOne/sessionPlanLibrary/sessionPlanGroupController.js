@@ -223,17 +223,17 @@ exports.createSessionPlanGroupStructure = async (req, res) => {
       }.`,
       "System"
     );
-    await logActivity(
-      req,
-      "Admin", // PANEL name
-      "session-plan-structure", // MODULE name
-      "update", // Action type
-      {
-        oneLineMessage: `Session Plan Group '${payload.groupName
-          }'  created by ${req?.admin?.firstName || "Admin"}.`,
-      },
-      true
-    );
+    // await logActivity(
+    //   req,
+    //   "Admin", // PANEL name
+    //   "session-plan-structure", // MODULE name
+    //   "update", // Action type
+    //   {
+    //     oneLineMessage: `Session Plan Group '${payload.groupName
+    //       }'  created by ${req?.admin?.firstName || "Admin"}.`,
+    //   },
+    //   true
+    // );
     return res.status(201).json({
       status: true,
       message: "Session Plan Group created successfully.",
@@ -810,17 +810,17 @@ exports.updateSessionPlanConfig = async (req, res) => {
 
     console.log("STEP 9: Final responseData =", responseData);
     // STEP 9: Log and notify
-    await logActivity(
-      req,
-      "Admin Panel", // PANEL name
-      "Session Plan Group", // MODULE name
-      "update", // Action type
-      {
-        oneLineMessage: `Session Plan Group '${updatePayload.groupName
-          }' updated by ${req?.admin?.firstName || "Admin"}.`,
-      },
-      true
-    );
+    // await logActivity(
+    //   req,
+    //   "Admin Panel", // PANEL name
+    //   "Session Plan Group", // MODULE name
+    //   "update", // Action type
+    //   {
+    //     oneLineMessage: `Session Plan Group '${updatePayload.groupName
+    //       }' updated by ${req?.admin?.firstName || "Admin"}.`,
+    //   },
+    //   true
+    // );
 
     await createNotification(
       req,
@@ -866,14 +866,14 @@ exports.deleteSessionPlanConfig = async (req, res) => {
       await SessionPlanGroupService.getSessionPlanConfigById(id, superAdminId, adminId);
 
     if (!existingResult.status || !existingResult.data) {
-      await logActivity(
-        req,
-        PANEL,
-        MODULE,
-        "delete",
-        { oneLineMessage: `Delete failed - Group ID ${id} not found` },
-        false
-      );
+      // await logActivity(
+      //   req,
+      //   PANEL,
+      //   MODULE,
+      //   "delete",
+      //   { oneLineMessage: `Delete failed - Group ID ${id} not found` },
+      //   false
+      // );
       return res.status(404).json({
         status: false,
         message: existingResult.message || "Session Plan Group not found.",
@@ -889,14 +889,14 @@ exports.deleteSessionPlanConfig = async (req, res) => {
     );
 
     if (!deleteResult.status) {
-      await logActivity(
-        req,
-        PANEL,
-        MODULE,
-        "delete",
-        { oneLineMessage: `Delete failed for Group ID ${id}` },
-        false
-      );
+      // await logActivity(
+      //   req,
+      //   PANEL,
+      //   MODULE,
+      //   "delete",
+      //   { oneLineMessage: `Delete failed for Group ID ${id}` },
+      //   false
+      // );
       return res.status(400).json({
         status: false,
         message: deleteResult.message || "Failed to delete Session Plan Group.",
@@ -914,14 +914,14 @@ exports.deleteSessionPlanConfig = async (req, res) => {
       }
     }
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "delete",
-      { oneLineMessage: `Deleted Session Plan Group ID: ${id}` },
-      true
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "delete",
+    //   { oneLineMessage: `Deleted Session Plan Group ID: ${id}` },
+    //   true
+    // );
 
     return res.status(200).json({
       status: true,
@@ -930,14 +930,14 @@ exports.deleteSessionPlanConfig = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error during Session Plan Group deletion:", error);
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "delete",
-      { oneLineMessage: error.message },
-      false
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "delete",
+    //   { oneLineMessage: error.message },
+    //   false
+    // );
     return res.status(500).json({
       status: false,
       message: "Server error occurred while deleting Session Plan Group.",
@@ -972,14 +972,14 @@ exports.deleteSessionPlanConfigLevel = async (req, res) => {
       });
     }
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "delete-level",
-      { oneLineMessage: `Deleted level '${levelKey}' for group ID: ${id}` },
-      true
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "delete-level",
+    //   { oneLineMessage: `Deleted level '${levelKey}' for group ID: ${id}` },
+    //   true
+    // );
 
     await createNotification(
       req,
@@ -997,14 +997,14 @@ exports.deleteSessionPlanConfigLevel = async (req, res) => {
   } catch (error) {
     console.error("❌ CONTROLLER delete level error:", error);
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "delete-level",
-      { oneLineMessage: error.message },
-      false
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "delete-level",
+    //   { oneLineMessage: error.message },
+    //   false
+    // );
 
     return res.status(500).json({
       status: false,
@@ -1051,7 +1051,7 @@ exports.repinSessionPlanGroup = async (req, res) => {
 
     // 🔸 If operation failed, log & return error
     if (!result.status) {
-      await logActivity(req, PANEL, MODULE, "repin", result, false);
+      // await logActivity(req, PANEL, MODULE, "repin", result, false);
       return res.status(400).json({
         status: false,
         message: result.message || "Failed to repin session plan group.",
@@ -1070,7 +1070,7 @@ exports.repinSessionPlanGroup = async (req, res) => {
     );
 
     // ✅ Log activity
-    await logActivity(req, PANEL, MODULE, "repin", result, true);
+    // await logActivity(req, PANEL, MODULE, "repin", result, true);
 
     return res.status(200).json({
       ...result,
@@ -1079,14 +1079,14 @@ exports.repinSessionPlanGroup = async (req, res) => {
   } catch (error) {
     console.error("❌ Controller Error (repinSessionPlanGroup):", error);
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "repin",
-      { message: error.message },
-      false
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "repin",
+    //   { message: error.message },
+    //   false
+    // );
 
     return res.status(500).json({
       status: false,

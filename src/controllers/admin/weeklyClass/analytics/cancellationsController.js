@@ -36,14 +36,14 @@ exports.getCancellationsReport = async (req, res) => {
         if (DEBUG) console.log("✅", successMessage);
 
         // ✅ Log successful report access
-        await logActivity(
-            req,
-            PANEL,
-            MODULE,
-            "view-cancellations-report",
-            { oneLineMessage: successMessage },
-            true
-        );
+        // await logActivity(
+        //     req,
+        //     PANEL,
+        //     MODULE,
+        //     "view-cancellations-report",
+        //     { oneLineMessage: successMessage },
+        //     true
+        // );
 
         // ✅ Send success response
         return res.status(200).json({
@@ -55,14 +55,14 @@ exports.getCancellationsReport = async (req, res) => {
         console.error("❌ Cancellations Analytics Report Error:", error);
 
         // ❌ Log failure
-        await logActivity(
-            req,
-            PANEL,
-            MODULE,
-            "view-cancellations-report",
-            { oneLineMessage: "Cancellations analytics generation failed." },
-            false
-        );
+        // await logActivity(
+        //     req,
+        //     PANEL,
+        //     MODULE,
+        //     "view-cancellations-report",
+        //     { oneLineMessage: "Cancellations analytics generation failed." },
+        //     false
+        // );
 
         return res.status(500).json({
             status: false,
