@@ -220,125 +220,128 @@ exports.updateBooking = async (req, res) => {
     const venueName = venue.venueName || venue?.name || "N/A";
 
     console.log("🔄 Step 4: Fetching email configuration for book-paid-trial");
-
-    const {
-      status: configStatus,
-      emailConfig,
-      htmlTemplate,
-      subject,
-    } = await emailModel.getEmailConfig(PANEL, "book-paid-trial");
-
-    console.log("📧 Step 4: Email config loaded:", {
-      configStatus,
-      subject,
-      htmlTemplateLength: htmlTemplate?.length || 0,
-    });
-
-    // -------------------------------------------------------------------
-    // NEW EMAIL LOGIC — EXACTLY LIKE YOUR POSTED BLOCK
-    // -------------------------------------------------------------------
-
-    if (configStatus && htmlTemplate) {
-      console.log("✔️ Email template loaded successfully.");
-
-      const studentIds = booking.students?.map((s) => s.id) || [];
-      console.log("studentIds:", studentIds);
-
-      for (const sId of studentIds) {
-        console.log("\n---------------------------------------------");
-        console.log("➡️ Processing studentId:", sId);
-
-        const parentMetas = await BookingParentMeta.findAll({
-          where: { studentId: sId },
+    /*
+        const {
+          status: configStatus,
+          emailConfig,
+          htmlTemplate,
+          subject,
+        } = await emailModel.getEmailConfig(PANEL, "book-paid-trial");
+    
+        console.log("📧 Step 4: Email config loaded:", {
+          configStatus,
+          subject,
+          htmlTemplateLength: htmlTemplate?.length || 0,
         });
-
-        console.log("parentMetas count:", parentMetas.length);
-
-        if (!parentMetas.length) {
-          console.log("⚠️ No parentMetas found. Skipping student:", sId);
-          continue;
+    
+        // -------------------------------------------------------------------
+        // NEW EMAIL LOGIC — EXACTLY LIKE YOUR POSTED BLOCK
+        // -------------------------------------------------------------------
+    
+        
+    
+        if (configStatus && htmlTemplate) {
+          console.log("✔️ Email template loaded successfully.");
+    
+          const studentIds = booking.students?.map((s) => s.id) || [];
+          console.log("studentIds:", studentIds);
+    
+          for (const sId of studentIds) {
+            console.log("\n---------------------------------------------");
+            console.log("➡️ Processing studentId:", sId);
+    
+            const parentMetas = await BookingParentMeta.findAll({
+              where: { studentId: sId },
+            });
+    
+            console.log("parentMetas count:", parentMetas.length);
+    
+            if (!parentMetas.length) {
+              console.log("⚠️ No parentMetas found. Skipping student:", sId);
+              continue;
+            }
+    
+            const firstParent = parentMetas[0];
+    
+            if (!firstParent || !firstParent.parentEmail) {
+              console.log("⚠️ First parent missing email. Skipping student:", sId);
+              continue;
+            }
+    
+            // ALL students in same booking
+            const allStudents = await BookingStudentMeta.findAll({
+              where: { bookingTrialId: booking.id },
+            });
+    
+            // Build HTML list
+            const studentsHtml = allStudents.length
+              ? allStudents
+                  .map(
+                    (s) =>
+                      `<p style="margin:0; font-size:13px; color:#5F5F6D;">${s.studentFirstName} ${s.studentLastName}</p>`
+                  )
+                  .join("")
+              : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
+    
+            console.log("Generated studentsHtml length:", studentsHtml.length);
+    
+            try {
+              let htmlBody = htmlTemplate
+                .replace(
+                  /{{parentName}}/g,
+                  `${firstParent.parentFirstName} ${firstParent.parentLastName}`
+                )
+                .replace(/{{venueName}}/g, venueName)
+                .replace(/{{className}}/g, classSchedule?.className || "N/A")
+                .replace(
+                  /{{classTime}}/g,
+                  `${classSchedule?.startTime} - ${classSchedule?.endTime}`
+                )
+                .replace(/{{startDate}}/g, booking?.startDate || "")
+                .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
+                .replace(/{{parentPassword}}/g, "Synco123")
+                .replace(/{{appName}}/g, "Synco")
+                .replace(/{{year}}/g, new Date().getFullYear().toString())
+                .replace(/{{studentsHtml}}/g, studentsHtml)
+                .replace(
+                  /{{logoUrl}}/g,
+                  "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
+                )
+                .replace(
+                  /{{kidsPlaying}}/g,
+                  "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
+                );
+    
+              console.log("Generated htmlBody length:", htmlBody.length);
+    
+              // FIXED sendEmail FORMAT
+              const emailResp = await sendEmail(emailConfig, {
+                recipient: [
+                  {
+                    name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
+                    email: firstParent.parentEmail,
+                  },
+                ],
+                subject,
+                htmlBody,
+              });
+    
+              console.log(
+                "📧 Email sent successfully to first parent:",
+                firstParent.parentEmail,
+                emailResp
+              );
+            } catch (err) {
+              console.error(
+                `❌ Failed to send email to ${firstParent.parentEmail}:`,
+                err.message
+              );
+            }
+          }
+        } else {
+          console.warn("⚠️ Email not sent. Config missing or template empty.");
         }
-
-        const firstParent = parentMetas[0];
-
-        if (!firstParent || !firstParent.parentEmail) {
-          console.log("⚠️ First parent missing email. Skipping student:", sId);
-          continue;
-        }
-
-        // ALL students in same booking
-        const allStudents = await BookingStudentMeta.findAll({
-          where: { bookingTrialId: booking.id },
-        });
-
-        // Build HTML list
-        const studentsHtml = allStudents.length
-          ? allStudents
-              .map(
-                (s) =>
-                  `<p style="margin:0; font-size:13px; color:#5F5F6D;">${s.studentFirstName} ${s.studentLastName}</p>`
-              )
-              .join("")
-          : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
-
-        console.log("Generated studentsHtml length:", studentsHtml.length);
-
-        try {
-          let htmlBody = htmlTemplate
-            .replace(
-              /{{parentName}}/g,
-              `${firstParent.parentFirstName} ${firstParent.parentLastName}`
-            )
-            .replace(/{{venueName}}/g, venueName)
-            .replace(/{{className}}/g, classSchedule?.className || "N/A")
-            .replace(
-              /{{classTime}}/g,
-              `${classSchedule?.startTime} - ${classSchedule?.endTime}`
-            )
-            .replace(/{{startDate}}/g, booking?.startDate || "")
-            .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
-            .replace(/{{parentPassword}}/g, "Synco123")
-            .replace(/{{appName}}/g, "Synco")
-            .replace(/{{year}}/g, new Date().getFullYear().toString())
-            .replace(/{{studentsHtml}}/g, studentsHtml)
-            .replace(
-              /{{logoUrl}}/g,
-              "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
-            )
-            .replace(
-              /{{kidsPlaying}}/g,
-              "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
-            );
-
-          console.log("Generated htmlBody length:", htmlBody.length);
-
-          // FIXED sendEmail FORMAT
-          const emailResp = await sendEmail(emailConfig, {
-            recipient: [
-              {
-                name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
-                email: firstParent.parentEmail,
-              },
-            ],
-            subject,
-            htmlBody,
-          });
-
-          console.log(
-            "📧 Email sent successfully to first parent:",
-            firstParent.parentEmail,
-            emailResp
-          );
-        } catch (err) {
-          console.error(
-            `❌ Failed to send email to ${firstParent.parentEmail}:`,
-            err.message
-          );
-        }
-      }
-    } else {
-      console.warn("⚠️ Email not sent. Config missing or template empty.");
-    }
+        */
 
     // -------------------------------------------------------------------
 
