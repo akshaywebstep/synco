@@ -512,10 +512,13 @@ exports.createBooking = async (data, options) => {
       const firstStudentId = studentRecords[0]?.id;
 
       try {
-        const paymentPlan = await PaymentPlan.findByPk(booking.paymentPlanId, { transaction: t });
-        if (!paymentPlan) throw new Error("Invalid payment plan selected.");
-        const planPrice = paymentPlan.price || 0;
-
+        const paymentPlan = booking.paymentPlanId
+          ? await PaymentPlan.findByPk(booking.paymentPlanId, { transaction: t })
+          : null;
+        const payloadPrice = Number(data.payment?.price);
+        if (isNaN(payloadPrice)) {
+          throw new Error("Invalid payment price from payload");
+        }
         const venue = await Venue.findByPk(data.venueId, { transaction: t });
         const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, { transaction: t });
 
@@ -553,7 +556,8 @@ exports.createBooking = async (data, options) => {
             customerId: createCustomerRes.customer.id,
             description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
               }`,
-            amount: planPrice, // ✅ use plan price
+            // amount: planPrice, // ✅ use plan price
+            amount: payloadPrice, // ✅ FROM PAYLOAD
             scheme: "faster_payments",
             currency: "GBP",
             reference: `TRX-${Date.now()}-${Math.floor(
@@ -581,7 +585,8 @@ exports.createBooking = async (data, options) => {
           goCardlessBankAccount = createCustomerRes.bankAccount;
           goCardlessBillingRequest = {
             ...createBillingRequestRes.billingRequest,
-            planPrice,
+            // planPrice,
+            price: payloadPrice,
           };
 
           gatewayResponse = {
@@ -689,7 +694,8 @@ exports.createBooking = async (data, options) => {
             firstName: data.payment.firstName || data.parents?.[0]?.parentFirstName || "",
             lastName: data.payment.lastName || data.parents?.[0]?.parentLastName || "",
             email: data.payment.email || data.parents?.[0]?.parentEmail || "",
-            amount: planPrice,
+            amount: payloadPrice,      // ✅ payload price
+            price: payloadPrice,       // ✅ payload price
             billingAddress: data.payment.billingAddress || "",
             cardHolderName: data.payment.cardHolderName || "",
             cv2: data.payment.cv2 || "",

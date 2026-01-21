@@ -31,6 +31,15 @@ exports.createBooking = async (req, res) => {
   try {
     const formData = req.body;
     let paymentPlan;
+    const paymentData = formData.payment || {};
+    const price = paymentData.price ?? null;
+
+    if (price !== null && isNaN(Number(price))) {
+      return res.status(400).json({
+        status: false,
+        message: "Invalid price value",
+      });
+    }
 
     // ✅ Check class
     const classData = await ClassSchedule.findByPk(formData.classScheduleId);
@@ -116,11 +125,23 @@ exports.createBooking = async (req, res) => {
     const leadId = req.params.leadId || null;
 
     // 🔹 Step 1: Create Booking + Students + Parents (Service)
-    const result = await BookingMembershipService.createBooking(formData, {
-      source: req.source,
-      adminId: req.admin?.id || null,
-      leadId,
-    });
+    const result = await BookingMembershipService.createBooking(
+      {
+        ...formData,
+        price, // 👈 ADD THIS
+      },
+      {
+        source: req.source,
+        adminId: req.admin?.id || null,
+        leadId,
+      }
+    );
+
+    // const result = await BookingMembershipService.createBooking(formData, {
+    //   source: req.source,
+    //   adminId: req.admin?.id || null,
+    //   leadId,
+    // });
     if (!result.status) {
       await logActivity(req, PANEL, MODULE, "create", result, false);
       return res.status(500).json({ status: false, message: result.message });

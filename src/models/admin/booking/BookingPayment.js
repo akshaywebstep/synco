@@ -41,8 +41,8 @@ const BookingPayment = sequelize.define(
     },
 
     // Card / Payment details
-   
-     cardHolderName: {
+
+    cardHolderName: {
       type: DataTypes.STRING(100),
       allowNull: true,
     },
@@ -54,13 +54,20 @@ const BookingPayment = sequelize.define(
       type: DataTypes.STRING(10),
       allowNull: true,
     },
-     account_holder_name: {
+
+    price: {
+      type: DataTypes.DECIMAL(10, 2), // supports values like 99999999.99
+      allowNull: false,
+      comment: "Total price charged for the booking",
+    },
+
+    account_holder_name: {
       type: DataTypes.STRING(100),
       allowNull: true,
     },
     // Add this inside your BookingPayment.define fields
     paymentType: {
-      type: DataTypes.ENUM("accesspaysuite", "card","bank"),
+      type: DataTypes.ENUM("accesspaysuite", "card", "bank"),
       allowNull: false,
       defaultValue: "card", // optional: choose a default if needed
     },
@@ -76,10 +83,10 @@ const BookingPayment = sequelize.define(
 
     // Payment status
     paymentStatus: {
-      type: DataTypes.ENUM("cancelled","pending", "paid", "failed","active"),
+      type: DataTypes.ENUM("cancelled", "pending", "paid", "failed", "active"),
       defaultValue: "pending",
     },
-   
+
     // Additional payment details
     currency: {
       type: DataTypes.STRING(10),
