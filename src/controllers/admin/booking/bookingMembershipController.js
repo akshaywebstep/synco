@@ -32,12 +32,12 @@ exports.createBooking = async (req, res) => {
     const formData = req.body;
     let paymentPlan;
     const paymentData = formData.payment || {};
-    const price = paymentData.price ?? null;
+    const price = Number(paymentData.price ?? 0); // Convert to number, default 0
 
-    if (price !== null && isNaN(Number(price))) {
+    if (isNaN(price) || price <= 0) {
       return res.status(400).json({
         status: false,
-        message: "Invalid price value",
+        message: "Invalid price value. Price must be greater than 0.",
       });
     }
 
