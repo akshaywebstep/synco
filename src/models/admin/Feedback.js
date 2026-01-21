@@ -14,7 +14,7 @@ const Feedback = sequelize.define(
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
-        model: "bookings",
+        model: "booking",
         key: "id",
       },
       onUpdate: "CASCADE",

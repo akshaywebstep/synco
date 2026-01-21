@@ -785,6 +785,7 @@ exports.convertToMembership = async (req, res) => {
     const venue = await Venue.findByPk(classData.venueId);
     const venueName = venue?.venueName || venue?.name || "N/A";
 
+    /*
     const {
       status: configStatus,
       emailConfig,
@@ -869,6 +870,7 @@ exports.convertToMembership = async (req, res) => {
         }
       }
     }
+      */
 
     // Step 7: Notifications & Logs
     await createNotification(

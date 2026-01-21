@@ -1666,10 +1666,15 @@ exports.convertToMembership = async (data, options) => {
       }
     }
 
-    // Step 5: Payment Handling (GoCardless / Pay360)
+    // Step 5: Payment Handling (GoCardless / AccessPaysuite)
     if (booking.paymentPlanId && data.payment?.paymentType) {
       const paymentType = data.payment.paymentType;
       let paymentStatusFromGateway = "pending";
+      // Payload price
+      if (!data.payment?.price || Number(data.payment.price) <= 0) {
+        throw new Error("Price must be provided in data.payment.price and > 0");
+      }
+      const payloadPrice = Number(data.payment.price); // ✅ use everywheree once
       const firstStudentId = studentRecords[0]?.id;
 
       try {
@@ -1677,7 +1682,7 @@ exports.convertToMembership = async (data, options) => {
           transaction: t,
         });
         if (!paymentPlan) throw new Error("Invalid payment plan selected.");
-        const price = paymentPlan.price || 0;
+        // const price = paymentPlan.price || 0;
 
         const venue = await Venue.findByPk(data.venueId, { transaction: t });
         const classSchedule = await ClassSchedule.findByPk(
@@ -1714,7 +1719,8 @@ exports.convertToMembership = async (data, options) => {
             customerId: createCustomerRes.customer.id,
             description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
               }`,
-            amount: price,
+
+            amount: payloadPrice, //payload price
             scheme: "faster_payments",
             currency: "GBP",
             reference: `TRX-${Date.now()}`,
@@ -1740,7 +1746,8 @@ exports.convertToMembership = async (data, options) => {
             bankAccount: goCardlessBankAccount,
             billingRequest: goCardlessBillingRequest,
             meta: {
-              amount: price,
+              // amount: price,
+              amount: payloadPrice,
               currency: "GBP",
               scheme: "faster_payments",
             },
@@ -1856,7 +1863,8 @@ exports.convertToMembership = async (data, options) => {
             lastName:
               data.payment.lastName || data.parents?.[0]?.parentLastName || "",
             email: data.payment.email || data.parents?.[0]?.parentEmail || "",
-            amount: price,
+            // amount: price,
+            amount: payloadPrice,
             billingAddress: data.payment.billingAddress || "",
             account_holder_name: data.payment.account_holder_name || "",
             account_number: data.payment.account_number || "",

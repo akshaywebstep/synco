@@ -769,24 +769,12 @@ exports.updateBooking = async (payload, adminId, id) => {
     if (booking.paymentPlanId && payload.payment?.paymentType) {
       const paymentType = payload.payment.paymentType;
       paymentStatusFromGateway = "pending";
-      // -----------------------------
-      // ✅ ADD DYNAMIC PRICE HERE
-      // -----------------------------
-      let price = 0;
-
-      if (payload.payment?.price !== undefined) {
-        price = Number(payload.payment.price);
-        if (isNaN(price) || price <= 0) {
-          throw new Error("Invalid price value. Must be greater than 0.");
-        }
-      } else if (booking.paymentPlanId) {
-        const paymentPlan = await PaymentPlan.findByPk(booking.paymentPlanId, { transaction: t });
-        price = paymentPlan?.price || 0;
+      // use price from payload payment
+      if (!payload.payment?.price || Number(payload.payment.price) <= 0) {
+        throw new Error("Price must be provided in payload.payment.price and > 0");
       }
+      const payloadPrice = Number(payload.payment.price); // ✅ define once
 
-      if (price <= 0) {
-        throw new Error("Price must be greater than 0 to process payment.");
-      }
       // ✅ ADD THESE (IMPORTANT)
       let customerId = null;
       let contractRes = null;
@@ -799,7 +787,6 @@ exports.updateBooking = async (payload, adminId, id) => {
         });
         if (!paymentPlan) throw new Error("Invalid payment plan selected.");
 
-        const price = paymentPlan.price || 0;
         const venue = await Venue.findByPk(payload.venueId, { transaction: t });
         const classSchedule = await ClassSchedule.findByPk(
           payload.classScheduleId,
@@ -959,7 +946,7 @@ exports.updateBooking = async (payload, adminId, id) => {
             description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
               }`,
             // amount: price,
-             amount: price, // ✅ use dynamic price from payload
+            amount: payloadPrice, // ✅ use payloadPrice
             scheme: "faster_payments",
             currency: "GBP",
             reference: `TRX-${Date.now()}-${Math.floor(
@@ -1031,8 +1018,7 @@ exports.updateBooking = async (payload, adminId, id) => {
             email: payerEmail,
 
             paymentType,
-            // amount: paymentPlan.price,
-            amount: price, // ✅ dynamic
+            price: payloadPrice, //payload price
             paymentStatus: paymentStatusFromGateway,
             merchantRef,
             description: `${venue?.name} - ${classSchedule?.className}`,
