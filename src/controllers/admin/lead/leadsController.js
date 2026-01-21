@@ -95,18 +95,18 @@ exports.listCommentsForLead = async (req, res) => {
     const result = await CommentLead.listCommentsForLead({ commentType });
 
     if (!result.status) {
-      await logActivity(req, PANEL, MODULE, "list", result, false);
+      // await logActivity(req, PANEL, MODULE, "list", result, false);
       return res.status(400).json({ status: false, message: result.message });
     }
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "list",
-      { message: "Comments listed successfully" },
-      true
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "list",
+    //   { message: "Comments listed successfully" },
+    //   true
+    // );
 
     return res.status(200).json({
       status: true,
@@ -116,14 +116,14 @@ exports.listCommentsForLead = async (req, res) => {
   } catch (error) {
     console.error("❌ Error listing comments:", error);
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "list",
-      { error: error.message },
-      false
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "list",
+    //   { error: error.message },
+    //   false
+    // );
 
     return res.status(500).json({ status: false, message: "Server error." });
   }
@@ -133,9 +133,9 @@ exports.createLead = async (req, res) => {
   const { firstName, lastName, email, phone, postcode, childAge, status } =
     req.body;
 
-  if (DEBUG) {
-    console.log("📥 Creating new lead:", req.body);
-  }
+  // if (DEBUG) {
+  //   console.log("📥 Creating new lead:", req.body);
+  // }
 
   // ✅ Validation
   const validation = validateFormData(req.body, {
@@ -144,7 +144,7 @@ exports.createLead = async (req, res) => {
 
   if (!validation.isValid) {
     if (DEBUG) console.log("❌ Validation failed:", validation.error);
-    await logActivity(req, PANEL, MODULE, "create", validation.error, false);
+    // await logActivity(req, PANEL, MODULE, "create", validation.error, false);
     return res.status(400).json({ status: false, ...validation });
   }
 
@@ -185,14 +185,14 @@ exports.createLead = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Server error during lead creation:", error);
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "create",
-      { oneLineMessage: error.message },
-      false
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "create",
+    //   { oneLineMessage: error.message },
+    //   false
+    // );
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };
@@ -227,7 +227,7 @@ exports.getAllForFacebookLeads = async (req, res) => {
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Failed fetching leads:", result.message);
 
-      await logActivity(req, PANEL, MODULE, "read", result, false);
+      // await logActivity(req, PANEL, MODULE, "read", result, false);
 
       return res.status(400).json({
         status: false,
@@ -235,16 +235,16 @@ exports.getAllForFacebookLeads = async (req, res) => {
       });
     }
 
-    if (DEBUG) console.log(`✅ Retrieved ${result.data?.length || 0} leads`);
+    // if (DEBUG) console.log(`✅ Retrieved ${result.data?.length || 0} leads`);
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "read",
-      { count: result.data?.length || 0 },
-      true
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "read",
+    //   { count: result.data?.length || 0 },
+    //   true
+    // );
 
     // Include all leads, even if bookingData or nearestVenues are empty
     const formattedData = (result.data || []).map((lead) => {
@@ -263,14 +263,14 @@ exports.getAllForFacebookLeads = async (req, res) => {
   } catch (error) {
     console.error("❌ getAllForFacebookLeads Error:", error);
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "read",
-      { error: error.message },
-      false
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "read",
+    //   { error: error.message },
+    //   false
+    // );
 
     return res.status(500).json({
       status: false,
