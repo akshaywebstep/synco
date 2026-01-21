@@ -1,4 +1,3 @@
-// const { sequelize, Booking, FreezeBooking } = require("../../../models");
 const {
   sequelize,
   FreezeBooking,
@@ -160,6 +159,326 @@ exports.createFreezeBooking = async ({
     return { status: false, message: error.message };
   }
 };
+/*
+exports.reactivateBooking = async (
+  bookingId,
+  payload,
+  reactivateOn = null,
+  additionalNote = null
+) => {
+  const t = await sequelize.transaction();
+
+  try {
+    // --------------------------------------------------
+    // 1. Fetch booking
+    // --------------------------------------------------
+    const booking = await Booking.findByPk(bookingId, {
+      transaction: t,
+      include: [{ model: BookingPayment, as: "payments" }],
+    });
+
+    if (!booking) {
+      throw new Error("Booking not found");
+    }
+
+    const wasCancelled = booking.status === "cancelled";
+    const wasFrozen = booking.status === "frozen";
+
+    // --------------------------------------------------
+    // 2. Capacity check (ONLY if cancelled)
+    // --------------------------------------------------
+    if (wasCancelled) {
+      const studentCount = await BookingStudentMeta.count({
+        where: { bookingTrialId: bookingId },
+        transaction: t,
+      });
+
+      const classSchedule = await ClassSchedule.findByPk(
+        booking.classScheduleId,
+        { transaction: t, lock: t.LOCK.UPDATE }
+      );
+
+      if (!classSchedule || classSchedule.capacity < studentCount) {
+        throw new Error("Insufficient capacity to reactivate booking");
+      }
+
+      await classSchedule.decrement("capacity", {
+        by: studentCount,
+        transaction: t,
+      });
+    }
+
+    // --------------------------------------------------
+    // 3. IF CANCELLED → CREATE NEW PAYMENT
+    // --------------------------------------------------
+    if (wasCancelled) {
+      if (!payload?.payment?.paymentType) {
+        throw new Error("Payment details required for cancelled booking");
+      }
+
+      const data = payload; // keep naming consistent with your original logic
+      const paymentType = data.payment.paymentType;
+      let paymentStatusFromGateway = "pending";
+
+      const studentRecords = await BookingStudentMeta.findAll({
+        where: { bookingTrialId: bookingId },
+        transaction: t,
+      });
+
+      const firstStudentId = studentRecords[0]?.id;
+
+      const paymentPlan = booking.paymentPlanId
+        ? await PaymentPlan.findByPk(booking.paymentPlanId, { transaction: t })
+        : null;
+
+      const payloadPrice = Number(data.payment?.price);
+      if (isNaN(payloadPrice) || payloadPrice <= 0) {
+        throw new Error("Invalid payment price from payload");
+      }
+
+      const venue = await Venue.findByPk(data.venueId, { transaction: t });
+      const classSchedule = await ClassSchedule.findByPk(
+        data.classScheduleId,
+        { transaction: t }
+      );
+
+      const merchantRef = `TRX-${Date.now()}-${Math.floor(
+        1000 + Math.random() * 9000
+      )}`;
+
+      let gatewayResponse = null;
+      let goCardlessCustomer = null;
+      let goCardlessBankAccount = null;
+      let goCardlessBillingRequest = null;
+
+      // ==================================================
+      // BANK (GoCardless)
+      // ==================================================
+      if (paymentType === "bank") {
+        const customerPayload = {
+          email: data.payment.email || "",
+          given_name: data.payment.firstName || "",
+          family_name: data.payment.lastName || "",
+          address_line1: data.payment.addressLine1 || "",
+          city: data.payment.city || "",
+          postal_code: data.payment.postalCode || "",
+          country_code: data.payment.countryCode || "GB",
+          currency: "GBP",
+          account_holder_name: data.payment.account_holder_name || "",
+          account_number: data.payment.account_number || "",
+          branch_code: data.payment.branch_code || "",
+        };
+
+        const createCustomerRes = await createCustomer(customerPayload);
+        if (!createCustomerRes.status)
+          throw new Error("Failed to create GoCardless customer");
+
+        const billingRequestPayload = {
+          customerId: createCustomerRes.customer.id,
+          description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"}`,
+          amount: payloadPrice, // ✅ FROM PAYLOAD
+          scheme: "faster_payments",
+          currency: "GBP",
+          reference: merchantRef,
+          mandateReference: `MD-${Date.now()}-${Math.floor(
+            1000 + Math.random() * 9000
+          )}`,
+          fallbackEnabled: true,
+        };
+
+        const billingRes = await createBillingRequest(billingRequestPayload);
+        if (!billingRes.status) {
+          await removeCustomer(createCustomerRes.customer.id);
+          throw new Error("Failed to create billing request");
+        }
+
+        goCardlessCustomer = createCustomerRes.customer;
+        goCardlessBankAccount = createCustomerRes.bankAccount;
+        goCardlessBillingRequest = {
+          ...billingRes.billingRequest,
+          price: payloadPrice,
+        };
+
+        gatewayResponse = {
+          gateway: "gocardless",
+          goCardlessCustomer,
+          goCardlessBankAccount,
+          goCardlessBillingRequest,
+        };
+
+        paymentStatusFromGateway = "pending";
+      }
+
+      // ==================================================
+      // ACCESS PAYSUITE
+      // ==================================================
+      if (paymentType === "accesspaysuite") {
+        const schedulesRes = await getSchedules();
+        if (!schedulesRes.status) {
+          throw new Error("Access PaySuite: Failed to fetch schedules");
+        }
+
+        const services = schedulesRes.data?.Services || [];
+        const schedules = services.flatMap(s => s.Schedules || []);
+
+        const matchedSchedule = findMatchingSchedule(schedules, paymentPlan);
+        if (!matchedSchedule) {
+          throw new Error("Access PaySuite: Matching schedule not found");
+        }
+
+        const customerPayload = {
+          email: data.payment.email,
+          title: "Mr",
+          customerRef: `BOOK-${booking.id}-${Date.now()}`,
+          firstName: data.payment.firstName,
+          surname: data.payment.lastName || "Unknown",
+          line1: data.payment.addressLine1 || "N/A",
+          postCode: data.payment.postalCode || "N/A",
+          accountNumber: data.payment.account_number,
+          bankSortCode: data.payment.branch_code,
+          accountHolderName: data.payment.account_holder_name,
+        };
+
+        const customerRes = await createAccessPaySuiteCustomer(customerPayload);
+        if (!customerRes.status)
+          throw new Error("Access PaySuite: Customer creation failed");
+
+        const customerId =
+          customerRes.data?.CustomerId ||
+          customerRes.data?.Id ||
+          customerRes.data?.id;
+
+        if (!customerId) {
+          throw new Error("Access PaySuite: Customer ID missing");
+        }
+
+        const contractPayload = {
+          scheduleName: matchedSchedule.Name,
+          start: calculateContractStartDate(18),
+          terminationType: paymentPlan?.duration ? "Fixed term" : "Until further notice",
+          atTheEnd: "Switch to further notice",
+        };
+
+        if (paymentPlan?.duration) {
+          const start = new Date(contractPayload.start);
+          const end = new Date(start);
+          end.setMonth(end.getMonth() + Number(paymentPlan.duration));
+          contractPayload.TerminationDate = end.toISOString().split("T")[0];
+        }
+
+        const contractRes = await createContract(customerId, contractPayload);
+        if (!contractRes.status)
+          throw new Error("Access PaySuite: Contract creation failed");
+
+        gatewayResponse = {
+          gateway: "accesspaysuite",
+          schedule: matchedSchedule,
+          customer: customerRes.data,
+          contract: contractRes.data,
+        };
+
+        paymentStatusFromGateway = "active";
+      }
+
+      // ==================================================
+      // SAVE NEW BOOKING PAYMENT (SAME AS ORIGINAL)
+      // ==================================================
+      await BookingPayment.create(
+        {
+          bookingId: booking.id,
+          paymentPlanId: booking.paymentPlanId,
+          studentId: firstStudentId,
+
+          paymentType,
+          firstName: data.payment.firstName || "",
+          lastName: data.payment.lastName || "",
+          email: data.payment.email || "",
+
+          amount: payloadPrice,
+          price: payloadPrice,
+
+          account_number: data.payment.account_number || "",
+          branch_code: data.payment.branch_code || "",
+          account_holder_name: data.payment.account_holder_name || "",
+
+          paymentStatus: paymentStatusFromGateway,
+          currency: "GBP",
+          merchantRef,
+          description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"}`,
+          commerceType: "ECOM",
+
+          gatewayResponse,
+          transactionMeta: { status: paymentStatusFromGateway },
+
+          goCardlessCustomer,
+          goCardlessBankAccount,
+          goCardlessBillingRequest,
+        },
+        { transaction: t }
+      );
+    }
+
+    // --------------------------------------------------
+    // 4. IF FROZEN → REACTIVATE EXISTING PAYMENT
+    // --------------------------------------------------
+    if (wasFrozen) {
+      const bookingPayment = booking.payments?.[0];
+      if (!bookingPayment) throw new Error("Payment not found");
+
+      if (bookingPayment.paymentType === "accesspaysuite") {
+        let gatewayResponse = bookingPayment.gatewayResponse;
+        if (typeof gatewayResponse === "string") {
+          gatewayResponse = JSON.parse(gatewayResponse);
+        }
+
+        const contractId = gatewayResponse?.contract?.Id;
+        if (!contractId) throw new Error("Contract ID missing");
+
+        const apsRes = await reactivateContract(contractId, {
+          reactivateOn,
+          note: additionalNote || "",
+        });
+
+        if (!apsRes.status) throw new Error("APS reactivation failed");
+      }
+
+      await bookingPayment.update(
+        { paymentStatus: "active" },
+        { transaction: t }
+      );
+    }
+
+    // --------------------------------------------------
+    // 5. Update booking + cleanup
+    // --------------------------------------------------
+    await booking.update(
+      {
+        status: "active",
+        additionalNote,
+      },
+      { transaction: t }
+    );
+
+    if (wasCancelled) {
+      await CancelBooking.destroy({
+        where: { bookingId, bookingType: "membership" },
+        transaction: t,
+      });
+    }
+
+    await t.commit();
+
+    return {
+      status: true,
+      message: "Booking reactivated successfully",
+    };
+  } catch (error) {
+    await t.rollback();
+    console.error("❌ reactivateBooking error:", error);
+    return { status: false, message: error.message };
+  }
+};
+*/
 
 exports.reactivateBooking = async (bookingId, reactivateOn = null, additionalNote = null) => {
   const t = await sequelize.transaction();
@@ -376,262 +695,6 @@ exports.reactivateBooking = async (bookingId, reactivateOn = null, additionalNot
   }
 };
 
-// exports.reactivateBooking = async (bookingId, reactivateOn = null, additionalNote = null) => {
-//   const t = await sequelize.transaction();
-//   try {
-//     // 1. Find active freeze record
-//     const freezeRecord = await FreezeBooking.findOne({
-//       where: {
-//         bookingId,
-//         reactivateOn: { [Op.gte]: new Date() },
-//       },
-//       transaction: t,
-//     });
-
-//     // 2. Fetch booking + payment
-//     const booking = await Booking.findByPk(bookingId, {
-//       transaction: t,
-//       include: [{ model: BookingPayment, as: "payments" }],
-//     });
-
-//     if (!booking) {
-//       await t.rollback();
-//       return { status: false, message: "Booking not found." };
-//     }
-
-//     const bookingPayment = booking.payments?.[0];
-//     if (!bookingPayment) {
-//       await t.rollback();
-//       return { status: false, message: "Booking payment not found." };
-//     }
-
-//     // 3. Count students for capacity handling
-//     const studentCount = await BookingStudentMeta.count({
-//       where: { bookingTrialId: bookingId },
-//       transaction: t,
-//     });
-
-//     if (studentCount === 0) {
-//       await t.rollback();
-//       return { status: false, message: "No students found for this booking." };
-//     }
-
-//     const paymentType = bookingPayment.paymentType;
-
-//     // 4. Parse gateway response safely
-//     let gatewayResponse = bookingPayment.gatewayResponse;
-//     if (typeof gatewayResponse === "string") {
-//       try {
-//         gatewayResponse = JSON.parse(gatewayResponse);
-//       } catch {
-//         gatewayResponse = {};
-//       }
-//     }
-
-//     const contractId =
-//       bookingPayment.contractId ||
-//       gatewayResponse?.contract?.Id ||
-//       gatewayResponse?.contract?.id ||
-//       gatewayResponse?.contractId ||
-//       gatewayResponse?.contract_id ||
-//       null;
-
-//     /**
-//      * =========================================================
-//      * APS PAYMENT REACTIVATION
-//      * =========================================================
-//      */
-//     if (paymentType === "accesspaysuite") {
-//       if (!contractId) {
-//         await t.rollback();
-//         return { status: false, message: "Contract ID not found." };
-//       }
-
-//       const apsResult = await reactivateContract(contractId, {
-//         reactivateOn,
-//         note: additionalNote || "",
-//       });
-
-//       if (!apsResult.status) {
-//         await t.rollback();
-//         return { status: false, message: apsResult.message || "APS reactivation failed." };
-//       }
-
-//       // Capacity handling for cancelled bookings
-//       if (booking.status === "cancelled") {
-//         const classSchedule = await ClassSchedule.findByPk(
-//           booking.classScheduleId,
-//           { transaction: t, lock: t.LOCK.UPDATE }
-//         );
-
-//         if (!classSchedule || classSchedule.capacity < studentCount) {
-//           await t.rollback();
-//           return {
-//             status: false,
-//             message: "Insufficient capacity to reactivate booking.",
-//           };
-//         }
-
-//         await classSchedule.decrement("capacity", {
-//           by: studentCount,
-//           transaction: t,
-//         });
-//       }
-
-//       await booking.update(
-//         { status: "active", additionalNote: additionalNote || null },
-//         { transaction: t }
-//       );
-
-//       if (freezeRecord) {
-//         await freezeRecord.destroy({ transaction: t });
-//       }
-
-//       await t.commit();
-//     }
-
-//     /**
-//      * =========================================================
-//      * NON-APS (BANK / MANUAL) REACTIVATION
-//      * =========================================================
-//      */
-//     else {
-//       if (booking.status === "cancelled") {
-//         const classSchedule = await ClassSchedule.findByPk(
-//           booking.classScheduleId,
-//           { transaction: t, lock: t.LOCK.UPDATE }
-//         );
-
-//         if (!classSchedule) {
-//           await t.rollback();
-//           return { status: false, message: "Class schedule not found." };
-//         }
-
-//         if (classSchedule.capacity < studentCount) {
-//           await t.rollback();
-//           return {
-//             status: false,
-//             message: `Only ${classSchedule.capacity} seats available, ${studentCount} required.`,
-//           };
-//         }
-
-//         await classSchedule.decrement("capacity", {
-//           by: studentCount,
-//           transaction: t,
-//         });
-//       }
-
-//       await booking.update(
-//         {
-//           status: "active",
-//           additionalNote: additionalNote || null,
-//           ...(reactivateOn && { reactivateOn }),
-//         },
-//         { transaction: t }
-//       );
-
-//       if (freezeRecord) {
-//         await freezeRecord.destroy({ transaction: t });
-//       }
-
-//       await t.commit();
-//     }
-
-//     // 5. Return updated booking
-//     const updatedBooking = await Booking.findByPk(bookingId, {
-//       include: [
-//         {
-//           model: ClassSchedule,
-//           as: "classSchedule",
-//           include: [{ model: Venue, as: "venue" }],
-//         },
-//         {
-//           model: BookingStudentMeta,
-//           as: "students",
-//           include: [
-//             { model: BookingParentMeta, as: "parents" },
-//             { model: BookingEmergencyMeta, as: "emergencyContacts" },
-//           ],
-//         },
-//       ],
-//     });
-
-//     return {
-//       status: true,
-//       message: "Booking reactivated successfully.",
-//       data: updatedBooking,
-//     };
-//   } catch (error) {
-//     await t.rollback();
-//     console.error("❌ reactivateBooking Error:", error);
-//     return { status: false, message: error.message };
-//   }
-// };
-
-// exports.createFreezeBooking = async ({
-//   bookingId,
-//   freezeStartDate,
-//   freezeDurationMonths,
-//   reasonForFreezing,
-// }) => {
-//   const t = await sequelize.transaction();
-//   try {
-//     // 🔹 1. Validate booking
-//     const booking = await Booking.findByPk(bookingId, { transaction: t });
-//     if (!booking) {
-//       await t.rollback();
-//       return { status: false, message: "Booking not found." };
-//     }
-
-//     // 🔹 2. Calculate reactivation date
-//     const reactivateOn = new Date(freezeStartDate);
-//     reactivateOn.setMonth(reactivateOn.getMonth() + freezeDurationMonths);
-
-//     // 🔹 3. Prevent duplicate active freeze
-//     const existingFreeze = await FreezeBooking.findOne({
-//       where: {
-//         bookingId,
-//         reactivateOn: { [Op.gte]: new Date() }, // still active
-//       },
-//       transaction: t,
-//     });
-
-//     if (existingFreeze) {
-//       await t.rollback();
-//       return {
-//         status: false,
-//         message: "Booking is already under a freeze period.",
-//       };
-//     }
-
-//     // 🔹 4. Create FreezeBooking record
-//     const freezeRecord = await FreezeBooking.create(
-//       {
-//         bookingId,
-//         freezeStartDate,
-//         freezeDurationMonths,
-//         reactivateOn,
-//         reasonForFreezing: reasonForFreezing || null,
-//       },
-//       { transaction: t }
-//     );
-
-//     // 🔹 5. Update booking status
-//     // await booking.update({ status: "frozen" }, { transaction: t });
-
-//     await t.commit();
-//     return {
-//       status: true,
-//       message: "Booking frozen successfully.",
-//       data: { freezeRecord, bookingDetails: booking },
-//     };
-//   } catch (error) {
-//     await t.rollback();
-//     console.error("❌ createFreezeBooking Error:", error);
-//     return { status: false, message: error.message };
-//   }
-// };
-
 exports.listFreezeBookings = async (whereVenue = {}) => {
   const t = await sequelize.transaction();
   try {
@@ -683,129 +746,6 @@ exports.listFreezeBookings = async (whereVenue = {}) => {
     return { status: false, message: error.message };
   }
 };
-
-// exports.reactivateBooking = async (
-//   bookingId,
-//   reactivateOn = null,
-//   additionalNote = null
-// ) => {
-//   const t = await sequelize.transaction();
-//   try {
-//     // 🔹 1. Try to find active freeze record
-//     let freezeRecord = await FreezeBooking.findOne({
-//       where: {
-//         bookingId,
-//         reactivateOn: { [Op.gte]: new Date() },
-//       },
-//       transaction: t,
-//     });
-
-//     // 🔹 2. Fetch booking
-//     const booking = await Booking.findByPk(bookingId, { transaction: t });
-//     if (!booking) {
-//       await t.rollback();
-//       return { status: false, message: "Booking not found." };
-//     }
-
-//     if (!freezeRecord && !["frozen", "cancelled"].includes(booking.status)) {
-//       await t.rollback();
-//       return {
-//         status: false,
-//         message: "No active freeze or cancelled booking found for this booking.",
-//       };
-//     }
-//     // 🔹 3B. If booking is cancelled, check class capacity before reactivating
-//     if (booking.status === "cancelled") {
-//       const classSchedule = await ClassSchedule.findByPk(booking.classScheduleId, {
-//         transaction: t,
-//       });
-
-//       if (!classSchedule) {
-//         await t.rollback();
-//         return { status: false, message: "Class schedule not found." };
-//       }
-
-//       // If class capacity is zero → no space at all
-//       if (classSchedule.capacity === 0) {
-//         await t.rollback();
-//         return {
-//           status: false,
-//           message: "This class has no available capacity.",
-//         };
-//       }
-
-//       // List of statuses that count toward class capacity
-//       const capacityStatuses = ["pending", "active", "attended", "frozen"];
-
-//       // Count BOOKINGS that occupy a spot (exclude cancelled)
-//       const usedCapacityCount = await Booking.count({
-//         where: {
-//           classScheduleId: booking.classScheduleId,
-//           status: capacityStatuses,
-//         },
-//         transaction: t,
-//       });
-
-//       // If class is full → stop reactivation
-//       if (usedCapacityCount >= classSchedule.capacity) {
-//         await t.rollback();
-//         return {
-//           status: false,
-//           message: "Class is already full. No capacity available.",
-//         };
-//       }
-//     }
-
-//     // 🔹 4. Prepare update data
-//     const updatedData = {
-//       status: "active",
-//       additionalNote: additionalNote, // always update
-//     };
-
-//     // Update reactivate date if provided
-//     if (reactivateOn) updatedData.reactivateOn = reactivateOn;
-
-//     await booking.update(updatedData, { transaction: t });
-
-//     // 🔹 5. Delete freeze record if it exists
-//     if (freezeRecord) {
-//       await freezeRecord.destroy({ transaction: t });
-//     }
-
-//     // 🔹 6. Fetch full updated booking with nested data
-//     const updatedBooking = await Booking.findByPk(bookingId, {
-//       include: [
-//         {
-//           model: ClassSchedule,
-//           as: "classSchedule",
-//           required: true,
-//           include: [{ model: Venue, as: "venue" }],
-//         },
-//         {
-//           model: BookingStudentMeta,
-//           as: "students",
-//           include: [
-//             { model: BookingParentMeta, as: "parents" },
-//             { model: BookingEmergencyMeta, as: "emergencyContacts" },
-//           ],
-//         },
-//       ],
-//       transaction: t,
-//     });
-
-//     await t.commit();
-
-//     return {
-//       status: true,
-//       message: "Booking reactivated successfully.",
-//       data: updatedBooking,
-//     };
-//   } catch (error) {
-//     await t.rollback();
-//     console.error("❌ reactivateBooking Service Error:", error);
-//     return { status: false, message: error.message };
-//   }
-// };
 
 exports.cancelWaitingListSpot = async ({
   bookingId,

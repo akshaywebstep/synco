@@ -506,7 +506,7 @@ exports.getAllReferallLeads = async (req, res) => {
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Failed fetching leads:", result.message);
 
-      await logActivity(req, PANEL, MODULE, "read", result, false);
+      // await logActivity(req, PANEL, MODULE, "read", result, false);
 
       return res.status(400).json({
         status: false,
@@ -516,14 +516,14 @@ exports.getAllReferallLeads = async (req, res) => {
 
     if (DEBUG) console.log(`✅ Retrieved ${result.data?.length || 0} leads`);
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "read",
-      { count: result.data?.length || 0 },
-      true
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "read",
+    //   { count: result.data?.length || 0 },
+    //   true
+    // );
 
     // Include all leads, even if bookingData or nearestVenues are empty
     const formattedData = (result.data || []).map((lead) => {
@@ -542,14 +542,14 @@ exports.getAllReferallLeads = async (req, res) => {
   } catch (error) {
     console.error("❌ getAllReferallLeads Error:", error);
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "read",
-      { error: error.message },
-      false
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "read",
+    //   { error: error.message },
+    //   false
+    // );
 
     return res.status(500).json({
       status: false,
@@ -588,7 +588,7 @@ exports.getAllOthersLeads = async (req, res) => {
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Failed fetching leads:", result.message);
 
-      await logActivity(req, PANEL, MODULE, "read", result, false);
+      // await logActivity(req, PANEL, MODULE, "read", result, false);
 
       return res.status(400).json({
         status: false,
@@ -598,14 +598,14 @@ exports.getAllOthersLeads = async (req, res) => {
 
     if (DEBUG) console.log(`✅ Retrieved ${result.data?.length || 0} leads`);
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "read",
-      { count: result.data?.length || 0 },
-      true
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "read",
+    //   { count: result.data?.length || 0 },
+    //   true
+    // );
 
     // Include all leads, even if bookingData or nearestVenues are empty
     const formattedData = (result.data || []).map((lead) => {
@@ -624,14 +624,14 @@ exports.getAllOthersLeads = async (req, res) => {
   } catch (error) {
     console.error("❌ getAllReferallLeads Error:", error);
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "read",
-      { error: error.message },
-      false
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "read",
+    //   { error: error.message },
+    //   false
+    // );
 
     return res.status(500).json({
       status: false,
@@ -670,7 +670,7 @@ exports.getAllLeads = async (req, res) => {
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Failed fetching leads:", result.message);
 
-      await logActivity(req, PANEL, MODULE, "read", result, false);
+      // await logActivity(req, PANEL, MODULE, "read", result, false);
 
       return res.status(400).json({
         status: false,
@@ -680,14 +680,14 @@ exports.getAllLeads = async (req, res) => {
 
     if (DEBUG) console.log(`✅ Retrieved ${result.data?.length || 0} leads`);
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "read",
-      { count: result.data?.length || 0 },
-      true
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "read",
+    //   { count: result.data?.length || 0 },
+    //   true
+    // );
 
     // Include all leads, even if bookingData or nearestVenues are empty
     const formattedData = (result.data || []).map((lead) => {
@@ -706,14 +706,14 @@ exports.getAllLeads = async (req, res) => {
   } catch (error) {
     console.error("❌ getAllLeads Error:", error);
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "read",
-      { error: error.message },
-      false
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "read",
+    //   { error: error.message },
+    //   false
+    // );
 
     return res.status(500).json({
       status: false,
@@ -753,7 +753,7 @@ exports.getLeadandBookingDatabyLeadId = async (req, res) => {
       });
     }
 
-    await logActivity(req, PANEL, MODULE, "read", result.data, true);
+    // await logActivity(req, PANEL, MODULE, "read", result.data, true);
 
     return res.status(200).json({
       status: true,
@@ -763,7 +763,7 @@ exports.getLeadandBookingDatabyLeadId = async (req, res) => {
   } catch (error) {
     console.error("❌ getLeadandBookingDatabyLeadId Controller Error:", error);
 
-    await logActivity(req, PANEL, MODULE, "read", { error: error.message }, false);
+    // await logActivity(req, PANEL, MODULE, "read", { error: error.message }, false);
 
     return res.status(500).json({
       status: false,
@@ -802,14 +802,14 @@ exports.sendSelectedLeadListEmail = async (req, res) => {
       });
     }
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "send",
-      { message: "Emails sent successfully" },
-      true
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "send",
+    //   { message: "Emails sent successfully" },
+    //   true
+    // );
 
     return res.status(200).json({
       status: true,
@@ -820,14 +820,14 @@ exports.sendSelectedLeadListEmail = async (req, res) => {
   } catch (error) {
     console.error("❌ Controller Send Email Error:", error);
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "send",
-      { error: error.message },
-      false
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "send",
+    //   { error: error.message },
+    //   false
+    // );
 
     return res.status(500).json({ status: false, message: "Server error" });
   }
@@ -855,7 +855,7 @@ exports.findAClass = async (req, res) => {
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Failed fetching leads:", result.message);
 
-      await logActivity(req, PANEL, MODULE, "read", result, false);
+      // await logActivity(req, PANEL, MODULE, "read", result, false);
 
       return res.status(400).json({
         status: false,
@@ -865,14 +865,14 @@ exports.findAClass = async (req, res) => {
 
     if (DEBUG) console.log(`✅ Retrieved ${result.data?.length || 0} leads`);
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "read",
-      { count: result.data?.length || 0 },
-      true
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "read",
+    //   { count: result.data?.length || 0 },
+    //   true
+    // );
 
     // Only include leads with valid bookingData and nearestVenues
     const formattedData = (result.data || []).map((lead) => {
@@ -891,14 +891,14 @@ exports.findAClass = async (req, res) => {
   } catch (error) {
     console.error("❌ findAClass Error:", error);
 
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "read",
-      { error: error.message },
-      false
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "read",
+    //   { error: error.message },
+    //   false
+    // );
 
     return res.status(500).json({
       status: false,
