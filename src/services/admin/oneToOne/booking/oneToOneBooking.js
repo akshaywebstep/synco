@@ -343,6 +343,110 @@ exports.createOnetoOneBooking = async (data) => {
 
     await transaction.commit();
 
+    // -----------------------------------------------------
+        // 8️⃣ Send Confirmation Email
+        // -----------------------------------------------------
+        /*
+        try {
+            if (paymentStatus === "paid") {
+                const {
+                    status: configStatus,
+                    emailConfig,
+                    htmlTemplate,
+                    subject,
+                } = await emailModel.getEmailConfig(
+                    PANEL,
+                    "one-to-one-booking"
+                );
+
+                if (configStatus && htmlTemplate) {
+                    const firstParent = data.parents?.[0];
+
+                    if (firstParent?.parentEmail) {
+                        let studentsHtml = students
+                            .map(
+                                (student) => `
+        <tr>
+          <td style="padding:5px;">
+            <p style="font-weight:600;">Student Name:</p>
+            <p>${student.studentFirstName || ""} ${student.studentLastName || ""
+                                    }</p>
+          </td>
+          <td style="padding:5px;">
+            <p style="font-weight:600;">Age:</p>
+            <p>${student.age || ""}</p>
+          </td>
+          <td style="padding:5px;">
+            <p style="font-weight:600;">Gender:</p>
+            <p>${student.gender || ""}</p>
+          </td>
+        </tr>`
+                            )
+                            .join("");
+
+                        let htmlBody = htmlTemplate
+                            .replace(
+                                /{{parentName}}/g,
+                                `${firstParent.parentFirstName} ${firstParent.parentLastName}`
+                            )
+                            .replace(/{{address}}/g, data.address || "")
+                            .replace(
+                                /{{relationChild}}/g,
+                                firstParent.relationChild || ""
+                            )
+                            .replace(
+                                /{{phoneNumber}}/g,
+                                firstParent.phoneNumber || ""
+                            )
+                            .replace(/{{className}}/g, "Birthday Party Coaching")
+                            .replace(/{{classTime}}/g, data.time || "")
+                            .replace(/{{startDate}}/g, data.date || "")
+                            .replace(
+                                /{{parentEmail}}/g,
+                                firstParent.parentEmail || ""
+                            )
+                            .replace(/{{parentPassword}}/g, "Synco123")
+                            .replace(/{{appName}}/g, "Synco")
+                            .replace(
+                                /{{year}}/g,
+                                new Date().getFullYear().toString()
+                            )
+                            .replace(
+                                /{{logoUrl}}/g,
+                                "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
+                            )
+                            .replace(
+                                /{{kidsPlaying}}/g,
+                                "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
+                            )
+                            .replace(/{{studentsTable}}/g, studentsHtml);
+
+                        await sendEmail(emailConfig, {
+                            recipient: [
+                                {
+                                    name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
+                                    email: firstParent.parentEmail,
+                                },
+                            ],
+                            subject,
+                            htmlBody,
+                        });
+
+                        console.log(
+                            `📧 Confirmation email sent to ${firstParent.parentEmail}`
+                        );
+                    }
+                } else {
+                    console.warn(
+                        "⚠️ Email template config not found for 'one-to-one-booking'"
+                    );
+                }
+            }
+        } catch (emailErr) {
+            console.error("❌ Email sending failed:", emailErr.message);
+        }
+            */
+
     return {
       success: true,
       bookingId: booking.id,

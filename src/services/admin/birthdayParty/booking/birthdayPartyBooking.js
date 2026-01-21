@@ -388,6 +388,7 @@ exports.createBirthdayPartyBooking = async (data) => {
         // -----------------------------------------------------
         // 8️⃣ Send Confirmation Email
         // -----------------------------------------------------
+        /*
         try {
             if (paymentStatus === "paid") {
                 const {
@@ -486,7 +487,7 @@ exports.createBirthdayPartyBooking = async (data) => {
         } catch (emailErr) {
             console.error("❌ Email sending failed:", emailErr.message);
         }
-
+            */
         // -----------------------------------------------------
         // 9️⃣ Return Success Response
         // -----------------------------------------------------
