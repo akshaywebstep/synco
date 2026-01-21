@@ -59,14 +59,14 @@ exports.createOnetoOneLeads = async (req, res) => {
     // ✅ Log activity
     // ✅ ONLY ADMIN-CREATED → log + notify
     if (createdBy) {
-      // await logActivity(
-      //   req,
-      //   PANEL,
-      //   MODULE,
-      //   "create",
-      //   createResult.data,
-      //   true
-      // );
+      await logActivity(
+        req,
+        PANEL,
+        MODULE,
+        "create",
+        createResult.data,
+        true
+      );
       // ✅ Correct notification format
       await createNotification(
         req,
@@ -120,7 +120,7 @@ exports.assignBookings = async (req, res) => {
 
     // ❌ Service failed (e.g. already assigned)
     if (!result.status) {
-      // await logActivity(req, PANEL, MODULE, "update", result, false);
+      await logActivity(req, PANEL, MODULE, "update", result, false);
       return res.status(400).json(result);
     }
 
@@ -133,16 +133,16 @@ exports.assignBookings = async (req, res) => {
     );
 
     // ✅ Activity log (success)
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "update",
-    //   {
-    //     oneLineMessage: `Assigned ${leadIds.length} lead(s) to admin ${createdBy}`,
-    //   },
-    //   true
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "update",
+      {
+        oneLineMessage: `Assigned ${leadIds.length} lead(s) to admin ${createdBy}`,
+      },
+      true
+    );
 
     return res.status(200).json(result);
   } catch (error) {
@@ -194,17 +194,17 @@ exports.getAllOnetoOneLeads = async (req, res) => {
       });
     }
 
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "list",
-    //   {
-    //     oneLineMessage: `Fetched ${result.data?.length || 0
-    //       } One-to-One leads for admin ${adminId}.`,
-    //   },
-    //   true
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      {
+        oneLineMessage: `Fetched ${result.data?.length || 0
+          } One-to-One leads for admin ${adminId}.`,
+      },
+      true
+    );
 
     return res.status(200).json({
       status: true,
@@ -215,14 +215,14 @@ exports.getAllOnetoOneLeads = async (req, res) => {
   } catch (error) {
     console.error("❌ Server error (getAllOnetoOneLeads):", error);
 
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "list",
-    //   { oneLineMessage: error.message },
-    //   false
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { oneLineMessage: error.message },
+      false
+    );
     return res.status(500).json({
       status: false,
       message: "Server error while fetching leads.",
@@ -269,24 +269,24 @@ exports.getAllOnetoOneLeadsSales = async (req, res) => {
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Fetch failed:", result.message);
-      // await logActivity(req, PANEL, MODULE, "list", result, false);
+      await logActivity(req, PANEL, MODULE, "list", result, false);
       return res.status(500).json({
         status: false,
         message: result.message || "Failed to fetch leads.",
       });
     }
 
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "list",
-    //   {
-    //     oneLineMessage: `Fetched ${result.data?.length || 0
-    //       } One-to-One leads for admin ${adminId}.`,
-    //   },
-    //   true
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      {
+        oneLineMessage: `Fetched ${result.data?.length || 0
+          } One-to-One leads for admin ${adminId}.`,
+      },
+      true
+    );
 
     // ✅ Include all relevant fields in API response
     return res.status(200).json({
@@ -303,14 +303,14 @@ exports.getAllOnetoOneLeadsSales = async (req, res) => {
   } catch (error) {
     console.error("❌ Server error (getAllOnetoOneLeads):", error);
 
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "list",
-    //   { oneLineMessage: error.message },
-    //   false
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { oneLineMessage: error.message },
+      false
+    );
     return res.status(500).json({
       status: false,
       message: "Server error while fetching leads.",
@@ -358,24 +358,24 @@ exports.getAllOnetoOneLeadsSalesAll = async (req, res) => {
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Fetch failed:", result.message);
-      // await logActivity(req, PANEL, MODULE, "list", result, false);
+      await logActivity(req, PANEL, MODULE, "list", result, false);
       return res.status(500).json({
         status: false,
         message: result.message || "Failed to fetch leads.",
       });
     }
 
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "list",
-    //   {
-    //     oneLineMessage: `Fetched ${result.data?.length || 0
-    //       } One-to-One leads for admin ${adminId}.`,
-    //   },
-    //   true
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      {
+        oneLineMessage: `Fetched ${result.data?.length || 0
+          } One-to-One leads for admin ${adminId}.`,
+      },
+      true
+    );
 
     return res.status(200).json({
       status: true,
@@ -390,14 +390,14 @@ exports.getAllOnetoOneLeadsSalesAll = async (req, res) => {
   } catch (error) {
     console.error("❌ Server error (getAllOnetoOneLeads):", error);
 
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "list",
-    //   { oneLineMessage: error.message },
-    //   false
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { oneLineMessage: error.message },
+      false
+    );
     return res.status(500).json({
       status: false,
       message: "Server error while fetching leads.",
@@ -420,14 +420,14 @@ exports.getOnetoOneLeadsById = async (req, res) => {
     );
 
     if (!result.status) {
-      // await logActivity(req, PANEL, MODULE, "getById", result, false);
+      await logActivity(req, PANEL, MODULE, "getById", result, false);
       return res.status(404).json({
         status: false,
         message: result.message || "One-to-one lead not found or unauthorized.",
       });
     }
 
-    // await logActivity(req, PANEL, MODULE, "getById", result, true);
+    await logActivity(req, PANEL, MODULE, "getById", result, true);
     return res.status(200).json({
       status: true,
       message: "Fetched one-to-one lead successfully.",
@@ -435,14 +435,14 @@ exports.getOnetoOneLeadsById = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error in getOnetoOneLeadsById:", error);
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "getById",
-    //   { oneLineMessage: error.message },
-    //   false
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "getById",
+      { oneLineMessage: error.message },
+      false
+    );
     return res.status(500).json({
       status: false,
       message: "Internal server error.",
@@ -567,7 +567,7 @@ exports.updateOnetoOneLeadById = async (req, res) => {
     // ============================================================
     // 📝 Log activity
     // ============================================================
-    // await logActivity(req, PANEL, MODULE, "update", { id, updateData: cleanData }, true);
+    await logActivity(req, PANEL, MODULE, "update", { id, updateData: cleanData }, true);
 
     // ============================================================
     // 🔔 Create notification
@@ -711,7 +711,7 @@ exports.getAllOneToOneAnalytics = async (req, res) => {
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Fetch failed:", result.message);
-      // await logActivity(req, PANEL, MODULE, "analytics_list", result, false);
+      await logActivity(req, PANEL, MODULE, "analytics_list", result, false);
       return res.status(500).json({
         status: false,
         message: result.message || "Failed to fetch analytics.",
@@ -719,16 +719,16 @@ exports.getAllOneToOneAnalytics = async (req, res) => {
     }
 
     // 🧾 Log success
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "analytics_list",
-    //   {
-    //     oneLineMessage: `Fetched analytics summary for admin ${adminId}.`,
-    //   },
-    //   true
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "analytics_list",
+      {
+        oneLineMessage: `Fetched analytics summary for admin ${adminId}.`,
+      },
+      true
+    );
 
     // ✅ Respond
     return res.status(200).json({
@@ -741,14 +741,14 @@ exports.getAllOneToOneAnalytics = async (req, res) => {
   } catch (error) {
     console.error("❌ Server error (getAllOneToOneAnalytics):", error);
 
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "analytics_list",
-    //   { oneLineMessage: error.message },
-    //   false
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "analytics_list",
+      { oneLineMessage: error.message },
+      false
+    );
 
     return res.status(500).json({
       status: false,
@@ -981,14 +981,14 @@ exports.cancelOneToOneLeadAndBooking = async (req, res) => {
     // ============================================================
     // 📝 Log activity
     // ============================================================
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "cancel",
-    //   { id },
-    //   true
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "cancel",
+      { id },
+      true
+    );
 
     // ============================================================
     // 🔔 Create notification
@@ -1058,14 +1058,14 @@ exports.renewOneToOneLeadAndBooking = async (req, res) => {
     // ============================================================
     // 📝 Log activity
     // ============================================================
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "cancel",
-    //   { id },
-    //   true
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "cancel",
+      { id },
+      true
+    );
 
     // ============================================================
     // 🔔 Create notification

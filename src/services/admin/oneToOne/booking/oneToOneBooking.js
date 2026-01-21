@@ -346,7 +346,7 @@ exports.createOnetoOneBooking = async (data) => {
     // -----------------------------------------------------
         // 8️⃣ Send Confirmation Email
         // -----------------------------------------------------
-        /*
+     
         try {
             if (paymentStatus === "paid") {
                 const {
@@ -445,8 +445,7 @@ exports.createOnetoOneBooking = async (data) => {
         } catch (emailErr) {
             console.error("❌ Email sending failed:", emailErr.message);
         }
-            */
-
+          
     return {
       success: true,
       bookingId: booking.id,

@@ -299,7 +299,6 @@ exports.createBooking = async (req, res) => {
 
             console.log("Generated htmlBody length:", htmlBody.length);
 
-            /*
             try {
               const emailResp = await sendEmail(emailConfig, {
                 recipient: [
@@ -320,8 +319,7 @@ exports.createBooking = async (req, res) => {
             } catch (err) {
               console.error("Failed to send email:", err.message);
             }
-            */
-
+            
           } catch (err) {
             console.error(
               `❌ Failed to send email to ${firstParent.parentEmail}:`,

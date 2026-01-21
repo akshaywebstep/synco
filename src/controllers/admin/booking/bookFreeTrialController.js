@@ -270,7 +270,7 @@ exports.createBooking = async (req, res) => {
 
     // Send email to only the first parent
     // Send email
-    /*const parentMetas = await BookingParentMeta.findAll({
+    const parentMetas = await BookingParentMeta.findAll({
       where: { studentId },
     });
 
@@ -348,8 +348,7 @@ exports.createBooking = async (req, res) => {
         }
       }
     }
-      */
-
+    
     if (DEBUG) console.log("📝 Logging activity...");
     await logActivity(req, PANEL, MODULE, "create", result, true);
 
@@ -659,19 +658,19 @@ exports.getAllBookFreeTrials = async (req, res) => {
 
     const result = await BookingTrialService.getAllBookings(filters);
 
-    // if (!result.status) {
-    //   await logActivity(req, PANEL, MODULE, "list", result, false);
-    //   return res.status(500).json({ status: false, message: result.message });
-    // }
+    if (!result.status) {
+      await logActivity(req, PANEL, MODULE, "list", result, false);
+      return res.status(500).json({ status: false, message: result.message });
+    }
 
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "list",
-    //   { message: `Fetched ${result.data.length} bookings.` },
-    //   true
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { message: `Fetched ${result.data.length} bookings.` },
+      true
+    );
 
     return res.status(200).json({
       status: true,
@@ -681,14 +680,14 @@ exports.getAllBookFreeTrials = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error fetching free trials:", error);
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "list",
-    //   { error: error.message },
-    //   false
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { error: error.message },
+      false
+    );
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };
@@ -716,14 +715,14 @@ exports.getBookFreeTrialDetails = async (req, res) => {
       return res.status(404).json({ status: false, message: result.message });
     }
 
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "getById",
-    //   { message: `Fetched booking ID: ${id}` },
-    //   true
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "getById",
+      { message: `Fetched booking ID: ${id}` },
+      true
+    );
 
     return res.status(200).json({
       status: true,
@@ -732,14 +731,14 @@ exports.getBookFreeTrialDetails = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error fetching booking:", error);
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "getById",
-    //   { error: error.message },
-    //   false
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "getById",
+      { error: error.message },
+      false
+    );
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };

@@ -125,14 +125,14 @@ exports.createBirthdayPartyLeads = async (req, res) => {
 
     // ✅ ONLY ADMIN-CREATED → log + notify
     if (createdBy) {
-      // await logActivity(
-      //   req,
-      //   PANEL,
-      //   MODULE,
-      //   "create",
-      //   createResult.data,
-      //   true
-      // );
+      await logActivity(
+        req,
+        PANEL,
+        MODULE,
+        "create",
+        createResult.data,
+        true
+      );
 
       await createNotification(
         req,
@@ -185,7 +185,7 @@ exports.assignBookings = async (req, res) => {
 
     // ❌ Service failed (e.g. already assigned)
     if (!result.status) {
-      // await logActivity(req, PANEL, MODULE, "update", result, false);
+      await logActivity(req, PANEL, MODULE, "update", result, false);
       return res.status(400).json(result);
     }
 
@@ -198,16 +198,16 @@ exports.assignBookings = async (req, res) => {
     );
 
     // ✅ Activity log (success)
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "update",
-    //   {
-    //     oneLineMessage: `Assigned ${leadIds.length} lead(s) to admin ${createdBy}`,
-    //   },
-    //   true
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "update",
+      {
+        oneLineMessage: `Assigned ${leadIds.length} lead(s) to admin ${createdBy}`,
+      },
+      true
+    );
 
     return res.status(200).json(result);
   } catch (error) {
@@ -260,17 +260,17 @@ exports.getAllBirthdayPartyLeads = async (req, res) => {
       });
     }
 
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "list",
-    //   {
-    //     oneLineMessage: `Fetched ${result.data?.length || 0
-    //       } One-to-One leads for admin ${adminId}.`,
-    //   },
-    //   true
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      {
+        oneLineMessage: `Fetched ${result.data?.length || 0
+          } One-to-One leads for admin ${adminId}.`,
+      },
+      true
+    );
 
     return res.status(200).json({
       status: true,
@@ -281,14 +281,14 @@ exports.getAllBirthdayPartyLeads = async (req, res) => {
   } catch (error) {
     console.error("❌ Server error (getAllOnetoOneLeads):", error);
 
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "list",
-    //   { oneLineMessage: error.message },
-    //   false
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { oneLineMessage: error.message },
+      false
+    );
     return res.status(500).json({
       status: false,
       message: "Server error while fetching leads.",
@@ -337,17 +337,17 @@ exports.getAllBirthdayPartyLeadsSales = async (req, res) => {
       });
     }
 
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "list",
-    //   {
-    //     oneLineMessage: `Fetched ${result.data?.length || 0
-    //       } One-to-One leads for admin ${adminId}.`,
-    //   },
-    //   true
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      {
+        oneLineMessage: `Fetched ${result.data?.length || 0
+          } One-to-One leads for admin ${adminId}.`,
+      },
+      true
+    );
 
     // ✅ Include all relevant fields in API response
     return res.status(200).json({
@@ -360,14 +360,14 @@ exports.getAllBirthdayPartyLeadsSales = async (req, res) => {
   } catch (error) {
     console.error("❌ Server error (getAllOnetoOneLeads):", error);
 
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "list",
-    //   { oneLineMessage: error.message },
-    //   false
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { oneLineMessage: error.message },
+      false
+    );
     return res.status(500).json({
       status: false,
       message: "Server error while fetching leads.",
@@ -415,23 +415,23 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (req, res) => {
     );
 
     if (!result.status) {
-      // await logActivity(req, PANEL, MODULE, "list", result, false);
+      await logActivity(req, PANEL, MODULE, "list", result, false);
       return res.status(500).json({
         status: false,
         message: result.message || "Failed to fetch birthday party leads.",
       });
     }
 
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "list",
-    //   {
-    //     oneLineMessage: `Fetched ${result.data?.length || 0} Birthday Party leads for admin ${adminId}.`,
-    //   },
-    //   true
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      {
+        oneLineMessage: `Fetched ${result.data?.length || 0} Birthday Party leads for admin ${adminId}.`,
+      },
+      true
+    );
 
     return res.status(200).json({
       status: true,
@@ -444,14 +444,14 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (req, res) => {
   } catch (error) {
     console.error("❌ Server error (getAllBirthdayPartyLeadsSalesAll):", error);
 
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "list",
-    //   { oneLineMessage: error.message },
-    //   false
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { oneLineMessage: error.message },
+      false
+    );
 
     return res.status(500).json({
       status: false,
@@ -475,14 +475,14 @@ exports.getBirthdayPartyLeadsById = async (req, res) => {
     );
 
     if (!result.status) {
-      // await logActivity(req, PANEL, MODULE, "getById", result, false);
+      await logActivity(req, PANEL, MODULE, "getById", result, false);
       return res.status(404).json({
         status: false,
         message: result.message || "Birthday party lead not found or unauthorized.",
       });
     }
 
-    // await logActivity(req, PANEL, MODULE, "getById", result, true);
+    await logActivity(req, PANEL, MODULE, "getById", result, true);
     return res.status(200).json({
       status: true,
       message: "Fetched birthday party lead successfully.",
@@ -490,14 +490,14 @@ exports.getBirthdayPartyLeadsById = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error in getBirthdayPartyLeadsById:", error);
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "getById",
-    //   { oneLineMessage: error.message },
-    //   false
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "getById",
+      { oneLineMessage: error.message },
+      false
+    );
     return res.status(500).json({
       status: false,
       message: "Internal server error.",
@@ -617,7 +617,7 @@ exports.updateBirthdayPartyLeadById = async (req, res) => {
     // ============================================================
     // 📝 Logging
     // ============================================================
-    // await logActivity(req, PANEL, MODULE, "update", { id, updateData: cleanData }, true);
+    await logActivity(req, PANEL, MODULE, "update", { id, updateData: cleanData }, true);
 
     const adminName = `${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""}`.trim();
     await createNotification(
@@ -740,7 +740,7 @@ exports.getAllBirthdayPartyAnalytics = async (req, res) => {
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Fetch failed:", result.message);
-      // await logActivity(req, PANEL, MODULE, "analytics_list", result, false);
+      await logActivity(req, PANEL, MODULE, "analytics_list", result, false);
       return res.status(500).json({
         status: false,
         message: result.message || "Failed to fetch analytics.",
@@ -748,16 +748,16 @@ exports.getAllBirthdayPartyAnalytics = async (req, res) => {
     }
 
     // 🧾 Log success
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "analytics_list",
-    //   {
-    //     oneLineMessage: `Fetched analytics summary for admin ${adminId}.`,
-    //   },
-    //   true
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "analytics_list",
+      {
+        oneLineMessage: `Fetched analytics summary for admin ${adminId}.`,
+      },
+      true
+    );
 
     // ✅ Respond
     return res.status(200).json({
@@ -770,14 +770,14 @@ exports.getAllBirthdayPartyAnalytics = async (req, res) => {
   } catch (error) {
     console.error("❌ Server error (getAllBirthdayPartyAnalytics):", error);
 
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "analytics_list",
-    //   { oneLineMessage: error.message },
-    //   false
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "analytics_list",
+      { oneLineMessage: error.message },
+      false
+    );
 
     return res.status(500).json({
       status: false,
@@ -890,14 +890,14 @@ exports.cancelBirthdayPartyLeadAndBooking = async (req, res) => {
     // ============================================================
     // 📝 Log activity
     // ============================================================
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "cancel",
-    //   { id },
-    //   true
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "cancel",
+      { id },
+      true
+    );
 
     // ============================================================
     // 🔔 Create notification
@@ -967,14 +967,14 @@ exports.renewBirthdayPartyLeadAndBooking = async (req, res) => {
     // ============================================================
     // 📝 Log activity
     // ============================================================
-    // await logActivity(
-    //   req,
-    //   PANEL,
-    //   MODULE,
-    //   "cancel",
-    //   { id },
-    //   true
-    // );
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "cancel",
+      { id },
+      true
+    );
 
     // ============================================================
     // 🔔 Create notification
