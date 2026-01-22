@@ -771,12 +771,245 @@ exports.createBooking = async (data, options) => {
     const parentPortalAdminId = options?.parentAdminId || null;
     const leadId = options?.leadId || null;
 
+    let source = "website";
+
+    if (parentPortalAdminId) {
+      source = "parent";
+    } else if (adminId) {
+      source = "admin";
+    }
+
+    let bookedBy = null;
+    let bookingSource = "website";
+
+    if (source === "admin") {
+      bookedBy = adminId;
+      bookingSource = null;
+    }
+
+    if (DEBUG) {
+      console.log("🔍 [DEBUG] Extracted adminId:", adminId);
+      console.log("🔍 [DEBUG] Extracted source:", source);
+      console.log("🔍 [DEBUG] Extracted leadId:", leadId);
+    }
+
+    // 🔍 Fetch the actual class schedule record
+    const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, {
+      transaction: t,
+    });
+
+    if (!classSchedule) {
+      throw new Error("Invalid class schedule selected.");
+    }
+
+    let bookingStatus;
+    let newCapacity = classSchedule.capacity;
+
+    if (classSchedule.capacity === 0) {
+      // ✅ Capacity is 0 → allow waiting list
+      bookingStatus = "waiting list";
+    } else {
+      // ❌ Capacity is available → reject waiting list
+      throw new Error(
+        `Class has available seats (${classSchedule.capacity}). Cannot add to waiting list.`
+      );
+    }
+
+    if (data.parents?.length > 0 && source !== "parent") {
+      const firstParent = data.parents[0];
+      const email = firstParent.parentEmail?.trim()?.toLowerCase();
+
+      if (!email) throw new Error("Parent email is required");
+
+      const parentRole = await AdminRole.findOne({
+        where: { role: "Parents" },
+        transaction: t,
+      });
+
+      const hashedPassword = await bcrypt.hash("Synco123", 10);
+
+      if (source === "admin") {
+        // 👨‍💼 Admin → always create new parent
+        const admin = await Admin.create(
+          {
+            firstName: firstParent.parentFirstName || "Parent",
+            lastName: firstParent.parentLastName || "",
+            phoneNumber: firstParent.parentPhoneNumber || "",
+            email,
+            password: hashedPassword,
+            roleId: parentRole.id,
+            status: "active",
+          },
+          { transaction: t }
+        );
+        parentAdminId = admin.id;
+      } else {
+        // 🌐 Website → findOrCreate
+        const [admin] = await Admin.findOrCreate({
+          where: { email },
+          defaults: {
+            firstName: firstParent.parentFirstName || "Parent",
+            lastName: firstParent.parentLastName || "",
+            phoneNumber: firstParent.parentPhoneNumber || "",
+            email,
+            password: hashedPassword,
+            roleId: parentRole.id,
+            status: "active",
+          },
+          transaction: t,
+        });
+        parentAdminId = admin.id;
+      }
+    }
+
+    // Step 1: Create Booking
+    const booking = await Booking.create(
+      {
+        venueId: data.venueId,
+        parentAdminId,
+        bookingId: generateBookingId(12),
+        leadId,
+        serviceType: "weekly class trial",
+        totalStudents: data.totalStudents,
+        startDate: data.startDate,
+        classScheduleId: data.classScheduleId,
+        bookingType: bookingStatus === "waiting list" ? "waiting list" : "confirmed",
+        className: data.className,
+        classTime: data.classTime,
+        bookedBy,
+        status: bookingStatus,
+        source: bookingSource, // ✅ correct as per admin/website
+        interest: data.interest,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      { transaction: t }
+    );
+    // Step 2: Create Students
+    const studentIds = [];
+    for (const student of data.students || []) {
+      const studentMeta = await BookingStudentMeta.create(
+        {
+          bookingTrialId: booking.id,
+          studentFirstName: student.studentFirstName,
+          studentLastName: student.studentLastName,
+          dateOfBirth: student.dateOfBirth,
+          age: student.age,
+          gender: student.gender,
+          medicalInformation: student.medicalInformation,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        { transaction: t }
+      );
+      studentIds.push(studentMeta);
+    }
+
+    // Step 3: Create Parent Records
+    if (data.parents && data.parents.length > 0 && studentIds.length > 0) {
+      const firstStudent = studentIds[0];
+
+      for (const parent of data.parents) {
+        const email = parent.parentEmail?.trim()?.toLowerCase();
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        if (!email || !emailRegex.test(email)) {
+          throw new Error(`Invalid or missing parent email: ${email}`);
+        }
+
+        // 🔍 Check duplicate email in BookingParentMeta
+        const existingParent = await BookingParentMeta.findOne({
+          where: { parentEmail: email },
+          transaction: t,
+        });
+
+        if (existingParent) {
+          throw new Error(
+            `Parent with email ${email} already exists in booking records.`
+          );
+        }
+
+        // ✅ Create BookingParentMeta
+        await BookingParentMeta.create(
+          {
+            studentId: firstStudent.id,
+            parentFirstName: parent.parentFirstName,
+            parentLastName: parent.parentLastName,
+            parentEmail: email,
+            parentPhoneNumber: parent.parentPhoneNumber,
+            relationToChild: parent.relationToChild,
+            howDidYouHear: parent.howDidYouHear,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          { transaction: t }
+        );
+      }
+    }
+
+    // Step 4: Emergency Contact
+    if (
+      data.emergency &&
+      data.emergency.emergencyFirstName &&
+      data.emergency.emergencyPhoneNumber &&
+      studentIds.length > 0
+    ) {
+      const firstStudent = studentIds[0];
+      await BookingEmergencyMeta.create(
+        {
+          studentId: firstStudent.id,
+          emergencyFirstName: data.emergency.emergencyFirstName,
+          emergencyLastName: data.emergency.emergencyLastName || "",
+          emergencyPhoneNumber: data.emergency.emergencyPhoneNumber,
+          emergencyRelation: data.emergency.emergencyRelation || "",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        { transaction: t }
+      );
+    }
+
+    // Step 5: Update Class Capacity only if confirmed booking
+    if (bookingStatus !== "waiting list") {
+      await ClassSchedule.update({ capacity: newCapacity }, { transaction: t });
+    }
+
+    // Step 6: Commit
+    await t.commit();
+
+    return {
+      status: true,
+      data: {
+        bookingId: booking.bookingId,
+        booking,
+        studentId: studentIds[0]?.id,
+        studentFirstName: studentIds[0]?.studentFirstName,
+        studentLastName: studentIds[0]?.studentLastName,
+      },
+    };
+  } catch (error) {
+    await t.rollback();
+    console.error("❌ createBooking Error:", error);
+    return { status: false, message: error.message };
+  }
+};
+
+/*
+exports.createBooking = async (data, options) => {
+  const t = await sequelize.transaction();
+
+  try {
+    let parentAdminId = null;
+    const adminId = options?.adminId || null;
+    const parentPortalAdminId = options?.parentAdminId || null;
+    const leadId = options?.leadId || null;
+
     // ✅ FIXED SOURCE LOGIC
     let source = "website"; // default website
-    if (adminId) {
-      source = "admin";
-    } else if (parentPortalAdminId) {
+    if (parentPortalAdminId) {
       source = "parent";
+    } else if (adminId) {
+      source = "admin";
     }
 
     // ✅ bookedBy logic
@@ -1018,7 +1251,7 @@ exports.createBooking = async (data, options) => {
     return { status: false, message: error.message };
   }
 };
-
+*/
 exports.updateBookingStudents = async (
   bookingId,
   studentsPayload,
