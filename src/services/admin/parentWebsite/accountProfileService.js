@@ -243,7 +243,7 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                     dateOfBirth: s.dateOfBirth,
                     age: s.age,
                     gender: s.gender,
-                    medicalInfo: s.medicalInfo,
+                    medicalInformation: s.medicalInfo || s.medicalInformation || null,
                 })) || [];
 
             /* ---------------- Parents ---------------- */
@@ -304,7 +304,7 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                         dateOfBirth: s.dateOfBirth,
                         age: s.age,
                         gender: s.gender,
-                        medicalInfo: s.medicalInfo,
+                        medicalInformation: s.medicalInfo || null,
                     })) || [];
 
                 const parents =
@@ -366,6 +366,7 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                         studentFirstName: s.studentFirstName,
                         studentLastName: s.studentLastName,
                         age: s.age,
+                        medicalInformation: s.medicalInfo || null,
                     })) || [];
 
                 const parents =
