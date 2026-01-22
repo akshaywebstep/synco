@@ -50,15 +50,13 @@ const uniqueBySignature = (items, signatureFn) => {
 
     return Array.from(map.values());
 };
-const safeJSON = (value) => {
-  if (value === null || value === undefined) return null;
-  if (typeof value === "object") return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value; // return original if parsing fails
-  }
-};
+function safeParseJSON(str) {
+    try {
+        return JSON.parse(str);
+    } catch (err) {
+        return str; // fallback: return original string if invalid JSON
+    }
+}
 
 exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
     try {
@@ -202,52 +200,35 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
             relationChild: p.relationChild || p.relationToChild || null,
             howDidHear: p.howDidHear || p.howDidYouHear || null,
         });
-        const normalizeBookingPayment = (p) => {
-            return {
-                id: p.id ?? null,
-                bookingId: p.bookingId ?? null,
-
-                payer: {
-                    firstName: p.firstName ?? null,
-                    lastName: p.lastName ?? null,
-                    email: p.email ?? null,
-                    billingAddress: p.billingAddress ?? null,
-                },
-
-                payment: {
-                    type: p.paymentType ?? null,
-                    price: p.price ?? null,
-                    currency: p.currency ?? null,
-                    status: p.paymentStatus ?? null,
-                },
-
-                card: {
-                    cardHolderName: p.cardHolderName ?? null,
-                    expiryDate: p.expiryDate ?? null,
-                    cv2: p.cv2 ?? null,
-                },
-
-                bank: {
-                    account_holder_name: p.account_holder_name ?? null,
-                    account_number: p.account_number ?? null,
-                    branch_code: p.branch_code ?? null,
-                },
-
-                merchantRef: p.merchantRef ?? null,
-                description: p.description ?? null,
-                commerceType: p.commerceType ?? null,
-
-                gatewayResponse: safeJSON(p.gatewayResponse),
-                transactionMeta: safeJSON(p.transactionMeta),
-
-                goCardlessCustomer: safeJSON(p.goCardlessCustomer),
-                goCardlessBankAccount: safeJSON(p.goCardlessBankAccount),
-                goCardlessBillingRequest: safeJSON(p.goCardlessBillingRequest),
-
-                createdAt: p.createdAt ?? null,
-                updatedAt: p.updatedAt ?? null,
-            };
-        };
+        const normalizeBookingPaymentFlat = (p) => ({
+            id: p.id ?? null,
+            bookingId: p.bookingId ?? null,
+            firstName: p.firstName ?? null,
+            lastName: p.lastName ?? null,
+            email: p.email ?? null,
+            billingAddress: p.billingAddress ?? null,
+            cardHolderName: p.cardHolderName ?? null,
+            cv2: p.cv2 ?? null,
+            expiryDate: p.expiryDate ?? null,
+            price: p.price ?? null,
+            account_holder_name: p.account_holder_name ?? null,
+            paymentType: p.paymentType ?? null,
+            account_number: p.account_number ?? null,
+            branch_code: p.branch_code ?? null,
+            paymentStatus: p.paymentStatus ?? null,
+            currency: p.currency ?? null,
+            merchantRef: p.merchantRef ?? null,
+            description: p.description ?? null,
+            commerceType: p.commerceType ?? null,
+            // ✅ Parse JSON fields if they exist
+            gatewayResponse: p.gatewayResponse ? safeParseJSON(p.gatewayResponse) : null,
+            transactionMeta: p.transactionMeta ? safeParseJSON(p.transactionMeta) : null,
+            goCardlessCustomer: p.goCardlessCustomer ? safeParseJSON(p.goCardlessCustomer) : null,
+            goCardlessBankAccount: p.goCardlessBankAccount ? safeParseJSON(p.goCardlessBankAccount) : null,
+            goCardlessBillingRequest: p.goCardlessBillingRequest ? safeParseJSON(p.goCardlessBillingRequest) : null,
+            createdAt: p.createdAt ?? null,
+            updatedAt: p.updatedAt ?? null,
+        });
 
         // Format bookings with paymentPlan attached
         const formattedBookings = bookings.map((bookingInstance) => {
@@ -287,15 +268,8 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                     )
                     ?.shift() || null;
             /* ---------------- Payments (FIXED) ---------------- */
-            const paymentList =
-                booking.payments?.map(normalizeBookingPayment) || [];
-
-            const payments = {
-                hasPayments: paymentList.length > 0,
-                latest: paymentList.length ? paymentList[paymentList.length - 1] : null,
-                list: paymentList,
-            };
-
+            const payments =
+                (booking.payments || []).map(normalizeBookingPaymentFlat);
             return {
                 id: booking.id,
                 parentAdminId: booking.parentAdminId,
