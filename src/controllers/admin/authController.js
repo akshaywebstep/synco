@@ -232,6 +232,8 @@ exports.login = async (req, res) => {
       name: admin.name,
       email: admin.email,
       role: admin.role.role,
+      firstName: admin.firstName,
+      lastName: admin.lastName,
     });
 
     return res.status(200).json({
@@ -241,6 +243,8 @@ exports.login = async (req, res) => {
           id: admin.id,
           name: admin.name,
           email: admin.email,
+          firstName: admin.firstName,
+          lastName: admin.lastName,
           role: admin.role.role,
           hasPermission: activePermissions,
         },

@@ -514,14 +514,61 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
         const uniqueStudents = uniqueBySignature(allStudents, studentSignature);
         const uniqueParents = uniqueBySignature(allParents, parentSignature);
         const uniqueEmergencyContacts = uniqueBySignature(allEmergency, emergencySignature);
+        const weeklyBookings = formattedBookings.map(b => ({ ...b }));
+        const oneToOneBookings = formattedOneToOneLead.map(l => ({
+            id: l.id,
+            parentAdminId,
+            serviceType: "one to one",
+            status: l.status,
+            createdAt: l.createdAt,
+            classSchedule: {
+                coach: l.booking?.coach || null,
+                date: l.booking?.date || null,
+                time: l.booking?.time || null,
+            },
+            paymentPlan: null,
+            students: l.booking?.students || [],
+            parents: l.booking?.parents || [],
+            emergency: l.booking?.emergency || null,
+        }));
+        const birthdayBookings = formattedBirthdayPartyLead.map(l => ({
+            id: l.id,
+            parentAdminId,
+            serviceType: "birthday party",
+            status: l.status,
+            createdAt: l.partyDate,
+            classSchedule: {
+                coach: l.booking?.coach || null,
+                partyDate: l.partyDate,
+            },
+            paymentPlan: null,
+            students: l.booking?.students || [],
+            parents: l.booking?.parents || [],
+            emergency: l.booking?.emergency || null,
+        }));
+        const holidayBookingsNormalized = formattedHolidayBooking.map(b => ({
+            id: b.id,
+            parentAdminId,
+            serviceType: "holiday camp",
+            status: b.status,
+            createdAt: b.createdAt,
+            classSchedule: b.holidayClassSchedules || [],
+            paymentPlan: b.holidayPaymentPlan || null,
+            students: b.students || [],
+            parents: b.parents || [],
+            emergency: (b.emergencyContacts || [])[0] || null,
+        }));
+        const combinedBookings = [
+            ...weeklyBookings,
+            ...oneToOneBookings,
+            ...birthdayBookings,
+            ...holidayBookingsNormalized,
+        ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         return {
             status: true,
             message: "Fetched combined bookings successfully.",
             data: {
-                weeklyBookings: formattedBookings,
-                oneToOneLead: formattedOneToOneLead,
-                birthdayPartyLead: formattedBirthdayPartyLead,
-                holidayBooking: formattedHolidayBooking, // ✅ NEW
+                combinedBookings,
                 profile,  // single admin object for the parentAdminId
                 uniqueProfiles: {
                     students: uniqueStudents,
