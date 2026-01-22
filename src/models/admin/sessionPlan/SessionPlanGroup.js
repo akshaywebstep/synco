@@ -13,16 +13,31 @@ const SessionPlanGroup = sequelize.define(
       type: DataTypes.STRING,
       allowNull: false,
     },
+    // Player old feild
     player: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
     },
+
+    // Old feild
     banner: {
       type: DataTypes.STRING,
     },
-    // video: {
-    //   type: DataTypes.STRING,
-    // },
+
+    // Banner add on
+    beginner_banner: {
+      type: DataTypes.STRING,
+    },
+    advanced_banner: {
+      type: DataTypes.STRING,
+    },
+    pro_banner: {
+      type: DataTypes.STRING,
+    },
+    intermediate_banner: {
+      type: DataTypes.STRING,
+    },
+
     beginner_video: {
       type: DataTypes.STRING,
     },
@@ -62,7 +77,7 @@ const SessionPlanGroup = sequelize.define(
       defaultValue: false,
     },
     type: {
-      type: DataTypes.ENUM("weekly_classes","one_to_one", "birthday_party", "library"),
+      type: DataTypes.ENUM("weekly_classes", "one_to_one", "birthday_party", "library"),
       allowNull: false,
       defaultValue: 'weekly_classes',
     },

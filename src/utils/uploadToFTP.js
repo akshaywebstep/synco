@@ -33,12 +33,12 @@ async function getFTPConfig() {
 // -------------------- Upload --------------------
 async function uploadToFTP(localPath, remoteFilePath) {
     const client = new ftp.Client();
-    client.ftp.verbose = DEBUG;
+    // client.ftp.verbose = DEBUG;
 
     try {
         const ftpConfig = await getFTPConfig();
 
-        if (DEBUG) console.log("🔑 Connecting to FTP for upload...");
+        // if (DEBUG) console.log("🔑 Connecting to FTP for upload...");
         await client.access({
             host: ftpConfig.host,
             user: ftpConfig.user,
@@ -61,14 +61,14 @@ async function uploadToFTP(localPath, remoteFilePath) {
             }
         }
 
-        if (DEBUG)
-            console.log(`⬆️ Uploading: ${localPath} → ${remoteFilePath}`);
+        // if (DEBUG)
+        //     console.log(`⬆️ Uploading: ${localPath} → ${remoteFilePath}`);
         await client.uploadFrom(localPath, fileName);
 
         await client.close();
 
         const publicUrl = `${ftpConfig.publicUrlBase}/${folders.join("/")}/${fileName}`;
-        if (DEBUG) console.log("🌍 Public URL:", publicUrl);
+        // if (DEBUG) console.log("🌍 Public URL:", publicUrl);
         return publicUrl.replace(/\\/g, "/");
     } catch (err) {
         console.error("❌ FTP upload failed:", err);
@@ -84,12 +84,12 @@ async function downloadFromFTP(fileUrl, localPath) {
     if (!fileUrl) return null;
 
     const client = new ftp.Client();
-    client.ftp.verbose = DEBUG;
+    // client.ftp.verbose = DEBUG;
 
     try {
         const ftpConfig = await getFTPConfig();
 
-        if (DEBUG) console.log("🔑 Connecting to FTP for download...");
+        // if (DEBUG) console.log("🔑 Connecting to FTP for download...");
         await client.access({
             host: ftpConfig.host,
             user: ftpConfig.user,
@@ -104,7 +104,7 @@ async function downloadFromFTP(fileUrl, localPath) {
         const dir = path.dirname(localPath);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-        if (DEBUG) console.log(`⬇️ Downloading: ${urlPath} → ${localPath}`);
+        // if (DEBUG) console.log(`⬇️ Downloading: ${urlPath} → ${localPath}`);
         await client.downloadTo(localPath, urlPath);
 
         return localPath;
@@ -119,7 +119,7 @@ async function downloadFromFTP(fileUrl, localPath) {
 /* DELETE FILE */
 async function deleteFromFTP(fileUrl) {
     const client = new ftp.Client();
-    client.ftp.verbose = DEBUG;
+    // client.ftp.verbose = DEBUG;
 
     try {
         const ftpConfig = await getFTPConfig();
@@ -148,7 +148,7 @@ async function deleteFromFTP(fileUrl) {
 // -------------------- Rename (FIXED) --------------------
 async function renameOnFTP(fileUrl, newFileName) {
     const client = new ftp.Client();
-    client.ftp.verbose = DEBUG;
+    // client.ftp.verbose = DEBUG;
 
     try {
         const ftpConfig = await getFTPConfig();
@@ -173,11 +173,11 @@ async function renameOnFTP(fileUrl, newFileName) {
         const folderPath = path.posix.dirname(oldPath);
         const newPath = `${folderPath}/${cleanFileName}`;
 
-        if (DEBUG) {
-            console.log(`✏️ Renaming on FTP:`);
-            console.log(`OLD: ${oldPath}`);
-            console.log(`NEW: ${newPath}`);
-        }
+        // if (DEBUG) {
+        //     console.log(`✏️ Renaming on FTP:`);
+        //     console.log(`OLD: ${oldPath}`);
+        //     console.log(`NEW: ${newPath}`);
+        // }
 
         await client.rename(oldPath, newPath);
         await client.close();

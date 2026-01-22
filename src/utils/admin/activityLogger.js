@@ -3,82 +3,82 @@ const http = require("http");
 
 const DEBUG = process.env.DEBUG === "true";
 
-// exports.logActivity = async (req, panel, module, action, data, status) => {
-//   try {
-//     if (!req.admin.id) {
-//       return {
-//         status: false,
-//         message: "adminId missing in request. Logging skipped.",
-//       };
-//     }
+exports.logActivity = async (req, panel, module, action, data, status) => {
+  try {
+    if (!req.admin.id) {
+      return {
+        status: false,
+        message: "adminId missing in request. Logging skipped.",
+      };
+    }
 
-//     const ip =
-//       req.headers["x-forwarded-for"]?.split(",")[0] ||
-//       req.socket?.remoteAddress ||
-//       req.connection?.remoteAddress ||
-//       "Unknown IP";
+    const ip =
+      req.headers["x-forwarded-for"]?.split(",")[0] ||
+      req.socket?.remoteAddress ||
+      req.connection?.remoteAddress ||
+      "Unknown IP";
 
-//     // const ip = '139.5.0.94';
-//     const apiUrl = `http://ip-api.com/json/${ip}?fields=status,message,continent,continentCode,country,countryCode,region,regionName,city,district,zip,lat,lon,timezone,offset,currency,isp,org,as,asname,reverse,mobile,proxy,hosting,query`;
+    // const ip = '139.5.0.94';
+    const apiUrl = `http://ip-api.com/json/${ip}?fields=status,message,continent,continentCode,country,countryCode,region,regionName,city,district,zip,lat,lon,timezone,offset,currency,isp,org,as,asname,reverse,mobile,proxy,hosting,query`;
 
-//     // Fetch geolocation data from ip-api
-//     const geoData = await fetchLocationData(apiUrl);
-//     // Extract user agent details
-//     const userAgent = req.headers["user-agent"] || "Unknown";
-//     const { deviceType, browserName, osName } = parseUserAgent(userAgent);
+    // Fetch geolocation data from ip-api
+    const geoData = await fetchLocationData(apiUrl);
+    // Extract user agent details
+    const userAgent = req.headers["user-agent"] || "Unknown";
+    const { deviceType, browserName, osName } = parseUserAgent(userAgent);
 
-//     const log = {
-//       adminId: req.admin.id,
-//       panel,
-//       module,
-//       action,
-//       data,
-//       status,
-//       method: req.method,
-//       route: req.originalUrl,
-//       ip,
-//       userAgent: userAgent,
-//       location: {
-//         latitude: geoData?.lat ?? "N/A",
-//         longitude: geoData?.lon ?? "N/A",
-//         city: geoData?.city ?? "N/A",
-//         region: geoData?.regionName ?? "N/A",
-//         country: geoData?.country ?? "N/A",
-//         timezone: geoData?.timezone ?? "N/A",
-//       },
-//       ispInfo: {
-//         isp: geoData?.isp ?? "Unknown",
-//         organization: geoData?.org ?? "Unknown",
-//         as: geoData?.as ?? "Unknown",
-//         proxy: geoData?.proxy ?? false,
-//       },
-//       deviceInfo: {
-//         device_type: deviceType,
-//         browser_name: browserName,
-//         os: osName,
-//       },
-//     };
+    const log = {
+      adminId: req.admin.id,
+      panel,
+      module,
+      action,
+      data,
+      status,
+      method: req.method,
+      route: req.originalUrl,
+      ip,
+      userAgent: userAgent,
+      location: {
+        latitude: geoData?.lat ?? "N/A",
+        longitude: geoData?.lon ?? "N/A",
+        city: geoData?.city ?? "N/A",
+        region: geoData?.regionName ?? "N/A",
+        country: geoData?.country ?? "N/A",
+        timezone: geoData?.timezone ?? "N/A",
+      },
+      ispInfo: {
+        isp: geoData?.isp ?? "Unknown",
+        organization: geoData?.org ?? "Unknown",
+        as: geoData?.as ?? "Unknown",
+        proxy: geoData?.proxy ?? false,
+      },
+      deviceInfo: {
+        device_type: deviceType,
+        browser_name: browserName,
+        os: osName,
+      },
+    };
 
-//     await activityLog.create(log);
+    await activityLog.create(log);
 
-//     if (DEBUG) console.log("📌 Full Request Log:", log);
+    if (DEBUG) console.log("📌 Full Request Log:", log);
 
-//     return {
-//       status: true,
-//       message: "Activity log saved successfully.",
-//     };
-//   } catch (error) {
-//     console.error("❌ Error logging request:", error.message);
+    return {
+      status: true,
+      message: "Activity log saved successfully.",
+    };
+  } catch (error) {
+    console.error("❌ Error logging request:", error.message);
 
-//     return {
-//       status: false,
-//       message: "Failed to save activity log.",
-//     };
-//   }
-// };
+    return {
+      status: false,
+      message: "Failed to save activity log.",
+    };
+  }
+};
 
 // Helper: Fetch IP location data
-
+/*
 exports.logActivity = async (req, panel, module, action, data, status) => {
   try {
     // ✅ SUPPORT BOTH ADMIN & PUBLIC
@@ -147,6 +147,8 @@ exports.logActivity = async (req, panel, module, action, data, status) => {
     return { status: false };
   }
 };
+
+*/
 
 async function fetchLocationData(url) {
   return new Promise((resolve, reject) => {

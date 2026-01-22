@@ -37,14 +37,14 @@ const downloadVideo = (videoUrl, tempFilePath) => {
  */
 const getVideoDurationInSeconds = async (videoUrl) => {
   if (!videoUrl || typeof videoUrl !== "string" || !videoUrl.trim().startsWith("http")) {
-    if (DEBUG) console.warn("⚠️ Skipping invalid video URL:", videoUrl);
+    // if (DEBUG) console.warn("⚠️ Skipping invalid video URL:", videoUrl);
     return 0;
   }
 
   const tempFile = path.join(os.tmpdir(), `${Date.now()}.mp4`);
 
   try {
-    if (DEBUG) console.log("Downloading video to:", tempFile);
+    // if (DEBUG) console.log("Downloading video to:", tempFile);
 
     const response = await axios.get(videoUrl.trim(), { responseType: "arraybuffer" });
     fs.writeFileSync(tempFile, response.data);
@@ -52,17 +52,17 @@ const getVideoDurationInSeconds = async (videoUrl) => {
     const duration = await new Promise((resolve) => {
       ffmpeg.ffprobe(tempFile, (err, metadata) => {
         if (err) {
-          if (DEBUG) console.error("ffprobe error:", err);
+          // if (DEBUG) console.error("ffprobe error:", err);
           return resolve(0);
         }
         resolve(metadata.format.duration || 0);
       });
     });
 
-    if (DEBUG) console.log(`Duration for ${videoUrl}: ${duration} sec`);
+    // if (DEBUG) console.log(`Duration for ${videoUrl}: ${duration} sec`);
     return duration;
   } catch (err) {
-    if (DEBUG) console.error("Error getting video duration:", err);
+    // if (DEBUG) console.error("Error getting video duration:", err);
     return 0;
   } finally {
     fs.unlink(tempFile, () => {});
