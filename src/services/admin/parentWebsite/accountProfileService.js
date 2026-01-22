@@ -4,6 +4,7 @@ const {
     BookingStudentMeta,
     BookingParentMeta,
     BookingEmergencyMeta,
+    BookingPayment,
     ClassSchedule,
     Venue,
     PaymentPlan,
@@ -49,6 +50,15 @@ const uniqueBySignature = (items, signatureFn) => {
 
     return Array.from(map.values());
 };
+const safeJSON = (value) => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value; // return original if parsing fails
+  }
+};
 
 exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
     try {
@@ -72,6 +82,7 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                         required: false,
                         include: [{ model: Venue, as: "venue", required: false }],
                     },
+                    { model: BookingPayment, as: "payments" },
                 ],
                 order: [["createdAt", "DESC"]],
             }),
@@ -181,6 +192,62 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
         paymentPlans.forEach((plan) => {
             paymentPlanMap[plan.id] = plan;
         });
+        const normalizeParent = (p) => ({
+            id: p.id,
+            studentId: p.studentId,
+            parentFirstName: p.parentFirstName,
+            parentLastName: p.parentLastName,
+            parentEmail: p.parentEmail,
+            phoneNumber: p.phoneNumber || p.parentPhoneNumber || null,
+            relationChild: p.relationChild || p.relationToChild || null,
+            howDidHear: p.howDidHear || p.howDidYouHear || null,
+        });
+        const normalizeBookingPayment = (p) => {
+            return {
+                id: p.id ?? null,
+                bookingId: p.bookingId ?? null,
+
+                payer: {
+                    firstName: p.firstName ?? null,
+                    lastName: p.lastName ?? null,
+                    email: p.email ?? null,
+                    billingAddress: p.billingAddress ?? null,
+                },
+
+                payment: {
+                    type: p.paymentType ?? null,
+                    price: p.price ?? null,
+                    currency: p.currency ?? null,
+                    status: p.paymentStatus ?? null,
+                },
+
+                card: {
+                    cardHolderName: p.cardHolderName ?? null,
+                    expiryDate: p.expiryDate ?? null,
+                    cv2: p.cv2 ?? null,
+                },
+
+                bank: {
+                    account_holder_name: p.account_holder_name ?? null,
+                    account_number: p.account_number ?? null,
+                    branch_code: p.branch_code ?? null,
+                },
+
+                merchantRef: p.merchantRef ?? null,
+                description: p.description ?? null,
+                commerceType: p.commerceType ?? null,
+
+                gatewayResponse: safeJSON(p.gatewayResponse),
+                transactionMeta: safeJSON(p.transactionMeta),
+
+                goCardlessCustomer: safeJSON(p.goCardlessCustomer),
+                goCardlessBankAccount: safeJSON(p.goCardlessBankAccount),
+                goCardlessBillingRequest: safeJSON(p.goCardlessBillingRequest),
+
+                createdAt: p.createdAt ?? null,
+                updatedAt: p.updatedAt ?? null,
+            };
+        };
 
         // Format bookings with paymentPlan attached
         const formattedBookings = bookings.map((bookingInstance) => {
@@ -201,16 +268,9 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
             /* ---------------- Parents ---------------- */
             const parents =
                 booking.students?.flatMap((s) =>
-                    (s.parents || []).map((p) => ({
-                        id: p.id,
-                        studentId: s.id,
-                        parentFirstName: p.parentFirstName,
-                        parentLastName: p.parentLastName,
-                        parentEmail: p.parentEmail,
-                        phoneNumber: p.phoneNumber,
-                        relationChild: p.relationChild,
-                        howDidHear: p.howDidHear,
-                    }))
+                    (s.parents || []).map((p) =>
+                        normalizeParent({ ...p, studentId: s.id })
+                    )
                 ) || [];
 
             /* ---------------- Emergency ---------------- */
@@ -226,6 +286,15 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                         }))
                     )
                     ?.shift() || null;
+            /* ---------------- Payments (FIXED) ---------------- */
+            const paymentList =
+                booking.payments?.map(normalizeBookingPayment) || [];
+
+            const payments = {
+                hasPayments: paymentList.length > 0,
+                latest: paymentList.length ? paymentList[paymentList.length - 1] : null,
+                list: paymentList,
+            };
 
             return {
                 id: booking.id,
@@ -243,6 +312,7 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                 students,
                 parents,
                 emergency,
+                payments,
             };
         });
 
@@ -267,19 +337,10 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                     booking.students?.flatMap((s) =>
                         (Array.isArray(s.parentDetails)
                             ? s.parentDetails
-                            : s.parentDetails
-                                ? [s.parentDetails]
-                                : []
-                        ).map((p) => ({
-                            id: p.id,
-                            studentId: s.id,
-                            parentFirstName: p.parentFirstName,
-                            parentLastName: p.parentLastName,
-                            parentEmail: p.parentEmail,
-                            phoneNumber: p.phoneNumber,
-                            relationChild: p.relationChild,
-                            howDidHear: p.howDidHear,
-                        }))
+                            : s.parentDetails ? [s.parentDetails] : []
+                        ).map((p) =>
+                            normalizeParent({ ...p, studentId: s.id })
+                        )
                     ) || [];
 
                 const emergency =
@@ -335,14 +396,9 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
 
                 const parents =
                     booking.students?.flatMap((s) =>
-                        (s.parentDetails || []).map((p) => ({
-                            id: p.id,
-                            studentId: s.id,
-                            parentFirstName: p.parentFirstName,
-                            parentLastName: p.parentLastName,
-                            parentEmail: p.parentEmail,
-                            phoneNumber: p.phoneNumber,
-                        }))
+                        (s.parentDetails || []).map((p) =>
+                            normalizeParent({ ...p, studentId: s.id })
+                        )
                     ) || [];
 
                 const emergency =
@@ -447,7 +503,9 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
 
                 return {
                     ...booking,
-                    parents: Object.values(parentMap),
+                    parents: Object.values(parentMap).map(p =>
+                        normalizeParent(p)
+                    ),
                     emergencyContacts: Object.values(emergencyMap),
                     payment: paymentObj,
                 };
@@ -466,11 +524,14 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
         ].join("|");
 
         /* ---------- PARENT SIGNATURE ---------- */
+
         const parentSignature = (p) => [
-            normalize(p.parentEmail || p.email),
+            normalize(p.parentEmail),
             normalize(p.phoneNumber),
             normalize(p.parentFirstName),
             normalize(p.parentLastName),
+            normalize(p.relationChild),
+            normalize(p.howDidHear),
         ].join("|");
 
         /* ---------- EMERGENCY SIGNATURE ---------- */
