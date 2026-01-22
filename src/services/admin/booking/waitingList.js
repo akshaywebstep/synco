@@ -1720,7 +1720,8 @@ exports.convertToMembership = async (data, options) => {
             description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
               }`,
 
-            amount: payloadPrice, //payload price
+            // amount: payloadPrice, //payload price
+            amount: gbpToPence(payloadPrice), // ✅ 147 pence
             scheme: "faster_payments",
             currency: "GBP",
             reference: `TRX-${Date.now()}`,

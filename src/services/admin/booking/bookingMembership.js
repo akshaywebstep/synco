@@ -283,23 +283,23 @@ async function autoSyncFreezeBilling() {
     };
   }
 }
+// GBP → pence (GoCardless only)
+const gbpToPence = (amount) => Math.round(Number(amount) * 100);
 
 exports.createBooking = async (data, options) => {
   const t = await sequelize.transaction();
   try {
-    // const adminId = options?.adminId || null;
-    // const source = options?.source || null;
     let parentAdminId = null;
-    // let source = options?.source;
     const adminId = options?.adminId || null;
     const parentPortalAdminId = options?.parentAdminId || null;
 
     let source = "open"; // default = website
 
-    if (adminId) {
-      source = "admin";
-    } else if (parentPortalAdminId) {
+    // Parent portal MUST win
+    if (parentPortalAdminId) {
       source = "parent";
+    } else if (adminId) {
+      source = "admin";
     }
     const leadId = options?.leadId || null;
 
@@ -309,100 +309,69 @@ exports.createBooking = async (data, options) => {
       console.log("🔍 [DEBUG] Extracted leadId:", leadId);
     }
 
-    if (source !== "open" && !adminId) {
-      throw new Error("Admin ID is required for bookedBy");
+    if (source === "parent") {
+      // 👪 Parent portal → already logged in
+      parentAdminId = parentPortalAdminId;
     }
 
-    let bookedByAdminId = adminId || null;
-
-    if (data.parents?.length > 0) {
-      if (DEBUG)
-        console.log("🔍 [DEBUG] Source is 'open'. Processing first parent...");
-
+    else if (data.parents?.length > 0) {
       const firstParent = data.parents[0];
       const email = firstParent.parentEmail?.trim()?.toLowerCase();
 
-      if (DEBUG) console.log("🔍 [DEBUG] Extracted parent email:", email);
+      if (!email) throw new Error("Parent email is required");
 
-      if (!email) throw new Error("Parent email is required for open booking");
-
-      if (!isValidEmail(email)) {
-        throw new Error("Parent Email must be a valid email.");
-      }
-
-      // Use findOrCreate only - no duplicate pre-check to avoid race condition
-      const plainPassword = "Synco123";
-      const hashedPassword = await bcrypt.hash(plainPassword, 10);
-
-      if (DEBUG)
-        console.log("🔍 [DEBUG] Generated hashed password for parent account");
-
-      const [admin, created] = await Admin.findOrCreate({
-        where: { email },
-        defaults: {
-          firstName: firstParent.parentFirstName || "Parent",
-          lastName: firstParent.parentLastName || "",
-          phoneNumber: firstParent.parentPhoneNumber || "",
-          email,
-          password: hashedPassword,
-          roleId: 9,
-          status: "active",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
+      const parentRole = await AdminRole.findOne({
+        where: { role: "Parents" },
         transaction: t,
       });
 
-      // ✅ THIS IS THE MISSING LINE
-      parentAdminId = admin.id;
+      const hashedPassword = await bcrypt.hash("Synco123", 10);
 
-      if (!created) {
-        await admin.update(
+      if (source === "admin") {
+        // 👨‍💼 ADMIN → ALWAYS create new parent
+        const admin = await Admin.create(
           {
-            firstName: firstParent.parentFirstName,
-            lastName: firstParent.parentLastName,
+            firstName: firstParent.parentFirstName || "Parent",
+            lastName: firstParent.parentLastName || "",
             phoneNumber: firstParent.parentPhoneNumber || "",
+            email,
+            password: hashedPassword,
+            roleId: parentRole.id,
+            status: "active",
           },
           { transaction: t }
         );
+
+        parentAdminId = admin.id;
       }
-
-      if (DEBUG) {
-        console.log("🔍 [DEBUG] Admin account lookup completed.");
-        console.log("🔍 [DEBUG] Was new admin created?:", created);
-        console.log(
-          "🔍 [DEBUG] Admin record:",
-          admin.toJSON ? admin.toJSON() : admin
-        );
-      }
-
-      if (!created) {
-        if (DEBUG)
-          console.log(
-            "🔍 [DEBUG] Updating existing admin record with parent details"
-          );
-
-        await admin.update(
-          {
-            firstName: firstParent.parentFirstName,
-            lastName: firstParent.parentLastName,
+      else {
+        // 🌐 WEBSITE → findOrCreate
+        const [admin] = await Admin.findOrCreate({
+          where: { email },
+          defaults: {
+            firstName: firstParent.parentFirstName || "Parent",
+            lastName: firstParent.parentLastName || "",
             phoneNumber: firstParent.parentPhoneNumber || "",
+            email,
+            password: hashedPassword,
+            roleId: parentRole.id,
+            status: "active",
           },
-          { transaction: t }
-        );
-      }
+          transaction: t,
+        });
 
+        parentAdminId = admin.id;
+      }
     }
+
     // 🔹 Determine bookedBy & source values
     let bookedBy = null;
     let bookingSource = null;
 
     if (source === "admin") {
-      // 👨‍💼 Admin portal
-      bookedBy = adminId;     // ✅ saved
-      bookingSource = null;   // ✅ NULL
+      bookedBy = adminId;   // ✅ admin who booked
+      bookingSource = null;
     } else {
-      // 🌐 Website + 👪 Parent portal
       bookedBy = null;
       bookingSource = "website";
     }
@@ -411,7 +380,8 @@ exports.createBooking = async (data, options) => {
     const booking = await Booking.create(
       {
         venueId: data.venueId,
-        parentAdminId: parentAdminId,
+        // parentAdminId: parentAdminId,
+        parentAdminId,
         bookingId: generateBookingId(12),
         leadId,
         totalStudents: data.totalStudents,
@@ -421,8 +391,8 @@ exports.createBooking = async (data, options) => {
         bookingType: data.paymentPlanId ? "paid" : "free",
         paymentPlanId: data.paymentPlanId || null,
         status: data.status || "active",
-        bookedBy, // ✅ NULL for open booking
-        source: bookingSource, // ✅ website for open booking
+        bookedBy,                     // ✅ admin or null
+        source: bookingSource,        // ✅ website or null
         // bookedBy: source === "open" ? bookedByAdminId : adminId,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -557,7 +527,8 @@ exports.createBooking = async (data, options) => {
             description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
               }`,
             // amount: planPrice, // ✅ use plan price
-            amount: payloadPrice, // ✅ FROM PAYLOAD
+            // amount: payloadPrice, // ✅ FROM PAYLOAD
+            amount: gbpToPence(payloadPrice), // ✅ 147 pence
             scheme: "faster_payments",
             currency: "GBP",
             reference: `TRX-${Date.now()}-${Math.floor(

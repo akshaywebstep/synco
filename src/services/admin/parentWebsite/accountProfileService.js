@@ -32,6 +32,23 @@ const {
 } = require("../../../models");
 const { Op } = require("sequelize");
 const stripePromise = require("../../../utils/payment/pay360/stripe");
+const normalize = (v) =>
+    String(v || "")
+        .trim()
+        .toLowerCase();
+
+const uniqueBySignature = (items, signatureFn) => {
+    const map = new Map();
+
+    items.forEach(item => {
+        const signature = signatureFn(item);
+        if (signature) {
+            map.set(signature, item);
+        }
+    });
+
+    return Array.from(map.values());
+};
 
 exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
     try {
@@ -440,7 +457,63 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
             where: { id: parentAdminId },
             attributes: ['id', 'firstName', 'lastName', 'email', 'roleId'],
         });
+        /* ---------- STUDENT SIGNATURE ---------- */
+        const studentSignature = (s) => [
+            normalize(s.studentFirstName),
+            normalize(s.studentLastName),
+            normalize(s.dateOfBirth),
+            normalize(s.gender),
+        ].join("|");
 
+        /* ---------- PARENT SIGNATURE ---------- */
+        const parentSignature = (p) => [
+            normalize(p.parentEmail || p.email),
+            normalize(p.phoneNumber),
+            normalize(p.parentFirstName),
+            normalize(p.parentLastName),
+        ].join("|");
+
+        /* ---------- EMERGENCY SIGNATURE ---------- */
+        const emergencySignature = (e) => [
+            normalize(e.emergencyPhoneNumber),
+            normalize(e.emergencyFirstName),
+        ].join("|");
+
+        let allStudents = [];
+        let allParents = [];
+        let allEmergency = [];
+
+        /* Weekly */
+        formattedBookings.forEach(b => {
+            allStudents.push(...(b.students || []));
+            allParents.push(...(b.parents || []));
+            if (b.emergency) allEmergency.push(b.emergency);
+        });
+
+        /* One to One */
+        formattedOneToOneLead.forEach(l => {
+            allStudents.push(...(l.booking?.students || []));
+            allParents.push(...(l.booking?.parents || []));
+            if (l.booking?.emergency) allEmergency.push(l.booking.emergency);
+        });
+
+        /* Birthday */
+        formattedBirthdayPartyLead.forEach(l => {
+            allStudents.push(...(l.booking?.students || []));
+            allParents.push(...(l.booking?.parents || []));
+            if (l.booking?.emergency) allEmergency.push(l.booking.emergency);
+        });
+
+        /* Holiday */
+        formattedHolidayBooking.forEach(b => {
+            allStudents.push(...(b.students || []));
+            allParents.push(...(b.parents || []));
+            allEmergency.push(...(b.emergencyContacts || []));
+        });
+
+        const uniqueStudents = uniqueBySignature(allStudents, studentSignature);
+        const uniqueParents = uniqueBySignature(allParents, parentSignature);
+        const uniqueEmergencyContacts = uniqueBySignature(allEmergency, emergencySignature);
         return {
             status: true,
             message: "Fetched combined bookings successfully.",
@@ -450,6 +523,11 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                 birthdayPartyLead: formattedBirthdayPartyLead,
                 holidayBooking: formattedHolidayBooking, // ✅ NEW
                 profile,  // single admin object for the parentAdminId
+                uniqueProfiles: {
+                    students: uniqueStudents,
+                    parents: uniqueParents,
+                    emergencyContacts: uniqueEmergencyContacts,
+                },
             },
         };
     } catch (error) {
@@ -460,212 +538,3 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
         };
     }
 };
-
-// exports.createBooking = async (data, options) => {
-//     const t = await sequelize.transaction();
-
-//     try {
-//         const adminId = options?.adminId || null;
-//         const parentPortalAdminId = options?.parentAdminId || null;
-//         const leadId = options?.leadId || null;
-
-//         let parentAdminId = null;
-
-//         // --------------------------------------------------
-//         // SOURCE RESOLUTION
-//         // --------------------------------------------------
-//         let source = "website";      // default = website
-//         let bookedBy = null;         // always null for website
-
-//         if (adminId) {
-//             source = "admin";
-//             bookedBy = adminId;
-//         }
-
-//         // --------------------------------------------------
-//         // PARENT RESOLUTION (MOST IMPORTANT FIX)
-//         // --------------------------------------------------
-//         if (parentPortalAdminId) {
-//             // ✅ Parent already exists → NEVER create Admin
-//             parentAdminId = parentPortalAdminId;
-
-//             if (DEBUG) {
-//                 console.log("🔍 [DEBUG] Using existing parentAdminId:", parentAdminId);
-//             }
-//         }
-
-//         // --------------------------------------------------
-//         // ONLY CREATE/FIND PARENT IF parentAdminId DOES NOT EXIST
-//         // --------------------------------------------------
-//         // ✅ ONLY create/find parent IF parentAdminId DOES NOT EXIST
-//         else if (!parentPortalAdminId && data.parents?.length > 0) {
-//             const firstParent = data.parents[0];
-//             const email = firstParent.parentEmail?.trim()?.toLowerCase();
-
-//             if (!email) throw new Error("Parent email is required");
-
-//             const parentRole = await AdminRole.findOne({
-//                 where: { role: "Parents" },
-//                 transaction: t,
-//             });
-
-//             if (!parentRole) {
-//                 throw new Error("Parent role not found");
-//             }
-
-//             const hashedPassword = await bcrypt.hash("Synco123", 10);
-
-//             if (source === "admin") {
-//                 const admin = await Admin.create(
-//                     {
-//                         firstName: firstParent.parentFirstName || "Parent",
-//                         lastName: firstParent.parentLastName || "",
-//                         phoneNumber: firstParent.parentPhoneNumber || "",
-//                         email,
-//                         password: hashedPassword,
-//                         roleId: parentRole.id,
-//                         status: "active",
-//                     },
-//                     { transaction: t }
-//                 );
-
-//                 parentAdminId = admin.id;
-//             } else {
-//                 const [admin] = await Admin.findOrCreate({
-//                     where: { email },
-//                     defaults: {
-//                         firstName: firstParent.parentFirstName || "Parent",
-//                         lastName: firstParent.parentLastName || "",
-//                         phoneNumber: firstParent.parentPhoneNumber || "",
-//                         email,
-//                         password: hashedPassword,
-//                         roleId: parentRole.id,
-//                         status: "active",
-//                     },
-//                     transaction: t,
-//                 });
-
-//                 parentAdminId = admin.id;
-//             }
-//         }
-
-//         if (!parentAdminId) {
-//             throw new Error("parentAdminId could not be resolved");
-//         }
-
-//         // --------------------------------------------------
-//         // CREATE BOOKING
-//         // --------------------------------------------------
-//         const booking = await Booking.create(
-//             {
-//                 venueId: data.venueId,
-//                 parentAdminId,
-//                 bookingId: generateBookingId(12),
-//                 leadId,
-//                 totalStudents: data.totalStudents,
-//                 classScheduleId: data.classScheduleId,
-//                 trialDate: data.trialDate,
-//                 className: data.className,
-//                 serviceType: "weekly class trial",
-//                 attempt: 1,
-//                 classTime: data.classTime,
-//                 status: data.status || "active",
-//                 bookedBy,              // ✅ NULL for website
-//                 source,                // ✅ website
-//                 createdAt: new Date(),
-//                 updatedAt: new Date(),
-//             },
-//             { transaction: t }
-//         );
-
-//         // --------------------------------------------------
-//         // CREATE STUDENTS
-//         // --------------------------------------------------
-//         const studentIds = [];
-
-//         for (const student of data.students || []) {
-//             const studentMeta = await BookingStudentMeta.create(
-//                 {
-//                     bookingTrialId: booking.id,
-//                     studentFirstName: student.studentFirstName,
-//                     studentLastName: student.studentLastName,
-//                     dateOfBirth: student.dateOfBirth,
-//                     age: student.age,
-//                     gender: student.gender,
-//                     medicalInformation: student.medicalInformation,
-//                 },
-//                 { transaction: t }
-//             );
-//             studentIds.push(studentMeta);
-//         }
-
-//         const firstStudent = studentIds[0];
-
-//         // --------------------------------------------------
-//         // ALWAYS CREATE BookingParentMeta
-//         // --------------------------------------------------
-//         for (const parent of data.parents || []) {
-//             await BookingParentMeta.create(
-//                 {
-//                     studentId: firstStudent.id,
-//                     parentFirstName: parent.parentFirstName,
-//                     parentLastName: parent.parentLastName,
-//                     parentEmail: parent.parentEmail?.trim()?.toLowerCase(),
-//                     parentPhoneNumber: parent.parentPhoneNumber,
-//                     relationToChild: parent.relationToChild,
-//                     howDidYouHear: parent.howDidYouHear,
-//                 },
-//                 { transaction: t }
-//             );
-//         }
-
-//         // --------------------------------------------------
-//         // EMERGENCY CONTACT (OPTIONAL)
-//         // --------------------------------------------------
-//         if (
-//             data.emergency?.emergencyFirstName &&
-//             data.emergency?.emergencyPhoneNumber
-//         ) {
-//             await BookingEmergencyMeta.create(
-//                 {
-//                     studentId: firstStudent.id,
-//                     emergencyFirstName: data.emergency.emergencyFirstName,
-//                     emergencyLastName: data.emergency.emergencyLastName,
-//                     emergencyPhoneNumber: data.emergency.emergencyPhoneNumber,
-//                     emergencyRelation: data.emergency.emergencyRelation,
-//                 },
-//                 { transaction: t }
-//             );
-//         }
-
-//         // --------------------------------------------------
-//         // UPDATE CAPACITY
-//         // --------------------------------------------------
-//         const classSchedule = await ClassSchedule.findByPk(
-//             data.classScheduleId,
-//             { transaction: t }
-//         );
-
-//         const newCapacity = classSchedule.capacity - data.totalStudents;
-//         if (newCapacity < 0) throw new Error("Not enough capacity left.");
-
-//         await classSchedule.update({ capacity: newCapacity }, { transaction: t });
-
-//         await t.commit();
-
-//         return {
-//             status: true,
-//             data: {
-//                 bookingId: booking.bookingId,
-//                 booking,
-//                 studentId: firstStudent.id,
-//                 studentFirstName: firstStudent.studentFirstName,
-//                 studentLastName: firstStudent.studentLastName,
-//             },
-//         };
-//     } catch (error) {
-//         await t.rollback();
-//         console.error("❌ createBooking Error:", error);
-//         return { status: false, message: error.message };
-//     }
-// };

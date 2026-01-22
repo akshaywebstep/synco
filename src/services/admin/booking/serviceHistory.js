@@ -43,6 +43,7 @@ function generateBookingId(length = 12) {
   }
   return result;
 }
+const gbpToPence = (amount) => Math.round(Number(amount) * 100);
 
 function normalizeContractStartDate(requestedStartDate, matchedSchedule) {
   const requested = new Date(requestedStartDate);
@@ -946,7 +947,8 @@ exports.updateBooking = async (payload, adminId, id) => {
             description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
               }`,
             // amount: price,
-            amount: payloadPrice, // ✅ use payloadPrice
+            // amount: payloadPrice, // ✅ use payloadPrice
+            amount: gbpToPence(payloadPrice), // ✅ 147 pence
             scheme: "faster_payments",
             currency: "GBP",
             reference: `TRX-${Date.now()}-${Math.floor(
