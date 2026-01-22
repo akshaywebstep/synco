@@ -9,6 +9,7 @@ const {
   Venue,
   PaymentPlan,
   Admin,
+  AdminRole,
   CancelBooking,
   AppConfig,
 } = require("../../../models");
