@@ -10,8 +10,8 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // ✅ Middleware
-// app.use(cors());
-
+app.use(cors());
+/*
 app.use(cors({
   origin: [
     "http://localhost:5173",
@@ -22,6 +22,7 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
 }));
+*/
 
 // ⚙️ Practically remove payload limit (1GB+)
 app.use(bodyParser.json({ limit: "1000mb" }));
