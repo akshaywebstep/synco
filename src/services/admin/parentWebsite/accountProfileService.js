@@ -333,7 +333,28 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                             }))
                         )
                         ?.shift() || null;
+                const normalizeOneToOnePayment = (p) => {
+                    if (!p) return null;
 
+                    return {
+                        id: p.id,
+                        oneToOneBookingId: p.oneToOneBookingId,
+                        stripeSessionId: p.stripeSessionId,
+                        stripePaymentIntentId: p.stripePaymentIntentId,
+                        baseAmount: p.baseAmount,
+                        discountAmount: p.discountAmount,
+                        amount: p.amount,
+                        currency: p.currency,
+                        paymentStatus: p.paymentStatus,
+                        paymentDate: p.paymentDate,
+                        failureReason: p.failureReason,
+                        createdAt: p.createdAt,
+                        updatedAt: p.updatedAt,
+                    };
+                };
+
+                // ✅ FIXED PAYMENT
+                const payment = normalizeOneToOnePayment(booking.payment);
                 return {
                     id: leadPlain.id,
                     parentName: leadPlain.parentName,
@@ -350,6 +371,8 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                         students,
                         parents,
                         emergency,
+                        paymentPlan: booking.paymentPlan || null,
+                        payment,
                     },
                 };
             });
@@ -365,7 +388,9 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                         id: s.id,
                         studentFirstName: s.studentFirstName,
                         studentLastName: s.studentLastName,
+                        gender: s.gender,
                         age: s.age,
+                        dateOfBirth: s.dateOfBirth,
                         medicalInformation: s.medicalInfo || null,
                     })) || [];
 
@@ -381,9 +406,33 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                         ?.flatMap((s) => (s.emergencyDetails ? [s.emergencyDetails] : []))
                         ?.map((e) => ({
                             emergencyFirstName: e.emergencyFirstName,
+                            emergencyLastName: e.emergencyLastName,
                             emergencyPhoneNumber: e.emergencyPhoneNumber,
+                            emergencyRelation: e.emergencyRelation,
                         }))
                         ?.shift() || null;
+                const normalizeBirthdayPartyPayment = (p) => {
+                    if (!p) return null;
+
+                    return {
+                        id: p.id,
+                        birthdayPartyBookingId: p.birthdayPartyBookingId,
+                        stripeSessionId: p.stripeSessionId,
+                        stripePaymentIntentId: p.stripePaymentIntentId,
+                        baseAmount: p.baseAmount,
+                        discountAmount: p.discountAmount,
+                        amount: p.amount,
+                        currency: p.currency,
+                        paymentStatus: p.paymentStatus,
+                        paymentDate: p.paymentDate,
+                        failureReason: p.failureReason,
+                        createdAt: p.createdAt,
+                        updatedAt: p.updatedAt,
+                    };
+                };
+
+                // ✅ FIXED PAYMENT
+                const payment = normalizeBirthdayPartyPayment(booking.payment);
 
                 return {
                     id: leadPlain.id,
@@ -396,6 +445,8 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                         students,
                         parents,
                         emergency,
+                        paymentPlan: booking.paymentPlan || null,
+                        payment,
                     },
                 };
             });
@@ -557,12 +608,11 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
             serviceType: "one to one",
             status: l.status,
             createdAt: l.createdAt,
-            classSchedule: {
-                coach: l.booking?.coach || null,
-                date: l.booking?.date || null,
-                time: l.booking?.time || null,
-            },
-            paymentPlan: null,
+            coach: l.booking?.coach || null,
+            date: l.booking?.date || null,
+            time: l.booking?.time || null,
+            paymentPlan: l.booking?.paymentPlan || null, // ✅ FIX
+            payment: l.booking?.payment || null,
             students: l.booking?.students || [],
             parents: l.booking?.parents || [],
             emergency: l.booking?.emergency || null,
@@ -573,11 +623,10 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
             serviceType: "birthday party",
             status: l.status,
             createdAt: l.partyDate,
-            classSchedule: {
-                coach: l.booking?.coach || null,
-                partyDate: l.partyDate,
-            },
-            paymentPlan: null,
+            coach: l.booking?.coach || null,
+            partyDate: l.partyDate,
+            paymentPlan: l.booking?.paymentPlan || null, // ✅ FIX
+            payment: l.booking?.payment || null,
             students: l.booking?.students || [],
             parents: l.booking?.parents || [],
             emergency: l.booking?.emergency || null,
@@ -596,8 +645,8 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
         }));
         const combinedBookings = [
             ...weeklyBookings,
-            ...oneToOneBookings,
             ...birthdayBookings,
+            ...oneToOneBookings,
             ...holidayBookingsNormalized,
         ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         return {

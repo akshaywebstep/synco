@@ -8,4 +8,7 @@ router.use("/auth", require("./authRoutes"));
 router.use("/account-profile", require("./accountProfileRoutes"));
 router.use("/booking", require("./bookingRoutes"));
 
+// Find A Holiday Camp
+router.use("/holiday", require("./holidayRoutes"));
+
 module.exports = router;

@@ -50,7 +50,11 @@ exports.createBirthdayPartyBooking = async (req, res) => {
       });
     }
 
-    if (!Array.isArray(formData.parents) || formData.parents.length === 0) {
+    // Parents required ONLY if parentAdminId not provided
+    if (
+      !formData.parentAdminId &&
+      (!Array.isArray(formData.parents) || formData.parents.length === 0)
+    ) {
       return res.status(400).json({
         success: false,
         message: "At least one parent is required",
@@ -79,22 +83,25 @@ exports.createBirthdayPartyBooking = async (req, res) => {
     }
 
     // ✅ Step 4: Validate parent fields
-    for (const [index, parent] of formData.parents.entries()) {
-      const requiredParentFields = [
-        "parentFirstName",
-        "parentLastName",
-        "parentEmail",
-        "phoneNumber",
-        "relationChild",
-        "howDidHear",
-      ];
+    // Validate parent fields ONLY when parents are sent
+    if (Array.isArray(formData.parents) && formData.parents.length > 0) {
+      for (const [index, parent] of formData.parents.entries()) {
+        const requiredParentFields = [
+          "parentFirstName",
+          "parentLastName",
+          "parentEmail",
+          "phoneNumber",
+          "relationChild",
+          "howDidHear",
+        ];
 
-      for (const field of requiredParentFields) {
-        if (!parent[field] || parent[field].toString().trim() === "") {
-          return res.status(400).json({
-            success: false,
-            message: `Parent ${index + 1} ${field} is required`,
-          });
+        for (const field of requiredParentFields) {
+          if (!parent[field] || parent[field] === "") {
+            return res.status(400).json({
+              success: false,
+              message: `Parent ${index + 1} ${field} is required`,
+            });
+          }
         }
       }
     }
@@ -139,7 +146,10 @@ exports.createBirthdayPartyBooking = async (req, res) => {
     }
 
     // ✅ Step 5: Create booking via service
-    const result = await birthdayPartyBookingService.createBirthdayPartyBooking(formData);
+    const result = await birthdayPartyBookingService.createBirthdayPartyBooking({
+      ...formData,
+      adminId,
+    });
 
     // ⚠️ Handle duplicate lead (service layer returns this)
     if (result?.message === "You have already booked this lead.") {

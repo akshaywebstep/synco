@@ -14,7 +14,6 @@ const {
   Discount,
   DiscountUsage,
   DiscountAppliesTo,
-  Comment,
   Admin,
   AdminRole,
   //  sequelize
@@ -325,8 +324,7 @@ exports.createHolidayBooking = async (data, adminId) => {
       );
     }
     // ✅ Send confirmation email to first parent (only if payment succeeded)
-   
-   
+
     try {
       if (payment_status === "paid") { // <-- corrected
         const { status: configStatus, emailConfig, htmlTemplate, subject } =
@@ -393,9 +391,7 @@ exports.createHolidayBooking = async (data, adminId) => {
       }
     } catch (emailErr) {
       console.error("❌ Error sending email to parent:", emailErr.message);
-    }  
-
-    
+    }
 
     await HolidayBookingPayment.create(
       {
