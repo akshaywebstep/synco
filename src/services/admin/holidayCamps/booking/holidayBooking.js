@@ -38,6 +38,422 @@ const DEBUG = process.env.DEBUG === "true";
 const emailModel = require("../../../../services/email");
 const PANEL = "admin";
 
+exports.createHolidayBooking = async (data, options = {}) => {
+  const transaction = await sequelize.transaction();
+  try {
+    const adminId = options?.adminId || null;           // Admin portal
+    const parentPortalAdminId = options?.parentAdminId || null; // Parent portal
+    let source = "website"; // default = website
+    let parentAdminId = null;
+
+    // Determine source
+    if (parentPortalAdminId) source = "parent";
+    else if (adminId) source = "admin";
+
+    // -----------------------------
+    // Parent Handling
+    // -----------------------------
+    if (source === "parent") {
+      // ✅ Parent portal booking
+      parentAdminId = parentPortalAdminId;
+    } else if (data.parents?.length > 0) {
+      // Always get first parent
+      const firstParent = data.parents[0];
+      const email = firstParent.parentEmail?.trim()?.toLowerCase();
+      if (!email) throw new Error("Parent email is required");
+
+      const parentRole = await AdminRole.findOne({
+        where: { role: "Parents" },
+        transaction,
+      });
+      if (!parentRole) throw new Error("Parent role not found");
+
+      const hashedPassword = await bcrypt.hash("Synco123", 10);
+
+      if (source === "admin") {
+        // ✅ Admin portal → create new parent
+        const admin = await Admin.create(
+          {
+            firstName: firstParent.parentFirstName || "Parent",
+            lastName: firstParent.parentLastName || "",
+            phoneNumber: firstParent.parentPhoneNumber || "",
+            email,
+            password: hashedPassword,
+            roleId: parentRole.id,
+            status: "active",
+          },
+          { transaction }
+        );
+        parentAdminId = admin.id;
+      } else {
+        // ✅ Website booking → findOrCreate
+        const [admin] = await Admin.findOrCreate({
+          where: { email },
+          defaults: {
+            firstName: firstParent.parentFirstName || "Parent",
+            lastName: firstParent.parentLastName || "",
+            phoneNumber: firstParent.parentPhoneNumber || "",
+            email,
+            password: hashedPassword,
+            roleId: parentRole.id,
+            status: "active",
+          },
+          transaction,
+        });
+        parentAdminId = admin.id;
+      }
+    }
+
+    // -----------------------------
+    // Determine bookedBy & marketingChannel
+    // -----------------------------
+    let bookedBy = null;
+    let marketingChannel = source === "admin" ? "admin" : "website";
+
+    if (source === "admin") {
+      bookedBy = adminId; // ✅ Only for admin bookings
+    }
+    // ==================================================
+    //  FETCH CLASS SCHEDULE & CHECK CAPACITY
+    // ==================================================
+    const classSchedule = await HolidayClassSchedule.findByPk(data.classScheduleId);
+
+    if (!classSchedule) throw new Error("Invalid class schedule ID");
+
+    if (classSchedule.capacity < data.totalStudents) {
+      throw new Error(
+        `Not enough capacity in this class. Available: ${classSchedule.capacity}, Requested: ${data.totalStudents}`
+      );
+    }
+    // 1️⃣ Load payment plan
+    let paymentPlan = null;
+    let base_amount = 0;
+
+    if (data.paymentPlanId) {
+      paymentPlan = await HolidayPaymentPlan.findByPk(data.paymentPlanId);
+      if (!paymentPlan) throw new Error("Invalid payment plan ID");
+
+      base_amount = Number(paymentPlan.price || 0);
+    }
+
+    let discount = null;
+    let discount_amount = 0;
+    let finalAmount = base_amount;
+
+    // ==================================================
+    //  DISCOUNT LOGIC (FULLY UPDATED)
+    // ==================================================
+    if (data.discountId) {
+      discount = await Discount.findByPk(data.discountId, {
+        include: [{ model: DiscountAppliesTo, as: "appliesTo" }]
+      });
+      if (!discount) throw new Error("Invalid discount ID");
+
+      const now = new Date();
+
+      // 1️⃣ Validate active date
+      if (discount.startDatetime && now < new Date(discount.startDatetime))
+        throw new Error(`Discount ${discount.code} is not active yet.`);
+
+      if (discount.endDatetime && now > new Date(discount.endDatetime))
+        throw new Error(`Discount ${discount.code} has expired.`);
+
+      // 2️⃣ Validate applies-to
+      const appliesToTargets = discount.appliesTo.map(a => a.target);
+      if (!appliesToTargets.includes("holiday_camp")) {
+        throw new Error(`Discount ${discount.code} is not valid for holiday camp bookings.`);
+      }
+
+      // 3️⃣ Validate total uses
+      if (discount.limitTotalUses !== null) {
+        const totalUsed = await HolidayBooking.count({
+          where: { discountId: discount.id }
+        });
+
+        if (totalUsed >= discount.limitTotalUses) {
+          throw new Error(`Discount ${discount.code} reached total usage limit.`);
+        }
+      }
+
+      // 5️⃣ Apply discount value
+      if (discount.valueType === "percentage") {
+        discount_amount = (base_amount * Number(discount.value)) / 100;
+      } else {
+        discount_amount = Number(discount.value);
+      }
+
+      finalAmount = Math.max(base_amount - discount_amount, 0);
+    }
+
+    // ==================================================
+    //  CREATE BOOKING
+    // ==================================================
+
+    const booking = await HolidayBooking.create(
+      {
+        venueId: data.venueId,
+        classScheduleId: data.classScheduleId,
+        holidayCampId: data.holidayCampId,
+        discountId: data.discountId ?? null,
+        totalStudents: data.totalStudents,
+        paymentPlanId: data.paymentPlanId,
+        status: "active",
+
+        bookedBy,          // ✅ admin only
+        marketingChannel,  // ✅ admin/website
+        parentAdminId,     // ✅ always parent ID
+
+        parentAdminId,
+        bookingType: "paid",
+        type: "paid",
+        serviceType: "holiday camp",
+      },
+      { transaction }
+    );
+
+    // Create Students
+    const students = await Promise.all(
+      (data.students || []).map((s) =>
+        HolidayBookingStudentMeta.create(
+          {
+            bookingId: booking.id,
+            studentFirstName: s.studentFirstName,
+            studentLastName: s.studentLastName,
+            dateOfBirth: s.dateOfBirth,
+            age: s.age,
+            gender: s.gender,
+            medicalInformation: s.medicalInformation,
+          },
+          { transaction }
+        )
+      )
+    );
+
+    const firstStudent = students[0];
+
+    if (firstStudent) {
+      // Parent Meta
+      if (data.parents?.length) {
+        await Promise.all(
+          data.parents.map((p) =>
+            HolidayBookingParentMeta.create(
+              {
+                studentId: firstStudent.id,
+                parentFirstName: p.parentFirstName,
+                parentLastName: p.parentLastName,
+                parentEmail: p.parentEmail,
+                parentPhoneNumber: p.parentPhoneNumber,
+                relationToChild: p.relationToChild,
+                howDidYouHear: p.howDidYouHear,
+              },
+              { transaction }
+            )
+          )
+        );
+      }
+
+      // Emergency Meta
+      if (data.emergency) {
+        await HolidayBookingEmergencyMeta.create(
+          {
+            studentId: firstStudent.id,
+            emergencyFirstName: data.emergency.emergencyFirstName,
+            emergencyLastName: data.emergency.emergencyLastName,
+            emergencyPhoneNumber: data.emergency.emergencyPhoneNumber,
+            emergencyRelation: data.emergency.emergencyRelation,
+          },
+          { transaction }
+        );
+      }
+    }
+
+    // ==================================================
+    //  STRIPE PAYMENT
+    // ==================================================
+    let payment_status = "failed";
+    let stripeChargeId = null;
+    let errorMessage = null;
+
+    try {
+      let customerId = data.payment?.customer_id;
+      let cardId = data.payment?.card_id;
+
+      if (!customerId) {
+        const customerRes = await createCustomer({
+          body: {
+            name: `${data.payment.firstName} ${data.payment.lastName}`,
+            email: data.payment.email,
+          },
+        });
+        customerId = customerRes.customer_id;
+      }
+
+      if (!cardId) {
+        const cardTokenRes = await createCardToken({
+          body: {
+            cardNumber: data.payment.cardNumber,
+            expiryDate: data.payment.expiryDate,
+            securityCode: data.payment.securityCode,
+          },
+        });
+
+        const addCardRes = await addNewCard({
+          body: {
+            customer_id: customerId,
+            card_token: cardTokenRes.token_id,
+          },
+        });
+
+        cardId = addCardRes.card_id;
+      }
+
+      const chargeRes = await createCharges({
+        body: {
+          amount: finalAmount,
+          customer_id: customerId,
+          card_id: cardId,
+        },
+      });
+
+      if (chargeRes.status === "succeeded") {
+        payment_status = "paid";
+        stripeChargeId = chargeRes.charge_id;
+
+        // ✅ DECREASE CAPACITY AFTER SUCCESSFUL PAYMENT
+        await classSchedule.update(
+          { capacity: classSchedule.capacity - data.totalStudents },
+          { transaction }
+        );
+      }
+    } catch (err) {
+      errorMessage = err.message;
+      console.error("Stripe Payment Error:", err.message);
+    }
+    // ⭐ RECORD DISCOUNT USAGE
+    if (discount && payment_status === "paid") {
+      await DiscountUsage.create(
+        {
+          discountId: discount.id,
+          adminId,
+          usedAt: new Date()
+        },
+        { transaction }
+      );
+    }
+    // ✅ Send confirmation email to first parent (only if payment succeeded)
+
+    try {
+      if (payment_status === "paid") { // <-- corrected
+        const { status: configStatus, emailConfig, htmlTemplate, subject } =
+          await emailModel.getEmailConfig(PANEL, "holiday-camp-booking");
+
+        if (configStatus && htmlTemplate) {
+          const firstStudent = students?.[0];
+          const firstParent = data.parents?.[0];
+
+          if (firstParent?.parentEmail) {
+            // Build HTML for all students
+            const studentsHtml = students.map(student => `
+                    <tr>
+                        <td style="padding:5px; vertical-align:top;">
+                            <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Student Name:</p>
+                            <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.studentFirstName || ""} ${student.studentLastName || ""}</p>
+                        </td>
+                        <td style="padding:5px; vertical-align:top;">
+                            <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Age:</p>
+                            <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.age || ""}</p>
+                        </td>
+                        <td style="padding:5px; vertical-align:top;">
+                            <p style="margin:0; font-size:13px; color:#34353B; font-weight:600;">Gender:</p>
+                            <p style="margin:0; font-size:13px; color:#5F5F6D;">${student.gender || ""}</p>
+                        </td>
+                    </tr>
+                `).join("");
+
+            // Fetch venue name if needed
+            const venue = await HolidayVenue.findByPk(data.venueId); // make sure you import Venue model
+
+            // Build HTML email body using booking data
+            const htmlBody = htmlTemplate
+              .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`)
+              .replace(/{{venueName}}/g, venue?.name || "")
+              .replace(/{{relationToChild}}/g, firstParent.relationToChild || "")
+              .replace(/{{parentPhoneNumber}}/g, firstParent.parentPhoneNumber || "")
+              .replace(/{{className}}/g, "Holiday Camp")
+              .replace(/{{classTime}}/g, data.time || "")
+              // .replace(/{{date}}/g, data.date || "")
+              .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
+              .replace(/{{parentPassword}}/g, "Synco123")
+              .replace(/{{appName}}/g, "Synco")
+              .replace(/{{year}}/g, new Date().getFullYear().toString())
+              .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
+              .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png")
+              .replace(/{{studentsTable}}/g, studentsHtml);
+
+            await sendEmail(emailConfig, {
+              recipient: [{ name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`, email: firstParent.parentEmail }],
+              subject,
+              htmlBody,
+            });
+
+            console.log(`📧 Confirmation email sent to ${firstParent.parentEmail}`);
+          } else {
+            console.warn("⚠️ No parent email found for sending booking confirmation");
+          }
+        } else {
+          console.warn("⚠️ Email template config not found for 'holiday-booking'");
+        }
+      } else {
+        console.log("ℹ️ Payment not successful — skipping email send.");
+      }
+    } catch (emailErr) {
+      console.error("❌ Error sending email to parent:", emailErr.message);
+    }
+
+    await HolidayBookingPayment.create(
+      {
+        holiday_booking_id: booking.id,
+        amount: finalAmount,
+        base_amount,
+        discount_amount,
+        payment_status,
+        stripe_payment_intent_id: stripeChargeId,
+        payment_date: new Date(),
+        failureReason: errorMessage,
+
+        // ⭐ Save payment info
+        firstName: data.payment?.firstName,
+        lastName: data.payment?.lastName,
+        email: data.payment?.email,
+        billingAddress: data.payment?.billingAddress,
+
+        // If you want to save the card details (not recommended in production)
+        cardNumber: data.payment?.cardNumber,
+        expiryDate: data.payment?.expiryDate,
+        securityCode: data.payment?.securityCode,
+      },
+      { transaction }
+    );
+
+    await transaction.commit();
+
+    return {
+      success: true,
+      bookingId: booking.id,
+      payment_status,
+      stripe_payment_intent_id: stripeChargeId,
+      base_amount,
+      discount_amount,
+      finalAmount,
+    };
+  } catch (error) {
+    await transaction.rollback();
+    console.error("❌ Error creating holiday booking:", error);
+    throw error;
+  }
+};
+
+/*
 exports.createHolidayBooking = async (data, adminId) => {
   const transaction = await sequelize.transaction();
   try {
@@ -435,7 +851,7 @@ exports.createHolidayBooking = async (data, adminId) => {
     throw error;
   }
 };
-
+*/
 exports.getHolidayBooking = async (superAdminId, adminId) => {
   try {
     // Validate admin ID

@@ -484,9 +484,7 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                             if (stripeChargeId.startsWith("pi_")) {
                                 const pi = await stripe.paymentIntents.retrieve(
                                     stripeChargeId,
-                                    {
-                                        expand: ["latest_charge", "latest_charge.balance_transaction"],
-                                    }
+                                    { expand: ["latest_charge", "latest_charge.balance_transaction"] }
                                 );
                                 stripeChargeDetails = pi.latest_charge || null;
                             } else if (stripeChargeId.startsWith("ch_")) {
@@ -510,20 +508,7 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                         failure_reason: booking.payment.failure_reason,
                         email: booking.payment.email,
                         billingAddress: booking.payment.billingAddress,
-                        gatewayResponse: stripeChargeDetails
-                            ? {
-                                id: stripeChargeDetails.id,
-                                amount: stripeChargeDetails.amount / 100,
-                                currency: stripeChargeDetails.currency,
-                                status: stripeChargeDetails.status,
-                                paymentMethod:
-                                    stripeChargeDetails.payment_method_details?.card?.brand || null,
-                                last4:
-                                    stripeChargeDetails.payment_method_details?.card?.last4 || null,
-                                receiptUrl: stripeChargeDetails.receipt_url || null,
-                                fullResponse: stripeChargeDetails,
-                            }
-                            : null,
+                        gatewayResponse: stripeChargeDetails,
                     };
                 }
 
@@ -635,6 +620,7 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
             id: b.id,
             parentAdminId,
             serviceType: "holiday camp",
+            bookedBy: b.bookedBy,
             status: b.status,
             createdAt: b.createdAt,
             classSchedule: b.holidayClassSchedules || [],
@@ -642,7 +628,9 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
             students: b.students || [],
             parents: b.parents || [],
             emergency: (b.emergencyContacts || [])[0] || null,
+            payment: b.payment || null, // ✅ add this line
         }));
+
         const combinedBookings = [
             ...weeklyBookings,
             ...birthdayBookings,

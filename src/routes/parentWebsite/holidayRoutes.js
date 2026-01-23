@@ -8,6 +8,9 @@ const {
   findAHolidayClassListing,
   getHolidayClassScheduleById,
 } = require("../../controllers/admin/parentWebsite/holidayController");
+const {
+  createHolidayBooking
+} = require("../../controllers/admin/holidayCamps/booking/holidayBookingController");
 
 // -------------------- Routes --------------------
 
@@ -23,6 +26,12 @@ router.get(
   "/find-a-camp/:id",
   authMiddleware,
   getHolidayClassScheduleById
+);
+
+router.post(
+  "/book-a-camp",
+  authMiddleware,
+  createHolidayBooking
 );
 
 module.exports = router;

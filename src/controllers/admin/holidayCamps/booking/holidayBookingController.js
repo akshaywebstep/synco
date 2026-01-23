@@ -51,11 +51,34 @@ exports.createHolidayBooking = async (req, res) => {
       });
     }
 
-    if (!Array.isArray(formData.parents) || formData.parents.length === 0) {
-      return res.status(400).json({
-        status: false,
-        message: "At least one parent is required",
-      });
+    if (!formData.parentAdminId) {
+      if (!Array.isArray(formData.parents) || formData.parents.length === 0) {
+        return res.status(400).json({
+          status: false,
+          message: "At least one parent is required",
+        });
+      }
+
+      // Validate parent fields
+      for (const [index, parent] of formData.parents.entries()) {
+        const requiredParentFields = [
+          "parentFirstName",
+          "parentLastName",
+          "parentEmail",
+          "parentPhoneNumber",
+          "relationToChild",
+          "howDidYouHear",
+        ];
+
+        for (const field of requiredParentFields) {
+          if (!parent[field] || parent[field].toString().trim() === "") {
+            return res.status(400).json({
+              status: false,
+              message: `Parent ${index + 1} ${field} is required`,
+            });
+          }
+        }
+      }
     }
 
     if (!formData.emergency) {
@@ -140,7 +163,8 @@ exports.createHolidayBooking = async (req, res) => {
     }
 
     // ✅ Step 5: Create booking via service
-    const result = await holidayBookingService.createHolidayBooking(formData, adminId);
+    // const result = await holidayBookingService.createHolidayBooking(formData, adminId);
+    const result = await holidayBookingService.createHolidayBooking(formData, { adminId });
 
     if (!result.success) {
       return res.status(400).json({
@@ -148,8 +172,6 @@ exports.createHolidayBooking = async (req, res) => {
         message: result.message || "Failed to create booking",
       });
     }
-
-    if (DEBUG) console.log("✅ Holiday Booking created successfully:", result);
 
     // ✅ Step 6: Log and notify
     await logActivity(req, PANEL, MODULE, "create", formData.data, true);
@@ -937,9 +959,8 @@ exports.getAllDiscounts = async (req, res) => {
     }
 
     const count = result.data.length;
-    const message = `Fetched ${count} discount${
-      count === 1 ? "" : "s"
-    } successfully.`;
+    const message = `Fetched ${count} discount${count === 1 ? "" : "s"
+      } successfully.`;
 
     if (DEBUG) {
       console.log(`✅ ${message}`);
