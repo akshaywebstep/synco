@@ -34,8 +34,8 @@ exports.createTerm = async (payload) => {
       };
     }
 
-    const start = moment(startDate);
-    const end = moment(endDate);
+    const start = moment(startDate, "YYYY-MM-DD").startOf("day");
+    const end = moment(endDate, "YYYY-MM-DD").endOf("day");
 
     // ✅ Ensure startDate is before endDate
     if (!start.isBefore(end)) {
@@ -44,18 +44,25 @@ exports.createTerm = async (payload) => {
         message: "Start date must be before end date.",
       };
     }
+    if (!Array.isArray(exclusionDates)) {
+      return {
+        status: false,
+        message: "Exclusion dates must be an array.",
+      };
+    }
 
     // ✅ Check if all exclusionDates are between startDate and endDate
     for (const date of exclusionDates) {
-      if (!moment(date, "YYYY-MM-DD", true).isValid()) {
+      const exDate = moment(date, "YYYY-MM-DD", true);
+
+      if (!exDate.isValid()) {
         return {
           status: false,
-          message: `Invalid exclusion date format: ${date}. Use 'YYYY-MM-DD'.`,
+          message: `Invalid exclusion date format: ${date}. Use YYYY-MM-DD.`,
         };
       }
 
-      const exDate = moment(date);
-      if (!exDate.isBetween(start, end, undefined, "[]")) {
+      if (exDate.isBefore(start) || exDate.isAfter(end)) {
         return {
           status: false,
           message: `Exclusion date ${date} must be between ${startDate} and ${endDate}.`,
@@ -188,7 +195,7 @@ exports.getAllTerms = async (adminId) => {
       attributes: ["id", "groupName", "levels", "beginner_video",
         "intermediate_video",
         "pro_video",
-        "advanced_video", "banner", "player","type","pinned"],
+        "advanced_video", "banner", "player", "type", "pinned"],
       raw: true,
     });
 
@@ -306,7 +313,7 @@ exports.getTermById = async (id, adminId) => {
       attributes: ["id", "groupName", "levels", "beginner_video",
         "intermediate_video",
         "pro_video",
-        "advanced_video", "banner", "player","type","pinned"],
+        "advanced_video", "banner", "player", "type", "pinned"],
       raw: true,
     });
 
@@ -465,7 +472,7 @@ exports.getTermsByTermGroupId = async (termGroupIds) => {
       attributes: ["id", "groupName", "levels", "beginner_video",
         "intermediate_video",
         "pro_video",
-        "advanced_video", "banner", "player","type","pinned"],
+        "advanced_video", "banner", "player", "type", "pinned"],
       raw: true,
     });
 
