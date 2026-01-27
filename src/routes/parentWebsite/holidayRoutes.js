@@ -7,6 +7,7 @@ const authMiddleware = require("../../middleware/admin/authenticate");
 const {
   findAHolidayClassListing,
   getHolidayClassScheduleById,
+  updateHolidayBooking,
 } = require("../../controllers/admin/parentWebsite/holidayController");
 const {
   createHolidayBooking
@@ -32,6 +33,12 @@ router.post(
   "/book-a-camp",
   authMiddleware,
   createHolidayBooking
+);
+
+router.put(
+  "/booking/update/:bookingId",
+  authMiddleware,
+  updateHolidayBooking
 );
 
 module.exports = router;

@@ -6,9 +6,14 @@ const {
     HolidayCampDates,
     HolidayPaymentGroup,
     HolidayPaymentGroupHasPlan,
+    HolidayBooking,
+    HolidayBookingStudentMeta,
+    HolidayBookingParentMeta,
+    HolidayBookingEmergencyMeta,
 } = require("../../../models");
 
 const { Op, Sequelize } = require("sequelize");
+const { sequelize } = require("../../../models");
 
 function deg2rad(deg) {
     return deg * (Math.PI / 180);
@@ -406,7 +411,7 @@ exports.getHolidayClassById = async (classId) => {
 exports.updateHolidayBookingById = async (
     bookingId,
     data,
-    { role, parentAdminId = null } // role: "ADMIN" | "PARENT"
+    { parentAdminId } // role is always Parent here
 ) => {
     const transaction = await sequelize.transaction();
 
@@ -428,10 +433,8 @@ exports.updateHolidayBookingById = async (
         if (!booking) throw new Error("Booking not found");
 
         // 🔐 Parent authorization check
-        if (role === "Parent") {
-            if (!parentAdminId || booking.parentAdminId !== parentAdminId) {
-                throw new Error("Unauthorized: You cannot update this booking");
-            }
+        if (!parentAdminId || booking.parentAdminId !== parentAdminId) {
+            throw new Error("Unauthorized: You cannot update this booking");
         }
 
         const classSchedule = await HolidayClassSchedule.findByPk(
@@ -442,13 +445,12 @@ exports.updateHolidayBookingById = async (
 
         let addedStudentsCount = 0;
 
-        // ============================================================
+        // ========================
         // 1️⃣ STUDENTS
-        // ============================================================
+        // ========================
         if (Array.isArray(data.students)) {
             for (const student of data.students) {
 
-                // UPDATE
                 if (student.id) {
                     await HolidayBookingStudentMeta.update(
                         {
@@ -461,14 +463,9 @@ exports.updateHolidayBookingById = async (
                         },
                         { where: { id: student.id }, transaction }
                     );
-                }
-
-                // CREATE
-                else {
+                } else {
                     if (classSchedule.capacity < 1) {
-                        throw new Error(
-                            `No capacity available. Remaining: ${classSchedule.capacity}`
-                        );
+                        throw new Error(`No capacity available. Remaining: ${classSchedule.capacity}`);
                     }
 
                     await HolidayBookingStudentMeta.create(
@@ -496,29 +493,41 @@ exports.updateHolidayBookingById = async (
             await booking.save({ transaction });
         }
 
-        // ============================================================
-        // 2️⃣ PARENTS
-        // ============================================================
+        // ========================
+        // 2️⃣ PARENTS (UPDATE + SYNC ADMIN)
+        // ========================
         if (Array.isArray(data.parents)) {
             for (const p of data.parents) {
 
-                // UPDATE
                 if (p.id) {
+                    // Update Parent Meta
                     await HolidayBookingParentMeta.update(
                         {
                             parentFirstName: p.parentFirstName,
                             parentLastName: p.parentLastName,
-                            parentEmail: p.parentEmail,
+                            parentEmail: p.parentEmail, // allowed
                             parentPhoneNumber: p.parentPhoneNumber,
                             relationToChild: p.relationToChild,
                             howDidYouHear: p.howDidYouHear,
                         },
                         { where: { id: p.id }, transaction }
                     );
-                }
 
-                // CREATE
-                else {
+                    // Sync Admin data (ONLY for parent user)
+                    if (parentAdminId) {
+                        const adminUpdatePayload = {
+                            firstName: p.parentFirstName,
+                            lastName: p.parentLastName,
+                            phoneNumber: p.parentPhoneNumber,
+                        };
+
+                        await Admin.update(
+                            adminUpdatePayload,
+                            { where: { id: parentAdminId }, transaction }
+                        );
+                    }
+                } else {
+                    // Create new parent meta
                     if (!p.studentId) continue;
 
                     await HolidayBookingParentMeta.create(
@@ -537,13 +546,11 @@ exports.updateHolidayBookingById = async (
             }
         }
 
-        // ============================================================
+        // ========================
         // 3️⃣ EMERGENCY CONTACTS
-        // ============================================================
+        // ========================
         if (Array.isArray(data.emergencyContacts)) {
             for (const e of data.emergencyContacts) {
-
-                // UPDATE
                 if (e.id) {
                     await HolidayBookingEmergencyMeta.update(
                         {
@@ -553,22 +560,6 @@ exports.updateHolidayBookingById = async (
                             emergencyRelation: e.emergencyRelation,
                         },
                         { where: { id: e.id }, transaction }
-                    );
-                }
-
-                // CREATE
-                else {
-                    if (!e.studentId) continue;
-
-                    await HolidayBookingEmergencyMeta.create(
-                        {
-                            studentId: e.studentId,
-                            emergencyFirstName: e.emergencyFirstName,
-                            emergencyLastName: e.emergencyLastName,
-                            emergencyPhoneNumber: e.emergencyPhoneNumber,
-                            emergencyRelation: e.emergencyRelation,
-                        },
-                        { transaction }
                     );
                 }
             }

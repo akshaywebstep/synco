@@ -406,6 +406,7 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                     id: leadPlain.id,
                     parentName: leadPlain.parentName,
                     childName: leadPlain.childName,
+                    packageInterest: leadPlain.packageInterest,
                     age: leadPlain.age,
                     source: leadPlain.source,
                     status: leadPlain.status,
@@ -418,6 +419,8 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                         coach: booking.coach,
                         date: booking.date,
                         time: booking.time,
+                        address: booking.address,
+                        location: booking.location,
                         createdAt: booking.createdAt,
                         students,
                         parents,
@@ -491,10 +494,13 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                     lead: leadPlain.lead || null,
                     parentName: leadPlain.parentName,
                     partyDate: leadPlain.partyDate,
+                    packageInterest: leadPlain.packageInterest,
                     status: leadPlain.status,
                     booking: {
                         id: booking.id,
                         coach: booking.coach,
+                        location: booking.location,
+                        address: booking.address,
                         createdAt: booking.createdAt,
                         students,
                         parents,
@@ -630,25 +636,25 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
         let allEmergency = [];
 
         /* Weekly */
-        formattedBookings.forEach(b => {
-            allStudents.push(...(b.students || []));
-            allParents.push(...(b.parents || []));
-            if (b.emergency) allEmergency.push(b.emergency);
-        });
+        // formattedBookings.forEach(b => {
+        //     allStudents.push(...(b.students || []));
+        //     allParents.push(...(b.parents || []));
+        //     if (b.emergency) allEmergency.push(b.emergency);
+        // });
 
         /* One to One */
-        formattedOneToOneLead.forEach(l => {
-            allStudents.push(...(l.booking?.students || []));
-            allParents.push(...(l.booking?.parents || []));
-            if (l.booking?.emergency) allEmergency.push(l.booking.emergency);
-        });
+        // formattedOneToOneLead.forEach(l => {
+        //     allStudents.push(...(l.booking?.students || []));
+        //     allParents.push(...(l.booking?.parents || []));
+        //     if (l.booking?.emergency) allEmergency.push(l.booking.emergency);
+        // });
 
         /* Birthday */
-        formattedBirthdayPartyLead.forEach(l => {
-            allStudents.push(...(l.booking?.students || []));
-            allParents.push(...(l.booking?.parents || []));
-            if (l.booking?.emergency) allEmergency.push(l.booking.emergency);
-        });
+        // formattedBirthdayPartyLead.forEach(l => {
+        //     allStudents.push(...(l.booking?.students || []));
+        //     allParents.push(...(l.booking?.parents || []));
+        //     if (l.booking?.emergency) allEmergency.push(l.booking.emergency);
+        // });
 
         /* Holiday */
         formattedHolidayBooking.forEach(b => {
@@ -669,6 +675,8 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
             status: l.status,
             createdAt: l.createdAt,
             coach: l.booking?.coach || null,
+            location: l.booking?.location || null,  // ✅ NOW WORKS
+            address: l.booking?.address || null,    // ✅ NOW WORKS
             date: l.booking?.date || null,
             time: l.booking?.time || null,
             paymentPlan: l.booking?.paymentPlan || null, // ✅ FIX
