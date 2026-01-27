@@ -161,3 +161,176 @@ exports.getHolidayClassScheduleById = async (req, res) => {
     }
 };
 
+exports.updateHolidayBooking = async (req, res) => {
+    try {
+        const bookingId = req.params.bookingId;
+        const formData = req.body;
+
+        const adminId = req.admin?.id || null;
+        const parentAdminId = req.parent?.id || null;
+
+        // 🔐 Determine role
+        const role = adminId ? "Admin" : parentAdminId ? "Parent" : null;
+
+        if (!role) {
+            return res.status(401).json({
+                status: false,
+                message: "Unauthorized: User not authenticated",
+            });
+        }
+
+        if (!bookingId) {
+            return res.status(400).json({
+                status: false,
+                message: "bookingId parameter is required",
+            });
+        }
+
+        // ------------------------------------------------------------
+        // 🔎 Step 1: Validate Students (ONLY new students strictly)
+        // ------------------------------------------------------------
+        if (Array.isArray(formData.students)) {
+            for (const [index, student] of formData.students.entries()) {
+                const requiredFields = [
+                    "studentFirstName",
+                    "studentLastName",
+                    "dateOfBirth",
+                    "medicalInformation",
+                ];
+
+                for (const field of requiredFields) {
+                    if (student[field] === "") {
+                        return res.status(400).json({
+                            status: false,
+                            message: `Student ${index + 1} ${field} cannot be empty`,
+                        });
+                    }
+                }
+
+                if (!student.id) {
+                    for (const field of requiredFields) {
+                        if (!student[field] || student[field].toString().trim() === "") {
+                            return res.status(400).json({
+                                status: false,
+                                message: `New Student ${index + 1} ${field} is required`,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // ------------------------------------------------------------
+        // 🔎 Step 2: Validate Parents (ONLY new parents strictly)
+        // ------------------------------------------------------------
+        if (Array.isArray(formData.parents)) {
+            for (const [index, parent] of formData.parents.entries()) {
+                const requiredFields = [
+                    "parentFirstName",
+                    "parentLastName",
+                    "parentEmail",
+                    "parentPhoneNumber",
+                    "relationToChild",
+                    "howDidYouHear",
+                ];
+
+                for (const field of requiredFields) {
+                    if (parent[field] === "") {
+                        return res.status(400).json({
+                            status: false,
+                            message: `Parent ${index + 1} ${field} cannot be empty`,
+                        });
+                    }
+                }
+
+                if (!parent.id) {
+                    for (const field of requiredFields) {
+                        if (!parent[field] || parent[field].trim() === "") {
+                            return res.status(400).json({
+                                status: false,
+                                message: `New Parent ${index + 1} ${field} is required`,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // ------------------------------------------------------------
+        // 🔎 Step 3: Validate Emergency Contacts (ONLY new)
+        // ------------------------------------------------------------
+        if (Array.isArray(formData.emergencyContacts)) {
+            for (const [index, emergency] of formData.emergencyContacts.entries()) {
+                const requiredFields = [
+                    "emergencyFirstName",
+                    "emergencyLastName",
+                    "emergencyPhoneNumber",
+                    "emergencyRelation",
+                ];
+
+                for (const field of requiredFields) {
+                    if (emergency[field] === "") {
+                        return res.status(400).json({
+                            status: false,
+                            message: `Emergency Contact ${index + 1} ${field} cannot be empty`,
+                        });
+                    }
+                }
+
+                if (!emergency.id) {
+                    for (const field of requiredFields) {
+                        if (!emergency[field] || emergency[field].trim() === "") {
+                            return res.status(400).json({
+                                status: false,
+                                message: `New Emergency Contact ${index + 1} ${field} is required`,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // ------------------------------------------------------------
+        // ⚙️ Step 4: Call Combined Update Service
+        // ------------------------------------------------------------
+        const result = await holidayBookingService.updateHolidayBookingById(
+            bookingId,
+            formData,
+            {
+                role,
+                parentAdminId,
+            }
+        );
+
+        // ------------------------------------------------------------
+        // 📝 Step 5: Logs & Notifications (ADMIN only)
+        // ------------------------------------------------------------
+        if (role === "ADMIN") {
+            await logActivity(req, PANEL, MODULE, "update", formData, true);
+
+            await createNotification(
+                req,
+                "Holiday Booking Updated Successfully",
+                `Booking updated by ${req.admin?.firstName || "Admin"} ${req.admin?.lastName || ""
+                }.`,
+                "System"
+            );
+        }
+
+        // ------------------------------------------------------------
+        // 📤 Step 6: Response
+        // ------------------------------------------------------------
+        return res.status(200).json({
+            status: true,
+            message: "Holiday Booking updated successfully",
+            data: result.details,
+        });
+    } catch (error) {
+        console.error("❌ updateHolidayBooking Error:", error.message);
+
+        return res.status(500).json({
+            status: false,
+            message: DEBUG ? error.message : "Internal server error",
+        });
+    }
+};

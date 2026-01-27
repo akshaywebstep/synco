@@ -451,6 +451,26 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                 };
             });
 
+        const normalizeHolidayCamp = (camp) => {
+            if (!camp) return null;
+
+            return {
+                id: camp.id,
+                name: camp.name,
+                description: camp.description || null,
+                holidayCampDates: (camp.holidayCampDates || []).map(d => ({
+                    id: d.id,
+                    startDate: d.startDate,
+                    endDate: d.endDate,
+                    totalDays: d.totalDays,
+                    sessionsMap:
+                        typeof d.sessionsMap === "string"
+                            ? safeParseJSON(d.sessionsMap)
+                            : d.sessionsMap || [],
+                })),
+            };
+        };
+
         // Format holiday bookings (multiple)
         const formattedHolidayBooking = await Promise.all(
             (holidayBookings || []).map(async (bookingInstance) => {
@@ -623,6 +643,8 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
             bookedBy: b.bookedBy,
             status: b.status,
             createdAt: b.createdAt,
+            // ✅ Holiday Camp & Dates
+            holidayCamp: normalizeHolidayCamp(b.holidayCamp),
             classSchedule: b.holidayClassSchedules || [],
             paymentPlan: b.holidayPaymentPlan || null,
             students: b.students || [],

@@ -402,3 +402,192 @@ exports.getHolidayClassById = async (classId) => {
         };
     }
 };
+
+exports.updateHolidayBookingById = async (
+    bookingId,
+    data,
+    { role, parentAdminId = null } // role: "ADMIN" | "PARENT"
+) => {
+    const transaction = await sequelize.transaction();
+
+    try {
+        const booking = await HolidayBooking.findByPk(bookingId, {
+            include: [
+                {
+                    model: HolidayBookingStudentMeta,
+                    as: "students",
+                    include: [
+                        { model: HolidayBookingParentMeta, as: "parents" },
+                        { model: HolidayBookingEmergencyMeta, as: "emergencyContacts" }
+                    ]
+                }
+            ],
+            transaction
+        });
+
+        if (!booking) throw new Error("Booking not found");
+
+        // 🔐 Parent authorization check
+        if (role === "Parent") {
+            if (!parentAdminId || booking.parentAdminId !== parentAdminId) {
+                throw new Error("Unauthorized: You cannot update this booking");
+            }
+        }
+
+        const classSchedule = await HolidayClassSchedule.findByPk(
+            booking.classScheduleId,
+            { transaction }
+        );
+        if (!classSchedule) throw new Error("Class schedule not found");
+
+        let addedStudentsCount = 0;
+
+        // ============================================================
+        // 1️⃣ STUDENTS
+        // ============================================================
+        if (Array.isArray(data.students)) {
+            for (const student of data.students) {
+
+                // UPDATE
+                if (student.id) {
+                    await HolidayBookingStudentMeta.update(
+                        {
+                            studentFirstName: student.studentFirstName,
+                            studentLastName: student.studentLastName,
+                            dateOfBirth: student.dateOfBirth,
+                            age: student.age,
+                            gender: student.gender,
+                            medicalInformation: student.medicalInformation,
+                        },
+                        { where: { id: student.id }, transaction }
+                    );
+                }
+
+                // CREATE
+                else {
+                    if (classSchedule.capacity < 1) {
+                        throw new Error(
+                            `No capacity available. Remaining: ${classSchedule.capacity}`
+                        );
+                    }
+
+                    await HolidayBookingStudentMeta.create(
+                        {
+                            bookingId: booking.id,
+                            studentFirstName: student.studentFirstName,
+                            studentLastName: student.studentLastName,
+                            dateOfBirth: student.dateOfBirth,
+                            age: student.age,
+                            gender: student.gender,
+                            medicalInformation: student.medicalInformation,
+                        },
+                        { transaction }
+                    );
+
+                    addedStudentsCount++;
+                    classSchedule.capacity -= 1;
+                    await classSchedule.save({ transaction });
+                }
+            }
+        }
+
+        if (addedStudentsCount > 0) {
+            booking.totalStudents += addedStudentsCount;
+            await booking.save({ transaction });
+        }
+
+        // ============================================================
+        // 2️⃣ PARENTS
+        // ============================================================
+        if (Array.isArray(data.parents)) {
+            for (const p of data.parents) {
+
+                // UPDATE
+                if (p.id) {
+                    await HolidayBookingParentMeta.update(
+                        {
+                            parentFirstName: p.parentFirstName,
+                            parentLastName: p.parentLastName,
+                            parentEmail: p.parentEmail,
+                            parentPhoneNumber: p.parentPhoneNumber,
+                            relationToChild: p.relationToChild,
+                            howDidYouHear: p.howDidYouHear,
+                        },
+                        { where: { id: p.id }, transaction }
+                    );
+                }
+
+                // CREATE
+                else {
+                    if (!p.studentId) continue;
+
+                    await HolidayBookingParentMeta.create(
+                        {
+                            studentId: p.studentId,
+                            parentFirstName: p.parentFirstName,
+                            parentLastName: p.parentLastName,
+                            parentEmail: p.parentEmail,
+                            parentPhoneNumber: p.parentPhoneNumber,
+                            relationToChild: p.relationToChild,
+                            howDidYouHear: p.howDidYouHear,
+                        },
+                        { transaction }
+                    );
+                }
+            }
+        }
+
+        // ============================================================
+        // 3️⃣ EMERGENCY CONTACTS
+        // ============================================================
+        if (Array.isArray(data.emergencyContacts)) {
+            for (const e of data.emergencyContacts) {
+
+                // UPDATE
+                if (e.id) {
+                    await HolidayBookingEmergencyMeta.update(
+                        {
+                            emergencyFirstName: e.emergencyFirstName,
+                            emergencyLastName: e.emergencyLastName,
+                            emergencyPhoneNumber: e.emergencyPhoneNumber,
+                            emergencyRelation: e.emergencyRelation,
+                        },
+                        { where: { id: e.id }, transaction }
+                    );
+                }
+
+                // CREATE
+                else {
+                    if (!e.studentId) continue;
+
+                    await HolidayBookingEmergencyMeta.create(
+                        {
+                            studentId: e.studentId,
+                            emergencyFirstName: e.emergencyFirstName,
+                            emergencyLastName: e.emergencyLastName,
+                            emergencyPhoneNumber: e.emergencyPhoneNumber,
+                            emergencyRelation: e.emergencyRelation,
+                        },
+                        { transaction }
+                    );
+                }
+            }
+        }
+
+        await transaction.commit();
+
+        return {
+            success: true,
+            message: "Holiday camp booking updated successfully",
+            details: {
+                addedStudents: addedStudentsCount,
+                totalStudents: booking.totalStudents,
+            }
+        };
+
+    } catch (error) {
+        await transaction.rollback();
+        console.error("❌ updateHolidayBookingById Error:", error.message);
+        throw error;
+    }
+};
