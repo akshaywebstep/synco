@@ -10,6 +10,8 @@ const {
     HolidayBookingStudentMeta,
     HolidayBookingParentMeta,
     HolidayBookingEmergencyMeta,
+    Admin,
+    Role,
 } = require("../../../models");
 
 const { Op, Sequelize } = require("sequelize");

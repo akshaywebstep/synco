@@ -657,8 +657,25 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
         // });
 
         /* Holiday */
+        // formattedHolidayBooking.forEach(b => {
+        //     allStudents.push(...(b.students || []));
+        //     allParents.push(...(b.parents || []));
+        //     allEmergency.push(...(b.emergencyContacts || []));
+        // });
         formattedHolidayBooking.forEach(b => {
-            allStudents.push(...(b.students || []));
+            const classInfo = b.holidayClassSchedules?.[0] || b.holidayClassSchedules || {};
+
+            (b.students || []).forEach(student => {
+                allStudents.push({
+                    ...student,
+                    className: classInfo.className || null,
+                    capacity: classInfo.capacity || null,
+                    totalCapacity: classInfo.totalCapacity || null,
+                    startTime: classInfo.startTime || null,
+                    endTime: classInfo.endTime || null,
+                });
+            });
+
             allParents.push(...(b.parents || []));
             allEmergency.push(...(b.emergencyContacts || []));
         });
@@ -726,6 +743,7 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                     email: l.lead.email,
                     phone: l.lead.phone,
                     partyDate: l.lead.partyDate,
+                    packageInterest: l.lead.packageInterest,
                     numberOfKids: l.lead.numberOfKids,
                     source: l.lead.source,
                     notes: l.lead.notes,

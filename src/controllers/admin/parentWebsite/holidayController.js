@@ -166,7 +166,7 @@ exports.updateHolidayBooking = async (req, res) => {
         const bookingId = req.params.bookingId;
         const formData = req.body;
 
-        const parentAdminId = req.parent?.id || null;
+        const parentAdminId = req.admin?.id || null;
 
         if (!parentAdminId) {
             return res.status(401).json({
@@ -298,14 +298,15 @@ exports.updateHolidayBooking = async (req, res) => {
         // ------------------------------------------------------------
         // 📝 Step 5: Logs & Notifications (ADMIN only)
         // ------------------------------------------------------------
-        if (role === "ADMIN") {
+        const role = req.admin?.role || null;
+
+        if (role === "Parent") {
             await logActivity(req, PANEL, MODULE, "update", formData, true);
 
             await createNotification(
                 req,
                 "Holiday Booking Updated Successfully",
-                `Booking updated by ${req.admin?.firstName || "Admin"} ${req.admin?.lastName || ""
-                }.`,
+                `Booking updated by ${req.admin?.firstName || "Parent"} ${req.admin?.lastName || ""}.`,
                 "System"
             );
         }
