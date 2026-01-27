@@ -727,23 +727,61 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                 : null,
 
         }));
-        const holidayBookingsNormalized = formattedHolidayBooking.map(b => ({
-            id: b.id,
-            parentAdminId,
-            serviceType: "holiday camp",
-            bookedBy: b.bookedBy,
-            marketingChannel: b.marketingChannel,
-            status: b.status,
-            createdAt: b.createdAt,
-            // ✅ Holiday Camp & Dates
-            holidayCamp: normalizeHolidayCamp(b.holidayCamp),
-            classSchedule: b.holidayClassSchedules || [],
-            paymentPlan: b.holidayPaymentPlan || null,
-            students: b.students || [],
-            parents: b.parents || [],
-            emergency: (b.emergencyContacts || [])[0] || null,
-            payment: b.payment || null, // ✅ add this line
-        }));
+        // const holidayBookingsNormalized = formattedHolidayBooking.map(b => ({
+
+        //     id: b.id,
+        //     parentAdminId,
+        //     serviceType: "holiday camp",
+        //     bookedBy: b.bookedBy,
+        //     marketingChannel: b.marketingChannel,
+        //     status: b.status,
+        //     createdAt: b.createdAt,
+        //     // ✅ Holiday Camp & Dates
+        //     holidayCamp: normalizeHolidayCamp(b.holidayCamp),
+        //     classSchedule: b.holidayClassSchedules || [],
+        //     paymentPlan: b.holidayPaymentPlan || null,
+        //     students: b.students || [],
+        //     parents: b.parents || [],
+        //     emergency: (b.emergencyContacts || [])[0] || null,
+        //     payment: b.payment || null, // ✅ add this line
+
+        // }));
+        const holidayBookingsNormalized = formattedHolidayBooking.map(b => {
+            const classSchedule = Array.isArray(b.holidayClassSchedules)
+                ? b.holidayClassSchedules[0] || null
+                : b.holidayClassSchedules || null;
+
+            return {
+                id: b.id,
+                parentAdminId,
+                serviceType: "holiday camp",
+                bookedBy: b.bookedBy,
+                marketingChannel: b.marketingChannel,
+                status: b.status,
+                createdAt: b.createdAt,
+
+                holidayCamp: normalizeHolidayCamp(b.holidayCamp),
+
+                // ✅ return single object (not array)
+                classSchedule: classSchedule,
+
+                paymentPlan: b.holidayPaymentPlan || null,
+
+                // ✅ students enriched with class info
+                students: (b.students || []).map(student => ({
+                    ...student,
+                    className: classSchedule?.className || null,
+                    capacity: classSchedule?.capacity || null,
+                    totalCapacity: classSchedule?.totalCapacity || null,
+                    startTime: classSchedule?.startTime || null,
+                    endTime: classSchedule?.endTime || null,
+                })),
+
+                parents: b.parents || [],
+                emergency: (b.emergencyContacts || [])[0] || null,
+                payment: b.payment || null,
+            };
+        });
 
         const combinedBookings = [
             ...weeklyBookings,
