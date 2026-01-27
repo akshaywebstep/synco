@@ -70,7 +70,8 @@ exports.createFeedback = async (req, res) => {
     // 🔹 Prepare data
     const feedbackData = {
       ...req.body,
-      createdBy: req.admin.id,
+      createdBy: req.admin?.id || null,          // admin ID if exists
+      createdByParent: req.admin?.id || null,  // parent ID if exists
     };
 
     // 🔹 Create feedback

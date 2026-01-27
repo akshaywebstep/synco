@@ -245,6 +245,20 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
             relationChild: p.relationChild || p.relationToChild || null,
             howDidHear: p.howDidHear || p.howDidYouHear || null,
         });
+        const normalizeHolidayParent = (p) => ({
+            id: p.id,
+            studentId: p.studentId,
+            parentFirstName: p.parentFirstName,
+            parentLastName: p.parentLastName,
+            parentEmail: p.parentEmail,
+
+            // ✅ EXACT requirement
+            parentPhoneNumber: p.parentPhoneNumber || p.phoneNumber || null,
+
+            relationChild: p.relationChild || p.relationToChild || null,
+            howDidHear: p.howDidHear || p.howDidYouHear || null,
+        });
+
         const normalizeBookingPaymentFlat = (p) => ({
             id: p.id ?? null,
             bookingId: p.bookingId ?? null,
@@ -594,8 +608,11 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
 
                 return {
                     ...booking,
+                    // parents: Object.values(parentMap).map(p =>
+                    //     normalizeParent(p)
+                    // ),
                     parents: Object.values(parentMap).map(p =>
-                        normalizeParent(p)
+                        normalizeHolidayParent(p)
                     ),
                     emergencyContacts: Object.values(emergencyMap),
                     payment: paymentObj,
@@ -618,7 +635,7 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
 
         const parentSignature = (p) => [
             normalize(p.parentEmail),
-            normalize(p.phoneNumber),
+            normalize(p.parentPhoneNumber),
             normalize(p.parentFirstName),
             normalize(p.parentLastName),
             normalize(p.relationChild),
@@ -803,7 +820,8 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                     endTime: classSchedule?.endTime || null,
                 })),
 
-                parents: b.parents || [],
+                // parents: b.parents || [],
+                parents: (b.parents || []).map(p => normalizeHolidayParent(p)),
                 emergency: (b.emergencyContacts || [])[0] || null,
                 payment: b.payment || null,
             };

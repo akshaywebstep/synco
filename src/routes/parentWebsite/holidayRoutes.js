@@ -13,6 +13,10 @@ const {
   createHolidayBooking
 } = require("../../controllers/admin/holidayCamps/booking/holidayBookingController");
 
+const {
+  createFeedback
+} = require("../../controllers/admin/feedbackController");
+
 // -------------------- Routes --------------------
 
 // Get bookings by Parent Admin ID
@@ -39,6 +43,11 @@ router.put(
   "/booking/update/:bookingId",
   authMiddleware,
   updateHolidayBooking
+);
+router.post(
+  "/feedback/create",
+  authMiddleware,
+  createFeedback
 );
 
 module.exports = router;

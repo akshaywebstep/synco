@@ -31,7 +31,7 @@ const Feedback = sequelize.define(
       onUpdate: "CASCADE",
       onDelete: "CASCADE",
     },
-     birthdayPartyBookingId: {
+    birthdayPartyBookingId: {
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
@@ -41,7 +41,7 @@ const Feedback = sequelize.define(
       onUpdate: "CASCADE",
       onDelete: "CASCADE",
     },
-     holidayBookingId: {
+    holidayBookingId: {
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: true,
       references: {
@@ -140,13 +140,24 @@ const Feedback = sequelize.define(
 
     createdBy: {
       type: DataTypes.BIGINT.UNSIGNED,
-      allowNull: false,
+      allowNull: true, // ✅ changed
       references: {
         model: "admins",
         key: "id",
       },
       onUpdate: "CASCADE",
-      onDelete: "RESTRICT",
+      onDelete: "SET NULL", // ✅ RESTRICT would block parent-created feedback
+    },
+
+    createdByParent: {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
     },
 
     deletedBy: {
