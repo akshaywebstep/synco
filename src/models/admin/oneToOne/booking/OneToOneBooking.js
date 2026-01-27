@@ -155,6 +155,8 @@ OneToOneBooking.associate = (models) => {
     foreignKey: "coachId",
     as: "coach", // ✅ this alias must match the include alias
   });
+
+  
 };
 
 module.exports = OneToOneBooking;

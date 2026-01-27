@@ -409,6 +409,15 @@ OneToOneBooking.belongsTo(models.oneToOneLeads, {
   as: "lead",
 });
 
+oneToOneLeads.belongsTo(Admin, {
+  foreignKey: "createdBy",
+  as: "createdByAdmin",
+});
+BirthdayPartyLead.belongsTo(Admin, {
+  foreignKey: "createdBy",
+  as: "createdByAdmin",
+});
+
 // Holiday camps associations 
 // HolidayCamp → HolidayCampDates (1:M)
 HolidayCamp.hasMany(HolidayCampDates, {

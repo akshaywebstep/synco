@@ -13,11 +13,13 @@ const {
     OneToOneParent,
     OneToOneEmergency,
     OneToOnePayment,
+    oneToOneLeads,
     BirthdayPartyBooking,
     BirthdayPartyStudent,
     BirthdayPartyParent,
     BirthdayPartyEmergency,
     BirthdayPartyPayment,
+    BirthdayPartyLead,
     Admin,
     HolidayBooking,
     HolidayBookingStudentMeta,
@@ -81,6 +83,19 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                         include: [{ model: Venue, as: "venue", required: false }],
                     },
                     { model: BookingPayment, as: "payments" },
+                    {
+                        model: Admin, // 👈 include bookedBy Admin
+                        as: "bookedByAdmin",
+                        attributes: [
+                            "id",
+                            "firstName",
+                            "lastName",
+                            "email",
+                            "roleId",
+                            "status",
+                        ],
+                        required: false,
+                    },
                 ],
                 order: [["createdAt", "DESC"]],
             }),
@@ -110,6 +125,21 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                     { model: OneToOnePayment, as: "payment" },
                     { model: PaymentPlan, as: "paymentPlan" },
                     { model: Admin, as: "coach" },
+                    // ✅ ADD THIS
+                    {
+                        model: oneToOneLeads,
+                        as: "lead",
+                        required: false,
+                        include: [
+                            {
+                                model: Admin,
+                                as: "createdByAdmin",
+                                attributes: ["id", "firstName", "lastName", "email", "roleId", "status"],
+                                required: false,
+                            },
+                        ],
+                    },
+
                 ],
             }),
 
@@ -139,6 +169,21 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                     { model: BirthdayPartyPayment, as: "payment" },
                     { model: PaymentPlan, as: "paymentPlan" },
                     { model: Admin, as: "coach" },
+
+                    // ✅ ADD THIS
+                    {
+                        model: BirthdayPartyLead,
+                        as: "lead",
+                        required: false,
+                        include: [
+                            {
+                                model: Admin,
+                                as: "createdByAdmin",
+                                attributes: ["id", "firstName", "lastName", "email", "roleId", "status"],
+                                required: false,
+                            },
+                        ],
+                    },
                 ],
             }),
 
@@ -244,6 +289,7 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                     age: s.age,
                     gender: s.gender,
                     medicalInformation: s.medicalInfo || s.medicalInformation || null,
+                    attendance: s.attendance || s.attendance,
                 })) || [];
 
             /* ---------------- Parents ---------------- */
@@ -276,7 +322,8 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                 serviceType: booking.serviceType,
                 status: booking.status,
                 createdAt: booking.createdAt,
-
+                bookedByAdmin: booking.bookedByAdmin || null, // ✅ ADD THIS
+                source: booking.source || null,
                 classSchedule: booking.classSchedule || null,
 
                 paymentPlan: booking.paymentPlanId
@@ -363,11 +410,15 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                     source: leadPlain.source,
                     status: leadPlain.status,
                     createdAt: leadPlain.createdAt,
+
+                    lead: leadPlain.lead || null,   // ✅ ADD THIS
+
                     booking: {
                         id: booking.id,
                         coach: booking.coach,
                         date: booking.date,
                         time: booking.time,
+                        createdAt: booking.createdAt,
                         students,
                         parents,
                         emergency,
@@ -436,12 +487,15 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
 
                 return {
                     id: leadPlain.id,
+                    // ✅ FIXED
+                    lead: leadPlain.lead || null,
                     parentName: leadPlain.parentName,
                     partyDate: leadPlain.partyDate,
                     status: leadPlain.status,
                     booking: {
                         id: booking.id,
                         coach: booking.coach,
+                        createdAt: booking.createdAt,
                         students,
                         parents,
                         emergency,
@@ -611,6 +665,7 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
             id: l.id,
             parentAdminId,
             serviceType: "one to one",
+            bookedByAdmin: l.lead?.createdByAdmin || null,
             status: l.status,
             createdAt: l.createdAt,
             coach: l.booking?.coach || null,
@@ -621,26 +676,63 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
             students: l.booking?.students || [],
             parents: l.booking?.parents || [],
             emergency: l.booking?.emergency || null,
+            // ✅ ADD ONLY THIS
+            leads: l.lead
+                ? {
+                    id: l.lead.id,
+                    parentName: l.lead.parentName,
+                    childName: l.lead.childName,
+                    age: l.lead.age,
+                    postCode: l.lead.postCode,
+                    packageInterest: l.lead.packageInterest,
+                    availability: l.lead.availability,
+                    source: l.lead.source,
+                    email: l.lead.email,
+                    notes: l.lead.notes,
+                    status: l.lead.status,
+                    createdAt: l.lead.createdAt,
+                }
+                : null,
+
         }));
         const birthdayBookings = formattedBirthdayPartyLead.map(l => ({
             id: l.id,
             parentAdminId,
             serviceType: "birthday party",
             status: l.status,
-            createdAt: l.partyDate,
+            createdAt: l.booking?.createdAt || null,
             coach: l.booking?.coach || null,
+            bookedByAdmin: l.lead?.createdByAdmin || null,
             partyDate: l.partyDate,
             paymentPlan: l.booking?.paymentPlan || null, // ✅ FIX
             payment: l.booking?.payment || null,
             students: l.booking?.students || [],
             parents: l.booking?.parents || [],
             emergency: l.booking?.emergency || null,
+            leads: l.lead
+                ? {
+                    id: l.lead.id,
+                    parentName: l.lead.parentName,
+                    childName: l.lead.childName,
+                    age: l.lead.age,
+                    email: l.lead.email,
+                    phone: l.lead.phone,
+                    partyDate: l.lead.partyDate,
+                    numberOfKids: l.lead.numberOfKids,
+                    source: l.lead.source,
+                    notes: l.lead.notes,
+                    status: l.lead.status,
+                    createdAt: l.lead.createdAt,
+                }
+                : null,
+
         }));
         const holidayBookingsNormalized = formattedHolidayBooking.map(b => ({
             id: b.id,
             parentAdminId,
             serviceType: "holiday camp",
             bookedBy: b.bookedBy,
+            marketingChannel: b.marketingChannel,
             status: b.status,
             createdAt: b.createdAt,
             // ✅ Holiday Camp & Dates
