@@ -164,7 +164,14 @@ exports.createHolidayBooking = async (req, res) => {
 
     // ✅ Step 5: Create booking via service
     // const result = await holidayBookingService.createHolidayBooking(formData, adminId);
-    const result = await holidayBookingService.createHolidayBooking(formData, { adminId });
+    // const result = await holidayBookingService.createHolidayBooking(formData, { adminId });
+    const result = await holidayBookingService.createHolidayBooking(
+      formData,
+      {
+        adminId,
+        parentAdminId: formData.parentAdminId || null
+      }
+    );
 
     if (!result.success) {
       return res.status(400).json({

@@ -53,25 +53,25 @@ exports.createHolidayBooking = async (data, options = {}) => {
     // -----------------------------
     // Parent Handling
     // -----------------------------
-    if (source === "parent") {
-      // ✅ Parent portal booking
+    if (parentPortalAdminId) {
+      // ✅ Parent website booking → DO NOT touch Admin table
       parentAdminId = parentPortalAdminId;
-    } else if (data.parents?.length > 0) {
-      // Always get first parent
+    }
+    else if (data.parents?.length > 0) {
+      // ✅ Only admin / website anonymous booking
       const firstParent = data.parents[0];
       const email = firstParent.parentEmail?.trim()?.toLowerCase();
+
       if (!email) throw new Error("Parent email is required");
 
       const parentRole = await AdminRole.findOne({
         where: { role: "Parents" },
         transaction,
       });
-      if (!parentRole) throw new Error("Parent role not found");
 
       const hashedPassword = await bcrypt.hash("Synco123", 10);
 
       if (source === "admin") {
-        // ✅ Admin portal → create new parent
         const admin = await Admin.create(
           {
             firstName: firstParent.parentFirstName || "Parent",
@@ -86,7 +86,6 @@ exports.createHolidayBooking = async (data, options = {}) => {
         );
         parentAdminId = admin.id;
       } else {
-        // ✅ Website booking → findOrCreate
         const [admin] = await Admin.findOrCreate({
           where: { email },
           defaults: {
