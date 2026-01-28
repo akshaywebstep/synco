@@ -117,6 +117,40 @@ exports.getAllStudentCourses = async (adminId, superAdminId) => {
         };
     }
 };
+/**
+ * Get All Student Courses (Public / Parent – No Auth)
+ */
+exports.getAllStudentCoursesForParent = async () => {
+    try {
+        // -----------------------------
+        // 1️⃣ Fetch ALL courses
+        // -----------------------------
+        const studentCourses = await StudentCourse.findAll({
+            order: [["createdAt", "DESC"]],
+        });
+
+        return {
+            status: true,
+            message: "Student courses fetched successfully.",
+            data: studentCourses,
+        };
+
+    } catch (error) {
+        console.error(
+            "❌ Sequelize Error in getAllStudentCoursesForParent:",
+            error
+        );
+
+        return {
+            status: false,
+            message:
+                error?.parent?.sqlMessage ||
+                error?.message ||
+                "Failed to fetch student courses.",
+            data: [],
+        };
+    }
+};
 
 /**
  * Get Single Student Course
@@ -192,6 +226,60 @@ exports.getStudentCourseById = async (adminId, superAdminId, courseId) => {
 
     } catch (error) {
         console.error("❌ Sequelize Error in getStudentCourseById:", error);
+
+        return {
+            status: false,
+            message:
+                error?.parent?.sqlMessage ||
+                error?.message ||
+                "Failed to fetch student course.",
+            data: null,
+        };
+    }
+};
+
+/**
+ * Get Single Student Course (Public / Parent – No Auth)
+ */
+exports.getStudentCourseByIdForParent = async (courseId) => {
+    try {
+        // -----------------------------
+        // 1️⃣ Validate courseId
+        // -----------------------------
+        if (!courseId || isNaN(Number(courseId))) {
+            return {
+                status: false,
+                message: "Invalid student course ID.",
+                data: null,
+            };
+        }
+
+        // -----------------------------
+        // 2️⃣ Fetch course (NO auth)
+        // -----------------------------
+        const studentCourse = await StudentCourse.findOne({
+            where: { id: courseId },
+        });
+
+        if (!studentCourse) {
+            return {
+                status: false,
+                message: "Student course not found.",
+                data: null,
+            };
+        }
+
+        return {
+            status: true,
+            message: "Student course fetched successfully.",
+            data: studentCourse,
+        };
+
+    } catch (error) {
+        console.error(
+            "❌ Sequelize Error in getStudentCourseByIdForParent:",
+            error
+        );
 
         return {
             status: false,

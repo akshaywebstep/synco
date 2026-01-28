@@ -319,6 +319,81 @@ exports.getAllStudentCourses = async (req, res) => {
 };
 
 /**
+ * Get All Student Courses (Public / Parent – No Auth)
+ * Grouped by Level
+ */
+exports.getAllStudentCoursesForParent = async (req, res) => {
+    try {
+        // =========================
+        // 1️⃣ Fetch all courses (no auth)
+        // =========================
+        const result =
+            await studentCourseService.getAllStudentCoursesForParent();
+
+        if (!result.status) {
+            return res.status(500).json(result);
+        }
+
+        // =========================
+        // 2️⃣ Normalize & parse videos
+        // =========================
+        const normalizedCourses = result.data.map((course) => {
+            const jsonCourse = course.toJSON();
+
+            return {
+                ...jsonCourse,
+                videos:
+                    typeof jsonCourse.videos === "string"
+                        ? JSON.parse(jsonCourse.videos)
+                        : jsonCourse.videos,
+            };
+        });
+
+        // =========================
+        // 3️⃣ Group by level
+        // =========================
+        const groupedCourses = {
+            Beginner: [],
+            Intermediate: [],
+            Advanced: [],
+        };
+
+        for (const course of normalizedCourses) {
+            if (groupedCourses[course.level]) {
+                groupedCourses[course.level].push(course);
+            }
+        }
+
+        // =========================
+        // 4️⃣ Sort by sortOrder
+        // =========================
+        Object.keys(groupedCourses).forEach((level) => {
+            groupedCourses[level].sort(
+                (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
+            );
+        });
+
+        // =========================
+        // 5️⃣ Response (same structure)
+        // =========================
+        return res.status(200).json({
+            status: true,
+            message: "Student courses fetched successfully",
+            data: groupedCourses,
+        });
+
+    } catch (error) {
+        console.error("❌ getAllStudentCoursesForParent Error:", error);
+
+        return res.status(500).json({
+            status: false,
+            message:
+                error.message || "Server error while fetching student courses",
+        });
+    }
+};
+
+/**
  * Get Single Student Course
  */
 exports.getStudentCourseById = async (req, res) => {
@@ -418,6 +493,67 @@ exports.getStudentCourseById = async (req, res) => {
         return res.status(500).json({
             status: false,
             message: error.message || "Server error while fetching student course",
+        });
+    }
+};
+
+/**
+ * Get Single Student Course (Public / Parent – No Auth)
+ */
+exports.getStudentCourseByIdForParent = async (req, res) => {
+    try {
+        const courseId = req.params.id;
+
+        if (DEBUG) {
+            console.log("📥 Course ID:", courseId);
+        }
+
+        // =========================
+        // 1️⃣ Fetch from service
+        // =========================
+        const result =
+            await studentCourseService.getStudentCourseByIdForParent(courseId);
+
+        // =========================
+        // 2️⃣ Handle not found / error
+        // =========================
+        if (!result.status) {
+            return res.status(404).json(result);
+        }
+
+        // =========================
+        // 3️⃣ Parse videos safely
+        // =========================
+        const course = result.data.toJSON();
+
+        course.videos =
+            typeof course.videos === "string"
+                ? JSON.parse(course.videos)
+                : course.videos;
+
+        if (DEBUG) {
+            console.log("📤 Student Course:", course);
+        }
+
+        // =========================
+        // 4️⃣ Response (same structure)
+        // =========================
+        return res.status(200).json({
+            status: true,
+            message: "Student course fetched successfully",
+            data: course,
+        });
+
+    } catch (error) {
+        console.error(
+            "❌ getStudentCourseByIdForParent Error:",
+            error
+        );
+
+        return res.status(500).json({
+            status: false,
+            message:
+                error.message || "Server error while fetching student course",
         });
     }
 };
