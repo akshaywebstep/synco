@@ -2,7 +2,7 @@ const { logActivity } = require("../../../utils/admin/activityLogger");
 const {
     getAllHolidayVenuesWithHolidayClasses,
     getHolidayClassById,
-    updateHolidayBookingById,
+    updateHolidayBookingsForParent,
 } = require("../../../services/admin/parentWebsite/holidayService");
 
 const DEBUG = process.env.DEBUG === "true";
@@ -163,7 +163,6 @@ exports.getHolidayClassScheduleById = async (req, res) => {
 
 exports.updateHolidayBooking = async (req, res) => {
     try {
-        const bookingId = req.params.bookingId;
         const formData = req.body;
 
         const parentAdminId = req.admin?.id || null;
@@ -172,13 +171,6 @@ exports.updateHolidayBooking = async (req, res) => {
             return res.status(401).json({
                 status: false,
                 message: "Unauthorized: Only parents can update",
-            });
-        }
-
-        if (!bookingId) {
-            return res.status(400).json({
-                status: false,
-                message: "bookingId parameter is required",
             });
         }
 
@@ -289,8 +281,7 @@ exports.updateHolidayBooking = async (req, res) => {
         // ------------------------------------------------------------
         // ⚙️ Step 4: Call Combined Update Service
         // ------------------------------------------------------------
-        const result = await updateHolidayBookingById(
-            bookingId,
+        const result = await updateHolidayBookingsForParent(
             formData,
             { parentAdminId }
         );

@@ -13,7 +13,7 @@ const MODULE = "account-profile";
 exports.getCombinedBookingsByParentAdminId = async (req, res) => {
     try {
         // ✅ Authenticated parent from middleware
-        const parentAdminId = req.admin?.id;
+        const parentAdminId = req.parent?.id;
 
         if (!parentAdminId) {
             await logActivity(

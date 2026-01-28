@@ -14,7 +14,9 @@ const {
 } = require("../../controllers/admin/holidayCamps/booking/holidayBookingController");
 
 const {
-  createFeedback
+  createFeedback,
+  getAllFeedbacks,
+  getFeedbackById,
 } = require("../../controllers/admin/feedbackController");
 
 // -------------------- Routes --------------------
@@ -40,7 +42,7 @@ router.post(
 );
 
 router.put(
-  "/booking/update/:bookingId",
+  "/booking/update",
   authMiddleware,
   updateHolidayBooking
 );
@@ -48,6 +50,16 @@ router.post(
   "/feedback/create",
   authMiddleware,
   createFeedback
+);
+router.get(
+  "/feedback/list",
+  authMiddleware,
+  getAllFeedbacks
+);
+router.get(
+  "/feedback/listBy/:id",
+  authMiddleware,
+  getFeedbackById
 );
 
 module.exports = router;

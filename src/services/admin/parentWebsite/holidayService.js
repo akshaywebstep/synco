@@ -16,6 +16,7 @@ const {
 
 const { Op, Sequelize } = require("sequelize");
 const { sequelize } = require("../../../models");
+const DEBUG = process.env.DEBUG === "true";
 
 function deg2rad(deg) {
     return deg * (Math.PI / 180);
@@ -409,178 +410,404 @@ exports.getHolidayClassById = async (classId) => {
         };
     }
 };
-
-exports.updateHolidayBookingById = async (
-    bookingId,
-    data,
-    { parentAdminId } // role is always Parent here
+exports.updateHolidayBookingsForParent = async (
+  data,
+  { parentAdminId }
 ) => {
-    const transaction = await sequelize.transaction();
+  const transaction = await sequelize.transaction();
 
-    try {
-        const booking = await HolidayBooking.findByPk(bookingId, {
-            include: [
-                {
-                    model: HolidayBookingStudentMeta,
-                    as: "students",
-                    include: [
-                        { model: HolidayBookingParentMeta, as: "parents" },
-                        { model: HolidayBookingEmergencyMeta, as: "emergencyContacts" }
-                    ]
-                }
-            ],
-            transaction
-        });
+  try {
+    DEBUG && console.log("🧪 STEP 0: INPUTS");
+    DEBUG && console.log("parentAdminId:", parentAdminId, typeof parentAdminId);
+    DEBUG && console.log("students:", data?.students?.length);
+    DEBUG && console.log("parents:", data?.parents?.length);
+    DEBUG && console.log("emergencyContacts:", data?.emergencyContacts?.length);
 
-        if (!booking) throw new Error("Booking not found");
-
-        // 🔐 Parent authorization check
-        if (!parentAdminId || booking.parentAdminId !== parentAdminId) {
-            throw new Error("Unauthorized: You cannot update this booking");
-        }
-
-        const classSchedule = await HolidayClassSchedule.findByPk(
-            booking.classScheduleId,
-            { transaction }
-        );
-        if (!classSchedule) throw new Error("Class schedule not found");
-
-        let addedStudentsCount = 0;
-
-        // ========================
-        // 1️⃣ STUDENTS
-        // ========================
-        if (Array.isArray(data.students)) {
-            for (const student of data.students) {
-
-                if (student.id) {
-                    await HolidayBookingStudentMeta.update(
-                        {
-                            studentFirstName: student.studentFirstName,
-                            studentLastName: student.studentLastName,
-                            dateOfBirth: student.dateOfBirth,
-                            age: student.age,
-                            gender: student.gender,
-                            medicalInformation: student.medicalInformation,
-                        },
-                        { where: { id: student.id }, transaction }
-                    );
-                } else {
-                    if (classSchedule.capacity < 1) {
-                        throw new Error(`No capacity available. Remaining: ${classSchedule.capacity}`);
-                    }
-
-                    await HolidayBookingStudentMeta.create(
-                        {
-                            bookingId: booking.id,
-                            studentFirstName: student.studentFirstName,
-                            studentLastName: student.studentLastName,
-                            dateOfBirth: student.dateOfBirth,
-                            age: student.age,
-                            gender: student.gender,
-                            medicalInformation: student.medicalInformation,
-                        },
-                        { transaction }
-                    );
-
-                    addedStudentsCount++;
-                    classSchedule.capacity -= 1;
-                    await classSchedule.save({ transaction });
-                }
-            }
-        }
-
-        if (addedStudentsCount > 0) {
-            booking.totalStudents += addedStudentsCount;
-            await booking.save({ transaction });
-        }
-
-        // ========================
-        // 2️⃣ PARENTS (UPDATE + SYNC ADMIN)
-        // ========================
-        if (Array.isArray(data.parents)) {
-            for (const p of data.parents) {
-
-                if (p.id) {
-                    // Update Parent Meta
-                    await HolidayBookingParentMeta.update(
-                        {
-                            parentFirstName: p.parentFirstName,
-                            parentLastName: p.parentLastName,
-                            parentEmail: p.parentEmail, // allowed
-                            parentPhoneNumber: p.parentPhoneNumber,
-                            relationToChild: p.relationToChild,
-                            howDidYouHear: p.howDidYouHear,
-                        },
-                        { where: { id: p.id }, transaction }
-                    );
-
-                    // Sync Admin data (ONLY for parent user)
-                    if (parentAdminId) {
-                        const adminUpdatePayload = {
-                            firstName: p.parentFirstName,
-                            lastName: p.parentLastName,
-                            phoneNumber: p.parentPhoneNumber,
-                        };
-
-                        await Admin.update(
-                            adminUpdatePayload,
-                            { where: { id: parentAdminId }, transaction }
-                        );
-                    }
-                } else {
-                    // Create new parent meta
-                    if (!p.studentId) continue;
-
-                    await HolidayBookingParentMeta.create(
-                        {
-                            studentId: p.studentId,
-                            parentFirstName: p.parentFirstName,
-                            parentLastName: p.parentLastName,
-                            parentEmail: p.parentEmail,
-                            parentPhoneNumber: p.parentPhoneNumber,
-                            relationToChild: p.relationToChild,
-                            howDidYouHear: p.howDidYouHear,
-                        },
-                        { transaction }
-                    );
-                }
-            }
-        }
-
-        // ========================
-        // 3️⃣ EMERGENCY CONTACTS
-        // ========================
-        if (Array.isArray(data.emergencyContacts)) {
-            for (const e of data.emergencyContacts) {
-                if (e.id) {
-                    await HolidayBookingEmergencyMeta.update(
-                        {
-                            emergencyFirstName: e.emergencyFirstName,
-                            emergencyLastName: e.emergencyLastName,
-                            emergencyPhoneNumber: e.emergencyPhoneNumber,
-                            emergencyRelation: e.emergencyRelation,
-                        },
-                        { where: { id: e.id }, transaction }
-                    );
-                }
-            }
-        }
-
-        await transaction.commit();
-
-        return {
-            success: true,
-            message: "Holiday camp booking updated successfully",
-            details: {
-                addedStudents: addedStudentsCount,
-                totalStudents: booking.totalStudents,
-            }
-        };
-
-    } catch (error) {
-        await transaction.rollback();
-        console.error("❌ updateHolidayBookingById Error:", error.message);
-        throw error;
+    if (!Number.isInteger(parentAdminId)) {
+      throw new Error("Invalid parentAdminId");
     }
+
+    // ========================
+    // 🔎 STEP 1: FETCH ALL BOOKINGS for parentAdminId
+    // ========================
+    const bookings = await HolidayBooking.findAll({
+      where: { parentAdminId },
+      include: [
+        {
+          model: HolidayBookingStudentMeta,
+          as: "students",
+          include: [
+            { model: HolidayBookingParentMeta, as: "parents" },
+            { model: HolidayBookingEmergencyMeta, as: "emergencyContacts" }
+          ]
+        }
+      ],
+      transaction
+    });
+
+    DEBUG && console.log(`🧪 STEP 1: Found ${bookings.length} bookings for parentAdminId ${parentAdminId}`);
+
+    if (!bookings.length) throw new Error("No bookings found for this parentAdminId");
+
+    let totalAddedStudents = 0;
+
+    // ========================
+    // 🔎 STEP 2: Loop all bookings and update each one
+    // ========================
+    for (const booking of bookings) {
+      DEBUG && console.log(`🧪 STEP 2: Processing bookingId: ${booking.id}`);
+
+      // Fetch ClassSchedule for capacity check
+      const classSchedule = await HolidayClassSchedule.findByPk(
+        booking.classScheduleId,
+        { transaction }
+      );
+
+      if (!classSchedule) throw new Error(`Class schedule not found for bookingId ${booking.id}`);
+
+      // ========================
+      // 1️⃣ STUDENTS
+      // ========================
+      if (Array.isArray(data.students)) {
+        DEBUG && console.log("🧪 STEP 3: STUDENTS LOOP for bookingId", booking.id);
+
+        for (const student of data.students) {
+          DEBUG && console.log("➡️ Student payload:", student);
+
+          if (Number.isInteger(student.id)) {
+            DEBUG && console.log("🟢 Updating student ID:", student.id);
+
+            await HolidayBookingStudentMeta.update(
+              {
+                studentFirstName: student.studentFirstName,
+                studentLastName: student.studentLastName,
+                dateOfBirth: student.dateOfBirth,
+                age: student.age,
+                gender: student.gender,
+                medicalInformation: student.medicalInformation,
+              },
+              { where: { id: student.id }, transaction }
+            );
+          } else {
+            DEBUG && console.log("🟢 Creating new student");
+
+            if (classSchedule.capacity < 1) {
+              throw new Error(
+                `No capacity available. Remaining: ${classSchedule.capacity} for bookingId ${booking.id}`
+              );
+            }
+
+            await HolidayBookingStudentMeta.create(
+              {
+                bookingId: booking.id,
+                studentFirstName: student.studentFirstName,
+                studentLastName: student.studentLastName,
+                dateOfBirth: student.dateOfBirth,
+                age: student.age,
+                gender: student.gender,
+                medicalInformation: student.medicalInformation,
+              },
+              { transaction }
+            );
+
+            totalAddedStudents++;
+            classSchedule.capacity -= 1;
+            await classSchedule.save({ transaction });
+          }
+        }
+      }
+
+      // ========================
+      // 2️⃣ PARENTS
+      // ========================
+      if (Array.isArray(data.parents)) {
+        DEBUG && console.log("🧪 STEP 4: PARENTS LOOP for bookingId", booking.id);
+
+        let adminSynced = false;
+
+        for (const p of data.parents) {
+          DEBUG && console.log("➡️ Parent payload:", p);
+
+          const relationToChild = p.relationToChild || p.relationChild;
+          const howDidYouHear = p.howDidYouHear || p.howDidHear;
+
+          if (Number.isInteger(p.id)) {
+            DEBUG && console.log("🟢 Updating parent meta ID:", p.id);
+
+            await HolidayBookingParentMeta.update(
+              {
+                parentFirstName: p.parentFirstName,
+                parentLastName: p.parentLastName,
+                parentEmail: p.parentEmail,
+                parentPhoneNumber: p.parentPhoneNumber,
+                relationToChild,
+                howDidYouHear,
+              },
+              { where: { id: p.id }, transaction }
+            );
+
+            if (!adminSynced && Number.isInteger(parentAdminId)) {
+              DEBUG && console.log("🔄 Syncing Admin ID:", parentAdminId);
+
+              await Admin.update(
+                {
+                  firstName: p.parentFirstName,
+                  lastName: p.parentLastName,
+                  phoneNumber: p.parentPhoneNumber,
+                },
+                { where: { id: parentAdminId }, transaction }
+              );
+
+              adminSynced = true;
+            }
+          } else {
+            DEBUG && console.log("🟢 Creating new parent meta");
+
+            if (!p.studentId) {
+              DEBUG && console.log("⚠️ Skipping parent (no studentId)");
+              continue;
+            }
+
+            await HolidayBookingParentMeta.create(
+              {
+                studentId: p.studentId,
+                parentFirstName: p.parentFirstName,
+                parentLastName: p.parentLastName,
+                parentEmail: p.parentEmail,
+                parentPhoneNumber: p.parentPhoneNumber,
+                relationToChild,
+                howDidYouHear,
+              },
+              { transaction }
+            );
+          }
+        }
+      }
+
+      // ========================
+      // 3️⃣ EMERGENCY CONTACTS
+      // ========================
+      if (Array.isArray(data.emergencyContacts)) {
+        DEBUG && console.log("🧪 STEP 5: EMERGENCY LOOP for bookingId", booking.id);
+
+        for (const e of data.emergencyContacts) {
+          DEBUG && console.log("➡️ Emergency payload:", e);
+
+          if (Number.isInteger(e.id)) {
+            await HolidayBookingEmergencyMeta.update(
+              {
+                emergencyFirstName: e.emergencyFirstName,
+                emergencyLastName: e.emergencyLastName,
+                emergencyPhoneNumber: e.emergencyPhoneNumber,
+                emergencyRelation: e.emergencyRelation,
+              },
+              { where: { id: e.id }, transaction }
+            );
+          }
+        }
+      }
+    }
+
+    await transaction.commit();
+    DEBUG && console.log("✅ STEP 6: TRANSACTION COMMITTED");
+
+    return {
+      success: true,
+      message: "Holiday camp bookings updated successfully",
+      details: {
+        addedStudents: totalAddedStudents,
+        totalBookings: bookings.length,
+      }
+    };
+  } catch (error) {
+    await transaction.rollback();
+    console.error("❌ updateHolidayBookingsForParent Error:", error.message);
+    throw error;
+  }
 };
+
+// exports.updateHolidayBookingById = async (
+//     bookingId,
+//     data,
+//     { parentAdminId } // role is always Parent here
+// ) => {
+//     const transaction = await sequelize.transaction();
+
+//     try {
+//         const whereClause = {
+//             id: bookingId,
+//         };
+
+//         if (Number.isInteger(parentAdminId)) {
+//             whereClause.parentAdminId = parentAdminId;
+//         }
+//         const booking = await HolidayBooking.findOne({
+//             where: whereClause,
+//             include: [
+//                 {
+//                     model: HolidayBookingStudentMeta,
+//                     as: "students",
+//                     include: [
+//                         { model: HolidayBookingParentMeta, as: "parents" },
+//                         { model: HolidayBookingEmergencyMeta, as: "emergencyContacts" }
+//                     ]
+//                 }
+//             ],
+//             transaction
+//         });
+
+//         if (!booking) throw new Error("Booking not found");
+
+//         const classSchedule = await HolidayClassSchedule.findByPk(
+//             booking.classScheduleId,
+//             { transaction }
+//         );
+//         if (!classSchedule) throw new Error("Class schedule not found");
+
+//         let addedStudentsCount = 0;
+
+//         // ========================
+//         // 1️⃣ STUDENTS
+//         // ========================
+//         if (Array.isArray(data.students)) {
+//             for (const student of data.students) {
+
+//                 // 🟢 UPDATE existing student
+//                 if (Number.isInteger(student.id)) {
+//                     await HolidayBookingStudentMeta.update(
+//                         {
+//                             studentFirstName: student.studentFirstName,
+//                             studentLastName: student.studentLastName,
+//                             dateOfBirth: student.dateOfBirth,
+//                             age: student.age,
+//                             gender: student.gender,
+//                             medicalInformation: student.medicalInformation,
+//                         },
+//                         { where: { id: student.id }, transaction }
+//                     );
+//                 }
+
+//                 // 🟢 CREATE new student
+//                 else {
+//                     if (classSchedule.capacity < 1) {
+//                         throw new Error(
+//                             `No capacity available. Remaining: ${classSchedule.capacity}`
+//                         );
+//                     }
+
+//                     await HolidayBookingStudentMeta.create(
+//                         {
+//                             bookingId: booking.id,
+//                             studentFirstName: student.studentFirstName,
+//                             studentLastName: student.studentLastName,
+//                             dateOfBirth: student.dateOfBirth,
+//                             age: student.age,
+//                             gender: student.gender,
+//                             medicalInformation: student.medicalInformation,
+//                         },
+//                         { transaction }
+//                     );
+
+//                     addedStudentsCount++;
+//                     classSchedule.capacity -= 1;
+//                     await classSchedule.save({ transaction });
+//                 }
+//             }
+//         }
+
+//         // ========================
+//         // 2️⃣ PARENTS (UPDATE + SYNC ADMIN)
+//         // ========================
+//         if (Array.isArray(data.parents)) {
+//             let adminSynced = false;
+
+//             for (const p of data.parents) {
+
+//                 const relationToChild = p.relationToChild || p.relationChild;
+//                 const howDidYouHear = p.howDidYouHear || p.howDidHear;
+
+//                 // 🟢 UPDATE existing parent
+//                 if (Number.isInteger(p.id)) {
+//                     await HolidayBookingParentMeta.update(
+//                         {
+//                             parentFirstName: p.parentFirstName,
+//                             parentLastName: p.parentLastName,
+//                             parentEmail: p.parentEmail,
+//                             parentPhoneNumber: p.parentPhoneNumber,
+//                             relationToChild,
+//                             howDidYouHear,
+//                         },
+//                         { where: { id: p.id }, transaction }
+//                     );
+
+//                     // 🔄 Sync Admin ONCE
+//                     if (!adminSynced && Number.isInteger(parentAdminId)) {
+//                         await Admin.update(
+//                             {
+//                                 firstName: p.parentFirstName,
+//                                 lastName: p.parentLastName,
+//                                 phoneNumber: p.parentPhoneNumber,
+//                             },
+//                             { where: { id: parentAdminId }, transaction }
+//                         );
+//                         adminSynced = true;
+//                     }
+//                 }
+
+//                 // 🟢 CREATE new parent
+//                 else {
+//                     if (!p.studentId) continue;
+
+//                     await HolidayBookingParentMeta.create(
+//                         {
+//                             studentId: p.studentId,
+//                             parentFirstName: p.parentFirstName,
+//                             parentLastName: p.parentLastName,
+//                             parentEmail: p.parentEmail,
+//                             parentPhoneNumber: p.parentPhoneNumber,
+//                             relationToChild,
+//                             howDidYouHear,
+//                         },
+//                         { transaction }
+//                     );
+//                 }
+//             }
+//         }
+
+//         // ========================
+//         // 3️⃣ EMERGENCY CONTACTS
+//         // ========================
+//         if (Array.isArray(data.emergencyContacts)) {
+//             for (const e of data.emergencyContacts) {
+//                 // 🟢 UPDATE
+//                 if (Number.isInteger(e.id)) {
+//                     await HolidayBookingEmergencyMeta.update(
+//                         {
+//                             emergencyFirstName: e.emergencyFirstName,
+//                             emergencyLastName: e.emergencyLastName,
+//                             emergencyPhoneNumber: e.emergencyPhoneNumber,
+//                             emergencyRelation: e.emergencyRelation,
+//                         },
+//                         { where: { id: e.id }, transaction }
+//                     );
+//                 }
+//             }
+//         }
+
+//         await transaction.commit();
+
+//         return {
+//             success: true,
+//             message: "Holiday camp booking updated successfully",
+//             details: {
+//                 addedStudents: addedStudentsCount,
+//                 totalStudents: booking.totalStudents,
+//             }
+//         };
+
+//     } catch (error) {
+//         await transaction.rollback();
+//         console.error("❌ updateHolidayBookingById Error:", error.message);
+//         throw error;
+//     }
+// };

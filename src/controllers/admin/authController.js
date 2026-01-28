@@ -263,12 +263,20 @@ exports.login = async (req, res) => {
 // ✅ Verify token validity and also return permissions
 exports.verifyLogin = async (req, res) => {
   try {
-    const admin = req.admin; // should be populated from middleware after JWT verification
+    // ✅ Support both Admin & Parent
+    const user = req.admin || req.parent;
 
-    // If middleware didn't attach full role/permissions, fetch again from DB
-    const { data: freshAdmin } = await adminModel.findAdminByEmail(admin.email);
+    if (!user || !user.email) {
+      return res.status(401).json({
+        status: false,
+        message: "Unauthorized access.",
+      });
+    }
 
-    // Build active permissions
+    // Fetch fresh data
+    const { data: freshAdmin } = await adminModel.findAdminByEmail(user.email);
+
+    // Build active permissions (Admins only)
     const activePermissions = (freshAdmin.role?.permissions || [])
       .filter((p) => p.status === true)
       .map((p) => ({ module: p.module, action: p.action }));
@@ -287,6 +295,33 @@ exports.verifyLogin = async (req, res) => {
     });
   }
 };
+
+// exports.verifyLogin = async (req, res) => {
+//   try {
+//     const admin = req.admin; // should be populated from middleware after JWT verification
+
+//     // If middleware didn't attach full role/permissions, fetch again from DB
+//     const { data: freshAdmin } = await adminModel.findAdminByEmail(admin.email);
+
+//     // Build active permissions
+//     const activePermissions = (freshAdmin.role?.permissions || [])
+//       .filter((p) => p.status === true)
+//       .map((p) => ({ module: p.module, action: p.action }));
+
+//     return res.status(200).json({
+//       status: true,
+//       message: "Login verified successfully.",
+//       admin: freshAdmin,
+//       hasPermission: activePermissions,
+//     });
+//   } catch (error) {
+//     console.error("❌ Verify Login Error:", error);
+//     return res.status(500).json({
+//       status: false,
+//       message: "Error verifying login. Please try again.",
+//     });
+//   }
+// };
 
 // exports.verifyLogin = async (req, res) => {
 //   try {
@@ -500,7 +535,6 @@ exports.profile = async (req, res) => {
 //     });
 //   }
 // };
-
 exports.forgetPassword = async (req, res) => {
   const { email } = req.body;
 
@@ -509,20 +543,28 @@ exports.forgetPassword = async (req, res) => {
   }
 
   try {
+    // 🔍 Find admin / parent by email (same table)
     const { status, data: admin } = await adminModel.findAdminByEmail(email);
-    if (!email) {
-      return res.status(400).json({ message: "Email is required." });
-    }
+
     if (!status || !admin) {
       return res
         .status(404)
         .json({ message: "No account found with this email address." });
     }
 
-    // ✅ Generate a secure token (not JWT — better for password reset)
+    // ✅ Allow only Admin or Parents
+    const roleName = admin.role?.role;
+    if (!["Admin", "Parents","Super Admin"].includes(roleName)) {
+      return res.status(403).json({
+        message: "Password reset is not allowed for this account type.",
+      });
+    }
+
+    // 🔐 Generate reset token
     const resetToken = crypto.randomBytes(32).toString("hex");
     const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
+    // ✅ Save token (same for Admin & Parent)
     const saveResult = await adminModel.saveResetTokenToAdmin(
       admin.id,
       resetToken,
@@ -530,11 +572,12 @@ exports.forgetPassword = async (req, res) => {
     );
 
     if (!saveResult.status) {
-      return res
-        .status(500)
-        .json({ message: "Failed to generate reset link. Please try again." });
+      return res.status(500).json({
+        message: "Failed to generate reset link. Please try again.",
+      });
     }
 
+    // 📧 Load email config
     const emailConfigResult = await emailModel.getEmailConfig(
       "admin",
       "forgot-password"
@@ -553,66 +596,59 @@ exports.forgetPassword = async (req, res) => {
       });
     }
 
-    // ✅ Construct reset URL
-    const resetUrl = `https://grabbite.com/admin-login?token=${resetToken}&email=${encodeURIComponent(
+    // 🌐 Redirect based on role
+    const redirectUrl =
+      roleName === "Parents"
+        ? "https://grabbite.com/parent-login"
+        : "https://synco-admin-frontend.netlify.app/admin-login";
+
+    const resetUrl = `${redirectUrl}?token=${resetToken}&email=${encodeURIComponent(
       admin.email
     )}`;
 
+    const fullName = `${admin.firstName || ""} ${admin.lastName || ""}`.trim();
+
+    // 🧩 Template replacements
     const replacements = {
-      "{{name}}": admin.name || "",
-      "{{email}}": admin.email || "",
+      "{{name}}": fullName || "User",
+      "{{email}}": admin.email,
       "{{resetUrl}}": resetUrl,
       "{{expiry}}": expiry.toLocaleString(),
       "{{year}}": new Date().getFullYear().toString(),
       "{{appName}}": "Synco",
+      "{{role}}": roleName,
     };
 
     const replacePlaceholders = (text) => {
       if (typeof text !== "string") return text;
       return Object.entries(replacements).reduce(
-        (result, [key, val]) => result.replace(new RegExp(key, "g"), val),
+        (result, [key, val]) =>
+          result.replace(new RegExp(key, "g"), val),
         text
       );
     };
 
-    const emailSubject = replacePlaceholders(subject || "Reset Your Password");
-    const htmlBody = replacePlaceholders(
-      htmlTemplate?.trim() ||
-      `<div style="font-family: Arial, sans-serif; color: #333;">
-          <h2>Password Reset Request</h2>
-          <p>Dear {{name}},</p>
-          <p>You requested to reset your password. Click the link below:</p>
-          <p><a href="{{resetUrl}}" style="color: #007BFF;">Reset Password</a></p>
-          <p>This link is valid until <strong>{{expiry}}</strong>.</p>
-          <p>If you did not request this, ignore this email.</p>
-          <br/>
-          <p>Regards,<br/><strong>{{appName}} Team</strong></p>
-          <p style="font-size: 12px; color: #888;">&copy; {{year}} {{appName}}. All rights reserved.</p>
-        </div>`
+    const emailSubject = replacePlaceholders(
+      subject || "Reset Your Password"
     );
 
-    const mapRecipients = (list) =>
-      Array.isArray(list)
-        ? list.map(({ name, email }) => ({
-          name: replacePlaceholders(name),
-          email: replacePlaceholders(email),
-        }))
-        : [];
-    const recipients = mapRecipients(emailConfig.to);
-    if (recipients.length === 0) {
-      recipients.push({ name: admin.name || "Admin", email: admin.email });
-    }
+    const htmlBody = replacePlaceholders(
+      htmlTemplate ||
+        `<p>Hello {{name}},</p>
+         <p>You requested a password reset for your {{role}} account.</p>
+         <p><a href="{{resetUrl}}">Reset Password</a></p>
+         <p>Valid until {{expiry}}</p>`
+    );
 
-    const mailData = {
-      recipient: recipients,
-      cc: mapRecipients(emailConfig.cc),
-      bcc: mapRecipients(emailConfig.bcc),
+    // 📤 Send email
+    const emailResult = await sendEmail(emailConfig, {
+      recipient: [{ name: fullName || roleName, email: admin.email }],
+      cc: [],
+      bcc: [],
       subject: emailSubject,
       htmlBody,
       attachments: [],
-    };
-
-    const emailResult = await sendEmail(emailConfig, mailData);
+    });
 
     if (!emailResult.status) {
       return res.status(500).json({
@@ -631,6 +667,137 @@ exports.forgetPassword = async (req, res) => {
     });
   }
 };
+
+// exports.forgetPassword = async (req, res) => {
+//   const { email } = req.body;
+
+//   if (!email) {
+//     return res.status(400).json({ message: "Email is required." });
+//   }
+
+//   try {
+//     const { status, data: admin } = await adminModel.findAdminByEmail(email);
+//     if (!email) {
+//       return res.status(400).json({ message: "Email is required." });
+//     }
+//     if (!status || !admin) {
+//       return res
+//         .status(404)
+//         .json({ message: "No account found with this email address." });
+//     }
+
+//     // ✅ Generate a secure token (not JWT — better for password reset)
+//     const resetToken = crypto.randomBytes(32).toString("hex");
+//     const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+//     const saveResult = await adminModel.saveResetTokenToAdmin(
+//       admin.id,
+//       resetToken,
+//       expiry
+//     );
+
+//     if (!saveResult.status) {
+//       return res
+//         .status(500)
+//         .json({ message: "Failed to generate reset link. Please try again." });
+//     }
+
+//     const emailConfigResult = await emailModel.getEmailConfig(
+//       "admin",
+//       "forgot-password"
+//     );
+
+//     const {
+//       emailConfig,
+//       htmlTemplate,
+//       subject,
+//       message: configMessage,
+//     } = emailConfigResult;
+
+//     if (!emailConfigResult.status || !emailConfig) {
+//       return res.status(503).json({
+//         message: configMessage || "Failed to load email configuration.",
+//       });
+//     }
+
+//     // ✅ Construct reset URL
+//     const resetUrl = `https://grabbite.com/admin-login?token=${resetToken}&email=${encodeURIComponent(
+//       admin.email
+//     )}`;
+
+//     const replacements = {
+//       "{{name}}": admin.name || "",
+//       "{{email}}": admin.email || "",
+//       "{{resetUrl}}": resetUrl,
+//       "{{expiry}}": expiry.toLocaleString(),
+//       "{{year}}": new Date().getFullYear().toString(),
+//       "{{appName}}": "Synco",
+//     };
+
+//     const replacePlaceholders = (text) => {
+//       if (typeof text !== "string") return text;
+//       return Object.entries(replacements).reduce(
+//         (result, [key, val]) => result.replace(new RegExp(key, "g"), val),
+//         text
+//       );
+//     };
+
+//     const emailSubject = replacePlaceholders(subject || "Reset Your Password");
+//     const htmlBody = replacePlaceholders(
+//       htmlTemplate?.trim() ||
+//       `<div style="font-family: Arial, sans-serif; color: #333;">
+//           <h2>Password Reset Request</h2>
+//           <p>Dear {{name}},</p>
+//           <p>You requested to reset your password. Click the link below:</p>
+//           <p><a href="{{resetUrl}}" style="color: #007BFF;">Reset Password</a></p>
+//           <p>This link is valid until <strong>{{expiry}}</strong>.</p>
+//           <p>If you did not request this, ignore this email.</p>
+//           <br/>
+//           <p>Regards,<br/><strong>{{appName}} Team</strong></p>
+//           <p style="font-size: 12px; color: #888;">&copy; {{year}} {{appName}}. All rights reserved.</p>
+//         </div>`
+//     );
+
+//     const mapRecipients = (list) =>
+//       Array.isArray(list)
+//         ? list.map(({ name, email }) => ({
+//           name: replacePlaceholders(name),
+//           email: replacePlaceholders(email),
+//         }))
+//         : [];
+//     const recipients = mapRecipients(emailConfig.to);
+//     if (recipients.length === 0) {
+//       recipients.push({ name: admin.name || "Admin", email: admin.email });
+//     }
+
+//     const mailData = {
+//       recipient: recipients,
+//       cc: mapRecipients(emailConfig.cc),
+//       bcc: mapRecipients(emailConfig.bcc),
+//       subject: emailSubject,
+//       htmlBody,
+//       attachments: [],
+//     };
+
+//     const emailResult = await sendEmail(emailConfig, mailData);
+
+//     if (!emailResult.status) {
+//       return res.status(500).json({
+//         message: "Failed to send reset email.",
+//         error: emailResult.error,
+//       });
+//     }
+
+//     return res.status(200).json({
+//       message: "Reset link sent successfully to your email.",
+//     });
+//   } catch (error) {
+//     console.error("❌ Forget Password Error:", error);
+//     return res.status(500).json({
+//       message: "An error occurred while sending reset link.",
+//     });
+//   }
+// };
 
 exports.resetPasswordUsingToken = async (req, res) => {
   const { token, newPassword } = req.body;

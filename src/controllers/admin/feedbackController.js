@@ -3,13 +3,14 @@ const { logActivity } = require("../../utils/admin/activityLogger");
 const { validateFormData } = require("../../utils/validateFormData");
 const { createNotification } = require("../../utils/admin/notificationHelper");
 const { getMainSuperAdminOfAdmin } = require("../../utils/auth");
+const { sequelize } = require("../../models");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "feedback";
 
 exports.createFeedback = async (req, res) => {
-  const transaction = await require("../../models").sequelize.transaction();
+  const transaction = await sequelize.transaction();
 
   try {
     const {
@@ -20,9 +21,14 @@ exports.createFeedback = async (req, res) => {
       birthdayPartyBookingId,
       holidayBookingId,
       holidayClassScheduleId,
+      feedbackType,
+      category,
+      notes,
+      agentAssigned,
+      status,
     } = req.body;
 
-    // 🔹 Common validation
+    // Common validation
     const validation = validateFormData(req.body, [
       "serviceType",
       "feedbackType",
@@ -34,7 +40,7 @@ exports.createFeedback = async (req, res) => {
       return res.status(400).json(validation);
     }
 
-    // 🔹 Service-type specific validation
+    // Service-type specific validation
     switch (serviceType) {
       case "weekly class membership":
       case "weekly class trial":
@@ -42,43 +48,62 @@ exports.createFeedback = async (req, res) => {
           throw new Error("bookingId and classScheduleId are required");
         }
         break;
-
       case "one to one":
-        if (!oneToOneBookingId) {  // classScheduleId no longer required here
+        if (!oneToOneBookingId) {
           throw new Error("oneToOneBookingId is required");
         }
         break;
-
       case "birthday party":
-        if (!birthdayPartyBookingId) {  // classScheduleId no longer required here
+        if (!birthdayPartyBookingId) {
           throw new Error("birthdayPartyBookingId is required");
         }
         break;
-
       case "holiday camp":
         if (!holidayBookingId || !holidayClassScheduleId) {
-          throw new Error(
-            "holidayBookingId and holidayClassScheduleId are required"
-          );
+          throw new Error("holidayBookingId and holidayClassScheduleId are required");
         }
         break;
-
       default:
         throw new Error("Invalid serviceType");
     }
 
-    // 🔹 Prepare data
+    // Determine creator info based on role
+    let createdBy = null;
+    let createdByParent = null;
+    let role = null;
+
+    if (req.parent) {
+      createdBy = null;
+      createdByParent = req.parent.id;
+      role = "Parents";
+
+    } else if (req.admin) {
+      createdBy = req.admin.id;
+      createdByParent = null;
+      role = "Admin";
+    }
+
+    // Prepare feedback data for service
     const feedbackData = {
-      ...req.body,
-      createdBy: req.admin ? req.admin.id : null,
-      createdByParent: req.parent ? req.parent.id : null,
+      serviceType,
+      bookingId,
+      classScheduleId,
+      oneToOneBookingId,
+      birthdayPartyBookingId,
+      holidayBookingId,
+      holidayClassScheduleId,
+      feedbackType,
+      category,
+      notes: notes || null,
+      agentAssigned: agentAssigned || null,
+      status: status || "in_process",
+      createdBy,
+      createdByParent,
+      role,
     };
 
-    // 🔹 Create feedback
-    const result = await FeedbackService.createFeedbackById(
-      feedbackData,
-      transaction
-    );
+    // Create feedback via service with transaction
+    const result = await FeedbackService.createFeedbackById(feedbackData, transaction);
 
     if (!result.status) {
       await transaction.rollback();
@@ -87,8 +112,8 @@ exports.createFeedback = async (req, res) => {
 
     await transaction.commit();
 
-    // 🔹 Notification
-    if (feedbackData.agentAssigned) {
+    // Send notification if agent assigned and created by admin
+    if (agentAssigned && role === "admin") {
       await createNotification(
         req,
         "New Feedback Assigned",
@@ -105,24 +130,53 @@ exports.createFeedback = async (req, res) => {
   } catch (error) {
     await transaction.rollback();
     console.error("❌ createFeedback Error:", error.message);
-
     return res.status(400).json({
       status: false,
       message: error.message,
     });
   }
 };
-
 exports.getAllFeedbacks = async (req, res) => {
   try {
-    const createdBy = req.admin?.id;
+    const userId = req.admin?.id || req.parent?.id;
+    const role = req.admin ? "Admin" : req.parent ? "Parents" : null;
 
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+    if (DEBUG) {
+      console.log("🔍 User ID:", userId);
+      console.log("🔍 User Role:", role);
+    }
 
-    const result = await FeedbackService.getAllFeedbacks(
-      superAdminId
-    );
+    if (!userId || !role) {
+      return res.status(401).json({
+        status: false,
+        message: "Unauthorized or invalid user",
+      });
+    }
+
+    // Fetch super admin info only for admins and parents
+    let superAdminId = null;
+    if (role === "Admin" || role === "Parents") {
+      const mainSuperAdminResult = await getMainSuperAdminOfAdmin(userId);
+      superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+      if (DEBUG) {
+        console.log("🔍 Main Super Admin Result:", mainSuperAdminResult);
+        console.log("🔍 Super Admin ID:", superAdminId);
+      }
+
+      // If parent and no super admin found, fallback and log
+      if (role === "Parents" && !superAdminId) {
+        if (DEBUG) {
+          console.warn(`⚠️ No super admin found for parent user ${userId}. Will fetch only parent's feedback.`);
+        }
+      }
+    }
+
+    const result = await FeedbackService.getAllFeedbacks(userId, role, superAdminId);
+
+    if (DEBUG) {
+      console.log("🔍 Feedback Service Result:", result);
+    }
 
     if (!result.status) {
       return res.status(400).json(result);
@@ -142,25 +196,97 @@ exports.getAllFeedbacks = async (req, res) => {
   }
 };
 
+// exports.getAllFeedbacks = async (req, res) => {
+//   try {
+//     const createdBy = req.admin?.id;
+
+//     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+//     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+
+//     const result = await FeedbackService.getAllFeedbacks(
+//       superAdminId
+//     );
+
+//     if (!result.status) {
+//       return res.status(400).json(result);
+//     }
+
+//     return res.status(200).json({
+//       status: true,
+//       message: "All feedbacks retrieved successfully",
+//       data: result.data,
+//     });
+//   } catch (error) {
+//     console.error("❌ getAllFeedbacks Controller Error:", error);
+//     return res.status(500).json({
+//       status: false,
+//       message: "Server error",
+//     });
+//   }
+// };
+
+// exports.getFeedbackById = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const createdBy = req.admin?.id;
+
+//     if (!adminId) {
+//       return res.status(401).json({
+//         status: false,
+//         message: "Unauthorized",
+//       });
+//     }
+
+//     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+//     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+
+//     const result = await FeedbackService.getFeedbackById(
+//       id,
+//       superAdminId
+//     );
+
+//     if (!result.status) {
+//       return res.status(404).json(result);
+//     }
+
+//     return res.status(200).json({
+//       status: true,
+//       message: "Feedback retrieved successfully",
+//       data: result.data,
+//     });
+//   } catch (error) {
+//     console.error("❌ getFeedbackById Controller Error:", error.message);
+//     return res.status(500).json({
+//       status: false,
+//       message: "Server error",
+//     });
+//   }
+// };
+
 exports.getFeedbackById = async (req, res) => {
   try {
-    const { id } = req.params;
-    const createdBy = req.admin?.id;
+    const feedbackId = req.params.id;
 
-    if (!adminId) {
+    // Determine user info and role
+    const userId = req.admin?.id || req.parent?.id;
+    const role = req.admin ? "Admin" : req.parent ? "Parents" : null;
+
+    if (!userId || !role) {
       return res.status(401).json({
         status: false,
         message: "Unauthorized",
       });
     }
 
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+    // Fetch super admin only if role is Admin or Parents
+    let superAdminId = null;
+    if (role === "Admin" || role === "Parents") {
+      const mainSuperAdminResult = await getMainSuperAdminOfAdmin(userId);
+      superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+    }
 
-    const result = await FeedbackService.getFeedbackById(
-      id,
-      superAdminId
-    );
+    // Call service with userId, role, and superAdminId for proper access control
+    const result = await FeedbackService.getFeedbackById(feedbackId, userId, role, superAdminId);
 
     if (!result.status) {
       return res.status(404).json(result);
