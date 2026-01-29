@@ -64,15 +64,12 @@ const Admin = sequelize.define(
       defaultValue: null,
     },
 
-    // added for referral
-    // referralToken: {
-    //   type: DataTypes.STRING(255),
-    //   unique: true,
-    //   allowNull: true,
-    //   defaultValue: null,
-    //   comment: "Unique referral token for personal referral link",
-    // },
-
+    referralCode: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+      unique: true,
+      comment: "Unique referral code for parent/admin",
+    },
     // ✅ Soft delete column
     deletedAt: {
       type: DataTypes.DATE,

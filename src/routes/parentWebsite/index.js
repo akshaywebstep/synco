@@ -11,5 +11,6 @@ router.use("/booking", require("./bookingRoutes"));
 // Find A Holiday Camp
 router.use("/holiday", require("./holidayRoutes"));
 router.use("/student-course", require("./studentCourseRoutes"));
-
+// Referral
+router.use("/referral", require("./referralRoutes"));
 module.exports = router;

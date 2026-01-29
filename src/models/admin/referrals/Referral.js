@@ -22,13 +22,6 @@ const Referral = sequelize.define(
             onDelete: "SET NULL",
             comment: "Admin ID who referred this user",
         },
-        /** ✅ NEW FIELD */
-        referralLink: {
-            type: DataTypes.STRING(255),
-            allowNull: false,
-            unique: true,
-            comment: "Generated referral link",
-        },
 
         firstName: {
             type: DataTypes.STRING(100),

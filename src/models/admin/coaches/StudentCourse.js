@@ -47,6 +47,12 @@ const StudentCourse = sequelize.define(
             allowNull: false,
             defaultValue: 0,
         },
+        status: {
+            type: DataTypes.ENUM("Pending", "Complete"),
+            allowNull: false,
+            defaultValue: "Pending",
+            comment: "Course approval status",
+        },
 
         // =========================
         // Course Videos (Multiple)
