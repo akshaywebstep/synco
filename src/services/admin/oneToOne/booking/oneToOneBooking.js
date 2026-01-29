@@ -20,7 +20,7 @@ const sendSMS = require("../../../../utils/sms/clickSend");
 const DEBUG = process.env.DEBUG === "true";
 
 const bcrypt = require("bcrypt");
-
+const generateReferralCode = require("../../../../utils/generateReferralCode");
 const stripePromise = require("../../../../utils/payment/pay360/stripe");
 const {
   createCustomer,
@@ -160,6 +160,8 @@ exports.createOnetoOneBooking = async (data) => {
           password: hashedPassword,
           roleId: parentRole.id,
           status: "active",
+          // ✅ ADD THIS
+          referralCode: generateReferralCode(),
         },
         { transaction }
       );

@@ -28,6 +28,8 @@ const {
     getStripePaymentDetails,
 } = require("../../../../controllers/test/payment/stripe/stripeController");
 const sendEmail = require("../../../../utils/email/sendEmail");
+const generateReferralCode = require("../../../../utils/generateReferralCode");
+
 const { getEmailConfig } = require("../../../email");
 const emailModel = require("../../../../services/email");
 const sendSMS = require("../../../../utils/sms/clickSend");
@@ -162,6 +164,8 @@ exports.createBirthdayPartyBooking = async (data) => {
                     password: hashedPassword,
                     roleId: parentRole.id,
                     status: "active",
+                    // ✅ ADD THIS
+                    referralCode: generateReferralCode(),
                 },
                 { transaction }
             );

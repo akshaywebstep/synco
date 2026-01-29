@@ -1,4 +1,4 @@
-exports.generateReferralCode = (length = 8) => {
+module.exports = function generateReferralCode(length = 8) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
 

@@ -82,12 +82,14 @@ exports.createHolidayBooking = async (data, options = {}) => {
             password: hashedPassword,
             roleId: parentRole.id,
             status: "active",
+            // ✅ ADD THIS
+            referralCode: generateReferralCode(),
           },
           { transaction }
         );
         parentAdminId = admin.id;
       } else {
-        const [admin] = await Admin.findOrCreate({
+        const [admin, isCreated] = await Admin.findOrCreate({
           where: { email },
           defaults: {
             firstName: firstParent.parentFirstName || "Parent",
@@ -108,7 +110,13 @@ exports.createHolidayBooking = async (data, options = {}) => {
           await admin.save({ transaction });
         }
         parentAdminId = admin.id;
+        console.log("Referral debug:", {
+          email,
+          isCreated,
+          referralCode: admin.referralCode
+        });
       }
+
     }
 
     // -----------------------------
