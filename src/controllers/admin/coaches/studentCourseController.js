@@ -6,7 +6,10 @@ const { saveFile } = require("../../../utils/fileHandler");
 const studentCourseService = require("../../../services/admin/coaches/studentCourseService");
 const { logActivity } = require("../../../utils/admin/activityLogger");
 const { createNotification } = require("../../../utils/admin/notificationHelper");
-
+const {
+    getVideoDurationInSeconds,
+    formatDuration,
+} = require("../../../utils/videoHelper");
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 
 const DEBUG = process.env.DEBUG === "true";
@@ -146,7 +149,8 @@ exports.createStudentCourse = async (req, res) => {
             uploadedVideos.push({
                 name: videoMeta.name,
                 videoUrl,
-                childFeatures: videoMeta.childFeatures || []
+                childFeatures: videoMeta.childFeatures || [],
+                status: "start training", // ✅ default status
             });
         }
 
@@ -524,12 +528,24 @@ exports.getStudentCourseByIdForParent = async (req, res) => {
         // =========================
         // 3️⃣ Parse videos safely
         // =========================
+        // =========================
+        // 3️⃣ Parse videos + add duration
+        // =========================
         const course = result.data.toJSON();
 
         course.videos =
             typeof course.videos === "string"
                 ? JSON.parse(course.videos)
                 : course.videos;
+
+        // 🎯 ADD DURATION PER VIDEO
+        if (Array.isArray(course.videos)) {
+            for (const video of course.videos) {
+                const seconds = await getVideoDurationInSeconds(video.videoUrl);
+                // video.durationInSeconds = Math.round(seconds);
+                video.duration = formatDuration(seconds); // human readable
+            }
+        }
 
         if (DEBUG) {
             console.log("📤 Student Course:", course);
