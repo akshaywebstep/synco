@@ -207,14 +207,121 @@ exports.markNotificationAsRead = async (req, res) => {
 };
 
 // ✅ Get all notifications
+// exports.getAllNotifications = async (req, res) => {
+//   const adminId = req.admin?.id;
+//   const category = req.query?.category || null;
+
+//   if (DEBUG) {
+//     // console.log(`📨 Fetching notifications for Admin ID: ${superAdminId}`);
+//     console.log(`📂 Category filter: ${category}`);
+//     console.log(`🔐 Admin Role: ${req.admin?.role}`);
+//   }
+
+//   // ✅ Get Super Admin and related admins
+//   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+//   const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+//   let adminIds = [];
+//   const isSuperAdmin = req.admin?.role?.toLowerCase() === "super admin";
+
+//   if (isSuperAdmin) {
+//     const admins = mainSuperAdminResult?.admins || [];
+//     adminIds = admins.length > 0 ? admins.map(a => a.id) : [];
+//   }
+
+//   try {
+//     // ✅ For normal notifications, still exclude own-created if required
+//     const notificationResult = await notificationModel.getAllNotifications(
+//       // superAdminId,
+//       adminId,
+//       category,
+//       { excludeOwn: true },
+//       {
+//         isSuperAdmin,
+//         superAdminId,
+//         adminIds
+//       }
+//     );
+
+//     // ✅ For custom notifications, DO NOT exclude own-created
+//     const customNotificationResult =
+//       await customNotificationModel.getAllReceivedCustomNotifications(
+//         superAdminId,
+//         // adminId,
+//         category
+//       );
+
+//     if (!notificationResult.status || !customNotificationResult.status) {
+//       const errorMsg =
+//         notificationResult.message ||
+//         customNotificationResult.message ||
+//         "Failed to fetch notifications.";
+
+//       console.error("❌ Notification fetch failed:", errorMsg);
+
+//       await logActivity(
+//         req,
+//         PANEL,
+//         MODULE,
+//         "list",
+//         { oneLineMessage: errorMsg },
+//         false
+//       );
+
+//       return res.status(500).json({ status: false, message: errorMsg });
+//     }
+
+//     const combinedData = {
+//       notifications: notificationResult.data || [],
+//       customNotifications: customNotificationResult.data || [],
+//     };
+
+//     const totalCount =
+//       (combinedData.notifications.length || 0) +
+//       (combinedData.customNotifications.length || 0);
+
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "list",
+//       {
+//         oneLineMessage: `Successfully fetched ${totalCount} notification(s).`,
+//       },
+//       true
+//     );
+
+//     return res.status(200).json({
+//       status: true,
+//       message: "Notifications fetched successfully.",
+//       data: combinedData,
+//     });
+//   } catch (error) {
+//     console.error("❌ Error fetching notifications:", error.message);
+
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "list",
+//       { oneLineMessage: error.message },
+//       false
+//     );
+
+//     return res.status(500).json({
+//       status: false,
+//       message: "Server error while fetching notifications.",
+//     });
+//   }
+// };
+// ✅ Get all notifications
 exports.getAllNotifications = async (req, res) => {
-  const adminId = req.admin?.id;
+  const adminId = req.admin?.id || req.parent?.id;
   const category = req.query?.category || null;
 
   if (DEBUG) {
-    // console.log(`📨 Fetching notifications for Admin ID: ${superAdminId}`);
     console.log(`📂 Category filter: ${category}`);
-    console.log(`🔐 Admin Role: ${req.admin?.role}`);
+    console.log(`🔐 Admin Role: ${req.admin?.role || req.parent?.role}`);
   }
 
   // ✅ Get Super Admin and related admins
@@ -230,28 +337,27 @@ exports.getAllNotifications = async (req, res) => {
   }
 
   try {
-    // ✅ For normal notifications, still exclude own-created if required
+    // ✅ Normal notifications
     const notificationResult = await notificationModel.getAllNotifications(
-      // superAdminId,
       adminId,
       category,
       { excludeOwn: true },
       {
         isSuperAdmin,
         superAdminId,
-        adminIds
+        adminIds,
       }
     );
 
-    // ✅ For custom notifications, DO NOT exclude own-created
+    // ✅ Custom notifications
     const customNotificationResult =
       await customNotificationModel.getAllReceivedCustomNotifications(
         superAdminId,
-        // adminId,
         category
       );
 
-    if (!notificationResult.status || !customNotificationResult.status) {
+    // ❌ Failure case
+    if (!notificationResult.status && !customNotificationResult.status) {
       const errorMsg =
         notificationResult.message ||
         customNotificationResult.message ||
@@ -259,8 +365,15 @@ exports.getAllNotifications = async (req, res) => {
 
       console.error("❌ Notification fetch failed:", errorMsg);
 
+      const logReq = {
+        ...req,
+        headers: req.headers,     // 🔥 keep headers
+        ip: req.ip,               // 🔥 keep ip
+        admin: req.admin || req.parent,
+      };
+
       await logActivity(
-        req,
+        logReq,
         PANEL,
         MODULE,
         "list",
@@ -268,20 +381,31 @@ exports.getAllNotifications = async (req, res) => {
         false
       );
 
-      return res.status(500).json({ status: false, message: errorMsg });
+      return res.status(500).json({
+        status: false,
+        message: errorMsg,
+      });
     }
 
+    // ✅ Success case
     const combinedData = {
       notifications: notificationResult.data || [],
       customNotifications: customNotificationResult.data || [],
     };
 
     const totalCount =
-      (combinedData.notifications.length || 0) +
-      (combinedData.customNotifications.length || 0);
+      combinedData.notifications.length +
+      combinedData.customNotifications.length;
+
+    const logReq = {
+      ...req,
+      headers: req.headers,     // 🔥 keep headers
+      ip: req.ip,               // 🔥 keep ip
+      admin: req.admin || req.parent,
+    };
 
     await logActivity(
-      req,
+      logReq,
       PANEL,
       MODULE,
       "list",
@@ -298,15 +422,6 @@ exports.getAllNotifications = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error fetching notifications:", error.message);
-
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "list",
-      { oneLineMessage: error.message },
-      false
-    );
 
     return res.status(500).json({
       status: false,

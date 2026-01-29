@@ -143,6 +143,9 @@ const authMiddleware = async (req, res, next) => {
         id: admin.id,
         parentAdminId: admin.id,
         email: admin.email,
+        role: admin.role.role,
+        roleId: admin.role.id,
+        profile: admin.profile,
       };
     }
     // Otherwise treat as Admin

@@ -131,21 +131,38 @@ exports.getAllNotifications = async (adminId, category = null, options = {}, dat
     const whereCondition = {};
 
     if (category) whereCondition.category = category;
+    const userRole = admin.role?.role?.toLowerCase();
 
     if (isSuperAdmin) {
-      // ✅ Super Admin → include all admins under them
       whereCondition.adminId = { [Op.in]: adminIds };
+    } else if (userRole === "parents") {
+      // Parent: apni hi notifications
+      whereCondition.adminId = adminId;
     } else if (!isSuperAdmin && superAdminId) {
-      // ✅ Normal Admin → show only their Super Admin’s notifications
       whereCondition.adminId = superAdminId;
     } else {
-      // ⚠️ No valid admin context found
       return {
         status: false,
-        message: "Invalid admin context: neither Super Admin nor linked Super Admin found.",
+        message:
+          "Invalid admin context: neither Super Admin nor linked Super Admin found.",
         data: [],
       };
     }
+
+    // if (isSuperAdmin) {
+    //   // ✅ Super Admin → include all admins under them
+    //   whereCondition.adminId = { [Op.in]: adminIds };
+    // } else if (!isSuperAdmin && superAdminId) {
+    //   // ✅ Normal Admin → show only their Super Admin’s notifications
+    //   whereCondition.adminId = superAdminId;
+    // } else {
+    //   // ⚠️ No valid admin context found
+    //   return {
+    //     status: false,
+    //     message: "Invalid admin context: neither Super Admin nor linked Super Admin found.",
+    //     data: [],
+    //   };
+    // }
 
     // 📦 Fetch notifications
     const notifications = await Notification.findAll({

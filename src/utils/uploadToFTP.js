@@ -33,6 +33,7 @@ async function getFTPConfig() {
 // -------------------- Upload --------------------
 async function uploadToFTP(localPath, remoteFilePath) {
     const client = new ftp.Client();
+    client.ftp.socket.setTimeout(10 * 60 * 1000); // 10 minutes
     // client.ftp.verbose = DEBUG;
 
     try {
@@ -44,6 +45,7 @@ async function uploadToFTP(localPath, remoteFilePath) {
             user: ftpConfig.user,
             password: ftpConfig.password,
             secure: ftpConfig.secure || false,
+            passive: true, // ✅ ADD
         });
 
         // Split remote path into folders + filename
@@ -63,7 +65,7 @@ async function uploadToFTP(localPath, remoteFilePath) {
 
         // if (DEBUG)
         //     console.log(`⬆️ Uploading: ${localPath} → ${remoteFilePath}`);
-        await client.uploadFrom(localPath, fileName);
+        await client.uploadFrom(fs.createReadStream(localPath), fileName);
 
         await client.close();
 
@@ -84,6 +86,7 @@ async function downloadFromFTP(fileUrl, localPath) {
     if (!fileUrl) return null;
 
     const client = new ftp.Client();
+    client.ftp.socket.setTimeout(10 * 60 * 1000); // 10 minutes
     // client.ftp.verbose = DEBUG;
 
     try {
@@ -95,6 +98,7 @@ async function downloadFromFTP(fileUrl, localPath) {
             user: ftpConfig.user,
             password: ftpConfig.password,
             secure: ftpConfig.secure || false,
+            passive: true, // ✅ ADD
         });
 
         let urlPath = fileUrl.replace(ftpConfig.publicUrlBase, "").replace(/^\/+/, "");
@@ -114,6 +118,7 @@ async function downloadFromFTP(fileUrl, localPath) {
     } finally {
         client.close();
     }
+
 }
 
 /* DELETE FILE */
@@ -185,9 +190,9 @@ async function renameOnFTP(fileUrl, newFileName) {
         return `${ftpConfig.publicUrlBase}${newPath}`.replace(/\\/g, "/");
     } catch (err) {
         console.error("❌ FTP rename failed:", err);
-        try { await client.close(); } catch {}
+        try { await client.close(); } catch { }
         throw err;
     }
 }
 
-module.exports = { uploadToFTP, downloadFromFTP, deleteFromFTP,renameOnFTP };
+module.exports = { uploadToFTP, downloadFromFTP, deleteFromFTP, renameOnFTP };

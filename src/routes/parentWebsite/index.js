@@ -13,4 +13,7 @@ router.use("/holiday", require("./holidayRoutes"));
 router.use("/student-course", require("./studentCourseRoutes"));
 // Referral
 router.use("/referral", require("./referralRoutes"));
+
+router.use("/notification", require("./notificationRoutes.js"));
+
 module.exports = router;

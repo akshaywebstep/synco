@@ -272,7 +272,7 @@ exports.createBooking = async (req, res) => {
     // Send email
     const parentMetas = await BookingParentMeta.findAll({
       where: { studentId },
-    });
+    }); 
 
     if (parentMetas && parentMetas.length > 0) {
       const firstParent = parentMetas[0]; // only first parent
