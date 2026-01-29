@@ -621,7 +621,7 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
         );
         const profile = await Admin.findOne({
             where: { id: parentAdminId },
-            attributes: ['id', 'firstName', 'lastName', 'email', 'roleId'],
+            attributes: ['id', 'firstName', 'lastName', 'email', 'roleId','referralCode'],
         });
         /* ---------- STUDENT SIGNATURE ---------- */
         const studentSignature = (s) => [

@@ -58,3 +58,42 @@ exports.createReferral = async (req, res) => {
     });
   }
 };
+
+exports.listReferrals = async (req, res) => {
+  const parentId = req.parent?.id;
+  const { status } = req.query;
+
+  if (!parentId) {
+    return res.status(401).json({
+      status: false,
+      message: "Unauthorized access.",
+    });
+  }
+
+  try {
+    const result = await referralService.listReferrals({
+      parentId,
+      status,
+    });
+
+    if (!result.status) {
+      return res.status(400).json({
+        status: false,
+        message: result.message,
+      });
+    }
+
+    return res.status(200).json({
+      status: true,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ listReferrals Controller Error:", error);
+
+    return res.status(500).json({
+      status: false,
+      message: "Server error while fetching referrals.",
+    });
+  }
+};

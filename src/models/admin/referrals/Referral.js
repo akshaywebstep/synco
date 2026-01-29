@@ -50,7 +50,7 @@ const Referral = sequelize.define(
         },
 
         status: {
-            type: DataTypes.ENUM("pending", "rewarded", "cancelled"),
+            type: DataTypes.ENUM("pending", "successful", "cancelled"),
             allowNull: false,
             defaultValue: "pending",
         },

@@ -604,6 +604,11 @@ Feedback.belongsTo(models.HolidayVenue, {
 // Booking associations
 Booking.hasMany(Feedback, { foreignKey: "bookingId", as: "feedbacks" });
 
+Referral.belongsTo(models.Admin, {
+  foreignKey: "referredBy",
+  as: "referrer",
+});
+
 // ====================== 📦 Module Exports ====================== //
 module.exports = {
   AppConfig,
