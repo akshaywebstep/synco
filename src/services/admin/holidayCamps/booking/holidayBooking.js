@@ -28,6 +28,7 @@ const {
   createCharges,
   getStripePaymentDetails,
 } = require("../../../../controllers/test/payment/stripe/stripeController");
+const generateReferralCode = require("../../../../utils/generateReferralCode");
 const sendEmail = require("../../../../utils/email/sendEmail");
 const moment = require("moment");
 const debug = require("debug")("service:comments");
@@ -96,9 +97,16 @@ exports.createHolidayBooking = async (data, options = {}) => {
             password: hashedPassword,
             roleId: parentRole.id,
             status: "active",
+            // ✅ ONLY for new parent
+            referralCode: generateReferralCode(),
           },
           transaction,
         });
+        // 🛡️ Safety net (old parent but referralCode missing)
+        if (!isCreated && !admin.referralCode) {
+          admin.referralCode = generateReferralCode();
+          await admin.save({ transaction });
+        }
         parentAdminId = admin.id;
       }
     }

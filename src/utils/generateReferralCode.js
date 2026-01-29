@@ -1,11 +1,10 @@
-const crypto = require("crypto");
+exports.generateReferralCode = (length = 8) => {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
 
-const generateReferralCode = (length = 8) => {
-    return crypto
-        .randomBytes(length)
-        .toString("base64")
-        .replace(/[^A-Z0-9]/gi, "")
-        .substring(0, length)
-        .toUpperCase();
+  for (let i = 0; i < length; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+
+  return code;
 };
-module.exports = generateReferralCode;
