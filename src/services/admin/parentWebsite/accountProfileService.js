@@ -1,4 +1,3 @@
-
 const {
     Booking,
     BookingStudentMeta,
@@ -32,9 +31,14 @@ const {
     HolidayCamp,
     HolidayCampDates,
     Discount,
+    sequelize,
+    CancelBooking,
 } = require("../../../models");
 const { Op } = require("sequelize");
+const DEBUG = process.env.DEBUG === "true";
 const stripePromise = require("../../../utils/payment/pay360/stripe");
+const { cancelContract, } = require("../../../utils/payment/accessPaySuit/accesPaySuit");
+const { cancelGoCardlessBillingRequest } = require("../../../utils/payment/pay360/customer");
 const normalize = (v) =>
     String(v || "")
         .trim()
@@ -59,6 +63,8 @@ function safeParseJSON(str) {
         return str; // fallback: return original string if invalid JSON
     }
 }
+
+const REFERRAL_BASE_URL = "https://sharelink.com/get";
 
 exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
     try {
@@ -621,8 +627,16 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
         );
         const profile = await Admin.findOne({
             where: { id: parentAdminId },
-            attributes: ['id', 'firstName', 'lastName', 'email', 'roleId','referralCode'],
+            attributes: ['id', 'firstName', 'lastName', 'email', 'roleId', 'referralCode'],
         });
+        const profileWithReferralLink = profile
+            ? {
+                ...profile.get({ plain: true }),
+                referralLink: profile.referralCode
+                    ? `${REFERRAL_BASE_URL}/${profile.referralCode}`
+                    : null,
+            }
+            : null;
         /* ---------- STUDENT SIGNATURE ---------- */
         const studentSignature = (s) => [
             normalize(s.studentFirstName),
@@ -838,7 +852,8 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
             message: "Fetched combined bookings successfully.",
             data: {
                 combinedBookings,
-                profile,  // single admin object for the parentAdminId
+                // profile,  // single admin object for the parentAdminId
+                profile: profileWithReferralLink,
                 uniqueProfiles: {
                     students: uniqueStudents,
                     parents: uniqueParents,
@@ -852,5 +867,174 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
             status: false,
             message: error.message,
         };
+    }
+};
+
+exports.createCancelBooking = async ({
+    bookingId,
+    cancelReason,
+    additionalNote,
+    cancelDate = null,
+    cancellationType = "scheduled",
+}) => {
+    const bookingType = "membership";
+
+    DEBUG && console.log("🚀 Cancel membership started:", bookingId);
+
+    const t = await sequelize.transaction();
+
+    try {
+        // --------------------------------------------------
+        // Booking validation
+        // --------------------------------------------------
+        const booking = await Booking.findByPk(bookingId, { transaction: t });
+        if (!booking) {
+            await t.rollback();
+            return { status: false, message: "Booking not found." };
+        }
+
+        // --------------------------------------------------
+        // Payment cancellation
+        // --------------------------------------------------
+        const payment = await BookingPayment.findOne({
+            where: { bookingId },
+            transaction: t,
+        });
+
+        if (!payment) {
+            await t.rollback();
+            return {
+                status: false,
+                message: "No payment info found. Cannot proceed.",
+            };
+        }
+
+        DEBUG && console.log("💰 Payment type:", payment.paymentType);
+
+        if (payment.paymentType === "accesspaysuite") {
+            let gatewayResponse = payment.gatewayResponse;
+
+            if (typeof gatewayResponse === "string") {
+                gatewayResponse = JSON.parse(gatewayResponse);
+            }
+
+            const contractId = gatewayResponse?.contract?.Id;
+            if (!contractId) {
+                await t.rollback();
+                return {
+                    status: false,
+                    message: "Missing AccessPaySuite contract ID",
+                };
+            }
+
+            const apsCancelParams = {
+                reason: cancelReason || "Membership cancelled",
+            };
+
+            // cancel at end of billing cycle if no date
+            if (cancelDate) {
+                apsCancelParams.cancelOn = cancelDate;
+            }
+
+            const apsResponse = await cancelContract(contractId, apsCancelParams);
+            if (!apsResponse?.status) {
+                await t.rollback();
+                return {
+                    status: false,
+                    message: "Failed to cancel AccessPaySuite contract",
+                };
+            }
+
+            await payment.update(
+                { paymentStatus: "cancelled" },
+                { transaction: t }
+            );
+        }
+
+        else if (payment.paymentType === "bank") {
+            let billingRequest = payment.goCardlessBillingRequest;
+
+            if (typeof billingRequest === "string") {
+                billingRequest = JSON.parse(billingRequest);
+            }
+
+            if (!billingRequest?.id) {
+                await t.rollback();
+                return {
+                    status: false,
+                    message: "Missing GoCardless billing request ID",
+                };
+            }
+
+            const billingCancelRes =
+                await cancelGoCardlessBillingRequest(billingRequest.id);
+
+            if (!billingCancelRes?.status) {
+                await t.rollback();
+                return {
+                    status: false,
+                    message: "GoCardless billing request cancellation failed",
+                };
+            }
+
+            await payment.update(
+                { paymentStatus: "cancelled" },
+                { transaction: t }
+            );
+        }
+
+        else {
+            await t.rollback();
+            return {
+                status: false,
+                message: "Unsupported payment type",
+            };
+        }
+
+        // --------------------------------------------------
+        // Create or update CancelBooking record
+        // --------------------------------------------------
+        const existingCancel = await CancelBooking.findOne({
+            where: { bookingId, bookingType },
+            transaction: t,
+        });
+
+        const cancelPayload = {
+            cancelReason: cancelReason || null,
+            additionalNote: additionalNote || null,
+            cancelDate,
+            cancellationType,
+            updatedAt: new Date(),
+        };
+
+        if (existingCancel) {
+            await existingCancel.update(cancelPayload, { transaction: t });
+        } else {
+            await CancelBooking.create(
+                { bookingId, bookingType, ...cancelPayload },
+                { transaction: t }
+            );
+        }
+
+        // --------------------------------------------------
+        // Booking status update
+        // --------------------------------------------------
+        await booking.update(
+            { status: "request_to_cancel" },
+            { transaction: t }
+        );
+
+        await t.commit();
+
+        return {
+            status: true,
+            message: cancelDate
+                ? `Membership cancellation scheduled for ${cancelDate}.`
+                : "Membership cancellation scheduled at end of billing period.",
+        };
+    } catch (error) {
+        await t.rollback();
+        console.error("❌ createCancelBooking Error:", error);
+        return { status: false, message: error.message };
     }
 };

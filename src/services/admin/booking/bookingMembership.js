@@ -17,7 +17,7 @@ const { sequelize } = require("../../../models");
 const { validateFormData, isValidEmail } = require("../../../utils/validateFormData");
 const { createSchedule, getSchedules, createAccessPaySuiteCustomer,
   createContract, } = require("../../../utils/payment/accessPaySuit/accesPaySuit");
-
+const generateReferralCode = require("../../../utils/generateReferralCode");
 const axios = require("axios");
 const { Op } = require("sequelize");
 const bcrypt = require("bcrypt");
@@ -339,6 +339,8 @@ exports.createBooking = async (data, options) => {
             password: hashedPassword,
             roleId: parentRole.id,
             status: "active",
+            // ✅ ADD THIS
+            referralCode: generateReferralCode(),
           },
           { transaction: t }
         );
@@ -347,7 +349,7 @@ exports.createBooking = async (data, options) => {
       }
       else {
         // 🌐 WEBSITE → findOrCreate
-        const [admin] = await Admin.findOrCreate({
+        const [admin,isCreated] = await Admin.findOrCreate({
           where: { email },
           defaults: {
             firstName: firstParent.parentFirstName || "Parent",
@@ -357,9 +359,16 @@ exports.createBooking = async (data, options) => {
             password: hashedPassword,
             roleId: parentRole.id,
             status: "active",
+            // ✅ ADD THIS
+            referralCode: generateReferralCode(),
           },
           transaction: t,
         });
+        // 🛡️ Safety net (old parent but referralCode missing)
+        if (!isCreated && !admin.referralCode) {
+          admin.referralCode = generateReferralCode();
+          await admin.save({ transaction });
+        }
 
         parentAdminId = admin.id;
       }
