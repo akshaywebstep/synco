@@ -380,6 +380,94 @@ exports.getAllReceivedCustomNotifications = async (
   }
 };
 
+exports.getAllReceivedCustomNotificationsForParent = async (parentId, category = null) => {
+  try {
+    if (!parentId || isNaN(Number(parentId))) {
+      return {
+        status: false,
+        message: "No valid parent found for this request.",
+        data: [],
+      };
+    }
+
+    const whereCondition = {};
+    if (category) {
+      whereCondition.category = category;
+    }
+
+    const notifications = await CustomNotification.findAll({
+      where: {
+        ...whereCondition,
+        [Op.and]: [
+          { adminId: { [Op.ne]: parentId } }, // exclude notifications created by this parent themselves
+          {
+            [Op.or]: [
+              { "$reads.adminId$": parentId }, // notifications where this parent is recipient
+            ],
+          },
+        ],
+      },
+      order: [["createdAt", "DESC"]],
+      include: [
+        {
+          model: Admin,
+          as: "admin",
+          attributes: ["id", "firstName", "lastName", "email", "profile"],
+        },
+        {
+          model: CustomNotificationRead,
+          as: "reads",
+          include: [
+            {
+              model: Admin,
+              as: "admin",
+              attributes: ["id", "email", "firstName", "lastName", "profile"],
+            },
+          ],
+        },
+      ],
+    });
+
+    // Format response
+    const formattedNotifications = notifications.map((n) => {
+      const notif = n.toJSON();
+
+      return {
+        id: notif.id,
+        title: notif.title,
+        description: notif.description,
+        category: notif.category,
+        createdAt: notif.createdAt,
+        createdBy: {
+          id: notif.admin?.id,
+          email: notif.admin?.email,
+          profile: notif.admin?.profile,
+          name: `${notif.admin?.firstName || ""} ${notif.admin?.lastName || ""}`.trim(),
+        },
+        recipients: notif.reads.map((read) => ({
+          recipientId: read.admin?.id,
+          recipientEmail: read.admin?.email,
+          recipientName: `${read.admin?.firstName || ""} ${read.admin?.lastName || ""}`.trim(),
+          isRead: read.status === true,
+        })),
+      };
+    });
+
+    return {
+      status: true,
+      data: formattedNotifications,
+      message: `${formattedNotifications.length} custom notification(s) retrieved successfully.`,
+    };
+  } catch (error) {
+    console.error("❌ Sequelize Error in getAllReceivedCustomNotifications:", error);
+    return {
+      status: false,
+      message: `Failed to retrieve custom notifications. ${error.message}`,
+      data: [],
+    };
+  }
+};
+
 // Get all admins login user
 exports.getAllAdmins = async (loggedInAdminId) => {
   try {

@@ -131,38 +131,21 @@ exports.getAllNotifications = async (adminId, category = null, options = {}, dat
     const whereCondition = {};
 
     if (category) whereCondition.category = category;
-    const userRole = admin.role?.role?.toLowerCase();
 
     if (isSuperAdmin) {
+      // ✅ Super Admin → include all admins under them
       whereCondition.adminId = { [Op.in]: adminIds };
-    } else if (userRole === "parents") {
-      // Parent: apni hi notifications
-      whereCondition.adminId = adminId;
     } else if (!isSuperAdmin && superAdminId) {
+      // ✅ Normal Admin → show only their Super Admin’s notifications
       whereCondition.adminId = superAdminId;
     } else {
+      // ⚠️ No valid admin context found
       return {
         status: false,
-        message:
-          "Invalid admin context: neither Super Admin nor linked Super Admin found.",
+        message: "Invalid admin context: neither Super Admin nor linked Super Admin found.",
         data: [],
       };
     }
-
-    // if (isSuperAdmin) {
-    //   // ✅ Super Admin → include all admins under them
-    //   whereCondition.adminId = { [Op.in]: adminIds };
-    // } else if (!isSuperAdmin && superAdminId) {
-    //   // ✅ Normal Admin → show only their Super Admin’s notifications
-    //   whereCondition.adminId = superAdminId;
-    // } else {
-    //   // ⚠️ No valid admin context found
-    //   return {
-    //     status: false,
-    //     message: "Invalid admin context: neither Super Admin nor linked Super Admin found.",
-    //     data: [],
-    //   };
-    // }
 
     // 📦 Fetch notifications
     const notifications = await Notification.findAll({
@@ -212,6 +195,126 @@ exports.getAllNotifications = async (adminId, category = null, options = {}, dat
     }));
 
     // ✅ Final structured response
+    return {
+      status: true,
+      message: "Notifications fetched successfully.",
+      data: {
+        roleId: admin.roleId,
+        role: admin.role?.role || null,
+        admin: {
+          id: admin.id,
+          firstName: admin.firstName,
+          lastName: admin.lastName,
+          email: admin.email,
+          profile: admin.profile,
+        },
+        notifications: formattedNotifications,
+      },
+    };
+  } catch (error) {
+    console.error("❌ Error in getAllNotifications:", error);
+    return {
+      status: false,
+      message: "Failed to fetch notifications.",
+      error: error.message,
+    };
+  }
+};
+
+exports.getAllNotificationsForParent = async (adminId, category = null, options = {}, data = {}) => {
+  try {
+    const { isParent = false } = data;
+
+    // Validate parentId
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid parent found for this request.",
+        data: [],
+      };
+    }
+
+    // Fetch admin (parent) info
+    const admin = await Admin.findByPk(Number(adminId), {
+      attributes: ["id", "roleId", "firstName", "lastName", "email", "profile"],
+      include: [
+        {
+          model: AdminRole,
+          as: "role",
+          attributes: ["id", "role"],
+        },
+      ],
+    });
+
+    if (!admin) {
+      return {
+        status: false,
+        message: "Parent not found.",
+        data: [],
+      };
+    }
+
+    const userRole = admin.role?.role?.toLowerCase();
+
+    if (!isParent || userRole !== "parents") {
+      return {
+        status: false,
+        message: "Unauthorized access: Not a parent account.",
+        data: [],
+      };
+    }
+
+    // Build filter for notifications ONLY for this parent
+    const whereCondition = {};
+    if (category) whereCondition.category = category;
+    whereCondition.adminId = adminId;
+
+    // Fetch notifications
+    const notifications = await Notification.findAll({
+      where: whereCondition,
+      order: [["createdAt", "DESC"]],
+      include: [
+        {
+          model: Admin,
+          as: "admin",
+          attributes: ["id", "firstName", "lastName", "email", "profile"],
+        },
+      ],
+    });
+
+    const notificationIds = notifications.map((n) => n.id);
+
+    // Fetch read notifications for parent
+    const readRecords = await NotificationRead.findAll({
+      where: {
+        adminId,
+        notificationId: { [Op.in]: notificationIds },
+      },
+      attributes: ["notificationId"],
+      raw: true,
+    });
+
+    const readIds = new Set(readRecords.map((r) => r.notificationId));
+
+    // Format response
+    const formattedNotifications = notifications.map((n) => ({
+      id: n.id,
+      title: n.title,
+      description: n.description,
+      category: n.category,
+      createdAt: n.createdAt,
+      isRead: readIds.has(n.id),
+      admin: n.admin
+        ? {
+            id: n.admin.id,
+            firstName: n.admin.firstName,
+            lastName: n.admin.lastName,
+            email: n.admin.email,
+            profile: n.admin.profile,
+          }
+        : null,
+    }));
+
     return {
       status: true,
       message: "Notifications fetched successfully.",

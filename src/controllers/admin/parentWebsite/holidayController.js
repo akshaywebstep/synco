@@ -1,10 +1,19 @@
 const { logActivity } = require("../../../utils/admin/activityLogger");
 const {
+    HolidayVenue,
+    HolidayClassSchedule,
+    HolidayBooking,
+} = require("../../../models");
+
+const {
     getAllHolidayVenuesWithHolidayClasses,
     getHolidayClassById,
     updateHolidayBookingsForParent,
 } = require("../../../services/admin/parentWebsite/holidayService");
-
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
+const {
+    createNotification,
+} = require("../../../utils/admin/notificationHelper");
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "parent";
 const MODULE = "find-a-camp";
@@ -165,7 +174,7 @@ exports.updateHolidayBooking = async (req, res) => {
     try {
         const formData = req.body;
 
-        const parentAdminId = req.admin?.id || null;
+        const parentAdminId = req.admin?.id || req.parent?.id;
 
         if (!parentAdminId) {
             return res.status(401).json({
@@ -285,23 +294,54 @@ exports.updateHolidayBooking = async (req, res) => {
             formData,
             { parentAdminId }
         );
+        // Resolve super admin as usual
+        const mainSuperAdminResult = await getMainSuperAdminOfAdmin(parentAdminId);
+        let superAdminId = mainSuperAdminResult?.superAdmin?.id || null;
 
-        // ------------------------------------------------------------
-        // 📝 Step 5: Logs & Notifications (ADMIN only)
-        // ------------------------------------------------------------
-        const role = req.admin?.role || null;
+        // If superAdminId is null, fallback to admin who created the holiday venue (from holiday class)
+        if (!superAdminId) {
+            if (result?.details?.totalBookings > 0) {
+                // Assuming your updateHolidayBookingsForParent doesn't currently return booking IDs,
+                // but you do have access to the classScheduleId from somewhere
+                // So better to get classScheduleId from the first booking in DB by parentAdminId
 
-        if (role === "Parent") {
-            await logActivity(req, PANEL, MODULE, "update", formData, true);
+                // Fetch one booking to get classScheduleId
+                const bookings = await HolidayBooking.findAll({
+                    where: { parentAdminId },
+                    limit: 1,
+                    include: [
+                        {
+                            model: HolidayClassSchedule,
+                            as: 'holidayClassSchedules',
+                            include: [
+                                {
+                                    model: HolidayVenue,
+                                    as: 'venue',
+                                    attributes: ['createdBy'],
+                                }
+                            ]
+                        }
+                    ]
+                });
 
-            await createNotification(
-                req,
-                "Holiday Booking Updated Successfully",
-                `Booking updated by ${req.admin?.firstName || "Parent"} ${req.admin?.lastName || ""}.`,
-                "System"
-            );
+                if (bookings.length > 0) {
+                    const createdByAdminId = bookings[0].classSchedule?.venue?.createdBy;
+
+                    if (createdByAdminId) {
+                        superAdminId = createdByAdminId;
+                    }
+                }
+            }
         }
 
+        const adminIdToUse = superAdminId || parentAdminId || (req.admin?.id) || (req.parent?.id);
+
+        await createNotification(
+            { admin: { id: adminIdToUse } },
+            "Holiday Booking Updated",
+            `Booking updated by Parent (${req.admin?.email || req.parent?.email || "unknown"}).`,
+            "System"
+        );
         // ------------------------------------------------------------
         // 📤 Step 6: Response
         // ------------------------------------------------------------

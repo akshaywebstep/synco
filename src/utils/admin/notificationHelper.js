@@ -1,5 +1,5 @@
 const notificationService = require("../../services/admin/notification/notification");
-
+const customNotificationModel = require("../../models/admin/notification/CustomNotification");
 const DEBUG = process.env.DEBUG === "true";
 
 /**
@@ -102,6 +102,64 @@ exports.createNotification = async (
     return {
       status: false,
       message: "Server error occurred while logging notification.",
+    };
+  }
+};
+
+/**
+ * Create custom notification for multiple admins (parents)
+ */
+exports.createCustomNotificationForAdmins = async ({
+  title = null,
+  description = null,
+  category,
+  createdByAdminId,
+  recipientAdminIds = [],
+}) => {
+  try {
+    // 1️⃣ Create notification
+    const result = await customNotificationModel.createCustomNotification(
+      title,
+      description,
+      category,
+      createdByAdminId
+    );
+
+    if (!result.status) {
+      return result;
+    }
+
+    const notificationId = result.data.id;
+
+    // 2️⃣ Remove duplicates + creator
+    const uniqueAdminIds = [
+      ...new Set(
+        recipientAdminIds
+          .map((id) => Number(id))
+          .filter((id) => id && id !== createdByAdminId)
+      ),
+    ];
+
+    // 3️⃣ Create read entries
+    await Promise.all(
+      uniqueAdminIds.map((adminId) =>
+        customNotificationModel.createCustomNotificationReads({
+          customNotificationId: notificationId,
+          adminId,
+        })
+      )
+    );
+
+    return {
+      status: true,
+      message: "Custom notification sent successfully.",
+      data: { id: notificationId },
+    };
+  } catch (error) {
+    console.error("❌ Helper error:", error);
+    return {
+      status: false,
+      message: "Failed to send custom notification.",
     };
   }
 };

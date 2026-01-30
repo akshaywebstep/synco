@@ -631,7 +631,9 @@ exports.createSessionPlanGroup = async (req, res) => {
       } catch (err) {
         console.error(`Failed to upload ${type}:`, err.message);
       } finally {
-        await fs.promises.unlink(localPath).catch(() => { });
+        if (uploadedPath) {
+          await fs.promises.unlink(localPath).catch(() => { });
+        }
       }
 
       return uploadedPath;
@@ -1601,7 +1603,7 @@ exports.updateSessionPlanGroup = async (req, res) => {
       try {
         uploadedPath = await uploadToFTP(localPath, relativeFtpPath);
       } finally {
-        await fs.promises.unlink(localPath).catch(() => {});
+        await fs.promises.unlink(localPath).catch(() => { });
       }
 
       return uploadedPath;
@@ -1659,8 +1661,7 @@ exports.updateSessionPlanGroup = async (req, res) => {
     await createNotification(
       req,
       "Session Plan Group Updated",
-      `The session plan group '${updated.groupName}' was updated by ${
-        req?.admin ? `${req.admin.firstName} ${req.admin.lastName}`.trim() : "Admin"
+      `The session plan group '${updated.groupName}' was updated by ${req?.admin ? `${req.admin.firstName} ${req.admin.lastName}`.trim() : "Admin"
       }.`,
       "System"
     );

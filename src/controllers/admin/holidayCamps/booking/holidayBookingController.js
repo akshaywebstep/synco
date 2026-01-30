@@ -18,6 +18,7 @@ const MODULE = "holiday-booking";
 exports.createHolidayBooking = async (req, res) => {
   try {
     const adminId = req.admin?.id || null;
+    const parentAdminId = req.parent?.id || formData.parentAdminId || null;
     const formData = req.body;
 
     if (DEBUG)
@@ -167,43 +168,58 @@ exports.createHolidayBooking = async (req, res) => {
     // const result = await holidayBookingService.createHolidayBooking(formData, { adminId });
     const result = await holidayBookingService.createHolidayBooking(
       formData,
-      {
+         {
         adminId,
-        parentAdminId: formData.parentAdminId || null
+        parentAdminId
       }
     );
 
-    if (!result.success) {
-      return res.status(400).json({
-        status: false,
-        message: result.message || "Failed to create booking",
-      });
-    }
+  if (!result.success) {
+    return res.status(400).json({
+      status: false,
+      message: result.message || "Failed to create booking",
+    });
+  }
 
-    // ✅ Step 6: Log and notify
-    await logActivity(req, PANEL, MODULE, "create", formData.data, true);
+  // ✅ Step 6: Log and notify
+  const actor =
+    req.admin
+      ? {
+        id: req.admin.id,
+        name: `${req.admin.firstName || ""} ${req.admin.lastName || ""}`.trim(),
+      }
+      : req.parent
+        ? {
+          id: req.parent.id,
+          name: `${req.parent.firstName || ""} ${req.parent.lastName || ""}`.trim(),
+        }
+        : null;
+  if (actor?.id) {
+    // force adminId for notification
+    req.admin = { id: actor.id };
+
     await createNotification(
       req,
       "Holiday Booking Created Successfully",
-      `The booking was created by ${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""
-      }.`,
+      `The booking was created by ${actor.name}.`,
       "System"
     );
-
-    // ✅ Step 7: Response
-    return res.status(201).json({
-      status: true,
-      message: "Holiday Booking created successfully",
-      data: result,
-    });
-  } catch (error) {
-    if (DEBUG) console.error("❌ Error in createHolidayBooking Booking:", error);
-
-    return res.status(500).json({
-      status: false,
-      message: DEBUG ? error.message : "Internal server error",
-    });
   }
+
+  // ✅ Step 7: Response
+  return res.status(201).json({
+    status: true,
+    message: "Holiday Booking created successfully",
+    data: result,
+  });
+} catch (error) {
+  if (DEBUG) console.error("❌ Error in createHolidayBooking Booking:", error);
+
+  return res.status(500).json({
+    status: false,
+    message: DEBUG ? error.message : "Internal server error",
+  });
+}
 };
 
 // Assign Booking to Admin / Agent

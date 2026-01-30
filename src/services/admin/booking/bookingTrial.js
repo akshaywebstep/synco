@@ -114,7 +114,7 @@ exports.createBooking = async (data, options) => {
 
       else {
         // ✅ WEBSITE BOOKING → findOrCreate
-        const [admin,isCreated] = await Admin.findOrCreate({
+        const [admin, isCreated] = await Admin.findOrCreate({
           where: { email },
           defaults: {
             firstName: firstParent.parentFirstName || "Parent",
@@ -680,6 +680,41 @@ exports.assignBookingsToAgent = async ({ bookingIds, bookedBy }) => {
         transaction: t,
       }
     );
+
+    // ======================
+    // OPTIONAL: Update Parent Admin Ownership
+    // ======================
+    const parentAdminIds = bookings
+      .map(b => b.parentAdminId)
+      .filter(Boolean);
+
+    if (parentAdminIds.length > 0) {
+      const parentsNeedingAssignment = await Admin.count({
+        where: {
+          id: { [Op.in]: parentAdminIds },
+          createdByAdmin: null,
+          superAdminId: null,
+        },
+        transaction: t,
+      });
+
+      if (parentsNeedingAssignment > 0) {
+        await Admin.update(
+          {
+            createdByAdmin: bookedBy,
+            superAdminId: bookedBy,
+          },
+          {
+            where: {
+              id: { [Op.in]: parentAdminIds },
+              createdByAdmin: null,
+              superAdminId: null,
+            },
+            transaction: t,
+          }
+        );
+      }
+    }
 
     await t.commit();
 

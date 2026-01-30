@@ -156,7 +156,6 @@ OneToOneBooking.associate = (models) => {
     as: "coach", // ✅ this alias must match the include alias
   });
 
-  
 };
 
 module.exports = OneToOneBooking;

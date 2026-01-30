@@ -16,6 +16,7 @@ const emailModel = require("../../../services/email");
 const sendEmail = require("../../../utils/email/sendEmail");
 const {
   createNotification,
+  createCustomNotificationForAdmins
 } = require("../../../utils/admin/notificationHelper");
 
 const DEBUG = process.env.DEBUG === "true";
@@ -72,6 +73,21 @@ exports.updateBookingStudents = async (req, res) => {
 
     await t.commit();
     if (DEBUG) console.log("✅ Transaction committed");
+    // 🔹 Fetch booking to get parentAdminId
+    const booking = await Booking.findByPk(bookingId, {
+      attributes: ["parentAdminId"],
+    });
+
+    // 🔹 Send custom notification to parent
+    if (booking?.parentAdminId) {
+      await createCustomNotificationForAdmins({
+        title: "Booking Updated",
+        description: `Student, parent, and emergency data updated for booking ID: ${bookingId}.`,
+        category: "Updates",
+        createdByAdminId: adminId,
+        recipientAdminIds: [booking.parentAdminId],
+      });
+    }
 
     // 🔹 Log activity
     await logActivity(
@@ -237,8 +253,6 @@ exports.updateBooking = async (req, res) => {
         // -------------------------------------------------------------------
         // NEW EMAIL LOGIC — EXACTLY LIKE YOUR POSTED BLOCK
         // -------------------------------------------------------------------
-    
-        
     
         if (configStatus && htmlTemplate) {
           console.log("✔️ Email template loaded successfully.");

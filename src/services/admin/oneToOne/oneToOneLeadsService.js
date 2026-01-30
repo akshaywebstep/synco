@@ -93,6 +93,37 @@ exports.assignBookingsToAgent = async ({ leadIds, createdBy }) => {
         transaction: t,
       }
     );
+    // ======================
+    // OPTIONAL: Update Parent Admin Ownership (FROM BOOKINGS)
+    // ======================
+    const bookings = await OneToOneBooking.findAll({
+      where: {
+        leadId: { [Op.in]: leadIds },
+      },
+      attributes: ["parentAdminId"],
+      transaction: t,
+    });
+
+    const parentAdminIds = bookings
+      .map(b => b.parentAdminId)
+      .filter(Boolean);
+
+    if (parentAdminIds.length > 0) {
+      await Admin.update(
+        {
+          createdByAdmin: createdBy,
+          superAdminId: createdBy,
+        },
+        {
+          where: {
+            id: { [Op.in]: parentAdminIds },
+            createdByAdmin: null,
+            superAdminId: null,
+          },
+          transaction: t,
+        }
+      );
+    }
 
     await t.commit();
 

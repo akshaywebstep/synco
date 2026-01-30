@@ -60,7 +60,8 @@ const getMainSuperAdminOfAdmin = async (adminId, includeSuperAdmin = false) => {
             }
 
             const admin = adminResult.data;
-            const adminRole = admin.role?.role?.toLowerCase() || "";
+            // const adminRole = admin.role?.role?.toLowerCase() || "";
+            const adminRole = String(admin.role?.role || "").toLowerCase();
 
             // 🟢 Case 1: Current admin is super admin
             if (adminRole === "super admin") {
@@ -107,20 +108,7 @@ const getMainSuperAdminOfAdmin = async (adminId, includeSuperAdmin = false) => {
     }
 };
 
-// exports.getChildAdminIds = async (superAdminId) => {
-//   if (!superAdminId) return [];
-
-//   const children = await Admin.findAll({
-//     where: { parentAdminId: superAdminId }, // adjust field name if your column differs
-//     attributes: ['id'],
-//     raw: true,
-//   });
-
-//   return children.map((c) => c.id);
-// };
-
 module.exports = {
     generatePasswordHint,
     getMainSuperAdminOfAdmin,
-    // getChildAdminIds,
 };

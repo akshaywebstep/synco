@@ -2,8 +2,7 @@ const express = require("express");
 const router = express.Router();
 const authMiddleware = require("../../middleware/admin/authenticate");
 const {
-  // createNotification,
-  getAllNotifications,
+  getAllNotificationsForParent,
   markNotificationAsRead,
 } = require("../../controllers/admin/notification/notificationController");
 
@@ -19,7 +18,7 @@ router.patch(
 router.get(
   "/",
   authMiddleware,
-  getAllNotifications
+  getAllNotificationsForParent
 );
 
 module.exports = router;

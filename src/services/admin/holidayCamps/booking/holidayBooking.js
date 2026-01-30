@@ -71,6 +71,16 @@ exports.createHolidayBooking = async (data, options = {}) => {
       });
 
       const hashedPassword = await bcrypt.hash("Synco123", 10);
+      // 🔥 ADD THIS CHECK (NO VARIABLE CHANGES)
+      const existingAdmin = await Admin.findOne({
+        where: { email },
+        transaction,
+      });
+
+      // ❌ Admin booking → show proper message
+      if (existingAdmin && source === "admin") {
+        throw new Error("This email already exists");
+      }
 
       if (source === "admin") {
         const admin = await Admin.create(
@@ -84,6 +94,8 @@ exports.createHolidayBooking = async (data, options = {}) => {
             status: "active",
             // ✅ ADD THIS
             referralCode: generateReferralCode(),
+            createdByAdmin: adminId,
+            superAdminId: adminId,
           },
           { transaction }
         );
@@ -1083,24 +1095,32 @@ exports.assignBookingsToAgent = async ({ bookingIds, bookedBy }) => {
   const t = await sequelize.transaction();
 
   try {
+    // ======================
     // Validation
+    // ======================
     if (!Array.isArray(bookingIds) || bookingIds.length === 0) {
       throw new Error("At least one booking ID is required");
     }
+
     if (!bookedBy || isNaN(Number(bookedBy))) {
       throw new Error("Valid agent ID is required");
     }
 
+    // ======================
     // Check Agent Exists
+    // ======================
     const agent = await Admin.findByPk(bookedBy, {
       include: [{ model: AdminRole, as: "role" }],
       transaction: t,
     });
+
     if (!agent) {
       throw new Error("Agent not found");
     }
 
-    // Fetch Bookings with students and parents eager loaded
+    // ======================
+    // Fetch Bookings
+    // ======================
     const bookings = await HolidayBooking.findAll({
       where: {
         id: { [Op.in]: bookingIds },
@@ -1110,7 +1130,11 @@ exports.assignBookingsToAgent = async ({ bookingIds, bookedBy }) => {
           model: HolidayBookingStudentMeta,
           as: "students",
           include: [
-            { model: HolidayBookingParentMeta, as: "parents", required: false },
+            {
+              model: HolidayBookingParentMeta,
+              as: "parents",
+              required: false,
+            },
           ],
           required: false,
         },
@@ -1122,27 +1146,28 @@ exports.assignBookingsToAgent = async ({ bookingIds, bookedBy }) => {
       throw new Error("One or more bookings were not found");
     }
 
-    // Filter bookings that are already assigned
-    const alreadyAssigned = bookings.filter((b) => b.bookedBy);
+    // ======================
+    // Prevent reassignment
+    // ======================
+    const alreadyAssigned = bookings.filter(b => b.bookedBy);
 
     if (alreadyAssigned.length > 0) {
-      // Build detailed info for error message
-      const detailedInfo = alreadyAssigned.map((booking) => {
-        const studentNames = booking.students
-          ?.map(
-            (s) => `${s.studentFirstName || ""} ${s.studentLastName || ""}`.trim()
-          )
-          .filter(Boolean)
-          .join(", ") || "N/A";
+      const detailedInfo = alreadyAssigned.map(booking => {
+        const studentNames =
+          booking.students
+            ?.map(s => `${s.studentFirstName || ""} ${s.studentLastName || ""}`.trim())
+            .filter(Boolean)
+            .join(", ") || "N/A";
 
-        const parentNames = booking.students
-          ?.flatMap((s) =>
-            s.parents?.map(
-              (p) => `${p.parentFirstName || ""} ${p.parentLastName || ""}`.trim()
-            ) || []
-          )
-          .filter(Boolean)
-          .join(", ") || "N/A";
+        const parentNames =
+          booking.students
+            ?.flatMap(s =>
+              s.parents?.map(p =>
+                `${p.parentFirstName || ""} ${p.parentLastName || ""}`.trim()
+              ) || []
+            )
+            .filter(Boolean)
+            .join(", ") || "N/A";
 
         return `Student(s): ${studentNames}; Parent(s): ${parentNames}`;
       });
@@ -1152,7 +1177,9 @@ exports.assignBookingsToAgent = async ({ bookingIds, bookedBy }) => {
       );
     }
 
-    // Bulk update bookings
+    // ======================
+    // Assign Bookings
+    // ======================
     await HolidayBooking.update(
       {
         bookedBy,
@@ -1166,6 +1193,44 @@ exports.assignBookingsToAgent = async ({ bookingIds, bookedBy }) => {
       }
     );
 
+    // ======================
+    // OPTIONAL: Update Parent Admin Ownership
+    // ======================
+    const parentAdminIds = bookings
+      .map(b => b.parentAdminId)
+      .filter(Boolean);
+
+    if (parentAdminIds.length > 0) {
+      const parentsNeedingAssignment = await Admin.count({
+        where: {
+          id: { [Op.in]: parentAdminIds },
+          createdByAdmin: null,
+          superAdminId: null,
+        },
+        transaction: t,
+      });
+
+      if (parentsNeedingAssignment > 0) {
+        await Admin.update(
+          {
+            createdByAdmin: bookedBy,
+            superAdminId: bookedBy,
+          },
+          {
+            where: {
+              id: { [Op.in]: parentAdminIds },
+              createdByAdmin: null,
+              superAdminId: null,
+            },
+            transaction: t,
+          }
+        );
+      }
+    }
+
+    // ======================
+    // Commit
+    // ======================
     await t.commit();
 
     return {
@@ -1185,6 +1250,112 @@ exports.assignBookingsToAgent = async ({ bookingIds, bookedBy }) => {
     };
   }
 };
+
+// exports.assignBookingsToAgent = async ({ bookingIds, bookedBy }) => {
+//   const t = await sequelize.transaction();
+
+//   try {
+//     // Validation
+//     if (!Array.isArray(bookingIds) || bookingIds.length === 0) {
+//       throw new Error("At least one booking ID is required");
+//     }
+//     if (!bookedBy || isNaN(Number(bookedBy))) {
+//       throw new Error("Valid agent ID is required");
+//     }
+
+//     // Check Agent Exists
+//     const agent = await Admin.findByPk(bookedBy, {
+//       include: [{ model: AdminRole, as: "role" }],
+//       transaction: t,
+//     });
+//     if (!agent) {
+//       throw new Error("Agent not found");
+//     }
+//     // Fetch Bookings with students and parents eager loaded
+//     const bookings = await HolidayBooking.findAll({
+//       where: {
+//         id: { [Op.in]: bookingIds },
+//       },
+//       include: [
+//         {
+//           model: HolidayBookingStudentMeta,
+//           as: "students",
+//           include: [
+//             { model: HolidayBookingParentMeta, as: "parents", required: false },
+//           ],
+//           required: false,
+//         },
+//       ],
+//       transaction: t,
+//     });
+
+//     if (bookings.length !== bookingIds.length) {
+//       throw new Error("One or more bookings were not found");
+//     }
+
+//     // Filter bookings that are already assigned
+//     const alreadyAssigned = bookings.filter((b) => b.bookedBy);
+
+//     if (alreadyAssigned.length > 0) {
+//       // Build detailed info for error message
+//       const detailedInfo = alreadyAssigned.map((booking) => {
+//         const studentNames = booking.students
+//           ?.map(
+//             (s) => `${s.studentFirstName || ""} ${s.studentLastName || ""}`.trim()
+//           )
+//           .filter(Boolean)
+//           .join(", ") || "N/A";
+
+//         const parentNames = booking.students
+//           ?.flatMap((s) =>
+//             s.parents?.map(
+//               (p) => `${p.parentFirstName || ""} ${p.parentLastName || ""}`.trim()
+//             ) || []
+//           )
+//           .filter(Boolean)
+//           .join(", ") || "N/A";
+
+//         return `Student(s): ${studentNames}; Parent(s): ${parentNames}`;
+//       });
+
+//       throw new Error(
+//         `Some bookings are already assigned: ${detailedInfo.join(" | ")}`
+//       );
+//     }
+
+//     // Bulk update bookings
+//     await HolidayBooking.update(
+//       {
+//         bookedBy,
+//         updatedAt: new Date(),
+//       },
+//       {
+//         where: {
+//           id: { [Op.in]: bookingIds },
+//         },
+//         transaction: t,
+//       }
+//     );
+
+//     await t.commit();
+
+//     return {
+//       status: true,
+//       message: "Bookings successfully assigned to agent",
+//       data: {
+//         bookingIds,
+//         bookedBy,
+//         totalAssigned: bookingIds.length,
+//       },
+//     };
+//   } catch (error) {
+//     await t.rollback();
+//     return {
+//       status: false,
+//       message: error.message,
+//     };
+//   }
+// };
 
 exports.cancelHolidayBookingById = async (bookingId, data, adminId) => {
   const transaction = await sequelize.transaction();
