@@ -17,6 +17,7 @@ const emailModel = require("../../../services/email");
 const sendEmail = require("../../../utils/email/sendEmail");
 const {
   createNotification,
+  createCustomNotificationForAdmins,
 } = require("../../../utils/admin/notificationHelper");
 const PaymentPlan = require("../../../services/admin/payment/paymentPlan");
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
@@ -319,7 +320,7 @@ exports.createBooking = async (req, res) => {
             } catch (err) {
               console.error("Failed to send email:", err.message);
             }
-            
+
           } catch (err) {
             console.error(
               `❌ Failed to send email to ${firstParent.parentEmail}:`,
@@ -331,6 +332,30 @@ exports.createBooking = async (req, res) => {
     } else {
       console.log("❌ paymentPlanType is falsy. Skipping email sending block.");
     }
+    // 🔔 Custom notification for parent (PAID BOOKING)
+    try {
+      const actualParentAdminId = booking.parentAdminId;
+
+      if (actualParentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "Membership Booked",
+          description: `Your membership for "${classData.className}" starts on ${booking.startDate}.`,
+          category: "Updates",
+          createdByAdminId: req.admin?.id || null,
+          recipientAdminIds: [actualParentAdminId],
+        });
+
+        console.log(
+          "🔔 Custom notification sent to parentAdminId:",
+          actualParentAdminId
+        );
+      } else {
+        console.log("⚠️ No parentAdminId found. Skipping custom notification.");
+      }
+    } catch (err) {
+      console.error("❌ Failed to create custom notification:", err.message);
+    }
+
     // 🔹 Step 4: Notifications & Logging
     if (!isFromWebsite && adminId) {
       await createNotification(
@@ -1052,7 +1077,6 @@ exports.sendActiveSelectedMemberEmail = async (req, res) => {
     return res.status(500).json({ status: false, message: "Server error" });
   }
 };
-
 exports.transferClass = async (req, res) => {
   const formData = req.body;
 
@@ -1093,9 +1117,36 @@ exports.transferClass = async (req, res) => {
       return res.status(500).json({ status: false, message: result.message });
     }
 
+    // 🔹 Fetch venue
     const venue = await Venue.findByPk(formData.venueId);
     const venueName = venue?.venueName || venue?.name || "N/A";
 
+    // 🔔 CUSTOM notification for parent
+    try {
+      const booking = result.data?.booking;
+      const parentAdminId = booking?.parentAdminId;
+
+      if (parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "Class Transferred",
+          description: `Your booking has been transferred to "${classData.className}" at ${venueName}.`,
+          category: "Updates",
+          createdByAdminId: req.admin?.id || null,
+          recipientAdminIds: [parentAdminId],
+        });
+
+        console.log(
+          "🔔 Custom notification sent to parentAdminId:",
+          parentAdminId
+        );
+      } else {
+        console.log("⚠️ No parentAdminId found. Skipping custom notification.");
+      }
+    } catch (err) {
+      console.error("❌ Failed to create custom notification:", err.message);
+    }
+
+    // 🔔 System notification (admins)
     await createNotification(
       req,
       "Booking Transferred",
@@ -1123,6 +1174,151 @@ exports.transferClass = async (req, res) => {
   }
 };
 
+// exports.transferClass = async (req, res) => {
+//   const formData = req.body;
+
+//   try {
+//     if (!formData.bookingId || !formData.classScheduleId) {
+//       return res.status(400).json({
+//         status: false,
+//         message: "Booking ID and new class schedule are required.",
+//       });
+//     }
+
+//     const classData = await ClassSchedule.findByPk(formData.classScheduleId);
+//     if (!classData) {
+//       return res
+//         .status(404)
+//         .json({ status: false, message: "New class not found." });
+//     }
+
+//     if (classData.capacity <= 0) {
+//       return res.status(400).json({
+//         status: false,
+//         message: `No slots left in the new class "${classData.className}".`,
+//       });
+//     }
+
+//     // ✅ If venue not passed, take from class
+//     if (!formData.venueId) {
+//       formData.venueId = classData.venueId;
+//     }
+
+//     // 🔹 Call Service
+//     const result = await BookingMembershipService.transferClass(formData, {
+//       adminId: req.admin?.id || null,
+//     });
+
+//     if (!result.status) {
+//       await logActivity(req, PANEL, MODULE, "transfer", result, false);
+//       return res.status(500).json({ status: false, message: result.message });
+//     }
+
+//     const venue = await Venue.findByPk(formData.venueId);
+//     const venueName = venue?.venueName || venue?.name || "N/A";
+
+//     await createNotification(
+//       req,
+//       "Booking Transferred",
+//       `Booking transferred to class "${classData.className}" at venue "${venueName}"`,
+//       "System"
+//     );
+
+//     await logActivity(req, PANEL, MODULE, "transfer", result, true);
+
+//     return res.status(200).json({
+//       status: true,
+//       message: "Class transferred successfully.",
+//       data: result.data,
+//     });
+//   } catch (error) {
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "transfer",
+//       { error: error.message },
+//       false
+//     );
+//     return res.status(500).json({ status: false, message: "Server error." });
+//   }
+// };
+
+// exports.addToWaitingList = async (req, res) => {
+//   try {
+//     console.log("🚀 [Controller] addToWaitingList started");
+
+//     const adminId = req.admin?.id;
+//     const data = req.body;
+
+//     // 🔹 Validate admin
+//     if (!adminId) {
+//       console.warn("⚠️ [Controller] Admin not found in request");
+//       return res
+//         .status(400)
+//         .json({ status: false, message: "Admin is required.", data: null });
+//     }
+//     console.log("✅ [Controller] Admin validated:", adminId);
+
+//     // 🔹 Validate class schedule
+//     if (!data.classScheduleId) {
+//       console.warn("⚠️ [Controller] Missing classScheduleId in payload");
+//       return res.status(400).json({
+//         status: false,
+//         message: "Class schedule is required.",
+//         data: null,
+//       });
+//     }
+
+//     // ✅ Call service to update booking to waiting list
+//     console.log("🔍 [Controller] Calling service addToWaitingListService");
+//     const result = await BookingMembershipService.addToWaitingListService(
+//       data,
+//       adminId
+//     );
+
+//     if (!result.status) {
+//       console.warn("⚠️ [Controller] Service failed:", result.message);
+//       return res.status(400).json(result);
+//     }
+
+//     const waitingBooking = result.data;
+//     console.log(
+//       "✅ [Controller] Booking updated to waiting list:",
+//       waitingBooking.id
+//     );
+
+//     // ✅ Create notification (outside of transaction)
+//     console.log("🔔 [Controller] Creating notification");
+//     await createNotification(
+//       req,
+//       "Booking Added to Waiting List",
+//       `Booking added to waiting list `,
+//       "System"
+//     );
+
+//     // ✅ Log activity
+//     console.log("📝 [Controller] Logging activity");
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "add_to_waiting_list",
+//       waitingBooking,
+//       true
+//     );
+
+//     console.log("🎉 [Controller] Operation completed successfully");
+//     return res.status(200).json(result);
+//   } catch (error) {
+//     console.error("❌ [Controller] addToWaitingList error:", error);
+//     return res.status(500).json({
+//       status: false,
+//       message: "Server error.",
+//       data: null,
+//     });
+//   }
+// };
 exports.addToWaitingList = async (req, res) => {
   try {
     console.log("🚀 [Controller] addToWaitingList started");
@@ -1149,7 +1345,7 @@ exports.addToWaitingList = async (req, res) => {
       });
     }
 
-    // ✅ Call service to update booking to waiting list
+    // 🔹 Call service
     console.log("🔍 [Controller] Calling service addToWaitingListService");
     const result = await BookingMembershipService.addToWaitingListService(
       data,
@@ -1167,16 +1363,46 @@ exports.addToWaitingList = async (req, res) => {
       waitingBooking.id
     );
 
-    // ✅ Create notification (outside of transaction)
-    console.log("🔔 [Controller] Creating notification");
+    // 🔔 CUSTOM notification for parent
+    try {
+      const parentAdminId = waitingBooking?.parentAdminId;
+
+      if (parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "Added to Waiting List",
+          description:
+            "Your booking has been added to the waiting list. We’ll notify you once a slot becomes available.",
+          category: "Updates",
+          createdByAdminId: adminId,
+          recipientAdminIds: [parentAdminId],
+        });
+
+        console.log(
+          "🔔 Custom notification sent to parentAdminId:",
+          parentAdminId
+        );
+      } else {
+        console.log(
+          "⚠️ No parentAdminId found. Skipping custom notification."
+        );
+      }
+    } catch (err) {
+      console.error(
+        "❌ Failed to create custom notification:",
+        err.message
+      );
+    }
+
+    // 🔔 System notification (admins)
+    console.log("🔔 [Controller] Creating system notification");
     await createNotification(
       req,
       "Booking Added to Waiting List",
-      `Booking added to waiting list `,
+      "Booking added to waiting list",
       "System"
     );
 
-    // ✅ Log activity
+    // 📝 Log activity
     console.log("📝 [Controller] Logging activity");
     await logActivity(
       req,
@@ -1288,6 +1514,40 @@ exports.updateBooking = async (req, res) => {
 
     await t.commit();
     if (DEBUG) console.log("✅ Step 2: Transaction committed successfully");
+    // 🔔 CUSTOM notification for parent
+    try {
+      const booking = await Booking.findByPk(bookingId, {
+        attributes: ["id", "parentAdminId"],
+      });
+
+      const parentAdminId = booking?.parentAdminId;
+
+      if (parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "Booking Updated",
+          description:
+            "Student, parent, and emergency contact details have been updated for your booking.",
+          category: "Updates",
+          createdByAdminId: adminId,
+          recipientAdminIds: [parentAdminId],
+        });
+
+        if (DEBUG)
+          console.log(
+            "🔔 Custom notification sent to parentAdminId:",
+            parentAdminId
+          );
+      } else if (DEBUG) {
+        console.warn(
+          "⚠️ Booking found but parentAdminId is missing."
+        );
+      }
+    } catch (err) {
+      console.error(
+        "❌ Failed to create custom notification:",
+        err.message
+      );
+    }
 
     // Log activity
     if (DEBUG) console.log("🔹 Step 3: Logging activity");

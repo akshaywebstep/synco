@@ -1,9 +1,11 @@
 const { validateFormData } = require("../../../utils/validateFormData");
 const { logActivity } = require("../../../utils/admin/activityLogger");
 const CancelBookingService = require("../../../services/admin/booking/cancelBooking");
+const { Booking } = require("../../../models");
 // const NoMembershipService = require("../../../services/admin/bookTrials/CancelBooking");
 const {
   createNotification,
+  createCustomNotificationForAdmins
 } = require("../../../utils/admin/notificationHelper");
 
 const DEBUG = process.env.DEBUG === "true";
@@ -45,19 +47,41 @@ exports.createCancelBooking = async (req, res) => {
     }
 
     // ✅ Log admin activity
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "create",
-      {
-        message: `Cancelled free trial booking `,
-      },
-      true
-    );
+    // await logActivity(
+    //   req,
+    //   PANEL,
+    //   MODULE,
+    //   "create",
+    //   {
+    //     message: `Cancelled free trial booking `,
+    //   },
+    //   true
+    // );
+    // 🔹 Fetch booking to get parentAdminId
+    const booking = await Booking.findByPk(payload.bookingId, {
+      attributes: ["parentAdminId"],
+    });
+
+    // 🔹 Build readable cancel summary
+    const cancelledParts = ["free trial booking"];
+
+    if (payload.cancelReason) cancelledParts.push("with a reason");
+    if (payload.additionalNote) cancelledParts.push("additional note added");
+    const cancelledByName = req?.admin?.firstName || "An admin";
+
+    const cancelSummary = `${cancelledByName} cancelled ${cancelledParts.join(", ")}.`;
+    // ✅ ADD: Custom notification for parent
+    if (booking?.parentAdminId) {
+      await createCustomNotificationForAdmins({
+        title: "Trial Cancelled",
+        description: cancelSummary, // 👈 clean, readable, no bookingId
+        category: "Updates",
+        createdByAdminId: req.admin.id,
+        recipientAdminIds: [booking.parentAdminId],
+      });
+    }
 
     // ✅ Notify admins about the cancellation
-    const cancelledByName = req?.admin?.firstName || "An admin";
     await createNotification(
       req,
       "Trial Cancelled",

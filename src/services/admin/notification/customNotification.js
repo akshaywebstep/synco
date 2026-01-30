@@ -256,16 +256,14 @@ exports.getAllCustomNotifications = async (adminId, category = null) => {
           id: notif.admin?.id,
           email: notif.admin?.email,
           profile: notif.admin?.profile,
-          name: `${notif.admin?.firstName || ""} ${
-            notif.admin?.lastName || ""
-          }`.trim(),
+          name: `${notif.admin?.firstName || ""} ${notif.admin?.lastName || ""
+            }`.trim(),
         },
         recipients: notif.reads.map((read) => ({
           recipientId: read.admin?.id,
           recipientEmail: read.admin?.email,
-          recipientName: `${read.admin?.firstName || ""} ${
-            read.admin?.lastName || ""
-          }`.trim(),
+          recipientName: `${read.admin?.firstName || ""} ${read.admin?.lastName || ""
+            }`.trim(),
           isRead: read.status === true,
         })),
       };
@@ -290,7 +288,7 @@ exports.getAllReceivedCustomNotifications = async (
   category = null
 ) => {
   try {
-     if (!adminId || isNaN(Number(adminId))) {
+    if (!adminId || isNaN(Number(adminId))) {
       return {
         status: false,
         message: "No valid parent or super admin found for this request.",
@@ -351,16 +349,14 @@ exports.getAllReceivedCustomNotifications = async (
           id: notif.admin?.id,
           email: notif.admin?.email,
           profile: notif.admin?.profile,
-          name: `${notif.admin?.firstName || ""} ${
-            notif.admin?.lastName || ""
-          }`.trim(),
+          name: `${notif.admin?.firstName || ""} ${notif.admin?.lastName || ""
+            }`.trim(),
         },
         recipients: notif.reads.map((read) => ({
           recipientId: read.admin?.id,
           recipientEmail: read.admin?.email,
-          recipientName: `${read.admin?.firstName || ""} ${
-            read.admin?.lastName || ""
-          }`.trim(),
+          recipientName: `${read.admin?.firstName || ""} ${read.admin?.lastName || ""
+            }`.trim(),
           isRead: read.status === true,
         })),
       };
@@ -398,14 +394,7 @@ exports.getAllReceivedCustomNotificationsForParent = async (parentId, category =
     const notifications = await CustomNotification.findAll({
       where: {
         ...whereCondition,
-        [Op.and]: [
-          { adminId: { [Op.ne]: parentId } }, // exclude notifications created by this parent themselves
-          {
-            [Op.or]: [
-              { "$reads.adminId$": parentId }, // notifications where this parent is recipient
-            ],
-          },
-        ],
+        adminId: { [Op.ne]: parentId },
       },
       order: [["createdAt", "DESC"]],
       include: [
@@ -417,6 +406,8 @@ exports.getAllReceivedCustomNotificationsForParent = async (parentId, category =
         {
           model: CustomNotificationRead,
           as: "reads",
+          required: true,
+          where: { adminId: parentId },
           include: [
             {
               model: Admin,

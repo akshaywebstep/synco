@@ -103,4 +103,3 @@ HolidayClassSchedule.associate = function (models) {
 };
 
 module.exports = HolidayClassSchedule;
-

@@ -1,12 +1,13 @@
 const { validateFormData } = require("../../../utils/validateFormData");
 const BookingTrialService = require("../../../services/admin/booking/waitingList");
 const { logActivity } = require("../../../utils/admin/activityLogger");
-const { sequelize, Booking } = require("../../../models");
+const { sequelize } = require("../../../models");
 
 const {
   Venue,
   ClassSchedule,
   Admin,
+  Booking,
   BookingParentMeta,
   BookingStudentMeta,
 } = require("../../../models");
@@ -14,6 +15,7 @@ const emailModel = require("../../../services/email");
 const sendEmail = require("../../../utils/email/sendEmail");
 const {
   createNotification,
+  createCustomNotificationForAdmins,
 } = require("../../../utils/admin/notificationHelper");
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 
@@ -219,9 +221,39 @@ exports.createBooking = async (req, res) => {
 
     const booking = result.data.booking;
     const studentId = result.data.studentId;
+    // 🔔 Custom notification to parent (Waiting List)
+    try {
+      const parentAdminId = booking?.parentAdminId;
+
+      if (parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "Added to Waiting List",
+          description: `Your request for "${classData.className}" has been added to the waiting list.`,
+          category: "Updates",
+          createdByAdminId: req.admin?.id || null,
+          recipientAdminIds: [parentAdminId],
+        });
+
+        if (DEBUG) {
+          console.log(
+            "🔔 Waiting list custom notification sent to parentAdminId:",
+            parentAdminId
+          );
+        }
+      } else if (DEBUG) {
+        console.warn(
+          "⚠️ Waiting list booking created but parentAdminId not found."
+        );
+      }
+    } catch (err) {
+      console.error(
+        "❌ Failed to create waiting list custom notification:",
+        err.message
+      );
+    }
 
     // Send confirmation email to parents
-    /*
+
     const parentMetas = await BookingParentMeta.findAll({
       where: { studentId },
     });
@@ -246,13 +278,13 @@ exports.createBooking = async (req, res) => {
         });
         const studentsHtml = students.length
           ? students
-              .map(
-                (s) =>
-                  `<p style="margin:0; font-size:13px; color:#5F5F6D;">
+            .map(
+              (s) =>
+                `<p style="margin:0; font-size:13px; color:#5F5F6D;">
              ${s.studentFirstName} ${s.studentLastName}
            </p>`
-              )
-              .join("")
+            )
+            .join("")
           : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
 
         for (const recipient of recipients) {
@@ -290,7 +322,6 @@ exports.createBooking = async (req, res) => {
         }
       }
     }
-    */
     if (DEBUG) console.log("📝 Logging activity...");
     await logActivity(req, PANEL, MODULE, "create", result, true);
 
@@ -613,6 +644,41 @@ exports.updateWaitinglistBooking = async (req, res) => {
 
     await t.commit();
     if (DEBUG) console.log("✅ Transaction committed");
+    // 🔔 Custom notification to parent (Waiting List Update)
+    try {
+      const bookingRecord = await Booking.findByPk(bookingId, {
+        attributes: ["id", "parentAdminId"],
+      });
+
+      const parentAdminId = bookingRecord?.parentAdminId;
+
+      if (parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "Waiting List Booking Updated",
+          description:
+            "Student, parent, or emergency contact details for your waiting list booking have been updated.",
+          category: "Updates",
+          createdByAdminId: req.admin?.id || null,
+          recipientAdminIds: [parentAdminId],
+        });
+
+        if (DEBUG) {
+          console.log(
+            "🔔 Custom update notification sent to parentAdminId:",
+            parentAdminId
+          );
+        }
+      } else if (DEBUG) {
+        console.warn(
+          "⚠️ Booking updated but parentAdminId not found. Skipping custom notification."
+        );
+      }
+    } catch (err) {
+      console.error(
+        "❌ Failed to create custom update notification:",
+        err.message
+      );
+    }
 
     // 🔹 Log activity
     await logActivity(
@@ -681,6 +747,41 @@ exports.removeWaitingList = async (req, res) => {
       if (DEBUG)
         console.log("❌ removeWaitingList service failed:", result.message);
       return res.status(404).json(result);
+    }
+
+    // 🔔 Custom notification to parent admin
+    try {
+      const bookingRecord = await Booking.findByPk(bookingId, {
+        attributes: ["id", "parentAdminId"],
+      });
+
+      const parentAdminId = bookingRecord?.parentAdminId;
+
+      if (parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "Removed From Waiting List",
+          description: `Your booking has been removed from the waiting list. Reason: ${removedReason}`,
+          category: "Updates",
+          createdByAdminId: req.admin?.id || null,
+          recipientAdminIds: [parentAdminId],
+        });
+
+        if (DEBUG) {
+          console.log(
+            "🔔 Custom waiting-list removal notification sent to parentAdminId:",
+            parentAdminId
+          );
+        }
+      } else if (DEBUG) {
+        console.warn(
+          "⚠️ Waiting list removed but parentAdminId not found. Skipping custom notification."
+        );
+      }
+    } catch (err) {
+      console.error(
+        "❌ Failed to create custom waiting-list removal notification:",
+        err.message
+      );
     }
 
     await createNotification(
@@ -780,12 +881,46 @@ exports.convertToMembership = async (req, res) => {
 
     const booking = result.data.booking;
     const studentIds = result.data.studentIds || [result.data.studentId];
+    // 🔔 Custom notification to parent admin (Waiting → Membership)
+    try {
+      const bookingRecord = await Booking.findByPk(booking.id, {
+        attributes: ["id", "parentAdminId"],
+      });
+
+      const parentAdminId = bookingRecord?.parentAdminId;
+
+      if (parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "Membership Activated",
+          description:
+            "Your waiting list booking has been successfully converted into an active membership.",
+          category: "Updates",
+          createdByAdminId: req.admin?.id || null,
+          recipientAdminIds: [parentAdminId],
+        });
+
+        if (DEBUG) {
+          console.log(
+            "🔔 Custom membership notification sent to parentAdminId:",
+            parentAdminId
+          );
+        }
+      } else if (DEBUG) {
+        console.warn(
+          "⚠️ Membership converted but parentAdminId not found. Skipping custom notification."
+        );
+      }
+    } catch (err) {
+      console.error(
+        "❌ Failed to create custom membership notification:",
+        err.message
+      );
+    }
 
     // Step 6: Send Emails to Parents
     const venue = await Venue.findByPk(classData.venueId);
     const venueName = venue?.venueName || venue?.name || "N/A";
 
-    /*
     const {
       status: configStatus,
       emailConfig,
@@ -870,7 +1005,6 @@ exports.convertToMembership = async (req, res) => {
         }
       }
     }
-      */
 
     // Step 7: Notifications & Logs
     await createNotification(

@@ -12,6 +12,7 @@ const {
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 const {
   createNotification,
+  createCustomNotificationForAdmins
 } = require("../../../utils/admin/notificationHelper");
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -20,229 +21,229 @@ const MODULE = "book-free-trial";
 // Create Book a Free Trial
 exports.createBooking = async (req, res) => {
   if (DEBUG) console.log("📥 Received booking request");
-    const formData = req.body;
-    const isParentPortalBooking = !!req.params.parentAdminId;
-    if (
-      isParentPortalBooking &&
-      req.admin &&
-      req.admin.role === "parent" &&
-      req.admin.id !== parseInt(req.params.parentAdminId, 10)
-    ) {
-      return res.status(403).json({
-        status: false,
-        message: "You are not authorized to create booking for this parent.",
-      });
-    }
-
-    // formData.createdBy = req.admin.id;
-
-    if (DEBUG) console.log("🔍 Fetching class data...");
-    const classData = await ClassSchedule.findByPk(formData.classScheduleId);
-    if (!classData) {
-      if (DEBUG) console.warn("❌ Class not found.");
-      return res.status(404).json({ status: false, message: "Class not found." });
-    }
-
-    if (DEBUG) console.log("📊 Checking class capacity...");
-    if (classData.capacity < formData.totalStudents) {
-      if (DEBUG) console.warn("⚠️ Not enough capacity in class.");
-      return res.status(400).json({
-        status: false,
-        message: `Only ${classData.capacity} slot(s) left for this class.`,
-      });
-    }
-
-    if (DEBUG) console.log("✅ Validating form data...");
-    const { isValid, error } = validateFormData(formData, {
-      requiredFields: [
-        "trialDate",
-        "totalStudents",
-        "classScheduleId",
-        "students",
-        "parents",
-        // "emergency",
-      ],
+  const formData = req.body;
+  const isParentPortalBooking = !!req.params.parentAdminId;
+  if (
+    isParentPortalBooking &&
+    req.admin &&
+    req.admin.role === "parent" &&
+    req.admin.id !== parseInt(req.params.parentAdminId, 10)
+  ) {
+    return res.status(403).json({
+      status: false,
+      message: "You are not authorized to create booking for this parent.",
     });
-    if (!isValid) {
-      if (DEBUG) console.warn("❌ Form validation failed:", error);
-      const firstKey = Object.keys(error)[0];
-      return res.status(400).json({ status: false, message: error[firstKey] });
-    }
+  }
 
-    if (!Array.isArray(formData.students) || formData.students.length === 0) {
-      if (DEBUG) console.warn("❌ No students provided.");
+  // formData.createdBy = req.admin.id;
+
+  if (DEBUG) console.log("🔍 Fetching class data...");
+  const classData = await ClassSchedule.findByPk(formData.classScheduleId);
+  if (!classData) {
+    if (DEBUG) console.warn("❌ Class not found.");
+    return res.status(404).json({ status: false, message: "Class not found." });
+  }
+
+  if (DEBUG) console.log("📊 Checking class capacity...");
+  if (classData.capacity < formData.totalStudents) {
+    if (DEBUG) console.warn("⚠️ Not enough capacity in class.");
+    return res.status(400).json({
+      status: false,
+      message: `Only ${classData.capacity} slot(s) left for this class.`,
+    });
+  }
+
+  if (DEBUG) console.log("✅ Validating form data...");
+  const { isValid, error } = validateFormData(formData, {
+    requiredFields: [
+      "trialDate",
+      "totalStudents",
+      "classScheduleId",
+      "students",
+      "parents",
+      // "emergency",
+    ],
+  });
+  if (!isValid) {
+    if (DEBUG) console.warn("❌ Form validation failed:", error);
+    const firstKey = Object.keys(error)[0];
+    return res.status(400).json({ status: false, message: error[firstKey] });
+  }
+
+  if (!Array.isArray(formData.students) || formData.students.length === 0) {
+    if (DEBUG) console.warn("❌ No students provided.");
+    return res.status(400).json({
+      status: false,
+      message: "At least one student must be provided.",
+    });
+  }
+
+  if (DEBUG) console.log("📍 Setting class metadata...");
+  formData.venueId = classData.venueId;
+  formData.className = classData.className;
+  formData.classTime = `${classData.startTime} - ${classData.endTime}`;
+
+  if (DEBUG) console.log("🏫 Fetching venue data...");
+  const venue = await Venue.findByPk(formData.venueId);
+  if (!venue) {
+    const message = "Venue linked to this class is not configured.";
+    if (DEBUG) console.warn("❌ Venue not found.");
+    await logActivity(req, PANEL, MODULE, "create", { message }, false);
+    return res.status(404).json({ status: false, message });
+  }
+
+  if (DEBUG) console.log("👨‍👩‍👧 Validating students and parents...");
+  const emailMap = new Map();
+  const duplicateEmails = [];
+
+  for (const student of formData.students) {
+    // ✅ Validate student fields individually
+    if (!student.studentFirstName) {
       return res.status(400).json({
         status: false,
-        message: "At least one student must be provided.",
+        message: "Student first name is required.",
+      });
+    }
+    if (!student.studentLastName) {
+      return res.status(400).json({
+        status: false,
+        message: "Student last name is required.",
+      });
+    }
+    if (!student.dateOfBirth) {
+      return res.status(400).json({
+        status: false,
+        message: "Student date of birth is required.",
+      });
+    }
+    if (!student.medicalInformation) {
+      return res.status(400).json({
+        status: false,
+        message: "Student medical information is required.",
       });
     }
 
-    if (DEBUG) console.log("📍 Setting class metadata...");
-    formData.venueId = classData.venueId;
-    formData.className = classData.className;
-    formData.classTime = `${classData.startTime} - ${classData.endTime}`;
+    // ✅ Emergency contact is OPTIONAL
+    const emergency = req.body.emergency;
 
-    if (DEBUG) console.log("🏫 Fetching venue data...");
-    const venue = await Venue.findByPk(formData.venueId);
-    if (!venue) {
-      const message = "Venue linked to this class is not configured.";
-      if (DEBUG) console.warn("❌ Venue not found.");
-      await logActivity(req, PANEL, MODULE, "create", { message }, false);
-      return res.status(404).json({ status: false, message });
-    }
-
-    if (DEBUG) console.log("👨‍👩‍👧 Validating students and parents...");
-    const emailMap = new Map();
-    const duplicateEmails = [];
-
-    for (const student of formData.students) {
-      // ✅ Validate student fields individually
-      if (!student.studentFirstName) {
+    if (emergency) {
+      if (!emergency.emergencyFirstName) {
         return res.status(400).json({
           status: false,
-          message: "Student first name is required.",
+          message: "Emergency contact first name is required.",
         });
       }
-      if (!student.studentLastName) {
+      if (!emergency.emergencyLastName) {
         return res.status(400).json({
           status: false,
-          message: "Student last name is required.",
+          message: "Emergency contact last name is required.",
         });
       }
-      if (!student.dateOfBirth) {
+      if (!emergency.emergencyPhoneNumber) {
         return res.status(400).json({
           status: false,
-          message: "Student date of birth is required.",
+          message: "Emergency contact phone number is required.",
         });
-      }
-      if (!student.medicalInformation) {
-        return res.status(400).json({
-          status: false,
-          message: "Student medical information is required.",
-        });
-      }
-
-      // ✅ Emergency contact is OPTIONAL
-      const emergency = req.body.emergency;
-
-      if (emergency) {
-        if (!emergency.emergencyFirstName) {
-          return res.status(400).json({
-            status: false,
-            message: "Emergency contact first name is required.",
-          });
-        }
-        if (!emergency.emergencyLastName) {
-          return res.status(400).json({
-            status: false,
-            message: "Emergency contact last name is required.",
-          });
-        }
-        if (!emergency.emergencyPhoneNumber) {
-          return res.status(400).json({
-            status: false,
-            message: "Emergency contact phone number is required.",
-          });
-        }
-      }
-
-      student.className = classData.className;
-      student.startTime = classData.startTime;
-      student.endTime = classData.endTime;
-
-      // ✅ Use the global parents array (from formData.parents)
-      if (!Array.isArray(formData.parents) || formData.parents.length === 0) {
-        return res.status(400).json({
-          status: false,
-          message: "At least one parent must be provided.",
-        });
-      }
-
-      for (const parent of formData.parents) {
-        if (!parent.parentFirstName) {
-          return res.status(400).json({
-            status: false,
-            message: "Parent first name is required.",
-          });
-        }
-        if (!parent.parentLastName) {
-          return res.status(400).json({
-            status: false,
-            message: "Parent last name is required.",
-          });
-        }
-        if (!parent.parentEmail) {
-          return res.status(400).json({
-            status: false,
-            message: "Parent email is required.",
-          });
-        }
-
-        const rawEmail = parent.parentEmail;
-        const emailvalid = rawEmail.trim().toLowerCase();
-
-        // 🚫 Check for spaces
-        if (/\s/.test(rawEmail)) {
-          return res.status(400).json({
-            status: false,
-            message: `Parent email "${rawEmail}" should not contain spaces.`,
-          });
-        }
-
-        // 🚫 Check for invalid characters
-        const invalidCharRegex = /[^a-zA-Z0-9@._\-+]/;
-        if (invalidCharRegex.test(emailvalid)) {
-          return res.status(400).json({
-            status: false,
-            message: `Parent email "${rawEmail}" contains invalid characters.`,
-          });
-        }
-
-        // 🚫 Validate email format
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
-        if (!emailRegex.test(emailvalid)) {
-          return res.status(400).json({
-            status: false,
-            message: `Parent email "${rawEmail}" is not a valid email address format.`,
-          });
-        }
-
-        if (!parent.parentPhoneNumber) {
-          return res.status(400).json({
-            status: false,
-            message: "Parent phone number is required.",
-          });
-        }
-
-        const email = parent.parentEmail.trim().toLowerCase();
-        if (emailMap.has(email)) continue;
-
-        emailMap.set(email, parent);
-
-        if (!isParentPortalBooking) {
-          const exists = await Admin.findOne({ where: { email } });
-          if (exists) {
-            duplicateEmails.push(email);
-          }
-        }
-
       }
     }
 
-    if (duplicateEmails.length > 0) {
-      const unique = [...new Set(duplicateEmails)]; // remove duplicates
-      const message =
-        unique.length === 1
-          ? `${unique[0]} email already in use.`
-          : `${unique.join(", ")} emails already in use.`;
+    student.className = classData.className;
+    student.startTime = classData.startTime;
+    student.endTime = classData.endTime;
 
-      if (DEBUG) console.warn("❌ Duplicate email(s) found.");
-      await logActivity(req, PANEL, MODULE, "create", { message }, false);
-
-      return res.status(409).json({ status: false, message });
+    // ✅ Use the global parents array (from formData.parents)
+    if (!Array.isArray(formData.parents) || formData.parents.length === 0) {
+      return res.status(400).json({
+        status: false,
+        message: "At least one parent must be provided.",
+      });
     }
 
-    try {
+    for (const parent of formData.parents) {
+      if (!parent.parentFirstName) {
+        return res.status(400).json({
+          status: false,
+          message: "Parent first name is required.",
+        });
+      }
+      if (!parent.parentLastName) {
+        return res.status(400).json({
+          status: false,
+          message: "Parent last name is required.",
+        });
+      }
+      if (!parent.parentEmail) {
+        return res.status(400).json({
+          status: false,
+          message: "Parent email is required.",
+        });
+      }
+
+      const rawEmail = parent.parentEmail;
+      const emailvalid = rawEmail.trim().toLowerCase();
+
+      // 🚫 Check for spaces
+      if (/\s/.test(rawEmail)) {
+        return res.status(400).json({
+          status: false,
+          message: `Parent email "${rawEmail}" should not contain spaces.`,
+        });
+      }
+
+      // 🚫 Check for invalid characters
+      const invalidCharRegex = /[^a-zA-Z0-9@._\-+]/;
+      if (invalidCharRegex.test(emailvalid)) {
+        return res.status(400).json({
+          status: false,
+          message: `Parent email "${rawEmail}" contains invalid characters.`,
+        });
+      }
+
+      // 🚫 Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
+      if (!emailRegex.test(emailvalid)) {
+        return res.status(400).json({
+          status: false,
+          message: `Parent email "${rawEmail}" is not a valid email address format.`,
+        });
+      }
+
+      if (!parent.parentPhoneNumber) {
+        return res.status(400).json({
+          status: false,
+          message: "Parent phone number is required.",
+        });
+      }
+
+      const email = parent.parentEmail.trim().toLowerCase();
+      if (emailMap.has(email)) continue;
+
+      emailMap.set(email, parent);
+
+      if (!isParentPortalBooking) {
+        const exists = await Admin.findOne({ where: { email } });
+        if (exists) {
+          duplicateEmails.push(email);
+        }
+      }
+
+    }
+  }
+
+  if (duplicateEmails.length > 0) {
+    const unique = [...new Set(duplicateEmails)]; // remove duplicates
+    const message =
+      unique.length === 1
+        ? `${unique[0]} email already in use.`
+        : `${unique.join(", ")} emails already in use.`;
+
+    if (DEBUG) console.warn("❌ Duplicate email(s) found.");
+    await logActivity(req, PANEL, MODULE, "create", { message }, false);
+
+    return res.status(409).json({ status: false, message });
+  }
+
+  try {
     if (DEBUG) console.log("🚀 Creating booking...");
     // const result = await BookingTrialService.createBooking(formData);
     const leadId = req.params.leadId || null;
@@ -272,7 +273,7 @@ exports.createBooking = async (req, res) => {
     // Send email
     const parentMetas = await BookingParentMeta.findAll({
       where: { studentId },
-    }); 
+    });
 
     if (parentMetas && parentMetas.length > 0) {
       const firstParent = parentMetas[0]; // only first parent
@@ -348,8 +349,25 @@ exports.createBooking = async (req, res) => {
         }
       }
     }
-    
+
     if (DEBUG) console.log("📝 Logging activity...");
+    const actualParentAdminId = booking.parentAdminId;
+
+    if (actualParentAdminId) {
+      await createCustomNotificationForAdmins({
+        title: "Free Trial Booked",
+        description: `Your free trial for "${classData.className}" is scheduled on ${formData.trialDate} from ${classData.startTime} to ${classData.endTime}.`,
+        category: "Updates",
+        createdByAdminId: req.admin.id,
+        recipientAdminIds: [actualParentAdminId],
+      });
+
+      console.log(
+        "🔔 Custom notification sent to parentAdminId:",
+        actualParentAdminId
+      );
+    }
+
     await logActivity(req, PANEL, MODULE, "create", result, true);
 
     if (DEBUG) console.log("🔔 Creating notification...");

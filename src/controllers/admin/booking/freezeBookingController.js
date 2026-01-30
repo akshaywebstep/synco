@@ -4,6 +4,7 @@ const FreezeBookingService = require("../../../services/admin/booking/freezeBook
 const { sequelize, Booking } = require("../../../models");
 const {
   createNotification,
+  createCustomNotificationForAdmins
 } = require("../../../utils/admin/notificationHelper");
 
 const DEBUG = process.env.DEBUG === "true";
@@ -18,7 +19,7 @@ exports.createFreezeBooking = async (req, res) => {
 
   // ✅ Validate request body
   const { isValid, error } = validateFormData(payload, {
-    requiredFields: ["bookingId", "freezeStartDate", "freezeDurationMonths","reactivateOn"],
+    requiredFields: ["bookingId", "freezeStartDate", "freezeDurationMonths", "reactivateOn"],
   });
 
   if (!isValid) {
@@ -44,6 +45,41 @@ exports.createFreezeBooking = async (req, res) => {
     if (!result.status) {
       await logActivity(req, PANEL, MODULE, "create", result, false);
       return res.status(400).json({ status: false, message: result.message });
+    }
+    // 🔔 Custom notification to parent
+    try {
+      const booking = await Booking.findByPk(payload.bookingId, {
+        attributes: ["id", "parentAdminId"],
+      });
+
+      const parentAdminId = booking?.parentAdminId;
+
+      if (parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "Booking Frozen",
+          description:
+            "Your booking has been temporarily frozen. It will be reactivated automatically based on the freeze schedule.",
+          category: "Updates",
+          createdByAdminId: req.admin?.id,
+          recipientAdminIds: [parentAdminId],
+        });
+
+        if (DEBUG) {
+          console.log(
+            "🔔 Custom freeze notification sent to parentAdminId:",
+            parentAdminId
+          );
+        }
+      } else if (DEBUG) {
+        console.warn(
+          "⚠️ Booking frozen but parentAdminId not found. Skipping custom notification."
+        );
+      }
+    } catch (err) {
+      console.error(
+        "❌ Failed to create custom freeze notification:",
+        err.message
+      );
     }
 
     // ✅ Log admin activity
@@ -171,6 +207,41 @@ exports.reactivateBooking = async (req, res) => {
       { message: `Booking #${payload.bookingId} reactivated successfully.` },
       true
     );
+    // 🔔 4. Custom notification to parent
+    try {
+      const bookingRecord = await Booking.findByPk(payload.bookingId, {
+        attributes: ["id", "parentAdminId"],
+      });
+
+      const parentAdminId = bookingRecord?.parentAdminId;
+
+      if (parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "Booking Reactivated",
+          description:
+            "Your booking has been reactivated and is now active again.",
+          category: "Updates",
+          createdByAdminId: req.admin?.id,
+          recipientAdminIds: [parentAdminId],
+        });
+
+        if (DEBUG) {
+          console.log(
+            "🔔 Custom reactivate notification sent to parentAdminId:",
+            parentAdminId
+          );
+        }
+      } else if (DEBUG) {
+        console.warn(
+          "⚠️ Booking reactivated but parentAdminId not found."
+        );
+      }
+    } catch (err) {
+      console.error(
+        "❌ Failed to create custom reactivate notification:",
+        err.message
+      );
+    }
 
     // 🔹 3. Notify admins
     await createNotification(

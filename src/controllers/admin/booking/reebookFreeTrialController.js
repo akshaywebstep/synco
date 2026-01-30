@@ -3,67 +3,15 @@ const { logActivity } = require("../../../utils/admin/activityLogger");
 const RebookingService = require("../../../services/admin/booking/reebookingFreeTrial"); // updated service
 const {
   createNotification,
+  createCustomNotificationForAdmins,
 } = require("../../../utils/admin/notificationHelper");
+const { Booking } = require("../../../models");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "rebooking_trial";
 
 // ✅ Create or update a booking with rebooking info
-// exports.createRebookingTrial = async (req, res) => {
-//    console.log("📍 createRebookingTrial reached");
-//   const payload = req.body;
-
-//   const { isValid, error } = validateFormData(payload, {
-//     requiredFields: ["bookingId", "reasonForNonAttendance"],
-//   });
-
-//   if (!isValid) {
-//     await logActivity(req, PANEL, MODULE, "create", error, false);
-//     return res.status(400).json({ status: false, ...error });
-//   }
-
-//   try {
-//     const result = await RebookingService.createRebooking({
-//       ...payload,
-//       createdBy: req?.admin?.id,
-//     });
-
-//     if (!result.status) {
-//       await logActivity(req, PANEL, MODULE, "create", result, false);
-//       return res.status(400).json({ status: false, message: result.message });
-//     }
-
-//     const notifyMsg = `Trial rebooked for booking ID ${payload.bookingId}`;
-//     await createNotification(req, "Trial Rebooked", notifyMsg, "System");
-
-//     await logActivity(
-//       req,
-//       PANEL,
-//       MODULE,
-//       "create",
-//       { message: notifyMsg },
-//       true
-//     );
-
-//     return res.status(201).json({
-//       status: true,
-//       message: "Rebooking created successfully.",
-//       data: result.data,
-//     });
-//   } catch (error) {
-//     console.error("❌ Error creating rebooking:", error);
-//     await logActivity(
-//       req,
-//       PANEL,
-//       MODULE,
-//       "create",
-//       { error: error.message },
-//       false
-//     );
-//     return res.status(500).json({ status: false, message: "Server error." });
-//   }
-// };
 exports.createRebookingTrial = async (req, res) => {
   console.log("📍 createRebookingTrial reached");
   const payload = req.body;
@@ -99,6 +47,30 @@ exports.createRebookingTrial = async (req, res) => {
         message: result.message,
       });
     }
+    // 🔹 Fetch booking to get parentAdminId
+    const booking = await Booking.findByPk(payload.bookingId, {
+      attributes: ["parentAdminId"],
+    });
+    // 🔹 Build readable rebooking summary
+    const rebookedByName = req?.admin?.firstName || "An admin";
+
+    const rebookedParts = ["trial session rebooked"];
+
+    if (payload.reasonForNonAttendance) {
+      rebookedParts.push("due to non-attendance");
+    }
+
+    const rebookingSummary = `${rebookedByName} ${rebookedParts.join(" ")}.`;
+    // ✅ ADD: Custom notification for parent
+    if (booking?.parentAdminId) {
+      await createCustomNotificationForAdmins({
+        title: "Trial Rebooked",
+        description: rebookingSummary, // 👈 clean & friendly
+        category: "Updates",
+        createdByAdminId: req.admin.id,
+        recipientAdminIds: [booking.parentAdminId],
+      });
+    }
 
     const notifyMsg = `Trial rebooked for booking ID ${payload.bookingId}`;
     await createNotification(req, "Trial Rebooked", notifyMsg, "System");
@@ -119,6 +91,7 @@ exports.createRebookingTrial = async (req, res) => {
     });
   }
 };
+
 // ✅ Get all bookings that have rebooking info
 exports.getAllRebookingTrials = async (req, res) => {
   try {

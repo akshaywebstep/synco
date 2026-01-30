@@ -16,7 +16,9 @@ const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
 
 const {
     createNotification,
+    createCustomNotificationForAdmins
 } = require("../../../../utils/admin/notificationHelper");
+const { HolidayBooking } = require("../../../../models");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -1072,10 +1074,40 @@ exports.updateHolidayClassSchedule = async (req, res) => {
         await createNotification(
             req,
             "Class Schedule Updated",
-            `Class "${req.body.className}" was updated for ${req.body.day}, ${req.body.startTime} - ${req.body.endTime}.`,
+            `Class "${req.body.className}" was updated  ${req.body.startTime} - ${req.body.endTime}.`,
             "System"
         );
+        // 🔔 Custom notifications to bookings using this class
+        const affectedBookings = await HolidayBooking.findAll({
+            where: { classScheduleId: id, status: { [Op.notIn]: ["cancelled", "removed"] } },
+            attributes: ["id", "parentAdminId"]
+        });
 
+        for (const booking of affectedBookings) {
+            const parentAdminId = booking.parentAdminId;
+            if (!parentAdminId) continue;
+
+            try {
+                await createCustomNotificationForAdmins({
+                    title: "Holiday Class Schedule Updated",
+                    description: `The class "${req.body.className}" you are booked in has been updated. Check the new timing or details.`,
+                    category: "Updates",
+                    createdByAdminId: adminId,
+                    recipientAdminIds: [parentAdminId],
+                });
+
+                if (DEBUG) {
+                    console.log(
+                        `🔔 Custom notification sent for bookingId=${booking.id} to parentAdminId=${parentAdminId}`
+                    );
+                }
+            } catch (err) {
+                console.error(
+                    `❌ Failed to send custom notification for bookingId=${booking.id}:`,
+                    err.message
+                );
+            }
+        }
         return res.status(200).json({
             status: true,
             message: "Class schedule updated successfully.",

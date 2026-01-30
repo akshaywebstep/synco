@@ -2,6 +2,7 @@ const { validateFormData } = require("../../../utils/validateFormData");
 const ClassScheduleService = require("../../../services/admin/classSchedule/classSchedule");
 const TermService = require("../../../services/admin/termAndDates/term");
 const { logActivity } = require("../../../utils/admin/activityLogger");
+
 const {
   getVideoDurationInSeconds,
   formatDuration,
@@ -18,6 +19,7 @@ const {
 } = require("../../../models");
 const {
   createNotification,
+  createCustomNotificationForAdmins
 } = require("../../../utils/admin/notificationHelper");
 
 const DEBUG = process.env.DEBUG === "true";
@@ -553,6 +555,37 @@ exports.updateClassSchedule = async (req, res) => {
       `Class "${req.body.className}" was updated for ${req.body.day}, ${req.body.startTime} - ${req.body.endTime}.`,
       "System"
     );
+    // 🔔 Custom notifications to bookings using this class
+    const affectedBookings = await Booking.findAll({
+      where: { classScheduleId: id, status: { [Op.notIn]: ["cancelled", "removed"] } },
+      attributes: ["id", "parentAdminId"]
+    });
+
+    for (const booking of affectedBookings) {
+      const parentAdminId = booking.parentAdminId;
+      if (!parentAdminId) continue;
+
+      try {
+        await createCustomNotificationForAdmins({
+          title: "Class Schedule Updated",
+          description: `The class "${req.body.className}" you are booked in has been updated. Check the new timing or details.`,
+          category: "Updates",
+          createdByAdminId: adminId,
+          recipientAdminIds: [parentAdminId],
+        });
+
+        if (DEBUG) {
+          console.log(
+            `🔔 Custom notification sent for bookingId=${booking.id} to parentAdminId=${parentAdminId}`
+          );
+        }
+      } catch (err) {
+        console.error(
+          `❌ Failed to send custom notification for bookingId=${booking.id}:`,
+          err.message
+        );
+      }
+    }
 
     // ✅ Final response
     return res.status(200).json({

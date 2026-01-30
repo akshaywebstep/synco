@@ -3,7 +3,11 @@ const { logActivity } = require("../../../../utils/admin/activityLogger");
 const venueModel = require("../../../../services/admin/holidayCamps/venue/holidayVenue");
 const {
   createNotification,
+  createCustomNotificationForAdmins,
 } = require("../../../../utils/admin/notificationHelper");
+
+const { HolidayBooking } = require("../../../../models");
+const { Op } = require("sequelize");
 const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -98,7 +102,6 @@ exports.getAllHolidayVenues = async (req, res) => {
   }
 };
 
-// ✅ Get by ID
 // ✅ Get Venue by ID
 exports.getHolidayVenueById = async (req, res) => {
   const { id } = req.params;
@@ -183,6 +186,37 @@ exports.updateHolidayVenue = async (req, res) => {
       `Venue "${formData.name}" has been updated.`,
       "System"
     );
+    // 🔹 Find all bookings using this venue
+    const affectedBookings = await HolidayBooking.findAll({
+      where: { venueId: id, status: { [Op.notIn]: ["cancelled", "removed"] } },
+      attributes: ["id", "parentAdminId"]
+    });
+
+    for (const booking of affectedBookings) {
+      const parentAdminId = booking.parentAdminId;
+      if (!parentAdminId) continue;
+
+      try {
+        await createCustomNotificationForAdmins({
+          title: "Holiday Venue Updated",
+          description: `The venue "${formData.name}" for your booking has been updated. Please check the new details.`,
+          category: "Updates",
+          createdByAdminId: req.admin?.id,
+          recipientAdminIds: [parentAdminId],
+        });
+
+        if (DEBUG) {
+          console.log(
+            `🔔 Custom notification sent for bookingId=${booking.id} to parentAdminId=${parentAdminId}`
+          );
+        }
+      } catch (err) {
+        console.error(
+          `❌ Failed to send custom notification for bookingId=${booking.id}:`,
+          err.message
+        );
+      }
+    }
 
     // ✅ Return successful response
     return res.status(200).json({
