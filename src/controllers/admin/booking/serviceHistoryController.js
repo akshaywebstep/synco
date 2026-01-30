@@ -77,12 +77,37 @@ exports.updateBookingStudents = async (req, res) => {
     const booking = await Booking.findByPk(bookingId, {
       attributes: ["parentAdminId"],
     });
+    // 🔹 Build readable update summary (no bookingId)
+    const updatedParts = [];
+
+    if (studentsPayload?.length) updatedParts.push("student details");
+
+    if (
+      studentsPayload.some(
+        (s) => s.parents && s.parents.length > 0
+      )
+    ) {
+      updatedParts.push("parent details");
+    }
+
+    if (
+      studentsPayload.some(
+        (s) => s.emergencyContacts && s.emergencyContacts.length > 0
+      )
+    ) {
+      updatedParts.push("emergency contact details");
+    }
+
+    const updateSummary =
+      updatedParts.length > 0
+        ? `${updatedParts.join(", ")} updated successfully.`
+        : "Booking details updated successfully.";
 
     // 🔹 Send custom notification to parent
     if (booking?.parentAdminId) {
       await createCustomNotificationForAdmins({
         title: "Booking Updated",
-        description: `Student, parent, and emergency data updated for booking ID: ${bookingId}.`,
+        description: updateSummary, // 👈 no bookingId
         category: "Updates",
         createdByAdminId: adminId,
         recipientAdminIds: [booking.parentAdminId],
@@ -105,7 +130,7 @@ exports.updateBookingStudents = async (req, res) => {
     await createNotification(
       req,
       "Booking Updated",
-      `Student, parent, and emergency data updated for booking ID: ${bookingId}.`,
+      "Student, parent, and emergency data updated",
       "System"
     );
 

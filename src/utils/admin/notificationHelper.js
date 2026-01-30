@@ -1,5 +1,5 @@
 const notificationService = require("../../services/admin/notification/notification");
-const customNotificationModel = require("../../models/admin/notification/CustomNotification");
+const customNotificationModel = require("../../services/admin/notification/customNotification");
 const DEBUG = process.env.DEBUG === "true";
 
 /**
