@@ -3660,7 +3660,11 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
       const booking = lead.booking;
       if (!booking) {
         await t.rollback();
-        return { status: false, message: "Booking not found for this lead." };
+        return { 
+          status: false,
+          message: "Booking not found for this lead.",
+          parentAdminId: booking.parentAdminId,
+         };
       }
 
       // ================================
@@ -3680,8 +3684,10 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
       );
 
       await t.commit();
-      return { status: true, message: "Lead and booking cancelled successfully." };
-
+      return { status: true,
+         message: "Lead and booking cancelled successfully.",
+        parentAdminId: booking.parentAdminId 
+      };
     } catch (error) {
       await t.rollback();
       return { status: false, message: error.message };
@@ -3720,7 +3726,10 @@ exports.updateOnetoOneLeadById = async (id, superAdminId, adminId, updateData) =
       );
 
       await t.commit();
-      return { status: true, message: "Lead & booking renewed successfully." };
+      return {
+        status: true, 
+        message: "Lead & booking renewed successfully.", 
+        parentAdminId: booking.parentAdminId };
 
     } catch (error) {
       await t.rollback();

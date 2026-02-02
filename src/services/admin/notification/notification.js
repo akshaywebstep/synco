@@ -88,6 +88,35 @@ exports.markAsRead = async (adminId) => {
     };
   }
 };
+exports.markAsReadForParent = async (parentId, category = null) => {
+  try {
+    const whereClause = {
+      adminId: parentId,
+      isRead: false,
+    };
+
+    if (category) {
+      whereClause.category = category;
+    }
+
+    const [updatedCount] = await Notification.update(
+      { isRead: true, updatedAt: new Date() },
+      { where: whereClause }
+    );
+
+    return {
+      status: true,
+      message: `${updatedCount} normal notification(s) marked as read.`,
+      updatedCount,
+    };
+  } catch (error) {
+    console.error("❌ Normal markAsReadForParent Error:", error);
+    return {
+      status: false,
+      message: error.message,
+    };
+  }
+};
 
 exports.getAllNotifications = async (adminId, category = null, options = {}, data = {}) => {
   try {
@@ -306,12 +335,12 @@ exports.getAllNotificationsForParent = async (adminId, category = null, options 
       isRead: readIds.has(n.id),
       admin: n.admin
         ? {
-            id: n.admin.id,
-            firstName: n.admin.firstName,
-            lastName: n.admin.lastName,
-            email: n.admin.email,
-            profile: n.admin.profile,
-          }
+          id: n.admin.id,
+          firstName: n.admin.firstName,
+          lastName: n.admin.lastName,
+          email: n.admin.email,
+          profile: n.admin.profile,
+        }
         : null,
     }));
 

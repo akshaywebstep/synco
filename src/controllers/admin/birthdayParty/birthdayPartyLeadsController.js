@@ -914,10 +914,10 @@ exports.cancelBirthdayPartyLeadAndBooking = async (req, res) => {
           description: "Your booking has been cancelled by our team.",
           category: "Updates",
           createdByAdminId: adminId,
-          recipientAdminIds: [result.parentAdminId],
+          recipientAdminIds: [updateResult.parentAdminId],
         });
 
-        console.log("🔔 Parent notification sent:", result.parentAdminId);
+        console.log("🔔 Parent notification sent:", updateResult.parentAdminId);
       }
     } catch (err) {
       console.error("❌ Parent notification failed:", err.message);

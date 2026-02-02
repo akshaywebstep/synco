@@ -3,14 +3,14 @@ const router = express.Router();
 const authMiddleware = require("../../middleware/admin/authenticate");
 const {
   getAllNotificationsForParent,
-  markNotificationAsRead,
+  markNotificationAsReadForParent,
 } = require("../../controllers/admin/notification/notificationController");
 
 // Mark a notification as read (expects notificationId in body or query)
 router.patch(
   "/read",
   authMiddleware,
-  markNotificationAsRead
+  markNotificationAsReadForParent
 );
 
 // Get all notifications

@@ -61,6 +61,38 @@ exports.markAsRead = async (adminId, category) => {
     };
   }
 };
+exports.markAsReadForParent = async (parentId) => {
+  try {
+    const [updatedCount] = await CustomNotificationRead.update(
+      {
+        status: true,
+        updatedAt: new Date(),
+      },
+      {
+        where: {
+          adminId: parentId,   // 👈 ONLY this parent
+          status: false,       // 👈 only unread
+        },
+      }
+    );
+
+    console.log(
+      `✅ Custom markAsReadForParent: ${updatedCount} rows updated for parentId ${parentId}`
+    );
+
+    return {
+      status: true,
+      message: `${updatedCount} notification(s) marked as read.`,
+      updatedCount,
+    };
+  } catch (error) {
+    console.error("❌ markAsReadForParent Error:", error);
+    return {
+      status: false,
+      message: error.message,
+    };
+  }
+};
 
 // ✅ Create a notification
 exports.createCustomNotification = async (

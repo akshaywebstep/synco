@@ -375,6 +375,76 @@ exports.getAllNotificationsForParent = async (req, res) => {
   }
 };
 
+exports.markNotificationAsReadForParent = async (req, res) => {
+  const adminId = req.parent?.id;
+  const category = req.body?.category || null;
+
+  if (!adminId) {
+    return res.status(403).json({
+      status: false,
+      message: "Unauthorized: Parent login required.",
+    });
+  }
+
+  // Optional: validate category against allowed list
+  if (category && !validCategories.includes(category)) {
+    return res.status(400).json({
+      status: false,
+      message: `Invalid category provided: ${category}`,
+    });
+  }
+
+  try {
+    let result;
+
+    if (category === "All") {
+      // ✅ Mark both normal and custom notifications for parent
+      const normalResult = await notificationModel.markAsReadForParent(adminId);
+      const customResult = await customNotificationModel.markAsReadForParent(adminId);
+
+      if (!normalResult.status || !customResult.status) {
+        const errorMsg =
+          normalResult.message ||
+          customResult.message ||
+          "Failed to mark all parent notifications as read.";
+        console.error(`❌ Failed to mark all parent notifications:`, errorMsg);
+        return res.status(500).json({ status: false, message: errorMsg });
+      }
+
+      result = {
+        status: true,
+        message: "All parent notifications marked as read successfully.",
+        updatedCount:
+          (normalResult.updatedCount || 0) + (customResult.updatedCount || 0),
+      };
+    } else if (category === "System") {
+      result = await notificationModel.markAsReadForParent(adminId, category);
+    } else if (category) {
+      result = await customNotificationModel.markAsReadForParent(adminId, category);
+    } else {
+      // Default: normal notifications for parent
+      result = await notificationModel.markAsReadForParent(adminId);
+    }
+
+    if (!result.status) {
+      console.error(`❌ Failed to mark parent notifications as read:`, result.message);
+      return res.status(500).json({ status: false, message: result.message });
+    }
+
+    return res.status(200).json({
+      status: true,
+      message: result.message,
+      data: result.updatedCount || 0,
+    });
+  } catch (error) {
+    console.error(`❌ Error marking parent notifications as read:`, error);
+    return res.status(500).json({
+      status: false,
+      message: "Server error while marking parent notifications as read.",
+    });
+  }
+};
+
 // ✅ Get all notifications
 // exports.getAllNotifications = async (req, res) => {
 //   const adminId = req.admin?.id || req.parent?.id;
