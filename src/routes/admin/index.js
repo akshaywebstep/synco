@@ -260,6 +260,7 @@ router.use("/course/", require("./coach/courseRoutes"));
 router.use("/contract/", require("./coach/contractRoutes"));
 router.use("/student-course/", require("./coach/studentCourseRoutes"));
 router.use("/feedback/", require("./feedbackRoutes"));
+router.use("/referal/", require("./referal/referalRoutes"));
 
 // Send Text Routes
 // router.use("/send/", require("./sendTextAllBookingRoutes/sendTextRoutes"));

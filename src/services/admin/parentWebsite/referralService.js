@@ -1,4 +1,4 @@
-const { Referral,Admin,sequelize } = require("../../../models");
+const { Referral, Admin, sequelize } = require("../../../models");
 
 exports.createReferral = async (data) => {
   try {
@@ -29,8 +29,6 @@ exports.createReferral = async (data) => {
     };
   }
 };
-
-;
 
 exports.listReferrals = async ({ parentId, status }) => {
   try {
