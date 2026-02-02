@@ -3,7 +3,17 @@ const { logActivity } = require("../../utils/admin/activityLogger");
 const { validateFormData } = require("../../utils/validateFormData");
 const { createNotification, createCustomNotificationForAdmins } = require("../../utils/admin/notificationHelper");
 const { getMainSuperAdminOfAdmin } = require("../../utils/auth");
-const { sequelize } = require("../../models");
+const { sequelize, Booking,
+  ClassSchedule,
+  Venue,
+  Feedback,
+  Admin,
+  AdminRole,
+  OneToOneBooking,
+  BirthdayPartyBooking,
+  HolidayClassSchedule,
+  HolidayBooking,
+  HolidayVenue, } = require("../../models");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -111,24 +121,64 @@ exports.createFeedback = async (req, res) => {
     }
 
     await transaction.commit();
-    // ============================================================
-    // 🔔 Custom Notification for Admins (Feedback Created)
-    // ============================================================
-    try {
+    let actualParentAdminId = null;
+
+    if (
+      serviceType === "weekly class membership" ||
+      serviceType === "weekly class trial"
+    ) {
+      const booking = await Booking.findByPk(bookingId, {
+        attributes: ["parentAdminId"],
+      });
+      actualParentAdminId = booking?.parentAdminId;
+
+    } else if (serviceType === "one to one") {
+      const booking = await OneToOneBooking.findByPk(oneToOneBookingId, {
+        attributes: ["parentAdminId"],
+      });
+      actualParentAdminId = booking?.parentAdminId;
+
+    } else if (serviceType === "birthday party") {
+      const booking = await BirthdayPartyBooking.findByPk(birthdayPartyBookingId, {
+        attributes: ["parentAdminId"],
+      });
+      actualParentAdminId = booking?.parentAdminId;
+
+    } else if (serviceType === "holiday camp") {
+      const booking = await HolidayBooking.findByPk(holidayBookingId, {
+        attributes: ["parentAdminId"],
+      });
+      actualParentAdminId = booking?.parentAdminId;
+    }
+
+    if (actualParentAdminId) {
+      let createdByAdminId = null;
+      let recipientAdminIds = [];
+
+      if (req.admin) {
+        // Admin created → notify parent
+        createdByAdminId = req.admin.id;
+        recipientAdminIds = [actualParentAdminId];
+
+      } else if (req.parent) {
+        // Parent created → notify admin
+        createdByAdminId = actualParentAdminId;
+        recipientAdminIds = [req.parent.adminId];
+      }
+
       const creatorName = req.parent
         ? "Parent"
-        : `${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""}`.trim();
+        : `${req.admin.firstName} ${req.admin.lastName || ""}`.trim();
 
       await createCustomNotificationForAdmins({
-        createdByAdminId: req.admin?.id || null, // null if parent created
         title: "New Feedback Created",
         description: `New feedback (${serviceType}) was created by ${creatorName}.`,
-        category: "Support",
+        category: "Updates",
+        createdByAdminId,
+        recipientAdminIds,
       });
 
-      console.log("🔔 Admin notification sent for feedback creation");
-    } catch (err) {
-      console.error("❌ Admin feedback notification failed:", err.message);
+      console.log("🔔 Custom notification sent to parentAdminId:", actualParentAdminId);
     }
 
     // Send notification if agent assigned and created by admin

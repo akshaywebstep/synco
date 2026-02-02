@@ -358,7 +358,7 @@ exports.getAllNotificationsForParent = async (req, res) => {
       return res.status(500).json({ status: false, message: errorMsg });
     }
      const combinedData = {
-      notifications: notificationResult.data || [],
+      // notifications: notificationResult.data || [],
       customNotifications: customNotificationResult.data || [],
     };
     return res.status(200).json({
