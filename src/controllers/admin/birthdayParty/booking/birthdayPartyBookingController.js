@@ -4,6 +4,7 @@ const { logActivity } = require("../../../../utils/admin/activityLogger");
 
 const {
   createNotification,
+  createCustomNotificationForAdmins,
 } = require("../../../../utils/admin/notificationHelper");
 
 const DEBUG = process.env.DEBUG === "true";
@@ -167,6 +168,22 @@ exports.createBirthdayPartyBooking = async (req, res) => {
     }
 
     if (DEBUG) console.log("✅ Booking created successfully:", result);
+    // 🔔 Parent Notification
+    try {
+      if (result.parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "Birthday Party Booking Created",
+          description: "Your birthday party booking has been successfully created.",
+          category: "Updates",
+          createdByAdminId: adminId,
+          recipientAdminIds: [result.parentAdminId],
+        });
+
+        console.log("🔔 Parent notification sent:", result.parentAdminId);
+      }
+    } catch (err) {
+      console.error("❌ Parent notification failed:", err.message);
+    }
 
     // ✅ Step 6: Log and notify
     await logActivity(req, PANEL, MODULE, "create", formData.data, true);

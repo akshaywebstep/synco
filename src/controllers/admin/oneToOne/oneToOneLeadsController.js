@@ -4,6 +4,7 @@ const { logActivity } = require("../../../utils/admin/activityLogger");
 
 const {
   createNotification,
+  createCustomNotificationForAdmins
 } = require("../../../utils/admin/notificationHelper");
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 
@@ -563,6 +564,24 @@ exports.updateOnetoOneLeadById = async (req, res) => {
         message: updateResult.message || "Failed to update One-to-One Lead.",
       });
     }
+    // ============================================================
+    // 🔔 Parent Admin Notification (One-to-One Lead Updated)
+    // ============================================================
+    try {
+      if (updateResult.parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "One-to-One Lead Updated",
+          description: "Your booking details have been updated by our team.",
+          category: "Updates",
+          createdByAdminId: adminId,
+          recipientAdminIds: [updateResult.parentAdminId],
+        });
+
+        console.log("🔔 Parent admin notified:", updateResult.parentAdminId);
+      }
+    } catch (err) {
+      console.error("❌ Parent admin notification failed:", err.message);
+    }
 
     // ============================================================
     // 📝 Log activity
@@ -978,6 +997,23 @@ exports.cancelOneToOneLeadAndBooking = async (req, res) => {
       });
     }
 
+    // ================= customCreateNotification
+    try {
+      if (updateResult.parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "One To One Booking Cancelled",
+          description: "Your booking has been cancelled by our team.",
+          category: "Updates",
+          createdByAdminId: adminId,
+          recipientAdminIds: [updateResult.parentAdminId],
+        });
+
+        console.log("🔔 Parent notification sent:", updateResult.parentAdminId);
+      }
+    } catch (err) {
+      console.error("❌ Parent notification failed:", err.message);
+    }
+
     // ============================================================
     // 📝 Log activity
     // ============================================================
@@ -1053,6 +1089,22 @@ exports.renewOneToOneLeadAndBooking = async (req, res) => {
         status: false,
         message: updateResult.message || "Failed to renew package One-to-One Lead.",
       });
+    }
+
+    // ================= customCreateNotification
+    try {
+      if (updateResult.parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "One to One  Booking Renewed",
+          description: "Your booking has been renewed by our team.",
+          category: "Updates",
+          createdByAdminId: adminId,
+          recipientAdminIds: [updateResult.parentAdminId],
+        });
+        console.log("🔔 Parent notification sent:", updateResult.parentAdminId);
+      }
+    } catch (err) {
+      console.error("❌ Parent notification failed:", err.message);
     }
 
     // ============================================================

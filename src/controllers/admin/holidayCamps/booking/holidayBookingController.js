@@ -4,9 +4,11 @@ const holidayBookingService = require("../../../../services/admin/holidayCamps/b
 const { logActivity } = require("../../../../utils/admin/activityLogger");
 const {
   Admin,
+  HolidayBooking,
 } = require("../../../../models");
 const {
   createNotification,
+  createCustomNotificationForAdmins,
 } = require("../../../../utils/admin/notificationHelper");
 const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
 
@@ -18,8 +20,8 @@ const MODULE = "holiday-booking";
 exports.createHolidayBooking = async (req, res) => {
   try {
     const adminId = req.admin?.id || null;
-    const parentAdminId = req.parent?.id || formData.parentAdminId || null;
     const formData = req.body;
+    const parentAdminId = req.parent?.id || formData.parentAdminId || null;
 
     if (DEBUG)
       console.log(
@@ -165,61 +167,76 @@ exports.createHolidayBooking = async (req, res) => {
 
     // ✅ Step 5: Create booking via service
     // const result = await holidayBookingService.createHolidayBooking(formData, adminId);
-    // const result = await holidayBookingService.createHolidayBooking(formData, { adminId });
     const result = await holidayBookingService.createHolidayBooking(
       formData,
-         {
+      {
         adminId,
         parentAdminId
       }
     );
 
-  if (!result.success) {
-    return res.status(400).json({
+    if (!result.success) {
+      return res.status(400).json({
+        status: false,
+        message: result.message || "Failed to create booking",
+      });
+    }
+
+    // ✅ Step 6: Log and notify
+    const actor =
+      req.admin
+        ? {
+          id: req.admin.id,
+          name: `${req.admin.firstName || ""} ${req.admin.lastName || ""}`.trim(),
+        }
+        : req.parent
+          ? {
+            id: req.parent.id,
+            name: `${req.parent.firstName || ""} ${req.parent.lastName || ""}`.trim(),
+          }
+          : null;
+    if (actor?.id) {
+      // force adminId for notification
+      req.admin = { id: actor.id };
+
+      await createNotification(
+        req,
+        "Holiday Booking Created Successfully",
+        `The booking was created by ${actor.name}.`,
+        "System"
+      );
+    }
+    // 🔔 Parent Notification
+    try {
+      if (result.parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "Holiday Camp Booking Confirmed",
+          description: "Your holiday camp booking has been successfully created.",
+          category: "Updates",
+          createdByAdminId: adminId,
+          recipientAdminIds: [result.parentAdminId],
+        });
+
+        console.log("🔔 Parent notification sent:", result.parentAdminId);
+      }
+    } catch (err) {
+      console.error("❌ Parent notification failed:", err.message);
+    }
+
+    // ✅ Step 7: Response
+    return res.status(201).json({
+      status: true,
+      message: "Holiday Booking created successfully",
+      data: result,
+    });
+  } catch (error) {
+    if (DEBUG) console.error("❌ Error in createHolidayBooking Booking:", error);
+
+    return res.status(500).json({
       status: false,
-      message: result.message || "Failed to create booking",
+      message: DEBUG ? error.message : "Internal server error",
     });
   }
-
-  // ✅ Step 6: Log and notify
-  const actor =
-    req.admin
-      ? {
-        id: req.admin.id,
-        name: `${req.admin.firstName || ""} ${req.admin.lastName || ""}`.trim(),
-      }
-      : req.parent
-        ? {
-          id: req.parent.id,
-          name: `${req.parent.firstName || ""} ${req.parent.lastName || ""}`.trim(),
-        }
-        : null;
-  if (actor?.id) {
-    // force adminId for notification
-    req.admin = { id: actor.id };
-
-    await createNotification(
-      req,
-      "Holiday Booking Created Successfully",
-      `The booking was created by ${actor.name}.`,
-      "System"
-    );
-  }
-
-  // ✅ Step 7: Response
-  return res.status(201).json({
-    status: true,
-    message: "Holiday Booking created successfully",
-    data: result,
-  });
-} catch (error) {
-  if (DEBUG) console.error("❌ Error in createHolidayBooking Booking:", error);
-
-  return res.status(500).json({
-    status: false,
-    message: DEBUG ? error.message : "Internal server error",
-  });
-}
 };
 
 // Assign Booking to Admin / Agent
@@ -342,7 +359,7 @@ exports.cancelHolidayBookingById = async (req, res) => {
   try {
     const adminId = req.admin?.id || null;
     const bookingId = req.params.id;
-    const formData = req.body;   // { cancelReason, additionalNotes (optional) }
+    const formData = req.body;
 
     if (DEBUG) {
       console.log("📥 Cancel Booking Payload:", JSON.stringify(formData, null, 2));
@@ -360,7 +377,7 @@ exports.cancelHolidayBookingById = async (req, res) => {
     }
 
     // -------------------------------------------
-    // ✅ Validate cancelReason (mandatory)
+    // ✅ Validate cancelReason
     // -------------------------------------------
     if (!formData.cancelReason || formData.cancelReason.trim() === "") {
       return res.status(400).json({
@@ -388,6 +405,23 @@ exports.cancelHolidayBookingById = async (req, res) => {
       });
     }
 
+    // 🔔 Parent Notification (optional)
+    if (result.parentAdminId) {
+      try {
+        await createCustomNotificationForAdmins({
+          title: "Holiday Booking Cancelled",
+          description: "Your holiday camp booking has been cancelled.",
+          category: "Updates",
+          createdByAdminId: adminId,
+          recipientAdminIds: [result.parentAdminId],
+        });
+
+        console.log("🔔 Parent cancellation notification sent");
+      } catch (err) {
+        console.error("❌ Parent notification failed:", err.message);
+      }
+    }
+
     // -------------------------------------------
     // ✅ Log activity
     // -------------------------------------------
@@ -405,18 +439,18 @@ exports.cancelHolidayBookingById = async (req, res) => {
     );
 
     // -------------------------------------------
-    // ✅ Send notification
+    // ✅ System notification
     // -------------------------------------------
     await createNotification(
       req,
       "Holiday Booking Cancelled",
-      `Booking ID ${bookingId} was cancelled by ${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""
-      }.`,
+      `Booking ID ${bookingId} was cancelled by ${req?.admin?.firstName || "Admin"
+      } ${req?.admin?.lastName || ""}.`,
       "System"
     );
 
     // -------------------------------------------
-    // ✅ Send response
+    // ✅ Response
     // -------------------------------------------
     return res.status(200).json({
       status: true,
@@ -734,6 +768,56 @@ exports.updateHolidayBooking = async (req, res) => {
       formData,
       adminId
     );
+    // ------------------------------------------------------------
+    // 🔎 Step 2: Fetch booking (parentAdminId)
+    // ------------------------------------------------------------
+    const booking = await HolidayBooking.findByPk(bookingId, {
+      attributes: ["parentAdminId"],
+    });
+
+    // ------------------------------------------------------------
+    // 🧠 Step 3: Build update summary
+    // ------------------------------------------------------------
+    const updatedParts = [];
+
+    if (Array.isArray(formData.students) && formData.students.length > 0) {
+      updatedParts.push("student details");
+    }
+
+    if (Array.isArray(formData.parents) && formData.parents.length > 0) {
+      updatedParts.push("parent details");
+    }
+
+    if (
+      Array.isArray(formData.emergencyContacts) &&
+      formData.emergencyContacts.length > 0
+    ) {
+      updatedParts.push("emergency contact details");
+    }
+
+    const updateSummary =
+      updatedParts.length > 0
+        ? `${updatedParts.join(", ")} updated successfully.`
+        : "Booking details updated successfully.";
+
+    // ------------------------------------------------------------
+    // 🔔 Parent Custom Notification (ONLY parent)
+    // ------------------------------------------------------------
+    if (booking?.parentAdminId) {
+      try {
+        await createCustomNotificationForAdmins({
+          title: "Holiday Booking Updated",
+          description: updateSummary,
+          category: "Updates",
+          createdByAdminId: adminId,
+          recipientAdminIds: [booking.parentAdminId],
+        });
+
+        console.log("🔔 Parent update notification sent");
+      } catch (err) {
+        console.error("❌ Parent notification failed:", err.message);
+      }
+    }
 
     // ------------------------------------------------------------
     // 📝 Step 5: Activity Log & Notification
@@ -880,7 +964,22 @@ exports.waitingListCreate = async (req, res) => {
     }
 
     if (DEBUG) console.log("✅ Holiday Waiting List Booking created successfully:", result);
+    // 🔔 Parent Notification
+    try {
+      if (result.parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "Holiday Camp Booking Confirmed in Waiting List",
+          description: "Your holiday camp booking has been successfully created.",
+          category: "Updates",
+          createdByAdminId: adminId,
+          recipientAdminIds: [result.parentAdminId],
+        });
 
+        console.log("🔔 Parent notification sent:", result.parentAdminId);
+      }
+    } catch (err) {
+      console.error("❌ Parent notification failed:", err.message);
+    }
     // ✅ Step 6: Log and notify
     await logActivity(req, PANEL, MODULE, "create", formData.data, true);
     await createNotification(

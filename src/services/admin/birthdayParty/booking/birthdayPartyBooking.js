@@ -488,6 +488,7 @@ exports.createBirthdayPartyBooking = async (data) => {
         return {
             success: true,
             bookingId: booking.id,
+            parentAdminId: booking.parentAdminId,
             paymentStatus,
             stripePaymentIntentId: stripeChargeId,
             baseAmount,
@@ -1131,10 +1132,15 @@ exports.getAdminsPaymentPlanDiscount = async ({
             return { status: false, message: "Invalid admin or super admin ID." };
         }
 
+        const parentRole = await AdminRole.findOne({
+            where: { role: "Parents" },
+            attributes: ["id"],
+        });
         // ✅ 2️⃣ Fetch admins based on resolved admin IDs
         const admins = await Admin.findAll({
             where: {
                 id: { [Op.in]: adminIds },
+                roleId: { [Op.ne]: parentRole.id }, // ✅ EXCLUDE PARENTS
                 deletedAt: null,
             },
             attributes: ["id", "firstName", "lastName", "email", "roleId"],
@@ -1143,9 +1149,14 @@ exports.getAdminsPaymentPlanDiscount = async ({
 
         // ✅ 3️⃣ Optionally include the super admin if requested
         if (includeSuperAdmin && superAdminId && !adminIds.includes(Number(superAdminId))) {
-            const superAdmin = await Admin.findByPk(superAdminId, {
+            const superAdmin = await Admin.findOne({
+                where: {
+                    id: superAdminId,
+                    roleId: { [Op.ne]: parentRole.id }, // ✅ SAFE
+                },
                 attributes: ["id", "firstName", "lastName", "email", "roleId"],
             });
+
             if (superAdmin) admins.unshift(superAdmin);
         }
 

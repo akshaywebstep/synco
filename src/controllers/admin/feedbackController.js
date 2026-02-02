@@ -1,7 +1,7 @@
 const FeedbackService = require("../../services/admin/feedbackService");
 const { logActivity } = require("../../utils/admin/activityLogger");
 const { validateFormData } = require("../../utils/validateFormData");
-const { createNotification } = require("../../utils/admin/notificationHelper");
+const { createNotification, createCustomNotificationForAdmins } = require("../../utils/admin/notificationHelper");
 const { getMainSuperAdminOfAdmin } = require("../../utils/auth");
 const { sequelize } = require("../../models");
 
@@ -111,6 +111,25 @@ exports.createFeedback = async (req, res) => {
     }
 
     await transaction.commit();
+    // ============================================================
+    // 🔔 Custom Notification for Admins (Feedback Created)
+    // ============================================================
+    try {
+      const creatorName = req.parent
+        ? "Parent"
+        : `${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""}`.trim();
+
+      await createCustomNotificationForAdmins({
+        createdByAdminId: req.admin?.id || null, // null if parent created
+        title: "New Feedback Created",
+        description: `New feedback (${serviceType}) was created by ${creatorName}.`,
+        category: "Support",
+      });
+
+      console.log("🔔 Admin notification sent for feedback creation");
+    } catch (err) {
+      console.error("❌ Admin feedback notification failed:", err.message);
+    }
 
     // Send notification if agent assigned and created by admin
     if (agentAssigned && role === "admin") {
@@ -319,6 +338,23 @@ exports.resolveFeedback = async (req, res) => {
 
     if (!result.status) {
       return res.status(404).json(result);
+    }
+    // ============================================================
+    // 🔔 Custom Notification for Admins (Feedback Resolved)
+    // ============================================================
+    try {
+      const resolverName = `${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""}`.trim();
+
+      await createCustomNotificationForAdmins({
+        createdByAdminId: req.admin?.id || null,
+        title: "Feedback Resolved",
+        description: `Feedback ID ${feedbackId} has been resolved by ${resolverName}.`,
+        category: "Support",
+      });
+
+      console.log("🔔 Admin notification sent for feedback resolution");
+    } catch (err) {
+      console.error("❌ Admin notification for feedback resolution failed:", err.message);
     }
 
     return res.status(200).json(result);

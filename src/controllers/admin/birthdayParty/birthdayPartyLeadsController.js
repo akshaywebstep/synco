@@ -4,6 +4,7 @@ const { logActivity } = require("../../../utils/admin/activityLogger");
 
 const {
   createNotification,
+  createCustomNotificationForAdmins,
 } = require("../../../utils/admin/notificationHelper");
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 
@@ -615,6 +616,25 @@ exports.updateBirthdayPartyLeadById = async (req, res) => {
     }
 
     // ============================================================
+    // 🔔 Parent Admin Notification (One-to-One Lead Updated)
+    // ============================================================
+    try {
+      if (updateResult.parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "Birthday Party Booking Updated",
+          description: "Your booking details have been updated by our team.",
+          category: "Updates",
+          createdByAdminId: adminId,
+          recipientAdminIds: [updateResult.parentAdminId],
+        });
+
+        console.log("🔔 Parent admin notified:", updateResult.parentAdminId);
+      }
+    } catch (err) {
+      console.error("❌ Parent admin notification failed:", err.message);
+    }
+
+    // ============================================================
     // 📝 Logging
     // ============================================================
     await logActivity(req, PANEL, MODULE, "update", { id, updateData: cleanData }, true);
@@ -886,6 +906,22 @@ exports.cancelBirthdayPartyLeadAndBooking = async (req, res) => {
         message: updateResult.message || "Failed to cancel One-to-One Lead.",
       });
     }
+    // ================= customCreateNotification
+    try {
+      if (updateResult.parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "Birthday Party Booking Cancelled",
+          description: "Your booking has been cancelled by our team.",
+          category: "Updates",
+          createdByAdminId: adminId,
+          recipientAdminIds: [result.parentAdminId],
+        });
+
+        console.log("🔔 Parent notification sent:", result.parentAdminId);
+      }
+    } catch (err) {
+      console.error("❌ Parent notification failed:", err.message);
+    }
 
     // ============================================================
     // 📝 Log activity
@@ -962,6 +998,22 @@ exports.renewBirthdayPartyLeadAndBooking = async (req, res) => {
         status: false,
         message: updateResult.message || "Failed to renew package Birthday Party Lead.",
       });
+    }
+
+    // ================= customCreateNotification
+    try {
+      if (updateResult.parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "Birthday Party Booking Renewed",
+          description: "Your booking has been renewed by our team.",
+          category: "Updates",
+          createdByAdminId: adminId,
+          recipientAdminIds: [updateResult.parentAdminId],
+        });
+        console.log("🔔 Parent notification sent:", updateResult.parentAdminId);
+      }
+    } catch (err) {
+      console.error("❌ Parent notification failed:", err.message);
     }
 
     // ============================================================

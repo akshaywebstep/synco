@@ -467,6 +467,7 @@ exports.createHolidayBooking = async (data, options = {}) => {
     return {
       success: true,
       bookingId: booking.id,
+      parentAdminId: booking.parentAdminId,
       payment_status,
       stripe_payment_intent_id: stripeChargeId,
       base_amount,
@@ -1399,6 +1400,7 @@ exports.cancelHolidayBookingById = async (bookingId, data, adminId) => {
       success: true,
       message: "Booking cancelled successfully.",
       bookingId: booking.id,
+      parentAdminId: booking.parentAdminId,
     };
   } catch (error) {
     await transaction.rollback();
@@ -2367,6 +2369,7 @@ exports.waitingListCreate = async (data, adminId) => {
       success: true,
       message: "Waiting list booking created successfully.",
       bookingId: booking.id,
+      parentAdminId: booking.parentAdminId,
     };
   } catch (error) {
     await transaction.rollback();
