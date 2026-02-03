@@ -191,34 +191,37 @@ exports.login = async (req, res) => {
   }
 
   try {
-    // 1. Find admin by email
+    // 1️⃣ Find admin
     const { status, data: admin } = await adminModel.findAdminByEmail(email);
 
     if (DEBUG) console.log("📥 Admin lookup result:", { status, admin });
 
-    // 2. Check if admin exists (⚡ Move this up before touching admin.role)
+    // 2️⃣ Admin not found
     if (!admin) {
       return res.status(401).json({
         message: "Invalid email address. Please try again.",
       });
     }
 
-    // ✅ Now safe to access admin.role
+    // 3️⃣ Resolve role SAFELY (🔥 KEY FIX)
+    const roleName = admin?.role?.role || "coach";
+
+    // 4️⃣ Resolve permissions safely
     const activePermissions = (admin.role?.permissions || [])
       .filter((p) => p.status === true)
       .map((p) => ({ module: p.module, action: p.action }));
 
     if (DEBUG) console.log("🔑 Active permissions:", activePermissions);
 
-    // 3. Check if account is suspended
-    if (admin.status && admin.status.toLowerCase() === "suspend") {
+    // 5️⃣ Account status check
+    if (admin.status?.toLowerCase() === "suspend") {
       return res.status(403).json({
         message:
           "Your account is suspended and cannot be accessed. Please contact support.",
       });
     }
 
-    // 4. Check password
+    // 6️⃣ Password check
     const isMatch = await bcrypt.compare(password, admin.password);
     if (!isMatch) {
       return res.status(401).json({
@@ -226,12 +229,11 @@ exports.login = async (req, res) => {
       });
     }
 
-    // 5. Create token
+    // 7️⃣ Create token
     const token = createToken({
       id: admin.id,
-      name: admin.name,
       email: admin.email,
-      role: admin.role.role,
+      role: roleName,
       firstName: admin.firstName,
       lastName: admin.lastName,
     });
@@ -241,11 +243,10 @@ exports.login = async (req, res) => {
       data: {
         admin: {
           id: admin.id,
-          name: admin.name,
           email: admin.email,
           firstName: admin.firstName,
           lastName: admin.lastName,
-          role: admin.role.role,
+          role: roleName,
           hasPermission: activePermissions,
         },
         token,
@@ -554,7 +555,7 @@ exports.forgetPassword = async (req, res) => {
 
     // ✅ Allow only Admin or Parents
     const roleName = admin.role?.role;
-    if (!["Admin", "Parents","Super Admin"].includes(roleName)) {
+    if (!["Admin", "Parents","Super Admin","Coach"].includes(roleName)) {
       return res.status(403).json({
         message: "Password reset is not allowed for this account type.",
       });

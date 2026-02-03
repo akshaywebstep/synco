@@ -1,3 +1,5 @@
+// 🕒 LOAD CRON JOBS (must be before listen)
+require("./cron/sessionStatus.cron");
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
@@ -39,6 +41,8 @@ app.use("/uploads", express.static("uploads"));
 app.use("/api/open", require("./routes/open")); // Public routes
 
 app.use("/api/parent", require("./routes/parentWebsite/"));
+
+app.use("/api/coachpro", require("./routes/coachProApp/"));
 
 // ✅ Auth & Profile
 app.use("/api/admin/auth", require("./routes/admin/authRoutes")); // Login, Logout, etc.

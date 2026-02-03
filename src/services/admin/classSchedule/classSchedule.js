@@ -10,34 +10,42 @@ const {
   ClassScheduleTermMap,
   PaymentGroup,
 } = require("../../../models");
+const { Op } = require("sequelize");
 
 const {
   getVideoDurationInSeconds,
   formatDuration,
 } = require("../../../utils/videoHelper");
 
-// ✅ Create a new class
-exports.createClass = async (data) => {
+exports.autoUpdateSessionStatusByDate = async () => {
   try {
-    const newClass = await ClassSchedule.create(data);
-    return { status: true, data: newClass };
-  } catch (error) {
-    console.error("❌ createClass Error:", error);
-    return { status: false, message: error.message };
-  }
-};
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-// ✅ Update class by ID
-exports.updateClass = async (id, data) => {
-  try {
-    const cls = await ClassSchedule.findByPk(id);
-    if (!cls) return { status: false, message: "Class not found" };
+    const mappings = await ClassScheduleTermMap.findAll({
+      where: {
+        status: { [Op.ne]: "cancelled" },
+      },
+    });
 
-    await cls.update(data);
-    return { status: true, data: cls };
+    for (const map of mappings) {
+      if (!map.sessionDate) continue;
+
+      const sessionDate = new Date(map.sessionDate);
+      sessionDate.setHours(0, 0, 0, 0);
+
+      if (sessionDate < today && map.status !== "completed") {
+        await map.update({ status: "completed" });
+      }
+
+      if (sessionDate >= today && map.status !== "pending") {
+        await map.update({ status: "pending" });
+      }
+    }
+
+    console.log("✅ CRON: Session status update completed");
   } catch (error) {
-    console.error("❌ updateClass Error:", error);
-    return { status: false, message: error.message };
+    console.error("❌ CRON: Session status update failed", error);
   }
 };
 exports.getAllClasses = async (adminId) => {
@@ -365,25 +373,25 @@ exports.getAllClasses = async (adminId) => {
                   videoUploadedAgo,
                   ...(mapping
                     ? {
-                        mapId: mapping.id,
-                        classScheduleId: mapping.classScheduleId,
-                        termGroupId: mapping.termGroupId,
-                        termId: mapping.termId,
-                        sessionPlanId: mapping.sessionPlanId,
-                        cancelSession: await (async () => {
-                          const cancelled =
-                            await getCancelledSessionBySessionPlanId(
-                              mapping.id,
-                              mapping.sessionPlanId
-                            );
-                          return cancelled?.status
-                            ? cancelled.cancelSession
-                            : {};
-                        })(),
-                        status: mapping.status,
-                        createdAt: mapping.createdAt,
-                        updatedAt: mapping.updatedAt,
-                      }
+                      mapId: mapping.id,
+                      classScheduleId: mapping.classScheduleId,
+                      termGroupId: mapping.termGroupId,
+                      termId: mapping.termId,
+                      sessionPlanId: mapping.sessionPlanId,
+                      cancelSession: await (async () => {
+                        const cancelled =
+                          await getCancelledSessionBySessionPlanId(
+                            mapping.id,
+                            mapping.sessionPlanId
+                          );
+                        return cancelled?.status
+                          ? cancelled.cancelSession
+                          : {};
+                      })(),
+                      status: mapping.status,
+                      createdAt: mapping.createdAt,
+                      updatedAt: mapping.updatedAt,
+                    }
                     : {}),
                 };
 
@@ -422,6 +430,31 @@ exports.getAllClasses = async (adminId) => {
     };
   } catch (error) {
     console.error("❌ getAllClasses Error:", error);
+    return { status: false, message: error.message };
+  }
+};
+
+// ✅ Create a new class
+exports.createClass = async (data) => {
+  try {
+    const newClass = await ClassSchedule.create(data);
+    return { status: true, data: newClass };
+  } catch (error) {
+    console.error("❌ createClass Error:", error);
+    return { status: false, message: error.message };
+  }
+};
+
+// ✅ Update class by ID
+exports.updateClass = async (id, data) => {
+  try {
+    const cls = await ClassSchedule.findByPk(id);
+    if (!cls) return { status: false, message: "Class not found" };
+
+    await cls.update(data);
+    return { status: true, data: cls };
+  } catch (error) {
+    console.error("❌ updateClass Error:", error);
     return { status: false, message: error.message };
   }
 };
@@ -703,15 +736,15 @@ exports.getClassByIdWithFullDetails = async (classId, createdBy) => {
                 videoUploadedAgo,
                 ...(mapping
                   ? {
-                      mapId: mapping.id,
-                      classScheduleId: mapping.classScheduleId,
-                      termGroupId: mapping.termGroupId,
-                      termId: mapping.termId,
-                      sessionPlanId: mapping.sessionPlanId,
-                      status: mapping.status,
-                      createdAt: mapping.createdAt,
-                      updatedAt: mapping.updatedAt,
-                    }
+                    mapId: mapping.id,
+                    classScheduleId: mapping.classScheduleId,
+                    termGroupId: mapping.termGroupId,
+                    termId: mapping.termId,
+                    sessionPlanId: mapping.sessionPlanId,
+                    status: mapping.status,
+                    createdAt: mapping.createdAt,
+                    updatedAt: mapping.updatedAt,
+                  }
                   : {}),
               };
 

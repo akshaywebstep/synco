@@ -85,8 +85,8 @@ exports.createAdmin = async (req, res) => {
   try {
     const formData = req.body;
     const files = req.files || {};
-const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
     const {
       email,
@@ -189,39 +189,39 @@ const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
       const qualifications = {
         fa_level_1: files.fa_level_1?.[0]
           ? await uploadFileAndGetUrl(
-              files.fa_level_1[0],
-              admin.id,
-              "qualifications",
-              "fa_level_1"
-            )
+            files.fa_level_1[0],
+            admin.id,
+            "qualifications",
+            "fa_level_1"
+          )
           : null,
 
         futsal_level_1_qualification:
           files.futsal_level_1_qualification?.[0]
             ? await uploadFileAndGetUrl(
-                files.futsal_level_1_qualification[0],
-                admin.id,
-                "qualifications",
-                "futsal_level_1_qualification"
-              )
+              files.futsal_level_1_qualification[0],
+              admin.id,
+              "qualifications",
+              "futsal_level_1_qualification"
+            )
             : null,
 
         first_aid: files.first_aid?.[0]
           ? await uploadFileAndGetUrl(
-              files.first_aid[0],
-              admin.id,
-              "qualifications",
-              "first_aid"
-            )
+            files.first_aid[0],
+            admin.id,
+            "qualifications",
+            "first_aid"
+          )
           : null,
 
         futsal_level_1: files.futsal_level_1?.[0]
           ? await uploadFileAndGetUrl(
-              files.futsal_level_1[0],
-              admin.id,
-              "qualifications",
-              "futsal_level_1"
-            )
+            files.futsal_level_1[0],
+            admin.id,
+            "qualifications",
+            "futsal_level_1"
+          )
           : null,
       };
 
@@ -262,10 +262,10 @@ const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
       const replacePlaceholders = (text) =>
         typeof text === "string"
           ? Object.entries(replacements).reduce(
-              (result, [key, val]) =>
-                result.replace(new RegExp(key, "g"), val),
-              text
-            )
+            (result, [key, val]) =>
+              result.replace(new RegExp(key, "g"), val),
+            text
+          )
           : text;
 
       const emailSubject = replacePlaceholders(
@@ -274,7 +274,7 @@ const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
       const htmlBody = replacePlaceholders(
         htmlTemplate?.trim() ||
-          `<p>Hello {{firstName}},</p>
+        `<p>Hello {{firstName}},</p>
            <p>Your admin account for <strong>{{appName}}</strong> has been created.</p>
            <p>Set your password using the link below:</p>
            <p><a href="{{resetLink}}" target="_blank">{{resetLink}}</a></p>
@@ -285,9 +285,9 @@ const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
       const mapRecipients = (list) =>
         Array.isArray(list)
           ? list.map(({ name, email }) => ({
-              name: replacePlaceholders(name),
-              email: replacePlaceholders(email),
-            }))
+            name: replacePlaceholders(name),
+            email: replacePlaceholders(email),
+          }))
           : [];
 
       const mailData = {
@@ -633,7 +633,7 @@ exports.getAllAdmins = async (req, res) => {
   try {
     const loggedInAdminId = req.admin?.id; // Get the current admin's ID
 
-    const result = await adminModel.getAllAdmins(superAdminId,loggedInAdminId); // Pass it to the service
+    const result = await adminModel.getAllAdmins(superAdminId, loggedInAdminId); // Pass it to the service
 
     if (!result.status) {
       if (DEBUG) console.log("❌ Failed to retrieve admins:", result.message);
@@ -682,36 +682,61 @@ exports.getAllAdmins = async (req, res) => {
   }
 };
 
-// ✅ Get a specific admin profile
+// ✅ Get a specific admin / coach / super admin profile
 exports.getAdminProfile = async (req, res) => {
   const { id } = req.params;
 
-  if (DEBUG) console.log("👤 Fetching admin profile for ID:", id);
+  if (DEBUG) console.log("👤 Fetching profile for ID:", id);
 
   try {
     const result = await adminModel.getAdminById(id);
 
     if (!result.status || !result.data) {
-      if (DEBUG) console.log("❌ Admin not found with ID:", id);
-      return res
-        .status(404)
-        .json({ status: false, message: "Admin not found." });
+      if (DEBUG) console.log("❌ User not found with ID:", id);
+      return res.status(404).json({
+        status: false,
+        message: "User not found.",
+      });
     }
 
     const { data: admin } = result;
 
-    if (DEBUG) console.log("✅ Admin found:", admin);
+    if (DEBUG) console.log("✅ User found:", admin);
+
+    // ✅ Extract role safely
+    const roleName = admin?.role?.role || "";
+
+    // 🔥 Role-based success message
+    let successMessage;
+
+    switch (roleName.toLowerCase()) {
+      case "coach":
+        successMessage = "Coach data fetched successfully.";
+        break;
+
+      case "super admin":
+        successMessage = "Super admin data fetched successfully.";
+        break;
+
+      case "admin":
+        successMessage = "Admin data fetched successfully.";
+        break;
+
+      default:
+        successMessage = "User profile fetched successfully.";
+    }
 
     return res.status(200).json({
       status: true,
-      message: "Admin profile retrieved successfully.",
+      message: successMessage,
       data: admin,
     });
   } catch (error) {
-    console.error("❌ Get Admin Profile Error:", error);
-    return res
-      .status(500)
-      .json({ status: false, message: "Failed to fetch admin profile." });
+    console.error("❌ Get Profile Error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Failed to fetch profile.",
+    });
   }
 };
 
@@ -748,13 +773,12 @@ exports.updateAdmin = async (req, res) => {
     // ✅ Validate input
     const validation = validateFormData(formData, {
       requiredFields: [
-        "firstName",
-        "email",
-        "position",
-        "phoneNumber",
-        "country",
-        "city",
-        "postalCode",
+        // "firstName",
+        // "email",
+        // "phoneNumber",
+        // "country",
+        // "city",
+        // "postalCode",
       ],
       patternValidations: {
         email: "email",

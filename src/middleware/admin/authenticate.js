@@ -133,31 +133,43 @@ const authMiddleware = async (req, res, next) => {
         code: "ACCOUNT_SUSPENDED",
       });
     }
+    // 🔥 SAFE ROLE RESOLUTION (KEY FIX)
+    const roleName = admin?.role?.role || "Coach";
+    const roleId = admin?.role?.id || null;
 
     /**
-     * 🔥 CONDITIONAL PART (ONLY CHANGE)
-     * If role is Parents → treat as parent login
-     */
-    if (admin.role.role === "Parents") {
+ * 🔥 ROLE-BASED CONTEXT ATTACHMENT
+ */
+    if (roleName === "Parents") {
       req.parent = {
         id: admin.id,
         parentAdminId: admin.id,
         email: admin.email,
-        role: admin.role.role,
-        roleId: admin.role.id,
+        role: roleName,
+        roleId,
         profile: admin.profile,
       };
-    }
-    // Otherwise treat as Admin
-    else {
+    } else if (roleName === "Coach") {
+      req.coach = {
+        id: admin.id,
+        coachAdminId: admin.id,
+        firstName: admin.firstName,
+        lastName: admin.lastName,
+        email: admin.email,
+        role: roleName,
+        roleId,
+        profile: admin.profile,
+      };
+    } else {
+      // Default → Admin / Super Admin
       req.admin = {
         id: admin.id,
         parentAdminId: admin.id,
         firstName: admin.firstName,
         lastName: admin.lastName,
         email: admin.email,
-        role: admin.role.role,
-        roleId: admin.role.id,
+        role: roleName,
+        roleId,
         profile: admin.profile,
       };
     }
