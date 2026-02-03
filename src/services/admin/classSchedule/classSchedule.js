@@ -22,32 +22,66 @@ exports.autoUpdateSessionStatusByDate = async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const mappings = await ClassScheduleTermMap.findAll({
-      where: {
-        status: { [Op.ne]: "cancelled" },
-      },
+    const terms = await Term.findAll({
+      attributes: ["id", "sessionsMap"],
     });
 
-    for (const map of mappings) {
-      if (!map.sessionDate) continue;
+    for (const term of terms) {
+      if (!term.sessionsMap) continue;
 
-      const sessionDate = new Date(map.sessionDate);
-      sessionDate.setHours(0, 0, 0, 0);
+      const sessions =
+        typeof term.sessionsMap === "string"
+          ? JSON.parse(term.sessionsMap)
+          : term.sessionsMap;
 
-      if (sessionDate < today && map.status !== "completed") {
-        await map.update({ status: "completed" });
-      }
+      for (const session of sessions) {
+        if (!session.sessionDate || !session.sessionPlanId) continue;
 
-      if (sessionDate >= today && map.status !== "pending") {
-        await map.update({ status: "pending" });
+        const sessionDate = new Date(session.sessionDate);
+        sessionDate.setHours(0, 0, 0, 0);
+
+        /**
+         * ✅ PAST SESSION → COMPLETED
+         * ONLY IF NOT CANCELLED
+         */
+        if (sessionDate < today) {
+          await ClassScheduleTermMap.update(
+            { status: "completed" },
+            {
+              where: {
+                termId: term.id,
+                sessionPlanId: session.sessionPlanId,
+                status: { [Op.ne]: "cancelled" },
+              },
+            }
+          );
+        }
+
+        /**
+         * ✅ FUTURE SESSION → PENDING
+         * ONLY IF NOT CANCELLED
+         */
+        if (sessionDate >= today) {
+          await ClassScheduleTermMap.update(
+            { status: "pending" },
+            {
+              where: {
+                termId: term.id,
+                sessionPlanId: session.sessionPlanId,
+                status: { [Op.ne]: "cancelled" },
+              },
+            }
+          );
+        }
       }
     }
 
-    console.log("✅ CRON: Session status update completed");
-  } catch (error) {
-    console.error("❌ CRON: Session status update failed", error);
+    console.log("✅ CRON: Session status auto-updated (rule-safe)");
+  } catch (err) {
+    console.error("❌ CRON FAILED:", err);
   }
 };
+
 exports.getAllClasses = async (adminId) => {
   try {
     if (!adminId || isNaN(Number(adminId))) {

@@ -4,7 +4,7 @@ const {
 } = require("../services/admin/classSchedule/classSchedule");
 
 // 🕒 Every day at 12:05 AM
-cron.schedule("* * * * *", async () => {
-  console.log("⏰ CRON: Auto-updating session statuses...");
+cron.schedule("5 0 * * *", async () => {
+//   console.log("⏰ CRON: Auto-updating session statuses...");
   await autoUpdateSessionStatusByDate();
 });

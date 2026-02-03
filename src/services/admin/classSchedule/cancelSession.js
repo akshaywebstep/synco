@@ -78,6 +78,16 @@ exports.createCancellationRecord = async (
       createdBy: adminId,
       cancelledAt: new Date(),
     });
+    const formatDate = (date) => {
+      if (!date) return "N/A";
+      return new Date(date).toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    };
+
+    const cancelledDate = formatDate(cancelEntry.cancelledAt);
 
     // Step 5: If no bookings → skip emails
     if (!bookings.length) {
@@ -129,6 +139,14 @@ exports.createCancellationRecord = async (
       new Map(recipients.map((r) => [r.email, r])).values()
     );
 
+    let timeRange = "N/A";
+
+    if (classSchedule.startTime && classSchedule.endTime) {
+      timeRange = `${classSchedule.startTime} - ${classSchedule.endTime}`;
+    } else if (classSchedule.startTime) {
+      timeRange = classSchedule.startTime;
+    }
+
     // Step 10: Send emails
     const emailTemplate = await EmailConfig.findOne({
       where: { module: "cancel-class", action: "cancel", status: true },
@@ -143,10 +161,16 @@ exports.createCancellationRecord = async (
         const personalizedBody = emailTemplate.html_template
           .replace("{{firstName}}", recipient.firstName || "Member")
           .replace("{{className}}", classSchedule.className || "N/A")
+          .replace("{{startTime}}", classSchedule.startTime || "N/A")
           .replace("{{venueName}}", classSchedule.venue?.name || "Venue")
+          .replace(/{{time}}/g, timeRange)
+          .replace(/{{date}}/g, cancelledDate)
           .replace(
             "{{cancelReason}}",
             cancelData.reasonForCancelling || "Not specified"
+              .replace(/{{mainLogo}}/g, emailTemplate.mainLogo ||
+                "https://uploads.grabbite.com/mainLogo/mainlogo.png")
+
           );
 
         const subjectLine =
