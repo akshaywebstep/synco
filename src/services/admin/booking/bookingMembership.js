@@ -349,7 +349,7 @@ exports.createBooking = async (data, options) => {
       }
       else {
         // 🌐 WEBSITE → findOrCreate
-        const [admin,isCreated] = await Admin.findOrCreate({
+        const [admin, isCreated] = await Admin.findOrCreate({
           where: { email },
           defaults: {
             firstName: firstParent.parentFirstName || "Parent",
@@ -961,6 +961,12 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
           ],
           required: false,
         },
+        {
+          model: Admin,
+          as: "assignedAgent",  // 👈 alias for the assigned agent
+          attributes: ["id", "firstName", "lastName", "email", "roleId", "status"],
+          required: false,
+        },
       ],
     });
 
@@ -1071,6 +1077,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
           venue,
           paymentData,
           bookedByAdmin: booking.bookedByAdmin || null,
+          assignedAgent: booking.assignedAgent || null, // 👈 agent info
         };
       })
     );

@@ -64,7 +64,7 @@ const models = {
   CancelBooking: require("./admin/booking/CancelBooking"),
   // WaitingList: require("./admin/booking/WaitingList"),
   FreezeBooking: require("./admin/booking/FreezeBooking"),
-  KeyInformation: require("./admin/booking/KeyInformation"),
+  KeyInformation: require("./admin/KeyInformation"),
   Comment: require("./admin/booking/Comment"),
 
   // Book MemberShip
@@ -386,6 +386,15 @@ Lead.belongsTo(Admin, {
   as: "assignedAgent",
 });
 
+Booking.belongsTo(Admin, {
+  foreignKey: "assignedAgentId",
+  as: "assignedAgent",
+});
+
+Booking.belongsTo(Admin, {
+  foreignKey: "convertedByAgentId",
+  as: "convertedByAgent",
+});
 // Lead.js
 Lead.hasMany(models.Booking, {
   foreignKey: "leadId",

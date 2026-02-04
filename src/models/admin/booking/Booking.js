@@ -97,6 +97,7 @@ const Booking = sequelize.define(
       type: DataTypes.ENUM(
         "pending",
         "attended",
+        "assigned",
         "not attended",
         "cancelled",
         "rebooked",
@@ -188,6 +189,50 @@ const Booking = sequelize.define(
       allowNull: true, // ✅ allow nulls
       defaultValue: null, // ✅ default is actually NULL, not 'NULL'
       comment: "Type of service for the booking",
+    },
+
+    // ===============================
+    // 🔹 SALES ASSIGNMENT FIELDS
+    // ===============================
+
+    // Kaunsa agent is trial ko close karega
+    assignedAgentId: {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: true, // ✅ existing data safe
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+      comment: "Sales agent assigned to this trial",
+    },
+
+    // Kab agent assign hua
+    assignedDate: {
+      type: DataTypes.DATE,
+      allowNull: true, // ✅ existing data safe
+      comment: "Date when trial was assigned to agent",
+    },
+
+    // Kis agent ne final conversion ki
+    convertedByAgentId: {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: true, // ✅ existing data safe
+      references: {
+        model: "admins",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+      comment: "Agent who converted trial to membership",
+    },
+
+    // Conversion kab hua
+    convertedAt: {
+      type: DataTypes.DATE,
+      allowNull: true, // ✅ existing data safe
+      comment: "Date when trial was converted to membership",
     },
   },
   {

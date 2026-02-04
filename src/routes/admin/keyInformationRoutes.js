@@ -4,10 +4,11 @@ const authMiddleware = require("../../middleware/admin/authenticate");
 const permissionMiddleware = require("../../middleware/admin/permission");
 
 const {
-getAllKeyInformation,
+    getAllKeyInformation,
     updateKeyInformation,
+    getKeyInformationByServiceType
 
-} = require("../../controllers/admin/booking/keyInformationController");
+} = require("../../controllers/admin/keyInformationController");
 
 router.put(
     "/",
@@ -17,10 +18,17 @@ router.put(
 );
 
 router.get(
-    "/",
+    "/list",
     authMiddleware,
     permissionMiddleware("key-information", "view-listing"),
     getAllKeyInformation
+);
+
+router.get(
+    "/listBy/:serviceType",
+    authMiddleware,
+    permissionMiddleware("key-information", "view-listing"),
+    getKeyInformationByServiceType
 );
 
 module.exports = router;

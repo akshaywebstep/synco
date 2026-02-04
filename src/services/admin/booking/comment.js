@@ -1,6 +1,7 @@
 const debug = require("debug")("service:comments");
 const { sequelize, Comment, Admin } = require("../../../models");
 const DEBUG = process.env.DEBUG === "true";
+const { Op } = require("sequelize");
 
 exports.addCommentForFreeTrial = async ({ commentBy = null, comment, commentType = "free", serviceType = "weekly class" }) => {
     const transaction = await sequelize.transaction();
@@ -38,20 +39,55 @@ exports.addCommentForFreeTrial = async ({ commentBy = null, comment, commentType
         return { status: false, message: error.message };
     }
 };
-exports.listCommentsForFreeTrial = async ({ commentType = "free", serviceType = "weekly class" }) => {
+
+exports.listCommentsForFreeTrial = async ({
+    commentType = "free",
+    serviceType = "weekly class",
+    loggedInAdmin,
+}) => {
     try {
-        debug("🔍 Starting listComments service...");
+        // 🔹 Step 1: Root Super Admin identify karo
+        const superAdminId =
+            loggedInAdmin.role === "Super Admin"
+                ? loggedInAdmin.id
+                : loggedInAdmin.createdBy;
+
+        // 🔹 Step 2: Is super admin ke admins + khud super admin
+        const teamAdmins = await Admin.findAll({
+            where: {
+                [Op.or]: [
+                    { id: superAdminId },
+                    { createdByAdmin: superAdminId },
+                ],
+            },
+            attributes: ["id"],
+        });
+
+        const allowedAdminIds = teamAdmins.map(a => a.id);
+
+        const whereCondition = {
+            commentType,
+            serviceType,
+            commentBy: {
+                [Op.in]: allowedAdminIds, // 🔒 hierarchy lock
+            },
+        };
 
         const comments = await Comment.findAll({
-            where: {
-                commentType,
-                serviceType,  // ⭐ FILTER BY SERVICETYPE
-            },
+            where: whereCondition,
             include: [
                 {
                     model: Admin,
                     as: "bookedByAdmin",
-                    attributes: ["id", "firstName", "lastName", "email", "roleId", "status", "profile"],
+                    attributes: [
+                        "id",
+                        "firstName",
+                        "lastName",
+                        "email",
+                        "roleId",
+                        "status",
+                        "profile",
+                    ],
                     required: false,
                 },
             ],
@@ -120,15 +156,38 @@ exports.addCommentForMembership = async ({
     }
 };
 
-exports.listCommentsForMembership = async ({ commentType = "paid", serviceType = "weekly class" }) => {
+exports.listCommentsForMembership = async ({ commentType = "paid", serviceType = "weekly class", loggedInAdmin }) => {
     try {
+        // 🔹 Step 1: Root Super Admin identify karo
+        const superAdminId =
+            loggedInAdmin.role === "Super Admin"
+                ? loggedInAdmin.id
+                : loggedInAdmin.createdBy;
+
+        // 🔹 Step 2: Is super admin ke admins + khud super admin
+        const teamAdmins = await Admin.findAll({
+            where: {
+                [Op.or]: [
+                    { id: superAdminId },
+                    { createdByAdmin: superAdminId },
+                ],
+            },
+            attributes: ["id"],
+        });
+
+        const allowedAdminIds = teamAdmins.map(a => a.id);
+
+        const whereCondition = {
+            commentType,
+            serviceType,
+            commentBy: {
+                [Op.in]: allowedAdminIds, // 🔒 hierarchy lock
+            },
+        };
         debug("🔍 Starting listComments service...");
 
         const comments = await Comment.findAll({
-            where: {
-                commentType,
-                serviceType,  // ⭐ FILTER BY SERVICETYPE
-            },
+            where: whereCondition,
             include: [
                 {
                     model: Admin,
@@ -206,15 +265,38 @@ exports.addCommentForWaitingList = async ({
     }
 };
 
-exports.listCommentsForWaitingList = async ({ commentType = "waiting list", serviceType = "serviceType" }) => {
+exports.listCommentsForWaitingList = async ({ commentType = "waiting list", serviceType = "serviceType",loggedInAdmin }) => {
     try {
+        // 🔹 Step 1: Root Super Admin identify karo
+        const superAdminId =
+            loggedInAdmin.role === "Super Admin"
+                ? loggedInAdmin.id
+                : loggedInAdmin.createdBy;
+
+        // 🔹 Step 2: Is super admin ke admins + khud super admin
+        const teamAdmins = await Admin.findAll({
+            where: {
+                [Op.or]: [
+                    { id: superAdminId },
+                    { createdByAdmin: superAdminId },
+                ],
+            },
+            attributes: ["id"],
+        });
+
+        const allowedAdminIds = teamAdmins.map(a => a.id);
+
+        const whereCondition = {
+            commentType,
+            serviceType,
+            commentBy: {
+                [Op.in]: allowedAdminIds, // 🔒 hierarchy lock
+            },
+        };
         debug("🔍 Starting listComments service...");
 
         const comments = await Comment.findAll({
-            where: {
-                commentType,
-                serviceType,  // ⭐ FILTER BY SERVICETYPE
-            },
+            where: whereCondition,
             include: [
                 {
                     model: Admin,
@@ -275,4 +357,3 @@ exports.listComments = async ({ commentType }) => {
         return { status: false, message: error.message };
     }
 };
-

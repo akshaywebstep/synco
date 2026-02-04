@@ -12,6 +12,13 @@ const {
   sendBookingSMSToParents,
 } = require("../../controllers/admin/booking/bookFreeTrialController");
 
+router.put(
+  "/assign-booking",
+  authMiddleware,
+  permissionMiddleware("book-free-trial", "view-listing"),
+  assignBookings
+);
+
 // 📧 Send trial confirmation emails
 router.post(
   "/send-email",
@@ -49,13 +56,6 @@ router.get(
   authMiddleware,
   permissionMiddleware("book-free-trial", "view-listing"),
   getAllBookFreeTrials
-);
-
-router.put(
-  "/assign-booking",
-  authMiddleware,
-  permissionMiddleware("book-free-trial", "view-listing"),
-  assignBookings
 );
 
 // 📄 Get a specific free trial booking by ID

@@ -91,6 +91,8 @@ exports.listCommentsForFreeTrial = async (req, res) => {
 
     const result = await CommentService.listCommentsForFreeTrial({
       commentType,
+      serviceType: "weekly class",
+      loggedInAdmin: req.admin,
     });
 
     if (!result.status) {
@@ -209,6 +211,8 @@ exports.listCommentsForMembership = async (req, res) => {
 
     const result = await CommentService.listCommentsForMembership({
       commentType,
+      serviceType: "weekly class",
+      loggedInAdmin: req.admin
     });
 
     if (!result.status) {
@@ -327,6 +331,8 @@ exports.listCommentsForWaitingList = async (req, res) => {
 
     const result = await CommentService.listCommentsForWaitingList({
       commentType,
+       serviceType: "waiting list",
+      loggedInAdmin: req.admin
     });
 
     if (!result.status) {

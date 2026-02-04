@@ -496,6 +496,12 @@ exports.getWaitingList = async (filters = {}) => {
           required: false,
           where: filters.bookedBy ? adminWhere : undefined,
         },
+        {
+          model: Admin,
+          as: "assignedAgent",  // 👈 alias for the assigned agent
+          attributes: ["id", "firstName", "lastName", "email", "roleId", "status"],
+          required: false,
+        },
       ],
     });
 
@@ -553,6 +559,7 @@ exports.getWaitingList = async (filters = {}) => {
         classSchedule: booking.classSchedule || null,
         venue: booking.classSchedule?.venue || null,
         bookedByAdmin: booking.bookedByAdmin || null,
+        assignedAgent: booking.assignedAgent || null, // 👈 agent info
         waitingDays,
       };
     });

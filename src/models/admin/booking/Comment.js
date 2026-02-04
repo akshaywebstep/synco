@@ -9,6 +9,11 @@ const Comment = sequelize.define(
             primaryKey: true,
             autoIncrement: true,
         },
+        // bookingId: {
+        //     type: DataTypes.BIGINT.UNSIGNED,
+        //     allowNull: false,
+        //     comment: "ID of the related booking (polymorphic)",
+        // },
 
         // ✅ Foreign key → admins.id (nullable if admin deleted)
         commentBy: {
@@ -32,14 +37,14 @@ const Comment = sequelize.define(
 
         // ✅ Comment type (ENUM)
         commentType: {
-            type: DataTypes.ENUM("free", "paid", "waiting list","lead","to do"),
+            type: DataTypes.ENUM("free", "paid", "waiting list", "lead", "to do"),
             allowNull: false,
             defaultValue: "free",
             comment: "Type of comment (free, paid, waiting list)",
         },
 
         serviceType: {
-            type: DataTypes.ENUM("weekly class", "birthday party", "one to one","holiday camp","to do"),
+            type: DataTypes.ENUM("weekly class", "birthday party", "one to one", "holiday camp", "to do"),
             allowNull: true,
             defaultValue: "weekly class",
             comment: "Type of comment (weekly class, birthday party,holiday camp)",

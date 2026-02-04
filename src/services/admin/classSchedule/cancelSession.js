@@ -168,10 +168,25 @@ exports.createCancellationRecord = async (
           .replace(
             "{{cancelReason}}",
             cancelData.reasonForCancelling || "Not specified"
-              .replace(/{{mainLogo}}/g, emailTemplate.mainLogo ||
-                "https://uploads.grabbite.com/mainLogo/mainlogo.png")
+          )
+          // ✅ LOGO FIX
+          .replace(
+            /{{\s*mainLogo\s*}}/g,
+            emailTemplate.mainLogo ||
+            "https://uploads.grabbite.com/mainLogo/mainlogo.png"
+          )
+          .replace(
+            /{{\s*footerLogo\s*}}/g,
+            emailTemplate.headerBgBanner ||
+            "https://uploads.grabbite.com/mainLogo/bannerImg.webp"
+          )
+          // ✅ YEAR FIX
+          .replace(/{{\s*year\s*}}/g, new Date().getFullYear());
 
-          );
+        console.log(
+          personalizedBody.includes("{{mainLogo}}"),
+          personalizedBody.includes("{{year}}")
+        );
 
         const subjectLine =
           cancelData.notifications.find((n) => n.role === "Member")

@@ -4,6 +4,7 @@ const { logActivity } = require("../../../utils/admin/activityLogger");
 const { Venue, ClassSchedule, Admin } = require("../../../models");
 const emailModel = require("../../../services/email");
 const sendEmail = require("../../../utils/email/sendEmail");
+// const sequelize = require("../../../models").sequelize;
 const {
   BookingParentMeta,
   BookingStudentMeta,
@@ -381,7 +382,7 @@ exports.createBooking = async (req, res) => {
     if (DEBUG) console.log("✅ Booking created successfully.");
     return res.status(201).json({
       status: true,
-      message: "Booking created successfully. Confirmation email sent.",
+      message: "Booking created successfully.",
       data: booking,
     });
   } catch (error) {
@@ -478,14 +479,24 @@ exports.getBookingByIdForWebsitePreview = async (req, res) => {
   }
 };
 
+// Controller: Get all active admins under the super admin
 exports.getAllAgents = async (req, res) => {
-  if (DEBUG) console.log("📋 Request received to list all admins");
-  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin?.id);
-  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
-  try {
-    const loggedInAdminId = req.admin?.id; // Get the current admin's ID
+  if (DEBUG) console.log("📋 Request received to list all active admins");
 
-    const result = await BookingTrialService.getAllAgents(superAdminId, loggedInAdminId); // Pass it to the service
+  try {
+    // Get the main super admin of the logged-in admin
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin?.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+
+    if (!superAdminId) {
+      return res.status(400).json({
+        status: false,
+        message: "Super admin not found for this request.",
+      });
+    }
+
+    // Fetch active admins under the super admin
+    const result = await BookingTrialService.getAllAgents(superAdminId);
 
     if (!result.status) {
       if (DEBUG) console.log("❌ Failed to retrieve admins:", result.message);
@@ -498,7 +509,7 @@ exports.getAllAgents = async (req, res) => {
     }
 
     if (DEBUG) {
-      console.log(`✅ Retrieved ${result.data.length} admin(s)`);
+      console.log(`✅ Retrieved ${result.data.length} active admin(s)`);
       console.table(
         result.data.map((m) => ({
           ID: m.id,
@@ -515,14 +526,14 @@ exports.getAllAgents = async (req, res) => {
       MODULE,
       "list",
       {
-        oneLineMessage: `Fetched ${result.data.length} admin(s) successfully.`,
+        oneLineMessage: `Fetched ${result.data.length} active admin(s) successfully.`,
       },
       true
     );
 
     return res.status(200).json({
       status: true,
-      message: `Fetched ${result.data.length} admin(s) successfully.`,
+      message: `Fetched ${result.data.length} active admin(s) successfully.`,
       data: result.data,
     });
   } catch (error) {
@@ -534,10 +545,10 @@ exports.getAllAgents = async (req, res) => {
   }
 };
 
-// Assign Booking to Admin / Agent
+// Controller: Assign bookings to Agent
 exports.assignBookings = async (req, res) => {
   try {
-    const { bookingIds, bookedBy } = req.body;
+    const { bookingIds, agentId } = req.body;
 
     if (!Array.isArray(bookingIds) || bookingIds.length === 0) {
       return res.status(400).json({
@@ -546,40 +557,19 @@ exports.assignBookings = async (req, res) => {
       });
     }
 
-    if (!bookedBy || isNaN(Number(bookedBy))) {
+    if (!agentId || isNaN(Number(agentId))) {
       return res.status(400).json({
         status: false,
-        message: "Valid admin ID is required.",
+        message: "Valid agent ID is required.",
       });
     }
 
-    const result = await BookingTrialService.assignBookingsToAgent({
-      bookingIds,
-      bookedBy,
-    });
+    // Call service to assign bookings
+    const result = await BookingTrialService.assignBookingsToAgent({ bookingIds, agentId });
 
     if (!result.status) {
-      await logActivity(req, PANEL, MODULE, "update", result, false);
       return res.status(400).json(result);
     }
-
-    await createNotification(
-      req,
-      "Bookings Assigned",
-      `${bookingIds.length} booking(s) assigned to agent successfully.`,
-      "System"
-    );
-
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "update",
-      {
-        oneLineMessage: `Assigned ${bookingIds.length} bookings to admin ${bookedBy}`,
-      },
-      true
-    );
 
     return res.status(200).json(result);
   } catch (error) {

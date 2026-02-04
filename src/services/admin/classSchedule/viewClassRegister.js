@@ -1,6 +1,7 @@
 
 
 const { Booking, BookingStudentMeta, Venue, ClassSchedule } = require("../../../models");
+const { sequelize } = require("../../../models");
 
 exports.getAttendanceRegister = async (classScheduleId) => {
   try {
@@ -89,6 +90,7 @@ exports.getAttendanceRegister = async (classScheduleId) => {
 };
 
 exports.updateAttendanceStatus = async (studentId, attendance) => {
+  const t = await sequelize.transaction();
   try {
     // ✅ Validate input
     if (!studentId || !["attended", "not attended"].includes(attendance)) {
@@ -98,19 +100,49 @@ exports.updateAttendanceStatus = async (studentId, attendance) => {
     // ✅ Update the student record
     const [updatedRows] = await BookingStudentMeta.update(
       { attendance },
-      { where: { id: studentId } }
+      { where: { id: studentId }, transaction: t }
     );
 
     if (updatedRows === 0) {
+      await t.rollback();
       return { status: false, message: "Student not found or no change made." };
     }
+
+    // ✅ Fetch the bookingTrialId of this student
+    const student = await BookingStudentMeta.findByPk(studentId, { transaction: t });
+    if (!student) {
+      await t.rollback();
+      return { status: false, message: "Student not found." };
+    }
+
+    const bookingId = student.bookingTrialId;
+
+    // ✅ Fetch all students under the same booking
+    const allStudents = await BookingStudentMeta.findAll({
+      where: { bookingTrialId: bookingId },
+      transaction: t,
+    });
+
+    // ✅ Determine if booking can be marked attended
+    const allAttended = allStudents.every(s => s.attendance === "attended");
+
+    // ✅ Update booking status only if all students attended
+    if (allAttended) {
+      await Booking.update(
+        { status: "Attended", updatedAt: new Date() },
+        { where: { id: bookingId }, transaction: t }
+      );
+    }
+
+    await t.commit();
 
     return {
       status: true,
       message: "Student attendance updated successfully.",
-      data: { id: studentId, attendance },
+      data: { studentId, attendance, bookingUpdated: allAttended },
     };
   } catch (error) {
+    await t.rollback();
     console.error("❌ updateAttendanceStatus Service Error:", error);
     return { status: false, message: error.message };
   }
