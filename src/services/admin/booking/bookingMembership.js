@@ -2557,69 +2557,93 @@ exports.transferClass = async (data, options) => {
 exports.addToWaitingListService = async (data, adminId) => {
   const t = await sequelize.transaction();
   try {
-    console.log("🚀 [Service] addToWaitingListService (simplified)", {
-      data,
-      adminId,
-    });
-
-    // 1️⃣ Fetch existing booking
+    // 1️⃣ Fetch booking
     const booking = await Booking.findByPk(data.bookingId, {
-      include: [
-        { model: BookingStudentMeta, as: "students" },
-        { model: BookingPayment, as: "payments" },
-      ],
+      include: [{ model: BookingStudentMeta, as: "students" }],
       transaction: t,
     });
 
     if (!booking) throw new Error("Invalid booking selected.");
 
-    // 2️⃣ Validate normal case (allow active/paid bookings or cancelled/request_to_cancel)
     const allowedStatuses = [
       "active",
       "cancelled",
       "request_to_cancel",
       "frozen",
     ];
+
     if (
-      !(
-        booking.bookingType === "paid" &&
-        allowedStatuses.includes(booking.status)
-      )
+      booking.bookingType !== "paid" ||
+      !allowedStatuses.includes(booking.status)
     ) {
-      throw new Error(
-        `Booking type=${booking.bookingType}, status=${booking.status}. Cannot move to waiting list.`
+      throw new Error("Booking cannot be moved to waiting list.");
+    }
+
+    // 2️⃣ Validate students payload
+    if (!Array.isArray(data.students) || !data.students.length) {
+      throw new Error("At least one student is required.");
+    }
+
+    // 3️⃣ Validate EACH student + class
+    for (const s of data.students) {
+      if (!s.studentId || !s.classScheduleId) {
+        throw new Error("studentId and classScheduleId are required.");
+      }
+
+      const student = await BookingStudentMeta.findOne({
+        where: {
+          id: s.studentId,
+          bookingTrialId: booking.id,
+        },
+        transaction: t,
+      });
+
+      if (!student) {
+        throw new Error(`Student ${s.studentId} not found in booking.`);
+      }
+
+      const classSchedule = await ClassSchedule.findByPk(
+        s.classScheduleId,
+        { transaction: t }
+      );
+
+      if (!classSchedule) {
+        throw new Error(
+          `Class schedule ${s.classScheduleId} not found.`
+        );
+      }
+    }
+
+    // 4️⃣ Update students (student-wise class)
+    for (const s of data.students) {
+      await BookingStudentMeta.update(
+        {
+          classScheduleId: s.classScheduleId,
+          additionalNote:
+            data.additionalNote,
+          preferredStartDate:
+            data.preferedStartDate ||
+            data.startDate,
+        },
+        {
+          where: {
+            id: s.studentId,
+            bookingTrialId: booking.id,
+          },
+          transaction: t,
+        }
       );
     }
 
-    // 3️⃣ Validate class schedule if provided
-    if (data.classScheduleId) {
-      const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, {
-        transaction: t,
-      });
-      if (!classSchedule) throw new Error("Class schedule is required.");
-    }
-
-    // 4️⃣ Only update required fields
-    const updateFields = {
-      status: "waiting list",
-      serviceType: "weekly class trial",
-      classScheduleId: data.classScheduleId || booking.classScheduleId,
-      additionalNote: data.additionalNote || booking.additionalNote,
-    };
-
-    // 5️⃣ Conditionally update startDate
-    if (data.preferedStartDate) {
-      updateFields.startDate = data.preferedStartDate;
-    } else if (data.startDate) {
-      updateFields.startDate = data.startDate;
-    }
-    // else do not touch booking.startDate
-
-    await booking.update(updateFields, { transaction: t });
+    // 5️⃣ Update booking status ONLY
+    await booking.update(
+      { status: "waiting list" },
+      { transaction: t }
+    );
 
     await t.commit();
 
-    // 6️⃣ Fetch updated booking for return
+    // 6️⃣ Return updated booking
     const updatedBooking = await Booking.findByPk(booking.id, {
       include: [
         {
@@ -2635,15 +2659,14 @@ exports.addToWaitingListService = async (data, adminId) => {
 
     return {
       status: true,
-      message: "Booking updated to waiting list successfully.",
+      message: "Students added to waiting list successfully.",
       data: updatedBooking,
     };
   } catch (error) {
     await t.rollback();
-    console.error("❌ [Service] addToWaitingListService error:", error);
     return {
       status: false,
-      message: error.message || "Server error.",
+      message: error.message,
       data: null,
     };
   }
@@ -2791,32 +2814,39 @@ exports.getBookingsById = async (bookingId) => {
     }
 
     // ✅ collect venueIds from student class schedules
-const venueIds = new Set();
+    const venueIds = new Set();
 
-for (const student of booking.students || []) {
-  if (student.classScheduleId) {
-    const classSchedule = await ClassSchedule.findByPk(
-      student.classScheduleId,
-      { attributes: ["venueId"] }
-    );
+    for (const student of booking.students || []) {
+      if (student.classScheduleId) {
+        const classSchedule = await ClassSchedule.findByPk(
+          student.classScheduleId,
+          { attributes: ["venueId"] }
+        );
 
-    if (classSchedule?.venueId) {
-      venueIds.add(classSchedule.venueId);
+        if (classSchedule?.venueId) {
+          venueIds.add(classSchedule.venueId);
+        }
+      }
     }
-  }
-}
 
-// 🔎 fetch all class schedules from those venues
-let newClasses = [];
+    // 🔎 fetch all class schedules from those venues
+    let newClasses = [];
 
-if (venueIds.size > 0) {
-  newClasses = await ClassSchedule.findAll({
-    where: {
-      venueId: [...venueIds],
-    },
-  });
-}
+    if (venueIds.size > 0) {
+      newClasses = await ClassSchedule.findAll({
+        where: {
+          venueId: [...venueIds],
+        },
+      });
+    }
+    let noCapacityClass = [];
 
+    if (venueIds) {
+      // 🔹 jisme capacity na ho
+      noCapacityClass = newClasses.filter(
+        (cls) => cls.capacity <= 0
+      );
+    }
     // ✅ Parse booking as before
     const students =
       booking.students?.map((s) => ({
@@ -2926,6 +2956,7 @@ if (venueIds.size > 0) {
 
       bookedByAdmin: booking.bookedByAdmin || null,
       newClasses,
+      noCapacityClass,
     };
 
     return {

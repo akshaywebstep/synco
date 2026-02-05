@@ -1326,14 +1326,26 @@ exports.addToWaitingList = async (req, res) => {
     }
     console.log("✅ [Controller] Admin validated:", adminId);
 
-    // 🔹 Validate class schedule
-    if (!data.classScheduleId) {
-      console.warn("⚠️ [Controller] Missing classScheduleId in payload");
+    // 🔹 Validate students + classScheduleId (student-wise)
+    if (
+      !Array.isArray(data.students) ||
+      !data.students.length
+    ) {
       return res.status(400).json({
         status: false,
-        message: "Class schedule is required.",
+        message: "At least one student is required.",
         data: null,
       });
+    }
+
+    for (const s of data.students) {
+      if (!s.studentId || !s.classScheduleId) {
+        return res.status(400).json({
+          status: false,
+          message: "Each student must have studentId and classScheduleId.",
+          data: null,
+        });
+      }
     }
 
     // 🔹 Call service

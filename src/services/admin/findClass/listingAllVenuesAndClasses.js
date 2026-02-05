@@ -504,6 +504,23 @@ exports.getClassById = async (classId, createdBy) => {
     }
 
     const venue = cls.venue;
+    // =====================
+    // Fetch other classes of SAME venue
+    // =====================
+    const venueClasses = await ClassSchedule.findAll({
+      where: {
+        venueId: venue.id,          // ✅ same venue only
+        createdBy: Number(createdBy)
+      },
+      attributes: [
+        "id",
+        "className",
+        "capacity",
+        "startTime",
+        "endTime",
+        "day",
+      ],
+    });
 
     // =====================
     // Parse termGroupId → array
@@ -605,8 +622,12 @@ exports.getClassById = async (classId, createdBy) => {
       });
     }
     venue.dataValues.paymentGroups = paymentGroups;
-
-    return { status: true, message: "Class and full details fetched successfully.", data: cls };
+    cls.dataValues.venueClasses = venueClasses;
+    return {
+      status: true,
+      message: "Class and full details fetched successfully.",
+      data: cls
+    };
   } catch (error) {
     console.error("❌ getClassById Error:", error.message);
     return { status: false, message: "Fetch failed: " + error.message };
