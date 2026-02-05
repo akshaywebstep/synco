@@ -43,23 +43,23 @@ exports.createBooking = async (req, res) => {
     }
 
     // ✅ Check class
-    const classData = await ClassSchedule.findByPk(formData.classScheduleId);
-    if (!classData)
-      return res
-        .status(404)
-        .json({ status: false, message: "Class not found." });
+    // const classData = await ClassSchedule.findByPk(formData.classScheduleId);
+    // if (!classData)
+    //   return res
+    //     .status(404)
+    //     .json({ status: false, message: "Class not found." });
 
-    // ✅ Check capacity
-    if (classData.capacity < formData.totalStudents) {
-      return res.status(400).json({
-        status: false,
-        message: `Only ${classData.capacity} slot(s) left for this class.`,
-      });
-    }
+    // // ✅ Check capacity
+    // if (classData.capacity < formData.totalStudents) {
+    //   return res.status(400).json({
+    //     status: false,
+    //     message: `Only ${classData.capacity} slot(s) left for this class.`,
+    //   });
+    // }
 
     // ✅ Validate form
     const { isValid, error } = validateFormData(formData, {
-      requiredFields: ["startDate", "totalStudents", "classScheduleId"],
+      requiredFields: ["startDate", "totalStudents"],
     });
     if (!isValid) {
       await logActivity(req, PANEL, MODULE, "create", error, false);
@@ -73,7 +73,7 @@ exports.createBooking = async (req, res) => {
     }
     const isFromWebsite = req.source === "open";
     // ✅ Inject venue
-    formData.venueId = classData.venueId;
+    // formData.venueId = classData.venueId;
 
     let skipped = [];
     const adminId = req.admin?.id || null;
@@ -152,7 +152,7 @@ exports.createBooking = async (req, res) => {
     const studentIds = result.data.studentIds || [result.data.studentId]; // support multiple students
 
     // 🔹 Step 2: Fetch venue for email
-    const venue = await Venue.findByPk(classData.venueId);
+    const venue = await Venue.findByPk(formData.venueId);
     const venueName = venue?.venueName || venue?.name || "N/A";
 
     // let paymentPlanType;
@@ -278,11 +278,11 @@ exports.createBooking = async (req, res) => {
                 `${firstParent.parentFirstName} ${firstParent.parentLastName}`
               )
               .replace(/{{venueName}}/g, venueName)
-              .replace(/{{className}}/g, classData?.className || "N/A")
-              .replace(
-                /{{classTime}}/g,
-                `${classData?.startTime} - ${classData?.endTime}`
-              )
+              // .replace(/{{className}}/g, classData?.className || "N/A")
+              // .replace(
+              //   /{{classTime}}/g,
+              //   `${classData?.startTime} - ${classData?.endTime}`
+              // )
               .replace(/{{startDate}}/g, booking?.startDate || "")
               .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
               .replace(/{{parentPassword}}/g, "Synco123")
@@ -339,7 +339,7 @@ exports.createBooking = async (req, res) => {
       if (actualParentAdminId) {
         await createCustomNotificationForAdmins({
           title: "Membership Booked",
-          description: `Your membership for "${classData.className}" starts on ${booking.startDate}.`,
+          description: `Your membership starts on ${booking.startDate}.`,
           category: "Updates",
           createdByAdminId: req.admin?.id || null,
           recipientAdminIds: [actualParentAdminId],
@@ -361,7 +361,7 @@ exports.createBooking = async (req, res) => {
       await createNotification(
         req,
         "New Booking Created",
-        `Booking "${classData.className}" scheduled on ${formData.startDate}`,
+        `Booking scheduled on ${formData.startDate}`,
         "System"
       );
     }
@@ -991,7 +991,7 @@ exports.getAllPaidActiveBookings = async (req, res) => {
     console.log("🔹 Activity logged successfully");
 
     // Step 5: Return response
-    console.log("🔹 Returning response with data count:", result.data.length);
+    console.log("🔹 Returning response with data count:", result.data.memberShipSales.length);
     return res.status(200).json({
       status: true,
       message: "Paid bookings retrieved successfully",
@@ -1081,30 +1081,16 @@ exports.transferClass = async (req, res) => {
   const formData = req.body;
 
   try {
-    if (!formData.bookingId || !formData.classScheduleId) {
+    // ✅ Validation (matches service)
+    if (
+      !formData.bookingId ||
+      !Array.isArray(formData.transfers) ||
+      !formData.transfers.length
+    ) {
       return res.status(400).json({
         status: false,
-        message: "Booking ID and new class schedule are required.",
+        message: "Booking ID and transfers are required.",
       });
-    }
-
-    const classData = await ClassSchedule.findByPk(formData.classScheduleId);
-    if (!classData) {
-      return res
-        .status(404)
-        .json({ status: false, message: "New class not found." });
-    }
-
-    if (classData.capacity <= 0) {
-      return res.status(400).json({
-        status: false,
-        message: `No slots left in the new class "${classData.className}".`,
-      });
-    }
-
-    // ✅ If venue not passed, take from class
-    if (!formData.venueId) {
-      formData.venueId = classData.venueId;
     }
 
     // 🔹 Call Service
@@ -1114,48 +1100,50 @@ exports.transferClass = async (req, res) => {
 
     if (!result.status) {
       await logActivity(req, PANEL, MODULE, "transfer", result, false);
-      return res.status(500).json({ status: false, message: result.message });
+      return res.status(500).json({
+        status: false,
+        message: result.message,
+      });
     }
 
-    // 🔹 Fetch venue
-    const venue = await Venue.findByPk(formData.venueId);
-    const venueName = venue?.venueName || venue?.name || "N/A";
-
-    // 🔔 CUSTOM notification for parent
+    // 🔔 Parent notification (single, summary)
     try {
-      const booking = result.data?.booking;
+      const booking = await Booking.findByPk(formData.bookingId);
       const parentAdminId = booking?.parentAdminId;
 
       if (parentAdminId) {
+        const classNames = [];
+
+        for (const item of formData.transfers) {
+          const cls = await ClassSchedule.findByPk(item.classScheduleId);
+          if (cls) classNames.push(cls.className);
+        }
+
         await createCustomNotificationForAdmins({
           title: "Class Transferred",
-          description: `Your booking has been transferred to "${classData.className}" at ${venueName}.`,
+          description: `Your booking has been transferred to: ${classNames.join(
+            ", "
+          )}.`,
           category: "Updates",
           createdByAdminId: req.admin?.id || null,
           recipientAdminIds: [parentAdminId],
         });
-
-        console.log(
-          "🔔 Custom notification sent to parentAdminId:",
-          parentAdminId
-        );
-      } else {
-        console.log("⚠️ No parentAdminId found. Skipping custom notification.");
       }
     } catch (err) {
-      console.error("❌ Failed to create custom notification:", err.message);
+      console.error("❌ Notification error:", err.message);
     }
 
-    // 🔔 System notification (admins)
+    // 🔔 System notification
     await createNotification(
       req,
       "Booking Transferred",
-      `Booking transferred to class "${classData.className}" at venue "${venueName}"`,
+      "Multiple student classes transferred",
       "System"
     );
 
     await logActivity(req, PANEL, MODULE, "transfer", result, true);
 
+    // ✅ SAME response structure as before
     return res.status(200).json({
       status: true,
       message: "Class transferred successfully.",
@@ -1170,7 +1158,10 @@ exports.transferClass = async (req, res) => {
       { error: error.message },
       false
     );
-    return res.status(500).json({ status: false, message: "Server error." });
+    return res.status(500).json({
+      status: false,
+      message: "Server error.",
+    });
   }
 };
 

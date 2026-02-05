@@ -58,15 +58,25 @@ const Booking = sequelize.define(
     },
 
     // ✅ FK → ClassSchedules.id
+    // classScheduleId: {
+    //   type: DataTypes.BIGINT.UNSIGNED,
+    //   allowNull: false,
+    //   references: {
+    //     model: "class_schedules",
+    //     key: "id",
+    //   },
+    //   onUpdate: "CASCADE",
+    //   onDelete: "CASCADE",
+    // },
     classScheduleId: {
       type: DataTypes.BIGINT.UNSIGNED,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: "class_schedules",
         key: "id",
       },
       onUpdate: "CASCADE",
-      onDelete: "CASCADE",
+      onDelete: "SET NULL",
     },
 
     // ✅ FK → PaymentPlans.id

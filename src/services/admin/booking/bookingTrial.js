@@ -166,7 +166,7 @@ exports.createBooking = async (data, options) => {
         bookingId: generateBookingId(12), // random booking reference
         leadId,
         totalStudents: data.totalStudents,
-        classScheduleId: data.classScheduleId,
+        // classScheduleId: data.classScheduleId,
         trialDate: data.trialDate,
         className: data.className,
         serviceType: "weekly class trial",
@@ -195,6 +195,7 @@ exports.createBooking = async (data, options) => {
       const studentMeta = await BookingStudentMeta.create(
         {
           bookingTrialId: booking.id,
+          classScheduleId: student.classScheduleId, // ✅ HERE
           studentFirstName: student.studentFirstName,
           studentLastName: student.studentLastName,
           dateOfBirth: student.dateOfBirth,
@@ -273,10 +274,29 @@ exports.createBooking = async (data, options) => {
     }
 
     // Step 5: Update Class Capacity
-    const classSchedule = await ClassSchedule.findByPk(data.classScheduleId);
-    const newCapacity = classSchedule.capacity - data.totalStudents;
-    if (newCapacity < 0) throw new Error("Not enough capacity left.");
-    await classSchedule.update({ capacity: newCapacity }, { transaction: t });
+    const scheduleCountMap = {};
+
+    for (const student of data.students) {
+      scheduleCountMap[student.classScheduleId] =
+        (scheduleCountMap[student.classScheduleId] || 0) + 1;
+    }
+
+    for (const [classScheduleId, count] of Object.entries(scheduleCountMap)) {
+      const classSchedule = await ClassSchedule.findByPk(classScheduleId, { transaction: t });
+
+      if (!classSchedule) {
+        throw new Error(`ClassSchedule ${classScheduleId} not found`);
+      }
+
+      if (classSchedule.capacity < count) {
+        throw new Error(`Not enough capacity for classScheduleId ${classScheduleId}`);
+      }
+
+      await classSchedule.update(
+        { capacity: classSchedule.capacity - count },
+        { transaction: t }
+      );
+    }
 
     // Step 6: Commit
     await t.commit();
@@ -708,7 +728,8 @@ exports.getAllBookings = async (filters = {}) => {
             {
               bookedBy: null,
               source: "website",
-              "$classSchedule.venue.createdBy$": {
+              "$students.classSchedule.venue.createdBy$"
+                : {
                 [Op.in]: adminIds,
               },
             },
@@ -731,7 +752,7 @@ exports.getAllBookings = async (filters = {}) => {
             {
               bookedBy: null,
               source: "website",
-              "$classSchedule.venue.createdBy$": {
+              "$students.classSchedule.venue.createdBy$": {
                 [Op.in]: adminIds,
               },
             },
@@ -794,6 +815,20 @@ exports.getAllBookings = async (filters = {}) => {
           model: BookingStudentMeta,
           as: "students",
           include: [
+            {
+              model: ClassSchedule,
+              as: "classSchedule",
+              include: [
+                {
+                  model: Venue,
+                  as: "venue",
+                  where: filters.venueName
+                    ? { name: { [Op.like]: `%${filters.venueName}%` } }
+                    : undefined,
+                  required: !!filters.venueName,
+                },
+              ],
+            },
             { model: BookingParentMeta, as: "parents", required: false },
             {
               model: BookingEmergencyMeta,
@@ -804,40 +839,17 @@ exports.getAllBookings = async (filters = {}) => {
           required: false,
         },
         {
-          model: ClassSchedule,
-          as: "classSchedule",
-          required: !!filters.venueName, // ✅ make required if searching by venueName
-          include: [
-            {
-              model: Venue,
-              as: "venue",
-              where: filters.venueName
-                ? { name: { [Op.like]: `%${filters.venueName}%` } }
-                : undefined,
-              required: !!filters.venueName, // ✅ same here
-            },
-          ],
-        },
-        {
-          model: Admin, // 👈 include bookedBy Admin
+          model: Admin,
           as: "bookedByAdmin",
-          attributes: [
-            "id",
-            "firstName",
-            "lastName",
-            "email",
-            "roleId",
-            "status",
-          ],
           required: false,
         },
         {
           model: Admin,
-          as: "assignedAgent",  // 👈 alias for the assigned agent
-          attributes: ["id", "firstName", "lastName", "email", "roleId", "status"],
+          as: "assignedAgent",
           required: false,
         },
-      ],
+      ]
+
     });
 
     const parsedBookings = await Promise.all(
@@ -850,6 +862,16 @@ exports.getAllBookings = async (filters = {}) => {
             age: s.age,
             gender: s.gender,
             medicalInformation: s.medicalInformation,
+
+            // ✅ student-wise class schedule
+            classSchedule: s.classSchedule
+              ? {
+                id: s.classSchedule.id,
+                className: s.classSchedule.className,
+                startTime: s.classSchedule.startTime,
+                endTime: s.classSchedule.endTime,
+              }
+              : null,
           })) || [];
 
         const parents =
@@ -870,38 +892,20 @@ exports.getAllBookings = async (filters = {}) => {
             emergencyRelation: e.emergencyRelation,
           })) || [];
 
-        // let paymentPlans = [];
-        // const venue = booking?.classSchedule?.venue;
-        // if (venue) {
-        //   let paymentPlanIds = [];
-        //   if (typeof venue.paymentPlanId === "string") {
-        //     try {
-        //       paymentPlanIds = JSON.parse(venue.paymentPlanId);
-        //     } catch { }
-        //   } else if (Array.isArray(venue.paymentPlanId)) {
-        //     paymentPlanIds = venue.paymentPlanId;
-        //   }
-        //   paymentPlanIds = paymentPlanIds
-        //     .map((id) => parseInt(id, 10))
-        //     .filter(Boolean);
-
-        //   if (paymentPlanIds.length) {
-        //     paymentPlans = await PaymentPlan.findAll({
-        //       where: { id: paymentPlanIds },
-        //     });
-        //   }
-        // }
-
         const { venue: _venue, ...bookingData } = booking.dataValues;
+
+        const venue =
+          booking.students?.[0]?.classSchedule?.venue || null;
 
         return {
           ...bookingData,
           students,
           parents,
           emergency,
-          classSchedule: booking.classSchedule || null,
-          // paymentPlans,
-          venue: booking.classSchedule?.venue || null, // ✅ include venue per trial
+          // ✅ booking-level venue (same for all students)
+          venue,
+          // classSchedule,
+
           ...(booking.bookedByAdmin
             ? {
               [booking.bookedByAdmin.role?.name === "Admin"
@@ -1065,6 +1069,16 @@ exports.getBookingById = async (id, bookedBy, adminId) => {
           required: false,
           include: [
             {
+              model: ClassSchedule,
+              as: "classSchedule",
+              include: [
+                {
+                  model: Venue,
+                  as: "venue",
+                },
+              ],
+            },
+            {
               model: BookingParentMeta,
               as: "parents",
               required: false,
@@ -1076,19 +1090,7 @@ exports.getBookingById = async (id, bookedBy, adminId) => {
             },
           ],
         },
-        {
-          model: ClassSchedule,
-          as: "classSchedule",
-          required: false,
-          include: [
-            {
-              model: Venue,
-              as: "venue",
-              required: false,
-            },
-          ],
-        },
-      ],
+      ]
     });
 
     if (!booking) {
@@ -1099,31 +1101,35 @@ exports.getBookingById = async (id, bookedBy, adminId) => {
     }
 
     // Fetch payment plans
-    let paymentPlans = [];
-    const venue = booking?.classSchedule?.venue;
-    if (venue) {
-      let paymentPlanIds = [];
+    // let paymentPlans = [];
+    // const venue = booking?.classSchedule?.venue;
+    const firstStudent = booking.students?.[0] || null;
+    const venue =
+      firstStudent?.classSchedule?.venue || null;
 
-      if (typeof venue.paymentPlanId === "string") {
-        try {
-          paymentPlanIds = JSON.parse(venue.paymentPlanId);
-        } catch {
-          console.warn("⚠️ Failed to parse venue.paymentPlanId");
-        }
-      } else if (Array.isArray(venue.paymentPlanId)) {
-        paymentPlanIds = venue.paymentPlanId;
-      }
+    // if (venue) {
+    //   let paymentPlanIds = [];
 
-      paymentPlanIds = paymentPlanIds
-        .map((id) => parseInt(id, 10))
-        .filter(Boolean);
+    //   if (typeof venue.paymentPlanId === "string") {
+    //     try {
+    //       paymentPlanIds = JSON.parse(venue.paymentPlanId);
+    //     } catch {
+    //       console.warn("⚠️ Failed to parse venue.paymentPlanId");
+    //     }
+    //   } else if (Array.isArray(venue.paymentPlanId)) {
+    //     paymentPlanIds = venue.paymentPlanId;
+    //   }
 
-      if (paymentPlanIds.length) {
-        paymentPlans = await PaymentPlan.findAll({
-          where: { id: paymentPlanIds },
-        });
-      }
-    }
+    //   paymentPlanIds = paymentPlanIds
+    //     .map((id) => parseInt(id, 10))
+    //     .filter(Boolean);
+
+    //   if (paymentPlanIds.length) {
+    //     paymentPlans = await PaymentPlan.findAll({
+    //       where: { id: paymentPlanIds },
+    //     });
+    //   }
+    // }
 
     // Final Response — no .toJSON() and no field picking
     return {
@@ -1132,8 +1138,9 @@ exports.getBookingById = async (id, bookedBy, adminId) => {
       data: {
         ...booking.dataValues, // includes all booking fields
         students: booking.students || [],
+        venue,
         classSchedule: booking.classSchedule || null, // full object
-        paymentPlans,
+        // paymentPlans,
       },
     };
   } catch (error) {

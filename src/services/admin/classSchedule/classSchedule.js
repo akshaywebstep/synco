@@ -76,7 +76,7 @@ exports.autoUpdateSessionStatusByDate = async () => {
       }
     }
 
-    console.log("✅ CRON: Session status auto-updated (rule-safe)");
+    // console.log("✅ CRON: Session status auto-updated (rule-safe)");
   } catch (err) {
     console.error("❌ CRON FAILED:", err);
   }

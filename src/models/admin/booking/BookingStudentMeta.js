@@ -18,7 +18,18 @@ const BookingStudentMeta = sequelize.define(
       },
       onDelete: "CASCADE",
     },
-     attendance: {
+    classScheduleId: {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: true, // ✅ VERY IMPORTANT (abhi)
+      references: {
+        model: "class_schedules",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "RESTRICT",
+    },
+
+    attendance: {
       type: DataTypes.ENUM("attended", "not attended"),
       allowNull: false,
       defaultValue: "not attended",
@@ -40,6 +51,11 @@ BookingStudentMeta.associate = (models) => {
   BookingStudentMeta.belongsTo(models.Booking, {
     foreignKey: "bookingTrialId",
     as: "booking",
+  });
+  // ✅ ADD THIS
+  BookingStudentMeta.belongsTo(models.ClassSchedule, {
+    foreignKey: "classScheduleId",
+    as: "classSchedule",
   });
 
   BookingStudentMeta.hasMany(models.BookingParentMeta, {

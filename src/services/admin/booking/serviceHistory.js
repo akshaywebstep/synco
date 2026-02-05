@@ -313,7 +313,7 @@ exports.getBookingById = async (
       {
         bookedBy: null,
         source: "website",
-        "$classSchedule.venue.createdBy$": adminId,
+        "$students.classSchedule.venue.createdBy$": adminId,
       },
     ];
   }
@@ -327,7 +327,7 @@ exports.getBookingById = async (
       {
         bookedBy: null,
         source: "website",
-        "$classSchedule.venue.createdBy$": {
+        "$students.classSchedule.venue.createdBy$": {
           [Op.in]: [adminId, superAdminId].filter(Boolean),
         },
       },
@@ -352,6 +352,18 @@ exports.getBookingById = async (
           as: "students",
           required: false,
           include: [
+            {
+              model: ClassSchedule,
+              as: "classSchedule",
+              required: true,
+              include: [
+                {
+                  model: Venue,
+                  as: "venue",
+                  required: true,
+                },
+              ],
+            },
             { model: BookingParentMeta, as: "parents", required: false },
             {
               model: BookingEmergencyMeta,
@@ -360,12 +372,7 @@ exports.getBookingById = async (
             },
           ],
         },
-        {
-          model: ClassSchedule,
-          as: "classSchedule",
-          required: true,
-          include: [{ model: Venue, as: "venue", required: true }],
-        },
+
         {
           model: Admin,
           as: "bookedByAdmin",
@@ -387,7 +394,9 @@ exports.getBookingById = async (
       return { status: false, message: "Booking not found or not authorized." };
     }
 
-    const venue = booking.classSchedule?.venue;
+    // const venue = booking.classSchedule?.venue;
+    const venue =
+      booking.students?.[0]?.classSchedule?.venue || null;
 
     // 2️⃣ Handle PaymentGroups
     let paymentGroups = [];
@@ -498,6 +507,16 @@ exports.getBookingById = async (
         age: s.age,
         gender: s.gender,
         medicalInformation: s.medicalInformation,
+
+        classSchedule: s.classSchedule
+          ? {
+            id: s.classSchedule.id,
+            className: s.classSchedule.className,
+            startTime: s.classSchedule.startTime,
+            endTime: s.classSchedule.endTime,
+            venue: s.classSchedule.venue || null,
+          }
+          : null,
       })) || [];
 
     const parents =
@@ -530,47 +549,21 @@ exports.getBookingById = async (
     const response = {
       id: booking.id,
       bookingId: booking.bookingId,
-      classScheduleId: booking.classScheduleId,
       attempt: booking.attempt,
       serviceType: booking.serviceType,
       trialDate: booking.trialDate,
       bookedBy: booking.bookedByAdmin || null,
-      className: booking.className,
-      classTime: booking.classTime,
-      venueId: booking.venueId,
       status: booking.status,
       totalStudents: booking.totalStudents,
       createdAt: booking.createdAt,
+      venue,
       students,
       parents,
       emergency,
-      classSchedule: booking.classSchedule || {},
-      paymentGroups: paymentGroups.map((pg) => ({
-        id: pg.id,
-        name: pg.name,
-        description: pg.description,
-        createdBy: pg.createdBy,
-        createdAt: pg.createdAt,
-        updatedAt: pg.updatedAt,
-        paymentPlans: (pg.paymentPlans || []).map((plan) => ({
-          id: plan.id,
-          title: plan.title,
-          price: plan.price,
-          priceLesson: plan.priceLesson,
-          interval: plan.interval,
-          duration: plan.duration,
-          students: plan.students,
-          joiningFee: plan.joiningFee,
-          HolidayCampPackage: plan.HolidayCampPackage,
-          termsAndCondition: plan.termsAndCondition,
-          createdBy: plan.createdBy,
-          createdAt: plan.createdAt,
-          updatedAt: plan.updatedAt,
-          PaymentGroupHasPlan: plan.PaymentGroupHasPlan || null,
-        })),
-      })),
-      termGroups: termGroups.map((tg) => ({ id: tg.id, name: tg.name })),
-      terms: parsedTerms,
+
+      // paymentGroups,
+      // termGroups: termGroups.map((tg) => ({ id: tg.id, name: tg.name })),
+      // terms: parsedTerms,
     };
 
     return {
@@ -594,19 +587,20 @@ exports.updateBooking = async (payload, adminId, id) => {
       where: { id },
       include: [
         {
-          model: ClassSchedule,
-          as: "classSchedule",
-          include: [{ model: Venue, as: "venue" }],
-        },
-        {
           model: BookingStudentMeta,
           as: "students",
           include: [
+            {
+              model: ClassSchedule,
+              as: "classSchedule",
+              include: [{ model: Venue, as: "venue" }],
+            },
             { model: BookingParentMeta, as: "parents" },
             { model: BookingEmergencyMeta, as: "emergencyContacts" },
           ],
         },
       ],
+
       transaction: t,
     });
 
@@ -618,7 +612,6 @@ exports.updateBooking = async (payload, adminId, id) => {
       "startDate",
       "paymentPlanId",
       "keyInformation",
-      "classScheduleId",
       "venueId",
       "status",
       "serviceType",
@@ -630,6 +623,19 @@ exports.updateBooking = async (payload, adminId, id) => {
 
     // Recompute after updates
     const wasTrial = booking.bookingType === "free";
+    // 🔹 Auto set conversion metadata
+    if (
+      wasTrial &&
+      (booking.paymentPlanId ||
+        booking.serviceType?.toLowerCase().includes("membership"))
+    ) {
+      booking.isConvertedToMembership = true;
+
+      // ✅ NEW FIELDS SAVE
+      booking.convertedByAgentId = adminId;
+      booking.convertedAt = new Date();
+    }
+
     let paymentStatusFromGateway = null;
     let merchantRef = null;
     booking.bookingType = booking.paymentPlanId ? "paid" : "free";
@@ -674,18 +680,29 @@ exports.updateBooking = async (payload, adminId, id) => {
 
       for (const student of payload.students) {
         if (student.id) {
-          // Update existing student
           const existing = booking.students.find((s) => s.id === student.id);
           if (!existing) continue;
-          await existing.update(student, { transaction: t });
+
+          await existing.update(
+            {
+              classScheduleId: student.classScheduleId,
+              studentFirstName: student.studentFirstName,
+              studentLastName: student.studentLastName,
+              dateOfBirth: student.dateOfBirth,
+              age: student.age,
+              gender: student.gender,
+              medicalInformation: student.medicalInformation || null,
+            },
+            { transaction: t }
+          );
         } else {
-          // Create new student
           if (currentCount >= 3)
             throw new Error("You cannot add more than 3 students per booking.");
 
           const newStudent = await BookingStudentMeta.create(
             {
               bookingTrialId: booking.id,
+              classScheduleId: student.classScheduleId, // ✅ REQUIRED
               studentFirstName: student.studentFirstName,
               studentLastName: student.studentLastName,
               dateOfBirth: student.dateOfBirth,
@@ -788,11 +805,18 @@ exports.updateBooking = async (payload, adminId, id) => {
         });
         if (!paymentPlan) throw new Error("Invalid payment plan selected.");
 
-        const venue = await Venue.findByPk(payload.venueId, { transaction: t });
+        const primaryStudent = booking.students?.[0];
+        if (!primaryStudent?.classScheduleId) {
+          throw new Error("Primary student classScheduleId missing");
+        }
+
         const classSchedule = await ClassSchedule.findByPk(
-          payload.classScheduleId,
+          primaryStudent.classScheduleId,
           { transaction: t }
         );
+
+        const venue = await Venue.findByPk(payload.venueId, { transaction: t });
+
         // const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
         // const firstStudentId = booking.students?.[0]?.id;
 

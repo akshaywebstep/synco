@@ -423,6 +423,7 @@ exports.createBooking = async (data, options) => {
       const studentMeta = await BookingStudentMeta.create(
         {
           bookingTrialId: booking.id, // renamed from bookingTrialId to bookingId
+          classScheduleId: student.classScheduleId, // ✅ new
           studentFirstName: student.studentFirstName,
           studentLastName: student.studentLastName,
           dateOfBirth: student.dateOfBirth,
@@ -717,11 +718,30 @@ exports.createBooking = async (data, options) => {
     }
 
     // Update Class Capacity
-    const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, { transaction: t });
-    const newCapacity = classSchedule.capacity - data.totalStudents;
-    if (newCapacity < 0) throw new Error("Not enough capacity left.");
-    await classSchedule.update({ capacity: newCapacity }, { transaction: t });
+    // Step 5: Update Class Capacity
+    const scheduleCountMap = {};
 
+    for (const student of data.students) {
+      scheduleCountMap[student.classScheduleId] =
+        (scheduleCountMap[student.classScheduleId] || 0) + 1;
+    }
+
+    for (const [classScheduleId, count] of Object.entries(scheduleCountMap)) {
+      const classSchedule = await ClassSchedule.findByPk(classScheduleId, { transaction: t });
+
+      if (!classSchedule) {
+        throw new Error(`ClassSchedule ${classScheduleId} not found`);
+      }
+
+      if (classSchedule.capacity < count) {
+        throw new Error(`Not enough capacity for classScheduleId ${classScheduleId}`);
+      }
+
+      await classSchedule.update(
+        { capacity: classSchedule.capacity - count },
+        { transaction: t }
+      );
+    }
     await t.commit();
     return {
       status: true,
@@ -771,7 +791,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
             {
               bookedBy: null,
               source: "website",
-              "$classSchedule.venue.createdBy$": {
+              "$students.classSchedule.venue.createdBy$": {
                 [Op.in]: adminIds,
               },
             },
@@ -794,7 +814,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
             {
               bookedBy: null,
               source: "website",
-              "$classSchedule.venue.createdBy$": {
+              "$students.classSchedule.venue.createdBy$": {
                 [Op.in]: adminIds,
               },
             },
@@ -923,6 +943,20 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
           model: BookingStudentMeta,
           as: "students",
           include: [
+            {
+              model: ClassSchedule,
+              as: "classSchedule",
+              include: [
+                {
+                  model: Venue,
+                  as: "venue",
+                  where: filters.venueName
+                    ? { name: { [Op.like]: `%${filters.venueName}%` } }
+                    : undefined,
+                  required: !!filters.venueName,
+                },
+              ],
+            },
             { model: BookingParentMeta, as: "parents", required: false },
             {
               model: BookingEmergencyMeta,
@@ -931,19 +965,6 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
             },
           ],
           required: false,
-        },
-        {
-          model: ClassSchedule,
-          as: "classSchedule",
-          required: false,
-          include: [
-            {
-              model: Venue,
-              as: "venue",
-              where: whereVenue,
-              required: !!filters.venueName,
-            },
-          ],
         },
         { model: BookingPayment, as: "payments", required: false },
         { model: PaymentPlan, as: "paymentPlan", required: false },
@@ -981,6 +1002,16 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
             age: s.age,
             gender: s.gender,
             medicalInformation: s.medicalInformation,
+            classScheduleId: s.classScheduleId,
+            // ✅ student-wise class schedule
+            classSchedule: s.classSchedule
+              ? {
+                id: s.classSchedule.id,
+                className: s.classSchedule.className,
+                startTime: s.classSchedule.startTime,
+                endTime: s.classSchedule.endTime,
+              }
+              : null,
           })) || [];
 
         // Parents (flatten all student parents)
@@ -1008,16 +1039,13 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
           })) || [];
 
         // Venue & plan
-        const venue = booking.classSchedule?.venue || null;
+        const venue =
+          booking.students?.[0]?.classSchedule?.venue || null;
+
         const plan = booking.paymentPlan || null;
 
         const payment = booking.payments?.[0] || null;
         const paymentPlans = plan ? [plan] : [];
-
-        // PaymentData with parsed gatewayResponse & transactionMeta
-        // let parsedGatewayResponse = {};
-        // let parsedTransactionMeta = {};
-        // let parsedGoCardlessBillingRequest = {};
 
         // PaymentData with parsed gatewayResponse & transactionMeta
         const parsedGatewayResponse = safeJsonParse(
@@ -1070,11 +1098,10 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
           students,
           parents,
           emergency,
-          classSchedule: booking.classSchedule || null,
+          venue,
           // payments: booking.payments || [],
           paymentPlan: booking.paymentPlan || null,
           paymentPlans,
-          venue,
           paymentData,
           bookedByAdmin: booking.bookedByAdmin || null,
           assignedAgent: booking.assignedAgent || null, // 👈 agent info
@@ -1448,8 +1475,14 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
         {
           model: BookingStudentMeta,
           as: "students",
-          required: true,
           include: [
+            {
+              model: ClassSchedule,
+              as: "classSchedule",
+              include: [
+                { model: Venue, as: "venue", where: whereVenue, required: true },
+              ],
+            },
             { model: BookingParentMeta, as: "parents", required: false },
             {
               model: BookingEmergencyMeta,
@@ -1457,14 +1490,7 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
               required: false,
             },
           ],
-        },
-        {
-          model: ClassSchedule,
-          as: "classSchedule",
           required: true,
-          include: [
-            { model: Venue, as: "venue", where: whereVenue, required: true },
-          ],
         },
         { model: BookingPayment, as: "payments", required: false },
         {
@@ -1488,7 +1514,9 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
 
     // 🔹 Map bookings to memberShipSales
     const memberShipSales = bookings.map((booking) => {
-      const venue = booking.classSchedule?.venue || {};
+      // const venue = booking.classSchedule?.venue || {};
+      // Get venue from the first student's classSchedule
+      const venue = booking.students?.[0]?.classSchedule?.venue || null;
       const payment = booking.payments?.[0] || {};
       const plan = booking.paymentPlan || null;
 
@@ -1501,6 +1529,16 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
           age: student.age,
           gender: student.gender,
           medicalInformation: student.medicalInformation,
+          classScheduleId: student.classScheduleId,
+          // ✅ student-wise class schedule
+          classSchedule: student.classSchedule
+            ? {
+              id: student.classSchedule.id,
+              className: student.classSchedule.className,
+              startTime: student.classSchedule.startTime,
+              endTime: student.classSchedule.endTime,
+            }
+            : null,
         })) || [];
 
       // Parents
@@ -1577,8 +1615,8 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
         dateBooked: booking.createdAt,
 
         // Full classSchedule + venue
-        classSchedule: booking.classSchedule || null,
-        venue: venue || null,
+        // classSchedule: booking.classSchedule || null,
+        // venue: venue || null,
 
         bookedBy: booking.admin
           ? {
@@ -1594,6 +1632,7 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
         students,
         parents,
         emergency,
+        venue,
 
         paymentPlanData: plan
           ? {
@@ -1611,13 +1650,16 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
     });
 
     // -------------------------------
-    // Collect all unique venues
+    // Collect all unique venues (from all students)
     // -------------------------------
     const venueMap = {};
-    bookings.forEach((b) => {
-      if (b.classSchedule?.venue) {
-        venueMap[b.classSchedule.venue.id] = b.classSchedule.venue;
-      }
+    bookings.forEach((booking) => {
+      booking.students?.forEach((student) => {
+        const venue = student.classSchedule?.venue;
+        if (venue && venue.id) {
+          venueMap[venue.id] = venue;
+        }
+      });
     });
     const allVenues = Object.values(venueMap);
 
@@ -1637,13 +1679,6 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
       }
     });
     const allAdmins = Object.values(adminMap);
-
-    // -------------------------------
-    // Previous Period Stats
-    // -------------------------------
-
-    let prevMemberShipSales = [];
-
     // -------------------------------
     // Previous YEAR Stats
     // -------------------------------
@@ -1887,74 +1922,99 @@ exports.sendActiveMemberSaleEmailToParents = async ({ bookingId }) => {
     return { status: false, message: error.message };
   }
 };
-
 exports.transferClass = async (data, options) => {
   const t = await sequelize.transaction();
   try {
     const adminId = options?.adminId || null;
 
-    // 🔹 Step 1: Find Booking
+    // 1️⃣ Validate booking
     const booking = await Booking.findByPk(data.bookingId, { transaction: t });
     if (!booking) throw new Error("Booking not found.");
 
-    // 🔹 Step 2: Validate new ClassSchedule
-    const newClassSchedule = await ClassSchedule.findByPk(
-      data.classScheduleId, // ✅ match your payload
-      { transaction: t }
-    );
-    if (!newClassSchedule) throw new Error("New class schedule not found.");
+    // 2️⃣ Pre-validate ALL students & classes
+    const classCapacityMap = {};
 
-    // 🔹 Step 3: Validate Venue
-    let newVenueId = data.venueId || newClassSchedule.venueId;
-    if (newVenueId) {
-      const newVenue = await Venue.findByPk(newVenueId, { transaction: t });
-      if (!newVenue) throw new Error("New venue not found.");
+    for (const item of data.transfers) {
+      const student = await BookingStudentMeta.findOne({
+        where: {
+          id: item.studentId,
+          bookingTrialId: booking.id,
+        },
+        transaction: t,
+      });
+      if (!student) throw new Error(`Student ${item.studentId} not found.`);
+
+      const newClass = await ClassSchedule.findByPk(item.classScheduleId, {
+        transaction: t,
+      });
+      if (!newClass) throw new Error(`Class ${item.classScheduleId} not found.`);
+
+      classCapacityMap[item.classScheduleId] =
+        (classCapacityMap[item.classScheduleId] || 0) + 1;
+
+      item._student = student;
+      item._oldClassScheduleId = student.classScheduleId;
+      item._newClass = newClass;
     }
 
-    // 🔹 Step 4: Update Booking
-    booking.classScheduleId = data.classScheduleId;
-    booking.venueId = newVenueId;
-    booking.updatedAt = new Date();
-    await booking.save({ transaction: t });
+    // 3️⃣ Capacity check (IMPORTANT)
+    for (const classId in classCapacityMap) {
+      const classData = await ClassSchedule.findByPk(classId, { transaction: t });
+      if (classData.capacity < classCapacityMap[classId]) {
+        throw new Error(
+          `Not enough slots in "${classData.className}". Required: ${classCapacityMap[classId]}`
+        );
+      }
+    }
 
-    // 🔹 Step 5: Upsert CancelBooking
-    const existingCancel = await CancelBooking.findOne({
-      where: { bookingId: booking.id, bookingType: "membership" },
-      transaction: t,
-    });
-
-    if (existingCancel) {
-      await existingCancel.update(
+    // 4️⃣ Perform transfers
+    for (const item of data.transfers) {
+      await item._student.update(
         {
-          transferReasonClass: data.transferReasonClass,
+          classScheduleId: item.classScheduleId,
           updatedAt: new Date(),
-          createdBy: adminId,
         },
         { transaction: t }
       );
-    } else {
+
+      // Increase old class capacity
+      if (item._oldClassScheduleId) {
+        await ClassSchedule.increment(
+          { capacity: 1 },
+          { where: { id: item._oldClassScheduleId }, transaction: t }
+        );
+      }
+
+      // Decrease new class capacity
+      await ClassSchedule.decrement(
+        { capacity: 1 },
+        { where: { id: item.classScheduleId }, transaction: t }
+      );
+
+      // Log transfer reason
       await CancelBooking.create(
         {
           bookingId: booking.id,
+          studentId: item.studentId,
           bookingType: "membership",
-          transferReasonClass: data.transferReasonClass,
+          transferReasonClass: item.transferReasonClass,
           createdBy: adminId,
         },
         { transaction: t }
       );
     }
 
-    // 🔹 Step 6: Commit
     await t.commit();
 
     return {
       status: true,
-      message: "Class transferred successfully.",
+      message: "Classes transferred successfully.",
       data: {
         bookingId: booking.id,
-        classScheduleId: booking.classScheduleId,
-        venueId: booking.venueId,
-        transferReasonClass: data.transferReasonClass,
+        transferredStudents: data.transfers.map((t) => ({
+          studentId: t.studentId,
+          newClassScheduleId: t.classScheduleId,
+        })),
       },
     };
   } catch (error) {
@@ -1962,6 +2022,81 @@ exports.transferClass = async (data, options) => {
     return { status: false, message: error.message };
   }
 };
+
+// exports.transferClass = async (data, options) => {
+//   const t = await sequelize.transaction();
+//   try {
+//     const adminId = options?.adminId || null;
+
+//     // 🔹 Step 1: Find Booking
+//     const booking = await Booking.findByPk(data.bookingId, { transaction: t });
+//     if (!booking) throw new Error("Booking not found.");
+
+//     // 🔹 Step 2: Validate new ClassSchedule
+//     const newClassSchedule = await ClassSchedule.findByPk(
+//       data.classScheduleId, // ✅ match your payload
+//       { transaction: t }
+//     );
+//     if (!newClassSchedule) throw new Error("New class schedule not found.");
+
+//     // 🔹 Step 3: Validate Venue
+//     let newVenueId = data.venueId || newClassSchedule.venueId;
+//     if (newVenueId) {
+//       const newVenue = await Venue.findByPk(newVenueId, { transaction: t });
+//       if (!newVenue) throw new Error("New venue not found.");
+//     }
+
+//     // 🔹 Step 4: Update Booking
+//     booking.classScheduleId = data.classScheduleId;
+//     booking.venueId = newVenueId;
+//     booking.updatedAt = new Date();
+//     await booking.save({ transaction: t });
+
+//     // 🔹 Step 5: Upsert CancelBooking
+//     const existingCancel = await CancelBooking.findOne({
+//       where: { bookingId: booking.id, bookingType: "membership" },
+//       transaction: t,
+//     });
+
+//     if (existingCancel) {
+//       await existingCancel.update(
+//         {
+//           transferReasonClass: data.transferReasonClass,
+//           updatedAt: new Date(),
+//           createdBy: adminId,
+//         },
+//         { transaction: t }
+//       );
+//     } else {
+//       await CancelBooking.create(
+//         {
+//           bookingId: booking.id,
+//           bookingType: "membership",
+//           transferReasonClass: data.transferReasonClass,
+//           createdBy: adminId,
+//         },
+//         { transaction: t }
+//       );
+//     }
+
+//     // 🔹 Step 6: Commit
+//     await t.commit();
+
+//     return {
+//       status: true,
+//       message: "Class transferred successfully.",
+//       data: {
+//         bookingId: booking.id,
+//         classScheduleId: booking.classScheduleId,
+//         venueId: booking.venueId,
+//         transferReasonClass: data.transferReasonClass,
+//       },
+//     };
+//   } catch (error) {
+//     await t.rollback();
+//     return { status: false, message: error.message };
+//   }
+// };
 
 // exports.addToWaitingListService = async (data, adminId) => {
 //   const t = await sequelize.transaction();
@@ -2612,6 +2747,12 @@ exports.getBookingsById = async (bookingId) => {
           model: BookingStudentMeta,
           as: "students",
           include: [
+            {
+              model: ClassSchedule,
+              as: "classSchedule",
+              required: false,
+              include: [{ model: Venue, as: "venue", required: false }],
+            },
             { model: BookingParentMeta, as: "parents", required: false },
             {
               model: BookingEmergencyMeta,
@@ -2620,12 +2761,6 @@ exports.getBookingsById = async (bookingId) => {
             },
           ],
           required: false,
-        },
-        {
-          model: ClassSchedule,
-          as: "classSchedule",
-          required: false,
-          include: [{ model: Venue, as: "venue", required: false }],
         },
         { model: BookingPayment, as: "payments", required: false },
         { model: PaymentPlan, as: "paymentPlan", required: false },
@@ -2655,16 +2790,32 @@ exports.getBookingsById = async (bookingId) => {
       return { status: false, message: "Booking not found" };
     }
 
-    // ✅ extract venueId from this booking
-    const venueId = booking.classSchedule?.venue?.id || null;
+    // ✅ collect venueIds from student class schedules
+const venueIds = new Set();
 
-    let newClasses = [];
-    if (venueId) {
-      // 🔎 find all other class schedules in the same venue
-      newClasses = await ClassSchedule.findAll({
-        where: { venueId },
-      });
+for (const student of booking.students || []) {
+  if (student.classScheduleId) {
+    const classSchedule = await ClassSchedule.findByPk(
+      student.classScheduleId,
+      { attributes: ["venueId"] }
+    );
+
+    if (classSchedule?.venueId) {
+      venueIds.add(classSchedule.venueId);
     }
+  }
+}
+
+// 🔎 fetch all class schedules from those venues
+let newClasses = [];
+
+if (venueIds.size > 0) {
+  newClasses = await ClassSchedule.findAll({
+    where: {
+      venueId: [...venueIds],
+    },
+  });
+}
 
     // ✅ Parse booking as before
     const students =
@@ -2676,6 +2827,16 @@ exports.getBookingsById = async (bookingId) => {
         age: s.age,
         gender: s.gender,
         medicalInformation: s.medicalInformation,
+        classScheduleId: s.classScheduleId,
+        // ✅ student-wise class schedule
+        classSchedule: s.classSchedule
+          ? {
+            id: s.classSchedule.id,
+            className: s.classSchedule.className,
+            startTime: s.classSchedule.startTime,
+            endTime: s.classSchedule.endTime,
+          }
+          : null,
       })) || [];
 
     const parents =
@@ -2704,7 +2865,9 @@ exports.getBookingsById = async (bookingId) => {
           })) || []
       ) || [];
 
-    const venue = booking.classSchedule?.venue || null;
+    // const venue = booking.classSchedule?.venue || null;
+    const venue =
+      booking.students?.[0]?.classSchedule?.venue || null;
     const plan = booking.paymentPlan || null;
 
     const payments =

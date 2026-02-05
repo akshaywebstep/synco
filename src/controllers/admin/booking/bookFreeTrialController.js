@@ -37,29 +37,75 @@ exports.createBooking = async (req, res) => {
   }
 
   // formData.createdBy = req.admin.id;
+  // 1️⃣ Collect unique classScheduleIds
+  const classScheduleIds = [
+    ...new Set(formData.students.map(s => s.classScheduleId))
+  ];
 
-  if (DEBUG) console.log("🔍 Fetching class data...");
-  const classData = await ClassSchedule.findByPk(formData.classScheduleId);
-  if (!classData) {
-    if (DEBUG) console.warn("❌ Class not found.");
-    return res.status(404).json({ status: false, message: "Class not found." });
-  }
+  // 2️⃣ Fetch all class schedules
+  const classSchedules = await ClassSchedule.findAll({
+    where: { id: classScheduleIds },
+  });
 
-  if (DEBUG) console.log("📊 Checking class capacity...");
-  if (classData.capacity < formData.totalStudents) {
-    if (DEBUG) console.warn("⚠️ Not enough capacity in class.");
-    return res.status(400).json({
+  // 3️⃣ Existence check
+  if (classSchedules.length !== classScheduleIds.length) {
+    return res.status(404).json({
       status: false,
-      message: `Only ${classData.capacity} slot(s) left for this class.`,
+      message: "One or more class schedules not found.",
     });
   }
+
+  // 4️⃣ Capacity check (per class)
+  const countMap = {};
+  for (const s of formData.students) {
+    countMap[s.classScheduleId] =
+      (countMap[s.classScheduleId] || 0) + 1;
+  }
+
+  for (const schedule of classSchedules) {
+    const required = countMap[schedule.id];
+    if (schedule.capacity < required) {
+      return res.status(400).json({
+        status: false,
+        message: `Only ${schedule.capacity} slot(s) left for class "${schedule.className}".`,
+      });
+    }
+  }
+
+  // 5️⃣ Same venue rule (IMPORTANT)
+  const venueIds = [...new Set(classSchedules.map(c => c.venueId))];
+  if (venueIds.length > 1) {
+    return res.status(400).json({
+      status: false,
+      message: "All students must belong to the same venue.",
+    });
+  }
+
+  // 6️⃣ Set venueId once
+  formData.venueId = venueIds[0];
+
+  // if (DEBUG) console.log("🔍 Fetching class data...");
+  // const classData = await ClassSchedule.findByPk(formData.classScheduleId);
+  // if (!classData) {
+  //   if (DEBUG) console.warn("❌ Class not found.");
+  //   return res.status(404).json({ status: false, message: "Class not found." });
+  // }
+
+  if (DEBUG) console.log("📊 Checking class capacity...");
+  // if (classData.capacity < formData.totalStudents) {
+  //   if (DEBUG) console.warn("⚠️ Not enough capacity in class.");
+  //   return res.status(400).json({
+  //     status: false,
+  //     message: `Only ${classData.capacity} slot(s) left for this class.`,
+  //   });
+  // }
 
   if (DEBUG) console.log("✅ Validating form data...");
   const { isValid, error } = validateFormData(formData, {
     requiredFields: [
       "trialDate",
       "totalStudents",
-      "classScheduleId",
+      // "classScheduleId",
       "students",
       "parents",
       // "emergency",
@@ -80,9 +126,9 @@ exports.createBooking = async (req, res) => {
   }
 
   if (DEBUG) console.log("📍 Setting class metadata...");
-  formData.venueId = classData.venueId;
-  formData.className = classData.className;
-  formData.classTime = `${classData.startTime} - ${classData.endTime}`;
+  // formData.venueId = classData.venueId;
+  // formData.className = classData.className;
+  // formData.classTime = `${classData.startTime} - ${classData.endTime}`;
 
   if (DEBUG) console.log("🏫 Fetching venue data...");
   const venue = await Venue.findByPk(formData.venueId);
@@ -123,6 +169,12 @@ exports.createBooking = async (req, res) => {
         message: "Student medical information is required.",
       });
     }
+    if (!student.classScheduleId) {
+      return res.status(400).json({
+        status: false,
+        message: "classScheduleId is required for each student",
+      });
+    }
 
     // ✅ Emergency contact is OPTIONAL
     const emergency = req.body.emergency;
@@ -148,9 +200,9 @@ exports.createBooking = async (req, res) => {
       }
     }
 
-    student.className = classData.className;
-    student.startTime = classData.startTime;
-    student.endTime = classData.endTime;
+    // student.className = classData.className;
+    // student.startTime = classData.startTime;
+    // student.endTime = classData.endTime;
 
     // ✅ Use the global parents array (from formData.parents)
     if (!Array.isArray(formData.parents) || formData.parents.length === 0) {
@@ -315,11 +367,11 @@ exports.createBooking = async (req, res) => {
             .replace(/{{parentPassword}}/g, "Synco123")
             .replace(/{{venueName}}/g, venue?.name || "N/A")
             .replace(/{{trialDate}}/g, booking?.trialDate || "")
-            .replace(/{{className}}/g, classData?.className || "N/A")
-            .replace(
-              /{{classTime}}/g,
-              `${classData?.startTime || ""}-${classData?.endTime || ""}`
-            )
+            // .replace(/{{className}}/g, classData?.className || "N/A")
+            // .replace(
+            //   /{{classTime}}/g,
+            //   `${classData?.startTime || ""}-${classData?.endTime || ""}`
+            // )
             .replace(/{{studentsHtml}}/g, studentsHtml)
             .replace(
               /{{logoUrl}}/g,
@@ -357,7 +409,7 @@ exports.createBooking = async (req, res) => {
     if (actualParentAdminId) {
       await createCustomNotificationForAdmins({
         title: "Free Trial Booked",
-        description: `Your free trial for "${classData.className}" is scheduled on ${formData.trialDate} from ${classData.startTime} to ${classData.endTime}.`,
+        description: `Your free trial is scheduled on ${booking.trialDate}.`,
         category: "Updates",
         createdByAdminId: req.admin.id,
         recipientAdminIds: [actualParentAdminId],
@@ -375,7 +427,7 @@ exports.createBooking = async (req, res) => {
     await createNotification(
       req,
       "New Booking Created",
-      `Booking "${classData.className}" has been scheduled on ${formData.trialDate} from ${classData.startTime} to ${classData.endTime}.`,
+      `Booking has been scheduled on ${booking.trialDate}.`,
       "System"
     );
 

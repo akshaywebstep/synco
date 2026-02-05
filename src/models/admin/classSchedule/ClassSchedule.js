@@ -121,6 +121,11 @@ ClassSchedule.associate = function (models) {
     onDelete: "CASCADE",
     onUpdate: "CASCADE",
   });
+
+  ClassSchedule.hasMany(models.BookingStudentMeta, {
+    foreignKey: "classScheduleId",
+    as: "students",
+  });
 };
 
 module.exports = ClassSchedule;
