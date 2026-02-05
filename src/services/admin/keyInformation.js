@@ -1,4 +1,4 @@
-const { KeyInformation } = require("../../Models");
+const { KeyInformation } = require("../../models");
 
 // ✅ Create / Update Key Information per service
 exports.updateKeyInformation = async ({ serviceType, keyInformation }) => {
