@@ -330,6 +330,20 @@ exports.getHolidayClassById = async (classId, createdBy) => {
     }
 
     const venue = cls.venue;
+    // =====================
+    // Fetch other classes of SAME venue
+    // =====================
+    const venueClasses = await HolidayClassSchedule.findAll({
+      where: {
+        venueId: venue.id,          // ✅ same venue only
+        createdBy: Number(createdBy)
+      },
+      // attributes: [
+      //   "id",
+      //   "className",
+      //   "capacity",
+      // ],
+    });
 
     // ================================
     // 🟦 PAYMENT GROUPS WITH PLANS
@@ -436,6 +450,7 @@ exports.getHolidayClassById = async (classId, createdBy) => {
           ? JSON.parse(d.sessionsMap)
           : d.sessionsMap || []
     }));
+    cls.dataValues.venueClasses = venueClasses;
 
     // ================================
     // 🟦 RETURN FINAL RESPONSE

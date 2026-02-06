@@ -144,7 +144,7 @@ async function updateBookingStats() {
 }
 
 exports.getBookingById = async (id, adminId, superAdminId) => {
-  await updateBookingStats();
+  // await updateBookingStats();
   console.log("==============================================");
   console.log("📘 [Service] getBookingById Started");
   console.log("🔍 Incoming Params:", { id, adminId, superAdminId });
@@ -341,7 +341,7 @@ exports.getBookingById = async (id, adminId, superAdminId) => {
 };
 
 exports.getWaitingList = async (filters = {}) => {
-  await updateBookingStats();
+  // await updateBookingStats();
   try {
     const trialWhere = {};
 
