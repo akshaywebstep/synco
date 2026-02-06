@@ -296,10 +296,19 @@ exports.getAllVenuesWithClasses = async ({
 
         // ---------- CLASS SCHEDULES ----------
         const venueClasses = (venue.classSchedules || []).reduce((acc, cls) => {
-          const day = cls.day;
-          if (!day) return acc;
-          if (!acc[day]) acc[day] = [];
-          acc[day].push({
+          if (!cls.day) return acc;
+
+          // 🔹 same day check (case-insensitive)
+          const existingKey = Object.keys(acc).find(
+            (k) => k.toLowerCase() === cls.day.toLowerCase()
+          );
+
+          // 🔹 jo pehle aaya wahi preserve hoga
+          const dayKey = existingKey || cls.day;
+
+          if (!acc[dayKey]) acc[dayKey] = [];
+
+          acc[dayKey].push({
             classId: cls.id,
             className: cls.className,
             time: `${cls.startTime} - ${cls.endTime}`,
@@ -307,6 +316,7 @@ exports.getAllVenuesWithClasses = async ({
             totalCapacity: cls.totalCapacity,
             allowFreeTrial: !!cls.allowFreeTrial,
           });
+
           return acc;
         }, {});
 
