@@ -32,14 +32,50 @@ async function getGoCardlessAccessToken() {
  * Handle GoCardless API response safely
  */
 async function handleResponse(response) {
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const errorDetails = JSON.stringify(result, null, 2);
-    console.error("❌ API Error:", errorDetails);
-    return { status: false, error: result };
+  let result = {};
+  try {
+    result = await response.json();
+  } catch {
+    result = {};
   }
+
+  if (!response.ok) {
+    let message = "GoCardless request failed";
+
+    // ✅ GoCardless standard error format
+    if (result?.error) {
+      if (result.error.message) {
+        message = result.error.message;
+      }
+
+      if (Array.isArray(result.error.errors) && result.error.errors.length) {
+        message = result.error.errors
+          .map(e => `${e.field}: ${e.message}`)
+          .join(", ");
+      }
+    }
+
+    console.error("❌ GoCardless API Error:", message);
+
+    return {
+      status: false,
+      message,
+      error: result,
+    };
+  }
+
   return { status: true, data: result };
 }
+
+// async function handleResponse(response) {
+//   const result = await response.json().catch(() => ({}));
+//   if (!response.ok) {
+//     const errorDetails = JSON.stringify(result, null, 2);
+//     console.error("❌ API Error:", errorDetails);
+//     return { status: false, error: result };
+//   }
+//   return { status: true, data: result };
+// }
 
 /**
  * Create a GoCardless Billing Request (Payment + Mandate + Bank Account)
@@ -104,15 +140,24 @@ async function createBillingRequest({
       body: JSON.stringify(body),
     });
 
-    const { status, data, error } = await handleResponse(response);
+    // const { status, data, error } = await handleResponse(response);
+    const { status, data, message, error } = await handleResponse(response);
     if (!status) {
       return {
         status: false,
-        message:
-          "Failed to create billing request. Please check details and try again.",
+        message,
         error,
       };
     }
+
+    // if (!status) {
+    //   return {
+    //     status: false,
+    //     message:
+    //       "Failed to create billing request. Please check details and try again.",
+    //     error,
+    //   };
+    // }
 
     if (DEBUG)
       console.log("✅ Billing request created successfully:", data);

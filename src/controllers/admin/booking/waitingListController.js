@@ -29,11 +29,6 @@ exports.createBooking = async (req, res) => {
   const formData = req.body;
 
   if (DEBUG) console.log("🔍 Fetching class data...");
-  const classData = await ClassSchedule.findByPk(formData.classScheduleId);
-  if (!classData) {
-    if (DEBUG) console.warn("❌ Class not found.");
-    return res.status(404).json({ status: false, message: "Class not found." });
-  }
 
   if (DEBUG) console.log("✅ Validating form data...");
   const { isValid, error } = validateFormData(formData, {
@@ -63,6 +58,7 @@ exports.createBooking = async (req, res) => {
         "studentLastName",
         "dateOfBirth",
         "medicalInformation",
+        "classScheduleId", // ✅ REQUIRED HERE
       ],
     });
     if (!isValid) {
@@ -91,11 +87,6 @@ exports.createBooking = async (req, res) => {
       return res.status(400).json({ status: false, ...error });
     }
   }
-
-  if (DEBUG) console.log("📍 Setting class metadata...");
-  formData.venueId = classData.venueId;
-  formData.className = classData.className;
-  formData.classTime = `${classData.startTime} - ${classData.endTime}`;
 
   if (DEBUG) console.log("🏫 Fetching venue data...");
   const venue = await Venue.findByPk(formData.venueId);
@@ -148,9 +139,9 @@ exports.createBooking = async (req, res) => {
       }
     }
 
-    student.className = classData.className;
-    student.startTime = classData.startTime;
-    student.endTime = classData.endTime;
+    // student.className = classData.className;
+    // student.startTime = classData.startTime;
+    // student.endTime = classData.endTime;
 
     const parents = [
       ...(student.parents || []),
@@ -196,15 +187,6 @@ exports.createBooking = async (req, res) => {
     if (DEBUG) console.log("🚀 Creating booking...");
 
     const leadId = req.params.leadId || null;
-    // if (leadId) {
-    //   const existingBooking = await Booking.findOne({ where: { leadId } });
-    //   if (existingBooking) {
-    //     return res.status(400).json({
-    //       status: false,
-    //       message: "You already have a booking linked to this lead.",
-    //     });
-    //   }
-    // }
 
     const result = await BookingTrialService.createBooking(formData, {
       source: req.source,
@@ -228,7 +210,7 @@ exports.createBooking = async (req, res) => {
       if (parentAdminId) {
         await createCustomNotificationForAdmins({
           title: "Added to Waiting List",
-          description: `Your request for "${classData.className}" has been added to the waiting list.`,
+          description: `Your request has been added to the waiting list.`,
           category: "Updates",
           createdByAdminId: req.admin?.id || null,
           recipientAdminIds: [parentAdminId],
@@ -296,9 +278,9 @@ exports.createBooking = async (req, res) => {
             // "{{studentFirstName}}": studentFirstName || "",
             // "{{studentLastName}}": studentLastName || "",
             "{{venueName}}": venue?.name || "N/A",
-            "{{className}}": classData?.className || "N/A",
-            "{{startDate}}": booking?.startDate || "",
-            "{{classTime}}": classData?.startTime || "",
+            // "{{className}}": classData?.className || "N/A",
+            // "{{startDate}}": booking?.startDate || "",
+            // "{{classTime}}": classData?.startTime || "",
             "{{appName}}": "Synco",
             "{{year}}": new Date().getFullYear().toString(),
             "{{logoUrl}}":
@@ -329,7 +311,7 @@ exports.createBooking = async (req, res) => {
     await createNotification(
       req,
       "New Booking Created For Waiting List",
-      `Booking "${classData.className}" has been scheduled on ${formData.startDate} from ${classData.startTime} to ${classData.endTime}.`,
+      "Booking added in waiting list",
       "System"
     );
 
@@ -814,39 +796,11 @@ exports.convertToMembership = async (req, res) => {
     console.log("📥 [convertToMembership] Incoming formData:", formData);
 
   try {
-    // Step 1: Validate class
-    const classData = await ClassSchedule.findByPk(formData.classScheduleId);
-    if (!classData) {
-      if (DEBUG) console.log("❌ Class not found:", formData.classScheduleId);
-      return res
-        .status(404)
-        .json({ status: false, message: "Class not found." });
-    }
-
-    if (DEBUG)
-      console.log(
-        "✅ Class found:",
-        classData.className,
-        "Capacity:",
-        classData.capacity
-      );
-
-    // Step 2: Validate capacity
-    if (classData.capacity < formData.totalStudents) {
-      if (DEBUG)
-        console.log("❌ Capacity exceeded:", {
-          requested: formData.totalStudents,
-          available: classData.capacity,
-        });
-      return res.status(400).json({
-        status: false,
-        message: `Only ${classData.capacity} slot(s) left for this class.`,
-      });
-    }
 
     // Step 3: Validate form
     const { isValid, error } = validateFormData(formData, {
-      requiredFields: ["startDate", "totalStudents", "classScheduleId"],
+      // requiredFields: ["startDate", "totalStudents", "classScheduleId"],
+      requiredFields: ["startDate"]
     });
     if (!isValid) {
       if (DEBUG) console.log("❌ Validation failed:", error);
@@ -860,9 +814,34 @@ exports.convertToMembership = async (req, res) => {
         .status(400)
         .json({ status: false, message: "At least one student is required." });
     }
+    const classScheduleId = formData.students[0].classScheduleId;
+
+    if (!classScheduleId) {
+      return res.status(400).json({
+        status: false,
+        message: "classScheduleId is missing in students.",
+      });
+    }
+    const classData = await ClassSchedule.findByPk(classScheduleId);
+
+    if (!classData) {
+      return res.status(404).json({
+        status: false,
+        message: "Class schedule not found.",
+      });
+    }
+    const totalStudents = formData.students.length;
+
+    if (classData.capacity < totalStudents) {
+      return res.status(400).json({
+        status: false,
+        message: `Only ${classData.capacity} slot(s) left for this class.`,
+      });
+    }
 
     // Step 4: Attach venueId
-    formData.venueId = classData.venueId;
+    formData.totalStudents = totalStudents;
+    formData.classScheduleId = classScheduleId;
 
     if (DEBUG) console.log("📦 Final formData sent to service:", formData);
 

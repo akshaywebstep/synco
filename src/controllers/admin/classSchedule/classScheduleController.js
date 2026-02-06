@@ -450,6 +450,18 @@ exports.updateClassSchedule = async (req, res) => {
   const adminId = req.admin?.id;
 
   try {
+
+    // ✅ Validation
+    const validation = validateFormData(req.body, {
+      requiredFields: ["className", "day", "startTime", "endTime", "venueId"],
+    });
+
+    if (!validation.isValid) {
+      if (DEBUG) console.log("❌ Validation failed:", validation.error);
+      await logActivity(req, PANEL, MODULE, "create", validation.error, false);
+      return res.status(400).json({ status: false, ...validation });
+    }
+
     // ✅ Validate venue
     const venue = await Venue.findByPk(req.body.venueId);
     if (!venue) {

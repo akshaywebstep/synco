@@ -190,6 +190,14 @@ exports.getBookingById = async (id, adminId, superAdminId) => {
           as: "students",
           required: false,
           include: [
+            {
+              model: ClassSchedule,
+              as: "classSchedule",
+              required: false,
+              include: [
+                { model: Venue, as: "venue", required: false },
+              ],
+            },
             { model: BookingParentMeta, as: "parents", required: false },
             {
               model: BookingEmergencyMeta,
@@ -198,12 +206,7 @@ exports.getBookingById = async (id, adminId, superAdminId) => {
             },
           ],
         },
-        {
-          model: ClassSchedule,
-          as: "classSchedule",
-          required: false,
-          include: [{ model: Venue, as: "venue", required: false }],
-        },
+
         {
           model: Admin,
           as: "bookedByAdmin",
@@ -233,8 +236,8 @@ exports.getBookingById = async (id, adminId, superAdminId) => {
     console.log("✅ Step 7: Booking fetched successfully:", booking.id);
 
     // 🧩 Step 8: Extract venue
-    const venue = booking.classSchedule?.venue || null;
-    console.log("📍 Step 8: Venue extracted:", venue ? venue.id : "No venue");
+    const venue =
+      booking.students?.[0]?.classSchedule?.venue || null
 
     // 💳 Step 9: Fetch Payment Plan (from booking.paymentPlanId)
     let paymentPlans = [];
@@ -264,6 +267,17 @@ exports.getBookingById = async (id, adminId, superAdminId) => {
         medicalInformation: s.medicalInformation,
         age: s.age,
         gender: s.gender,
+        classScheduleId: s.classScheduleId,
+        // ✅ student-wise class schedule
+        classSchedule: s.classSchedule
+          ? {
+            id: s.classSchedule.id,
+            className: s.classSchedule.className,
+            startTime: s.classSchedule.startTime,
+            endTime: s.classSchedule.endTime,
+            capacity: s.classSchedule.capacity,
+          }
+          : null,
       })) || [];
 
     const parents =
@@ -296,14 +310,11 @@ exports.getBookingById = async (id, adminId, superAdminId) => {
     const response = {
       id: booking.id,
       bookingId: booking.bookingId,
-      classScheduleId: booking.classScheduleId,
       paymentPlanId: booking.paymentPlanId,
       startDate: booking.startDate,
       serviceType: booking.serviceType,
       interest: booking.interest,
       bookedBy: booking.bookedByAdmin || null,
-      className: booking.className,
-      classTime: booking.classTime,
       venueId: booking.venueId,
       status: booking.status,
       bookingType: booking.bookingType,
@@ -314,7 +325,6 @@ exports.getBookingById = async (id, adminId, superAdminId) => {
       students,
       parents,
       emergency,
-      classSchedule: booking.classSchedule || {},
       paymentPlans,
     };
 
@@ -434,7 +444,7 @@ exports.getWaitingList = async (filters = {}) => {
             {
               bookedBy: null,
               source: "website",
-              "$classSchedule.venue.createdBy$": {
+              "$students.classSchedule.venue.createdBy$": {
                 [Op.in]: allowedAdminIds,
               },
             },
@@ -458,26 +468,30 @@ exports.getWaitingList = async (filters = {}) => {
           required: !!filters.studentName,
           where: filters.studentName ? studentWhere : undefined,
           include: [
-            { model: BookingParentMeta, as: "parents", required: false },
+            {
+              model: ClassSchedule,
+              as: "classSchedule",
+              required: false,
+              include: [
+                {
+                  model: Venue,
+                  as: "venue",
+                  required: false,
+                  where: filters.venueName
+                    ? { name: { [Op.like]: `%${filters.venueName}%` } }
+                    : undefined,
+                },
+              ],
+            },
+            {
+              model: BookingParentMeta,
+              as: "parents",
+              required: false,
+            },
             {
               model: BookingEmergencyMeta,
               as: "emergencyContacts",
               required: false,
-            },
-          ],
-        },
-        {
-          model: ClassSchedule,
-          as: "classSchedule",
-          required: false,
-          include: [
-            {
-              model: Venue,
-              as: "venue",
-              required: false,
-              where: filters.venueName
-                ? { name: { [Op.like]: `%${filters.venueName}%` } }
-                : undefined,
             },
           ],
         },
@@ -516,6 +530,16 @@ exports.getWaitingList = async (filters = {}) => {
           gender: s.gender,
           medicalInformation: s.medicalInformation,
           interest: s.interest,
+          classScheduleId: s.classScheduleId,
+          // ✅ student-wise class schedule
+          classSchedule: s.classSchedule
+            ? {
+              id: s.classSchedule.id,
+              className: s.classSchedule.className,
+              startTime: s.classSchedule.startTime,
+              endTime: s.classSchedule.endTime,
+            }
+            : null,
         })) || [];
 
       const parents =
@@ -551,13 +575,15 @@ exports.getWaitingList = async (filters = {}) => {
         );
       }
 
+      const venue =
+        booking.students?.[0]?.classSchedule?.venue || null;
       return {
         ...booking.dataValues,
         students,
         parents,
         emergency,
-        classSchedule: booking.classSchedule || null,
-        venue: booking.classSchedule?.venue || null,
+        // classSchedule: booking.classSchedule || null,
+        venue,
         bookedByAdmin: booking.bookedByAdmin || null,
         assignedAgent: booking.assignedAgent || null, // 👈 agent info
         waitingDays,
@@ -635,14 +661,18 @@ exports.getWaitingList = async (filters = {}) => {
         ? { name: sorted[0], count: sorted[1] }
         : { name: null, count: 0 };
     };
+    const INTEREST_SCORE_MAP = {
+      low: 1,
+      medium: 2,
+      high: 3,
+    };
 
     const calculateWaitingStats = (bookings) => {
       const totalOnWaitingList = bookings.length;
 
-      const allInterests = bookings.flatMap(b =>
-        // b.students.map(s => parseInt(s.interest) || 0)
-        b.students.map(s => Number(s.interest) || 0)
-      );
+      const allInterests = bookings
+        .map(b => INTEREST_SCORE_MAP[b.interest?.toLowerCase()])
+        .filter(v => typeof v === "number");
 
       const avgInterest =
         allInterests.length > 0
@@ -801,28 +831,6 @@ exports.createBooking = async (data, options) => {
       console.log("🔍 [DEBUG] Extracted leadId:", leadId);
     }
 
-    // 🔍 Fetch the actual class schedule record
-    const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, {
-      transaction: t,
-    });
-
-    if (!classSchedule) {
-      throw new Error("Invalid class schedule selected.");
-    }
-
-    let bookingStatus;
-    let newCapacity = classSchedule.capacity;
-
-    if (classSchedule.capacity === 0) {
-      // ✅ Capacity is 0 → allow waiting list
-      bookingStatus = "waiting list";
-    } else {
-      // ❌ Capacity is available → reject waiting list
-      throw new Error(
-        `Class has available seats (${classSchedule.capacity}). Cannot add to waiting list.`
-      );
-    }
-
     if (data.parents?.length > 0 && source !== "parent") {
       const firstParent = data.parents[0];
       const email = firstParent.parentEmail?.trim()?.toLowerCase();
@@ -889,12 +897,12 @@ exports.createBooking = async (data, options) => {
         serviceType: "weekly class trial",
         totalStudents: data.totalStudents,
         startDate: data.startDate,
-        classScheduleId: data.classScheduleId,
-        bookingType: bookingStatus === "waiting list" ? "waiting list" : "confirmed",
+        // classScheduleId: data.classScheduleId,
+        bookingType: "waiting list",
         className: data.className,
         classTime: data.classTime,
         bookedBy,
-        status: bookingStatus,
+        status: "waiting list",
         source: bookingSource, // ✅ correct as per admin/website
         interest: data.interest,
         createdAt: new Date(),
@@ -908,6 +916,7 @@ exports.createBooking = async (data, options) => {
       const studentMeta = await BookingStudentMeta.create(
         {
           bookingTrialId: booking.id,
+          classScheduleId: student.classScheduleId, // ✅ HERE
           studentFirstName: student.studentFirstName,
           studentLastName: student.studentLastName,
           dateOfBirth: student.dateOfBirth,
@@ -986,12 +995,7 @@ exports.createBooking = async (data, options) => {
       );
     }
 
-    // Step 5: Update Class Capacity only if confirmed booking
-    if (bookingStatus !== "waiting list") {
-      await ClassSchedule.update({ capacity: newCapacity }, { transaction: t });
-    }
-
-    // Step 6: Commit
+    // Step 5: Commit
     await t.commit();
 
     return {
@@ -1782,7 +1786,6 @@ exports.convertToMembership = async (data, options) => {
         {
           totalStudents: data.totalStudents ?? booking.totalStudents,
           serviceType: "weekly class membership",
-          classScheduleId: data.classScheduleId ?? booking.classScheduleId,
           startDate: data.startDate ?? booking.startDate,
           trialDate: null,
           bookingType: data.paymentPlanId ? "paid" : booking.bookingType,
@@ -1798,7 +1801,6 @@ exports.convertToMembership = async (data, options) => {
           venueId: data.venueId,
           bookingId: generateBookingId(12),
           totalStudents: data.totalStudents,
-          classScheduleId: data.classScheduleId,
           serviceType: "weekly class membership",
           startDate: data.startDate,
           trialDate: null,
@@ -1826,6 +1828,7 @@ exports.convertToMembership = async (data, options) => {
         if (studentRecord) {
           await studentRecord.update(
             {
+              classScheduleId: student.classScheduleId,
               studentFirstName: student.studentFirstName,
               studentLastName: student.studentLastName,
               dateOfBirth: student.dateOfBirth,
@@ -2115,7 +2118,7 @@ exports.convertToMembership = async (data, options) => {
               data.payment.lastName || data.parents?.[0]?.parentLastName || "",
             email: data.payment.email || data.parents?.[0]?.parentEmail || "",
             // amount: price,
-            amount: payloadPrice,
+            price: payloadPrice,
             billingAddress: data.payment.billingAddress || "",
             account_holder_name: data.payment.account_holder_name || "",
             account_number: data.payment.account_number || "",
