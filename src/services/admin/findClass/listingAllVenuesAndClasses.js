@@ -329,6 +329,7 @@ exports.getAllVenuesWithClasses = async ({
             )
             : null;
 
+        const classDays = Object.keys(venueClasses);
         // ---------- FINAL RETURN ----------
         return {
           venueId: venue.id,
@@ -343,6 +344,8 @@ exports.getAllVenuesWithClasses = async ({
           createdAt: venue.createdAt,
           postal_code: venue.postal_code,
           distanceMiles,
+          // ✅ ALL DAYS JINME CLASSES HAIN
+          days: classDays,
           classes: venueClasses,
 
           paymentGroups: paymentGroups.map((pg) => ({

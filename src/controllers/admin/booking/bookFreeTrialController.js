@@ -4,11 +4,13 @@ const { logActivity } = require("../../../utils/admin/activityLogger");
 const { Venue, ClassSchedule, Admin } = require("../../../models");
 const emailModel = require("../../../services/email");
 const sendEmail = require("../../../utils/email/sendEmail");
-// const sequelize = require("../../../models").sequelize;
+
 const {
   BookingParentMeta,
   BookingStudentMeta,
   Booking,
+  CustomTemplate,
+  TemplateCategory,
 } = require("../../../models");
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 const {
@@ -20,6 +22,7 @@ const PANEL = "admin";
 const MODULE = "book-free-trial";
 
 // Create Book a Free Trial
+
 exports.createBooking = async (req, res) => {
   if (DEBUG) console.log("📥 Received booking request");
   const formData = req.body;
@@ -36,7 +39,6 @@ exports.createBooking = async (req, res) => {
     });
   }
 
-  // formData.createdBy = req.admin.id;
   // 1️⃣ Collect unique classScheduleIds
   const classScheduleIds = [
     ...new Set(formData.students.map(s => s.classScheduleId))
@@ -84,31 +86,15 @@ exports.createBooking = async (req, res) => {
   // 6️⃣ Set venueId once
   formData.venueId = venueIds[0];
 
-  // if (DEBUG) console.log("🔍 Fetching class data...");
-  // const classData = await ClassSchedule.findByPk(formData.classScheduleId);
-  // if (!classData) {
-  //   if (DEBUG) console.warn("❌ Class not found.");
-  //   return res.status(404).json({ status: false, message: "Class not found." });
-  // }
-
   if (DEBUG) console.log("📊 Checking class capacity...");
-  // if (classData.capacity < formData.totalStudents) {
-  //   if (DEBUG) console.warn("⚠️ Not enough capacity in class.");
-  //   return res.status(400).json({
-  //     status: false,
-  //     message: `Only ${classData.capacity} slot(s) left for this class.`,
-  //   });
-  // }
 
   if (DEBUG) console.log("✅ Validating form data...");
   const { isValid, error } = validateFormData(formData, {
     requiredFields: [
       "trialDate",
       "totalStudents",
-      // "classScheduleId",
       "students",
       "parents",
-      // "emergency",
     ],
   });
   if (!isValid) {
@@ -126,9 +112,6 @@ exports.createBooking = async (req, res) => {
   }
 
   if (DEBUG) console.log("📍 Setting class metadata...");
-  // formData.venueId = classData.venueId;
-  // formData.className = classData.className;
-  // formData.classTime = `${classData.startTime} - ${classData.endTime}`;
 
   if (DEBUG) console.log("🏫 Fetching venue data...");
   const venue = await Venue.findByPk(formData.venueId);
@@ -322,7 +305,6 @@ exports.createBooking = async (req, res) => {
     const studentFirstName = result.data.studentFirstName;
     const studentLastName = result.data.studentLastName;
 
-    // Send email to only the first parent
     // Send email
     const parentMetas = await BookingParentMeta.findAll({
       where: { studentId },
@@ -450,6 +432,7 @@ exports.createBooking = async (req, res) => {
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };
+
 exports.sendBookingSMSToParents = async (req, res) => {
   try {
     const { bookingId } = req.body;
