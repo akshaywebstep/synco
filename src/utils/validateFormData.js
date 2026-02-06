@@ -170,15 +170,13 @@ function isValidPhone(value) {
 function validateFormData(formData, options = {}) {
   const requiredFields = options.requiredFields || [];
   const patternValidations = options.patternValidations || {};
-  const fileExtensionValidations = options.fileExtensionValidations || [];
-
-  // ✅ NEW
+  const fileExtensionValidations = options.fileExtensionValidations || {};
   const forbiddenFields = options.forbiddenFields || [];
   const nestedForbidden = options.nestedForbidden || {};
 
   const error = {};
 
-  // 1️⃣ Required field validation
+  // 1️⃣ Required field validation (blocks empty strings)
   for (const field of requiredFields) {
     const value = formData[field];
     if (
@@ -193,18 +191,20 @@ function validateFormData(formData, options = {}) {
   // 1️⃣.5 Forbidden top-level fields
   for (const field of forbiddenFields) {
     if (formData[field] !== undefined) {
-      error[field] = `${toReadableFieldName(field)} is not allowed while creating.`;
+      error[field] = `${toReadableFieldName(field)} is not allowed.`;
     }
   }
 
   // 2️⃣ Pattern validations
   for (const field in patternValidations) {
+    if (error[field]) continue; // ⛔ don’t override required error
+
     const rule = patternValidations[field];
     const value = formData[field];
 
     if (value !== undefined && value !== null) {
       const val = typeof value === "string" ? value.trim() : value;
-      const valStr = val.toString().toLowerCase();
+      const valStr = val?.toString().toLowerCase();
 
       let isValid = true;
 
@@ -213,10 +213,10 @@ function validateFormData(formData, options = {}) {
           isValid = isValidEmail(val);
           break;
         case "number":
-          isValid = !isNaN(Number(val));
+          isValid = val !== "" && !isNaN(Number(val));
           break;
         case "boolean":
-          isValid = ["true", "false", "1", "0", "yes", "no"].includes(valStr);
+          isValid = ["true", "false", "1", "0"].includes(valStr);
           break;
         case "url":
           isValid = isValidURL(val);
@@ -235,13 +235,11 @@ function validateFormData(formData, options = {}) {
             /^\d{4}-\d{2}-\d{2}$/.test(valStr) && !isNaN(Date.parse(valStr));
           break;
         case "time":
-          isValid = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(valStr);
+          isValid = /^([01]\d|2[0-3]):[0-5]\d$/.test(valStr);
           break;
         case "datetime":
           isValid = !isNaN(Date.parse(valStr));
           break;
-        default:
-          isValid = true;
       }
 
       if (!isValid) {
@@ -250,7 +248,7 @@ function validateFormData(formData, options = {}) {
     }
   }
 
-  // 2️⃣.5 Forbidden nested fields (IMPORTANT)
+  // 2️⃣.5 Forbidden nested fields
   for (const [path, fields] of Object.entries(nestedForbidden)) {
     const value = formData[path];
 
@@ -278,10 +276,11 @@ function validateFormData(formData, options = {}) {
     const allowedExtensions = fileExtensionValidations[field];
     const file = formData[field];
 
-    if (file && file.originalname) {
-      const fileExtension = file.originalname.split(".").pop().toLowerCase();
-      if (!allowedExtensions.map((e) => e.toLowerCase()).includes(fileExtension)) {
-        error[field] = `${toReadableFieldName(field)} must be one of: ${allowedExtensions.join(", ")}.`;
+    if (file?.originalname) {
+      const ext = file.originalname.split(".").pop().toLowerCase();
+      if (!allowedExtensions.map(e => e.toLowerCase()).includes(ext)) {
+        error[field] =
+          `${toReadableFieldName(field)} must be one of: ${allowedExtensions.join(", ")}.`;
       }
     }
   }
