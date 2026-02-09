@@ -18,7 +18,17 @@ const HolidayBookingStudentMeta = sequelize.define(
       },
       onDelete: "CASCADE",
     },
-     attendance: {
+    classScheduleId: {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: "holiday_class_schedules",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
+    attendance: {
       type: DataTypes.ENUM("attended", "not attended"),
       allowNull: false,
       defaultValue: "not attended",
@@ -31,7 +41,7 @@ const HolidayBookingStudentMeta = sequelize.define(
     medicalInformation: DataTypes.STRING,
   },
   {
-    tableName: "holiday_booking_student_meta", 
+    tableName: "holiday_booking_student_meta",
     timestamps: true,
   }
 );
@@ -51,8 +61,12 @@ HolidayBookingStudentMeta.associate = (models) => {
     foreignKey: "studentId",
     as: "emergencyContacts",
   });
+
+  // ✅ ADD THIS
+  HolidayBookingStudentMeta.belongsTo(models.HolidayClassSchedule, {
+    foreignKey: "classScheduleId",
+    as: "holidayClassSchedules",
+  });
 };
-
-
 
 module.exports = HolidayBookingStudentMeta;

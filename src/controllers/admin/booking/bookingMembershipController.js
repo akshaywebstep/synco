@@ -42,21 +42,6 @@ exports.createBooking = async (req, res) => {
       });
     }
 
-    // ✅ Check class
-    // const classData = await ClassSchedule.findByPk(formData.classScheduleId);
-    // if (!classData)
-    //   return res
-    //     .status(404)
-    //     .json({ status: false, message: "Class not found." });
-
-    // // ✅ Check capacity
-    // if (classData.capacity < formData.totalStudents) {
-    //   return res.status(400).json({
-    //     status: false,
-    //     message: `Only ${classData.capacity} slot(s) left for this class.`,
-    //   });
-    // }
-
     // ✅ Validate form
     const { isValid, error } = validateFormData(formData, {
       requiredFields: ["startDate", "totalStudents"],
@@ -72,8 +57,6 @@ exports.createBooking = async (req, res) => {
         .json({ status: false, message: "At least one student is required." });
     }
     const isFromWebsite = req.source === "open";
-    // ✅ Inject venue
-    // formData.venueId = classData.venueId;
 
     let skipped = [];
     const adminId = req.admin?.id || null;
@@ -138,11 +121,6 @@ exports.createBooking = async (req, res) => {
       }
     );
 
-    // const result = await BookingMembershipService.createBooking(formData, {
-    //   source: req.source,
-    //   adminId: req.admin?.id || null,
-    //   leadId,
-    // });
     if (!result.status) {
       await logActivity(req, PANEL, MODULE, "create", result, false);
       return res.status(500).json({ status: false, message: result.message });

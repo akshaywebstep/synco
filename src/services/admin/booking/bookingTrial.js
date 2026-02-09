@@ -110,9 +110,7 @@ exports.createBooking = async (data, options) => {
         if (DEBUG) {
           console.log("🔍 [DEBUG] Admin portal booking. New parent created:", parentAdminId);
         }
-      }
-
-      else {
+      } else {
         // ✅ WEBSITE BOOKING → findOrCreate
         const [admin, isCreated] = await Admin.findOrCreate({
           where: { email },

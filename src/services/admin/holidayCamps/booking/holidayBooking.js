@@ -143,15 +143,36 @@ exports.createHolidayBooking = async (data, options = {}) => {
     // ==================================================
     //  FETCH CLASS SCHEDULE & CHECK CAPACITY
     // ==================================================
-    const classSchedule = await HolidayClassSchedule.findByPk(data.classScheduleId);
+    // ===============================
+    // STUDENT LEVEL CLASS SCHEDULE CHECK
+    // ===============================
+    const scheduleStudentCountMap = {};
 
-    if (!classSchedule) throw new Error("Invalid class schedule ID");
+    // Count students per schedule
+    for (const student of data.students) {
+      if (!student.classScheduleId) {
+        throw new Error("classScheduleId is required for each student");
+      }
 
-    if (classSchedule.capacity < data.totalStudents) {
-      throw new Error(
-        `Not enough capacity in this class. Available: ${classSchedule.capacity}, Requested: ${data.totalStudents}`
-      );
+      scheduleStudentCountMap[student.classScheduleId] =
+        (scheduleStudentCountMap[student.classScheduleId] || 0) + 1;
     }
+
+    // Validate capacity per schedule
+    for (const [scheduleId, count] of Object.entries(scheduleStudentCountMap)) {
+      const schedule = await HolidayClassSchedule.findByPk(scheduleId, { transaction });
+
+      if (!schedule) {
+        throw new Error(`Invalid class schedule ID: ${scheduleId}`);
+      }
+
+      if (schedule.capacity < count) {
+        throw new Error(
+          `Not enough capacity for schedule ${scheduleId}. Available: ${schedule.capacity}, Requested: ${count}`
+        );
+      }
+    }
+
     // 1️⃣ Load payment plan
     let paymentPlan = null;
     let base_amount = 0;
@@ -219,7 +240,6 @@ exports.createHolidayBooking = async (data, options = {}) => {
     const booking = await HolidayBooking.create(
       {
         venueId: data.venueId,
-        classScheduleId: data.classScheduleId,
         holidayCampId: data.holidayCampId,
         discountId: data.discountId ?? null,
         totalStudents: data.totalStudents,
@@ -229,8 +249,6 @@ exports.createHolidayBooking = async (data, options = {}) => {
         bookedBy,          // ✅ admin only
         marketingChannel,  // ✅ admin/website
         parentAdminId,     // ✅ always parent ID
-
-        parentAdminId,
         bookingType: "paid",
         type: "paid",
         serviceType: "holiday camp",
@@ -244,6 +262,7 @@ exports.createHolidayBooking = async (data, options = {}) => {
         HolidayBookingStudentMeta.create(
           {
             bookingId: booking.id,
+            classScheduleId: s.classScheduleId, // ⭐ HERE
             studentFirstName: s.studentFirstName,
             studentLastName: s.studentLastName,
             dateOfBirth: s.dateOfBirth,
@@ -347,10 +366,14 @@ exports.createHolidayBooking = async (data, options = {}) => {
         stripeChargeId = chargeRes.charge_id;
 
         // ✅ DECREASE CAPACITY AFTER SUCCESSFUL PAYMENT
-        await classSchedule.update(
-          { capacity: classSchedule.capacity - data.totalStudents },
-          { transaction }
-        );
+        for (const [scheduleId, count] of Object.entries(scheduleStudentCountMap)) {
+          const schedule = await HolidayClassSchedule.findByPk(scheduleId, { transaction });
+
+          await schedule.update(
+            { capacity: schedule.capacity - count },
+            { transaction }
+          );
+        }
       }
     } catch (err) {
       errorMessage = err.message;
@@ -406,8 +429,8 @@ exports.createHolidayBooking = async (data, options = {}) => {
               .replace(/{{venueName}}/g, venue?.name || "")
               .replace(/{{relationToChild}}/g, firstParent.relationToChild || "")
               .replace(/{{parentPhoneNumber}}/g, firstParent.parentPhoneNumber || "")
-              .replace(/{{className}}/g, "Holiday Camp")
-              .replace(/{{classTime}}/g, data.time || "")
+              // .replace(/{{className}}/g, "Holiday Camp")
+              // .replace(/{{classTime}}/g, data.time || "")
               // .replace(/{{date}}/g, data.date || "")
               .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
               .replace(/{{parentPassword}}/g, "Synco123")
@@ -911,7 +934,7 @@ exports.getHolidayBooking = async (superAdminId, adminId) => {
         // 2️⃣ Website bookings → venues created by this super admin
         {
           bookedBy: null,
-          "$holidayClassSchedules.venue.createdBy$": {
+          "$students.holidayClassSchedules.venue.createdBy$": {
             [Op.in]: adminIds,
           },
         },
@@ -933,7 +956,7 @@ exports.getHolidayBooking = async (superAdminId, adminId) => {
         // 2️⃣ Website bookings → admin + super admin venues
         {
           bookedBy: null,
-          "$holidayClassSchedules.venue.createdBy$": {
+          "$students.holidayClassSchedules.venue.createdBy$": {
             [Op.in]: adminIds,
           },
         },
@@ -956,24 +979,33 @@ exports.getHolidayBooking = async (superAdminId, adminId) => {
           as: "students",
           include: [
             { model: HolidayBookingParentMeta, as: "parents" },
-            { model: HolidayBookingEmergencyMeta, as: "emergencyContacts" }
-          ]
-        },
-
-        { model: HolidayBookingPayment, as: "payment" },
-        { model: HolidayPaymentPlan, as: "holidayPaymentPlan" },
-
-        {
-          model: HolidayClassSchedule,
-          as: "holidayClassSchedules",
-          include: [
+            { model: HolidayBookingEmergencyMeta, as: "emergencyContacts" },
             {
-              model: HolidayVenue,
-              as: "venue",
-              attributes: ["id", "createdBy"]
+              model: HolidayClassSchedule,
+              as: "holidayClassSchedules",
+              include: [
+                {
+                  model: HolidayVenue,
+                  as: "venue"
+                }
+              ]
             }
           ]
         },
+        { model: HolidayBookingPayment, as: "payment" },
+        { model: HolidayPaymentPlan, as: "holidayPaymentPlan" },
+
+        // {
+        //   model: HolidayClassSchedule,
+        //   as: "holidayClassSchedules",
+        //   include: [
+        //     {
+        //       model: HolidayVenue,
+        //       as: "venue",
+        //       attributes: ["id", "createdBy"]
+        //     }
+        //   ]
+        // },
 
         // Flat (for response compatibility)
         {
@@ -999,6 +1031,9 @@ exports.getHolidayBooking = async (superAdminId, adminId) => {
       order: [["id", "DESC"]]
     });
 
+    // ---------------------------
+    // TRANSFORM TO FINAL JSON
+    // ---------------------------
     // ---------------------------
     // TRANSFORM TO FINAL JSON
     // ---------------------------
@@ -1029,8 +1064,11 @@ exports.getHolidayBooking = async (superAdminId, adminId) => {
       });
       booking.emergencyContacts = Object.values(emergencyMap);
 
+      // ✅ holidayClassSchedules stay inside each student (already from include)
+
       return booking;
     });
+
     // ---------- SUMMARY METRICS ----------
     let totalStudents = 0;
     let revenue = 0;
@@ -1439,7 +1477,7 @@ exports.getBookingById = async (bookingId, superAdminId, adminId) => {
         // 2️⃣ Website booking → venue created by this super admin
         {
           bookedBy: null,
-          "$holidayClassSchedules.venue.createdBy$": {
+          "$students.holidayClassSchedules.venue.createdBy$": {
             [Op.in]: adminIds,
           },
         },
@@ -1458,7 +1496,7 @@ exports.getBookingById = async (bookingId, superAdminId, adminId) => {
         // 2️⃣ Website booking → venue created by admin or super admin
         {
           bookedBy: null,
-          "$holidayClassSchedules.venue.createdBy$": {
+          "$students.holidayClassSchedules.venue.createdBy$": {
             [Op.in]: adminIds,
           },
         },
@@ -1477,23 +1515,22 @@ exports.getBookingById = async (bookingId, superAdminId, adminId) => {
           model: HolidayBookingStudentMeta,
           as: "students",
           include: [
+            {
+              model: HolidayClassSchedule,
+              as: "holidayClassSchedules",
+              include: [
+                {
+                  model: HolidayVenue,
+                  as: "venue"
+                }
+              ]
+            },
             { model: HolidayBookingParentMeta, as: "parents" },
             { model: HolidayBookingEmergencyMeta, as: "emergencyContacts" }
           ]
         },
         { model: HolidayBookingPayment, as: "payment" },
         { model: HolidayPaymentPlan, as: "holidayPaymentPlan" },
-        { model: HolidayVenue, as: "holidayVenue" },
-        {
-          model: HolidayClassSchedule,
-          as: "holidayClassSchedules",
-          include: [
-            {
-              model: HolidayVenue,
-              as: "venue"
-            }
-          ]
-        },
         { model: Discount, as: "discount" },
         {
           model: Admin,
@@ -1517,22 +1554,50 @@ exports.getBookingById = async (bookingId, superAdminId, adminId) => {
     // ---------------------------
     // Parent extraction
     // ---------------------------
-    const parentMap = {};
-    booking.students.forEach(st => {
-      (st.parents || []).forEach(p => { parentMap[p.id] = p; });
-      delete st.parents;
-    });
-    booking.parents = Object.values(parentMap);
+    // const parentMap = {};
+    // const emergencyMap = {};
+    booking.holidayClassSchedules = null;
+
+    for (const st of booking.students) {
+      if (st.holidayClassSchedules) {
+        booking.holidayClassSchedules = st.holidayClassSchedules;
+        break;
+      }
+    }
+    booking.holidayClassSchedules = Object.values(booking.holidayClassSchedules || {});
+
+    // ----------------------------
+    // Flatten holidayClassSchedules & venue
+    // ----------------------------
+    let venue = null;
+    for (const student of booking.students) {
+      if (student.holidayClassSchedules && student.holidayClassSchedules.venue) {
+        venue = student.holidayClassSchedules.venue;
+        break;
+      }
+    }
 
     // ---------------------------
     // Emergency extraction
     // ---------------------------
+    // Loop through students
+    const parentMap = {};
     const emergencyMap = {};
-    booking.students.forEach(st => {
-      (st.emergencyContacts || []).forEach(ec => { emergencyMap[ec.id] = ec; });
-      delete st.emergencyContacts;
+    booking.students.forEach(student => {
+      // Extract emergency contacts
+      (student.emergencyContacts || []).forEach(ec => {
+        emergencyMap[ec.id] = ec;
+      });
+      delete student.emergencyContacts;
+
+      // Map parents (optional: if you want to flatten them to top-level too)
+      (student.parents || []).forEach(p => {
+        parentMap[p.id] = p;
+      });
+      delete student.parents;
     });
     booking.emergencyContacts = Object.values(emergencyMap);
+    booking.parents = Object.values(parentMap);
 
     // ---------------------------
     // Payment + Stripe details (fixed + consistent)
@@ -1612,6 +1677,9 @@ exports.getBookingById = async (bookingId, superAdminId, adminId) => {
 
       data: {
         ...booking,
+        holidayVenue: venue,           // top-level venue
+        emergencyContacts: booking.emergencyContacts,             // top-level emergency contacts
+        parents: booking.parents,
         payment: paymentObj
       },
 
@@ -2204,7 +2272,7 @@ exports.waitingListCreate = async (data, adminId) => {
       {
         venueId: data.venueId,
         parentAdminId,
-        classScheduleId: data.classScheduleId,
+        // classScheduleId: data.classScheduleId,
         holidayCampId: data.holidayCampId,
         totalStudents: data.totalStudents,
         status: "waiting list",
@@ -2224,6 +2292,7 @@ exports.waitingListCreate = async (data, adminId) => {
         HolidayBookingStudentMeta.create(
           {
             bookingId: booking.id,
+            classScheduleId: s.classScheduleId,
             studentFirstName: s.studentFirstName,
             studentLastName: s.studentLastName,
             dateOfBirth: s.dateOfBirth,
@@ -2277,20 +2346,29 @@ exports.waitingListCreate = async (data, adminId) => {
     // ==================================================
     //  CHECK CLASS SCHEDULE CAPACITY
     // ==================================================
-    const classSchedule = await HolidayClassSchedule.findByPk(data.classScheduleId);
+    const scheduleStudentCountMap = {};
 
-    if (!classSchedule) {
-      throw new Error("Invalid class schedule ID");
+    for (const student of data.students) {
+      if (!student.classScheduleId) {
+        throw new Error("classScheduleId is required for each student");
+      }
+
+      scheduleStudentCountMap[student.classScheduleId] =
+        (scheduleStudentCountMap[student.classScheduleId] || 0) + 1;
     }
+    for (const [scheduleId, count] of Object.entries(scheduleStudentCountMap)) {
+      const schedule = await HolidayClassSchedule.findByPk(scheduleId, { transaction });
 
-    // If capacity exists — do NOT allow waiting list
-    if (classSchedule.capacity > 0) {
-      return {
-        success: false,
-        message: `This class still has capacity = ${classSchedule.capacity}. You cannot join the waiting list.`,
-      };
+      if (!schedule) {
+        throw new Error(`Invalid class schedule ID: ${scheduleId}`);
+      }
+
+      if (schedule.capacity > 0) {
+        throw new Error(
+          `Schedule ${scheduleId} still has capacity (${schedule.capacity}). Waiting list not allowed.`
+        );
+      }
     }
-
     // ==================================================
     //  SEND EMAIL (NO PAYMENT LOGIC)
     // ==================================================
@@ -2330,8 +2408,8 @@ exports.waitingListCreate = async (data, adminId) => {
             .replace(/{{venueName}}/g, venue?.name || "")
             .replace(/{{relationToChild}}/g, firstParent.relationToChild || "")
             .replace(/{{parentPhoneNumber}}/g, firstParent.parentPhoneNumber || "")
-            .replace(/{{className}}/g, "Holiday Camp")
-            .replace(/{{classTime}}/g, data.time || "")
+            // .replace(/{{className}}/g, "Holiday Camp")
+            // .replace(/{{classTime}}/g, data.time || "")
             // .replace(/{{date}}/g, data.date || "")
             .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
             .replace(/{{parentPassword}}/g, "Synco123")

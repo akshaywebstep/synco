@@ -93,7 +93,7 @@ exports.createHolidayBooking = async (req, res) => {
 
     // ✅ Step 3: Validate student fields
     for (const [index, student] of formData.students.entries()) {
-      const requiredStudentFields = ["studentFirstName", "studentLastName", "dateOfBirth", "medicalInformation"];
+      const requiredStudentFields = ["studentFirstName", "studentLastName", "dateOfBirth", "medicalInformation","classScheduleId"];
 
       for (const field of requiredStudentFields) {
         if (!student[field] || student[field].toString().trim() === "") {
@@ -863,7 +863,6 @@ exports.waitingListCreate = async (req, res) => {
     // ✅ Step 1: Validate required main fields (stop at first missing)
     const requiredFields = [
       "venueId",
-      "classScheduleId",
       "totalStudents",
     ];
 
@@ -900,7 +899,7 @@ exports.waitingListCreate = async (req, res) => {
 
     // ✅ Step 3: Validate student fields
     for (const [index, student] of formData.students.entries()) {
-      const requiredStudentFields = ["studentFirstName", "studentLastName", "dateOfBirth", "medicalInformation"];
+      const requiredStudentFields = ["studentFirstName", "studentLastName", "dateOfBirth", "medicalInformation","classScheduleId"];
 
       for (const field of requiredStudentFields) {
         if (!student[field] || student[field].toString().trim() === "") {

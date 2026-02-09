@@ -53,15 +53,27 @@ const HolidayBooking = sequelize.define(
         },
 
         // ✅ FK → ClassSchedules.id
+        // classScheduleId: {
+        //     type: DataTypes.BIGINT.UNSIGNED,
+        //     allowNull: false,
+        //     references: {
+        //         model: "holiday_class_schedules",
+        //         key: "id",
+        //     },
+        //     onUpdate: "CASCADE",
+        //     onDelete: "CASCADE",
+        // },
+
+        // adding new
         classScheduleId: {
             type: DataTypes.BIGINT.UNSIGNED,
-            allowNull: false,
+            allowNull: true,
             references: {
                 model: "holiday_class_schedules",
                 key: "id",
             },
             onUpdate: "CASCADE",
-            onDelete: "CASCADE",
+            onDelete: "SET NULL",
         },
 
         // ✅ FK → PaymentPlans.id
@@ -166,6 +178,49 @@ const HolidayBooking = sequelize.define(
             allowNull: false,
             defaultValue: "admin",
             comment: "Marketing source of the booking",
+        },
+        // ===============================
+        // 🔹 SALES ASSIGNMENT FIELDS
+        // ===============================
+
+        // Kaunsa agent is trial ko close karega
+        assignedAgentId: {
+            type: DataTypes.BIGINT.UNSIGNED,
+            allowNull: true, // ✅ existing data safe
+            references: {
+                model: "admins",
+                key: "id",
+            },
+            onUpdate: "CASCADE",
+            onDelete: "SET NULL",
+            comment: "Sales agent assigned to this trial",
+        },
+
+        // Kab agent assign hua
+        assignedDate: {
+            type: DataTypes.DATE,
+            allowNull: true, // ✅ existing data safe
+            comment: "Date when trial was assigned to agent",
+        },
+
+        // Kis agent ne final conversion ki
+        convertedByAgentId: {
+            type: DataTypes.BIGINT.UNSIGNED,
+            allowNull: true, // ✅ existing data safe
+            references: {
+                model: "admins",
+                key: "id",
+            },
+            onUpdate: "CASCADE",
+            onDelete: "SET NULL",
+            comment: "Agent who converted trial to membership",
+        },
+
+        // Conversion kab hua
+        convertedAt: {
+            type: DataTypes.DATE,
+            allowNull: true, // ✅ existing data safe
+            comment: "Date when trial was converted to membership",
         },
     },
     {

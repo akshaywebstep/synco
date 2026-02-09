@@ -1,4 +1,5 @@
 const { KeyInformation } = require("../../models");
+const { JSDOM } = require("jsdom");
 
 // ✅ Create / Update Key Information per service
 exports.updateKeyInformation = async ({ serviceType, keyInformation }) => {
@@ -54,12 +55,16 @@ exports.getAllKeyInformation = async () => {
     const parsedData = records.map((r) => {
       const data = r.get({ plain: true });
 
-      // 🔑 Parse keyInformation if it's a string
       if (typeof data.keyInformation === "string") {
         try {
-          data.keyInformation = JSON.parse(data.keyInformation);
+          const dom = new JSDOM(data.keyInformation);
+          const items = [
+            ...dom.window.document.querySelectorAll("li"),
+          ].map((li) => li.textContent.trim());
+
+          data.keyInformation = items;
         } catch (err) {
-          console.error("❌ JSON parse failed for keyInformation:", err);
+          console.error("HTML parse failed:", err);
           data.keyInformation = [];
         }
       }
@@ -73,7 +78,6 @@ exports.getAllKeyInformation = async () => {
       data: parsedData,
     };
   } catch (error) {
-    console.error("❌ getAllKeyInformation Error:", error);
     return { status: false, message: error.message };
   }
 };
@@ -99,12 +103,17 @@ exports.getKeyInformationByServiceType = async (serviceType) => {
 
     const data = record.get({ plain: true });
 
-    // 🔑 Safety parse (in case stringified JSON exists)
+    // 🔑 SAME HTML parse logic as getAll
     if (typeof data.keyInformation === "string") {
       try {
-        data.keyInformation = JSON.parse(data.keyInformation);
+        const dom = new JSDOM(data.keyInformation);
+        const items = [
+          ...dom.window.document.querySelectorAll("li"),
+        ].map((li) => li.textContent.trim());
+
+        data.keyInformation = items;
       } catch (err) {
-        console.error("❌ JSON parse failed for keyInformation:", err);
+        console.error("HTML parse failed:", err);
         data.keyInformation = [];
       }
     }
