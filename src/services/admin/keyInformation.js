@@ -55,6 +55,9 @@ exports.getAllKeyInformation = async () => {
     const parsedData = records.map((r) => {
       const data = r.get({ plain: true });
 
+      // 🔹 original data ko alag key me store kar lo
+      data.keyInformationRaw = data.keyInformation;
+
       if (typeof data.keyInformation === "string") {
         try {
           const dom = new JSDOM(data.keyInformation);
@@ -62,6 +65,7 @@ exports.getAllKeyInformation = async () => {
             ...dom.window.document.querySelectorAll("li"),
           ].map((li) => li.textContent.trim());
 
+          // 🔹 parsed data existing key me hi rahe
           data.keyInformation = items;
         } catch (err) {
           console.error("HTML parse failed:", err);
@@ -103,7 +107,10 @@ exports.getKeyInformationByServiceType = async (serviceType) => {
 
     const data = record.get({ plain: true });
 
-    // 🔑 SAME HTML parse logic as getAll
+    // 🔹 original data ko alag key me store karo
+    data.keyInformationRaw = data.keyInformation;
+
+    // 🔑 SAME HTML parse logic
     if (typeof data.keyInformation === "string") {
       try {
         const dom = new JSDOM(data.keyInformation);
@@ -111,6 +118,7 @@ exports.getKeyInformationByServiceType = async (serviceType) => {
           ...dom.window.document.querySelectorAll("li"),
         ].map((li) => li.textContent.trim());
 
+        // 🔹 parsed data existing key me
         data.keyInformation = items;
       } catch (err) {
         console.error("HTML parse failed:", err);
