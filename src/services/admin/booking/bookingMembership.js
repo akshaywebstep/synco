@@ -847,7 +847,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
           "removed",
           "attended",
           "not attended",
-          // "expired",
+          "assign",
         ],
       },
 
@@ -3138,11 +3138,6 @@ exports.retryBookingPayment = async (bookingId, newData) => {
         };
 
         console.log("📦 Pay360 Payload:", paymentPayload);
-
-        // const url = `https://api.mite.pay360.com/acceptor/rest/transactions/${process.env.PAY360_INST_ID}/payment`;
-        // const authHeader = Buffer.from(
-        //   `${process.env.PAY360_API_USERNAME}:${process.env.PAY360_API_PASSWORD}`
-        // ).toString("base64");
 
         // ✅ Fetch Pay360 credentials from AppConfig
         const [instIdConfig, usernameConfig, passwordConfig] =
