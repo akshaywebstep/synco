@@ -860,6 +860,7 @@ exports.getAllBookings = async (filters = {}) => {
             age: s.age,
             gender: s.gender,
             medicalInformation: s.medicalInformation,
+            attendance: s.attendance,
 
             // ✅ student-wise class schedule
             classSchedule: s.classSchedule
