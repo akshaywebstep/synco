@@ -5,13 +5,14 @@ const { sequelize } = require("../../../models");
 
 exports.getAttendanceRegister = async (classScheduleId) => {
   try {
-    // 1️⃣ Fetch bookings first
+    // 1️⃣ Fetch bookings via students.classScheduleId
     const bookings = await Booking.findAll({
-      where: { classScheduleId },
       include: [
         {
           model: BookingStudentMeta,
           as: "students",
+          where: { classScheduleId }, // ✅ CORRECT
+          required: true,             // 🔥 INNER JOIN
           attributes: [
             "id",
             "studentFirstName",
@@ -19,12 +20,14 @@ exports.getAttendanceRegister = async (classScheduleId) => {
             "age",
             "gender",
             "attendance",
+            "classScheduleId",
           ],
         },
         {
           model: Venue,
           as: "venue",
           attributes: ["id", "name", "address", "area", "facility"],
+          required: false,
         },
       ],
       order: [["createdAt", "ASC"]],
@@ -37,7 +40,7 @@ exports.getAttendanceRegister = async (classScheduleId) => {
       };
     }
 
-    // 2️⃣ Only fetch class schedule if there are bookings
+    // 2️⃣ Fetch class schedule
     const classSchedule = await ClassSchedule.findByPk(classScheduleId, {
       attributes: ["id", "className", "startTime", "endTime", "createdAt"],
     });
@@ -52,11 +55,11 @@ exports.getAttendanceRegister = async (classScheduleId) => {
     const members = [];
     const trials = [];
 
+    // 3️⃣ Prepare response
     for (const booking of bookings) {
       const bookingData = {
         id: booking.id,
         bookingType: booking.bookingType,
-        classScheduleId: booking.classScheduleId,
         status: booking.status,
         students: booking.students || [],
         createdAt: booking.createdAt,
@@ -70,14 +73,14 @@ exports.getAttendanceRegister = async (classScheduleId) => {
       }
     }
 
-    // Top-level venue (from first booking, optional)
+    // Top-level venue (safe)
     const topLevelVenue = bookings[0]?.venue || null;
 
     return {
       status: true,
       message: "Attendance register fetched successfully.",
       data: {
-        classSchedule, // 🔹 full class schedule details
+        classSchedule,
         venue: topLevelVenue,
         members,
         trials,

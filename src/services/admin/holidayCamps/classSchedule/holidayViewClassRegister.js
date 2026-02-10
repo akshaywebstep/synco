@@ -9,11 +9,12 @@ exports.getAttendanceRegister = async (classScheduleId) => {
   try {
     // 1️⃣ Fetch bookings for the given class schedule
     const holidayBookings = await HolidayBooking.findAll({
-      where: { classScheduleId },
       include: [
         {
           model: HolidayBookingStudentMeta,
           as: "students",
+          where: { classScheduleId },   // ✅ CORRECT PLACE
+          required: true,               // 🔥 IMPORTANT
           attributes: [
             "id",
             "studentFirstName",
@@ -21,12 +22,14 @@ exports.getAttendanceRegister = async (classScheduleId) => {
             "age",
             "gender",
             "attendance",
+            "classScheduleId",
           ],
         },
         {
           model: HolidayVenue,
           as: "holidayVenue",
           attributes: ["id", "name", "address", "area", "facility"],
+          required: false,
         },
       ],
       order: [["createdAt", "ASC"]],
@@ -62,7 +65,6 @@ exports.getAttendanceRegister = async (classScheduleId) => {
       const bookingData = {
         id: booking.id,
         bookingType: booking.bookingType,
-        classScheduleId: booking.classScheduleId,
         status: booking.status,
         students: booking.students || [],
         createdAt: booking.createdAt,
