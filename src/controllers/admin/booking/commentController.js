@@ -331,7 +331,7 @@ exports.listCommentsForWaitingList = async (req, res) => {
 
     const result = await CommentService.listCommentsForWaitingList({
       commentType,
-       serviceType: "waiting list",
+       serviceType: "weekly class",
       loggedInAdmin: req.admin
     });
 

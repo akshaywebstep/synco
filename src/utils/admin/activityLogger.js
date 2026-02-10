@@ -3,6 +3,20 @@ const http = require("http");
 
 const DEBUG = process.env.DEBUG === "true";
 
+function sanitizeIp(ip) {
+  if (!ip) return null;
+
+  if (ip.startsWith("::ffff:")) {
+    ip = ip.replace("::ffff:", "");
+  }
+
+  if (ip === "::1" || ip === "127.0.0.1" || ip === "Unknown IP") {
+    return null;
+  }
+
+  return ip;
+}
+
 exports.logActivity = async (req, panel, module, action, data, status) => {
   try {
     if (!req.admin.id) {
@@ -12,17 +26,33 @@ exports.logActivity = async (req, panel, module, action, data, status) => {
       };
     }
 
-    const ip =
+    // const ip =
+    //   req.headers["x-forwarded-for"]?.split(",")[0] ||
+    //   req.socket?.remoteAddress ||
+    //   req.connection?.remoteAddress ||
+    //   "Unknown IP";
+    const rawIp =
       req.headers["x-forwarded-for"]?.split(",")[0] ||
       req.socket?.remoteAddress ||
-      req.connection?.remoteAddress ||
-      "Unknown IP";
+      req.connection?.remoteAddress;
+
+    const ip = sanitizeIp(rawIp) || "Unknown IP";
 
     // const ip = '139.5.0.94';
     const apiUrl = `http://ip-api.com/json/${ip}?fields=status,message,continent,continentCode,country,countryCode,region,regionName,city,district,zip,lat,lon,timezone,offset,currency,isp,org,as,asname,reverse,mobile,proxy,hosting,query`;
 
     // Fetch geolocation data from ip-api
-    const geoData = await fetchLocationData(apiUrl);
+    // const geoData = await fetchLocationData(apiUrl);
+    let geoData = {};
+    if (ip !== "Unknown IP") {
+      try {
+        const apiUrl = `http://ip-api.com/json/${ip}?fields=status,message,continent,continentCode,country,countryCode,region,regionName,city,district,zip,lat,lon,timezone,offset,currency,isp,org,as,asname,reverse,mobile,proxy,hosting,query`;
+        geoData = await fetchLocationData(apiUrl);
+      } catch (err) {
+        console.error("🌍 IP lookup failed:", err.message);
+      }
+    }
+
     // Extract user agent details
     const userAgent = req.headers["user-agent"] || "Unknown";
     const { deviceType, browserName, osName } = parseUserAgent(userAgent);
@@ -165,7 +195,8 @@ async function fetchLocationData(url) {
           }
         });
       })
-      .on("error", reject);
+      // .on("error", reject);
+      .on("error", () => resolve({}));
   });
 }
 

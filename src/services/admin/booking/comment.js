@@ -265,7 +265,7 @@ exports.addCommentForWaitingList = async ({
     }
 };
 
-exports.listCommentsForWaitingList = async ({ commentType = "waiting list", serviceType = "serviceType",loggedInAdmin }) => {
+exports.listCommentsForWaitingList = async ({ commentType = "waiting list", serviceType = "weekly class", loggedInAdmin }) => {
     try {
         // 🔹 Step 1: Root Super Admin identify karo
         const superAdminId =
@@ -283,7 +283,6 @@ exports.listCommentsForWaitingList = async ({ commentType = "waiting list", serv
             },
             attributes: ["id"],
         });
-
         const allowedAdminIds = teamAdmins.map(a => a.id);
 
         const whereCondition = {
