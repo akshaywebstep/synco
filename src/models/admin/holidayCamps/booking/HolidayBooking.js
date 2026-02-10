@@ -108,7 +108,8 @@ const HolidayBooking = sequelize.define(
                 "active",
                 "frozen",
                 "waiting list",
-                "removed"
+                "removed",
+                "assigned"
             ),
             allowNull: false,
             defaultValue: "pending",

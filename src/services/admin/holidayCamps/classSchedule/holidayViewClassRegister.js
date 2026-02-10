@@ -3,6 +3,7 @@ const {
   HolidayBookingStudentMeta,
   HolidayVenue,
   HolidayClassSchedule,
+  sequelize
 } = require("../../../../models");
 
 exports.getAttendanceRegister = async (classScheduleId) => {
@@ -97,29 +98,88 @@ exports.getAttendanceRegister = async (classScheduleId) => {
   }
 };
 
+// exports.updateAttendanceStatus = async (studentId, attendance) => {
+//   try {
+//     // ✅ Validate input
+//     if (!studentId || !["attended", "not attended"].includes(attendance)) {
+//       return { status: false, message: "Invalid studentId or attendance value." };
+//     }
+
+//     // ✅ Update attendance
+//     const [updatedRows] = await HolidayBookingStudentMeta.update(
+//       { attendance },
+//       { where: { id: studentId } }
+//     );
+
+//     if (updatedRows === 0) {
+//       return { status: false, message: "Student not found or no change made." };
+//     }
+
+//     return {
+//       status: true,
+//       message: "Student attendance updated successfully.",
+//       data: { id: studentId, attendance },
+//     };
+//   } catch (error) {
+//     console.error("❌ updateAttendanceStatus Service Error:", error);
+//     return { status: false, message: error.message };
+//   }
+// };
+
 exports.updateAttendanceStatus = async (studentId, attendance) => {
+  const t = await sequelize.transaction();
   try {
     // ✅ Validate input
     if (!studentId || !["attended", "not attended"].includes(attendance)) {
       return { status: false, message: "Invalid studentId or attendance value." };
     }
 
-    // ✅ Update attendance
+    // ✅ Update the student record
     const [updatedRows] = await HolidayBookingStudentMeta.update(
       { attendance },
-      { where: { id: studentId } }
+      { where: { id: studentId }, transaction: t }
     );
 
     if (updatedRows === 0) {
+      await t.rollback();
       return { status: false, message: "Student not found or no change made." };
     }
+
+    // ✅ Fetch the bookingId of this student
+    const student = await HolidayBookingStudentMeta.findByPk(studentId, { transaction: t });
+    if (!student) {
+      await t.rollback();
+      return { status: false, message: "Student not found." };
+    }
+
+    const bookingId = student.bookingId;
+
+    // ✅ Fetch all students under the same booking
+    const allStudents = await HolidayBookingStudentMeta.findAll({
+      where: { bookingId },
+      transaction: t,
+    });
+
+    // ✅ Determine if booking can be marked attended
+    const allAttended = allStudents.every(s => s.attendance === "attended");
+
+    // ✅ Update booking status only if all students attended
+    if (allAttended) {
+      await HolidayBooking.update(
+        { status: "Attended", updatedAt: new Date() },
+        { where: { id: bookingId }, transaction: t }
+      );
+    }
+
+    await t.commit();
 
     return {
       status: true,
       message: "Student attendance updated successfully.",
-      data: { id: studentId, attendance },
+      data: { studentId, attendance, bookingUpdated: allAttended },
     };
   } catch (error) {
+    await t.rollback();
     console.error("❌ updateAttendanceStatus Service Error:", error);
     return { status: false, message: error.message };
   }

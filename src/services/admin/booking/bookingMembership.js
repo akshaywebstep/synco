@@ -1944,6 +1944,13 @@ exports.transferClass = async (data, options) => {
       });
       if (!student) throw new Error(`Student ${item.studentId} not found.`);
 
+      // 🔴 SAME CLASS VALIDATION
+      if (student.classScheduleId === item.classScheduleId) {
+        throw new Error(
+          "This student is already enrolled in the selected class. Please choose a different class."
+        );
+      }
+
       const newClass = await ClassSchedule.findByPk(item.classScheduleId, {
         transaction: t,
       });

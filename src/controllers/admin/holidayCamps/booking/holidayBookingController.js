@@ -242,7 +242,7 @@ exports.createHolidayBooking = async (req, res) => {
 // Assign Booking to Admin / Agent
 exports.assignBookings = async (req, res) => {
   try {
-    const { bookingIds, bookedBy } = req.body;
+    const { bookingIds, agentId } = req.body;
 
     if (!Array.isArray(bookingIds) || bookingIds.length === 0) {
       return res.status(400).json({
@@ -251,40 +251,19 @@ exports.assignBookings = async (req, res) => {
       });
     }
 
-    if (!bookedBy || isNaN(Number(bookedBy))) {
+    if (!agentId || isNaN(Number(agentId))) {
       return res.status(400).json({
         status: false,
-        message: "Valid admin ID is required.",
+        message: "Valid agent ID is required.",
       });
     }
 
-    const result = await holidayBookingService.assignBookingsToAgent({
-      bookingIds,
-      bookedBy,
-    });
+    // Call service to assign bookings
+    const result = await holidayBookingService.assignBookingsToAgent({ bookingIds, agentId });
 
     if (!result.status) {
-      await logActivity(req, PANEL, MODULE, "update", result, false);
       return res.status(400).json(result);
     }
-
-    await createNotification(
-      req,
-      "Bookings Assigned",
-      `${bookingIds.length} booking(s) assigned to agent successfully.`,
-      "System"
-    );
-
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "update",
-      {
-        oneLineMessage: `Assigned ${bookingIds.length} bookings to admin ${bookedBy}`,
-      },
-      true
-    );
 
     return res.status(200).json(result);
   } catch (error) {
