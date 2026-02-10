@@ -577,6 +577,29 @@ exports.getBookingById = async (
   }
 };
 
+function applyTimeBasedDiscount(price, bookingCreatedAt) {
+  if (!bookingCreatedAt || !price) return price;
+
+  const now = new Date();
+  const createdAt = new Date(bookingCreatedAt);
+
+  const hoursDiff =
+    (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+
+  // First 24 hours → 50% discount
+  if (hoursDiff <= 24) {
+    return price * 0.5;
+  }
+
+  // Next 7 days → 25% discount
+  if (hoursDiff <= 24 * 7) {
+    return price * 0.75;
+  }
+
+  // After that → no discount
+  return price;
+}
+
 exports.updateBooking = async (payload, adminId, id) => {
   const t = await sequelize.transaction();
   try {
@@ -791,7 +814,20 @@ exports.updateBooking = async (payload, adminId, id) => {
       if (!payload.payment?.price || Number(payload.payment.price) <= 0) {
         throw new Error("Price must be provided in payload.payment.price and > 0");
       }
-      const payloadPrice = Number(payload.payment.price); // ✅ define once
+      // const payloadPrice = Number(payload.payment.price); // ✅ define once
+      const originalPrice = Number(payload.payment.price);
+
+      const discountedPrice = applyTimeBasedDiscount(
+        originalPrice,
+        booking.createdAt // ✅ free trial booking time
+      );
+      console.log("DISCOUNT CHECK", {
+        originalPrice,
+        discountedPrice,
+        bookingCreatedAt: booking.createdAt,
+      });
+
+      const payloadPrice = Number(discountedPrice.toFixed(2));
 
       // ✅ ADD THESE (IMPORTANT)
       let customerId = null;

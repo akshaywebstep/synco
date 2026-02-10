@@ -349,7 +349,7 @@ exports.getWaitingList = async (filters = {}) => {
       ? Array.isArray(filters.status)
         ? filters.status
         : [filters.status]
-      : ["waiting list", "expired","assigned"];
+      : ["waiting list", "expired"];
     console.log(statusFilter);
 
     if (filters.interest) trialWhere.interest = filters.interest;
