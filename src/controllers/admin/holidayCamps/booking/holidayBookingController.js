@@ -640,7 +640,7 @@ exports.updateHolidayBooking = async (req, res) => {
     if (Array.isArray(formData.students)) {
       for (const [index, student] of formData.students.entries()) {
 
-        const requiredFields = ["studentFirstName", "studentLastName", "dateOfBirth", "medicalInformation"];
+        const requiredFields = ["studentFirstName", "studentLastName", "dateOfBirth", "medicalInformation","classScheduleId"];
 
         for (const field of requiredFields) {
           if (student[field] === "") {

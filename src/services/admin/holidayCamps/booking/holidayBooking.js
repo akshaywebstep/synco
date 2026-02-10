@@ -2070,8 +2070,8 @@ exports.updateHolidayBookingById = async (bookingId, data, adminId) => {
 
     if (!booking) throw new Error("Booking not found");
 
-    const classSchedule = await HolidayClassSchedule.findByPk(booking.classScheduleId, { transaction });
-    if (!classSchedule) throw new Error("Class schedule not found");
+    // const classSchedule = await HolidayClassSchedule.findByPk(booking.classScheduleId, { transaction });
+    // if (!classSchedule) throw new Error("Class schedule not found");
 
     let addedStudentsCount = 0;
     let adminSynced = false;
@@ -2102,13 +2102,27 @@ exports.updateHolidayBookingById = async (bookingId, data, adminId) => {
         // 🔹 CREATE new student
         // ---------------------------
         else {
+          if (!student.classScheduleId) {
+            throw new Error("classScheduleId is required for student");
+          }
+
+          const classSchedule = await HolidayClassSchedule.findByPk(
+            student.classScheduleId,
+            { transaction }
+          );
+
+          if (!classSchedule) {
+            throw new Error("Class schedule not found");
+          }
+
           if (classSchedule.capacity < 1) {
             throw new Error(`No capacity available. Remaining: ${classSchedule.capacity}`);
           }
 
-          const newStudent = await HolidayBookingStudentMeta.create(
+          await HolidayBookingStudentMeta.create(
             {
               bookingId: booking.id,
+              classScheduleId: student.classScheduleId, // ✅ IMPORTANT
               studentFirstName: student.studentFirstName,
               studentLastName: student.studentLastName,
               dateOfBirth: student.dateOfBirth,
@@ -2123,6 +2137,7 @@ exports.updateHolidayBookingById = async (bookingId, data, adminId) => {
           classSchedule.capacity -= 1;
           await classSchedule.save({ transaction });
         }
+
       }
     }
 
@@ -2132,9 +2147,6 @@ exports.updateHolidayBookingById = async (bookingId, data, adminId) => {
       await booking.save({ transaction });
     }
 
-    // ============================================================
-    // 2️⃣ PARENTS: UPDATE IF ID EXISTS, CREATE IF NOT
-    // ============================================================
     // ============================================================
     // 2️⃣ PARENTS: UPDATE IF ID EXISTS, CREATE IF NOT + ADMIN SYNC
     // ============================================================
