@@ -21,6 +21,490 @@ const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
 const MODULE = "book-free-trial";
 
+// exports.createBooking = async (req, res) => {
+//   if (DEBUG) console.log("📥 Received booking request");
+//   const formData = req.body;
+//   const isParentPortalBooking = !!req.params.parentAdminId;
+//   if (
+//     isParentPortalBooking &&
+//     req.admin &&
+//     req.admin.role === "parent" &&
+//     req.admin.id !== parseInt(req.params.parentAdminId, 10)
+//   ) {
+//     return res.status(403).json({
+//       status: false,
+//       message: "You are not authorized to create booking for this parent.",
+//     });
+//   }
+
+//   // 1️⃣ Collect unique classScheduleIds
+//   const classScheduleIds = [
+//     ...new Set(formData.students.map(s => s.classScheduleId))
+//   ];
+
+//   // 2️⃣ Fetch all class schedules
+//   const classSchedules = await ClassSchedule.findAll({
+//     where: { id: classScheduleIds },
+//   });
+
+//   // 3️⃣ Existence check
+//   if (classSchedules.length !== classScheduleIds.length) {
+//     return res.status(404).json({
+//       status: false,
+//       message: "One or more class schedules not found.",
+//     });
+//   }
+
+//   // 4️⃣ Capacity check (per class)
+//   const countMap = {};
+//   for (const s of formData.students) {
+//     countMap[s.classScheduleId] =
+//       (countMap[s.classScheduleId] || 0) + 1;
+//   }
+
+//   for (const schedule of classSchedules) {
+//     const required = countMap[schedule.id];
+//     if (schedule.capacity < required) {
+//       return res.status(400).json({
+//         status: false,
+//         message: `Only ${schedule.capacity} slot(s) left for class "${schedule.className}".`,
+//       });
+//     }
+//   }
+
+//   // 5️⃣ Same venue rule (IMPORTANT)
+//   const venueIds = [...new Set(classSchedules.map(c => c.venueId))];
+//   if (venueIds.length > 1) {
+//     return res.status(400).json({
+//       status: false,
+//       message: "All students must belong to the same venue.",
+//     });
+//   }
+
+//   // 6️⃣ Set venueId once
+//   formData.venueId = venueIds[0];
+
+//   if (DEBUG) console.log("📊 Checking class capacity...");
+
+//   if (DEBUG) console.log("✅ Validating form data...");
+//   const { isValid, error } = validateFormData(formData, {
+//     requiredFields: [
+//       "trialDate",
+//       "totalStudents",
+//       "students",
+//       "parents",
+//     ],
+//   });
+//   if (!isValid) {
+//     if (DEBUG) console.warn("❌ Form validation failed:", error);
+//     const firstKey = Object.keys(error)[0];
+//     return res.status(400).json({ status: false, message: error[firstKey] });
+//   }
+
+//   if (!Array.isArray(formData.students) || formData.students.length === 0) {
+//     if (DEBUG) console.warn("❌ No students provided.");
+//     return res.status(400).json({
+//       status: false,
+//       message: "At least one student must be provided.",
+//     });
+//   }
+
+//   if (DEBUG) console.log("📍 Setting class metadata...");
+
+//   if (DEBUG) console.log("🏫 Fetching venue data...");
+//   const venue = await Venue.findByPk(formData.venueId);
+//   if (!venue) {
+//     const message = "Venue linked to this class is not configured.";
+//     if (DEBUG) console.warn("❌ Venue not found.");
+//     await logActivity(req, PANEL, MODULE, "create", { message }, false);
+//     return res.status(404).json({ status: false, message });
+//   }
+
+//   if (DEBUG) console.log("👨‍👩‍👧 Validating students and parents...");
+//   const emailMap = new Map();
+//   const duplicateEmails = [];
+
+//   for (const student of formData.students) {
+//     // ✅ Validate student fields individually
+//     if (!student.studentFirstName) {
+//       return res.status(400).json({
+//         status: false,
+//         message: "Student first name is required.",
+//       });
+//     }
+//     if (!student.studentLastName) {
+//       return res.status(400).json({
+//         status: false,
+//         message: "Student last name is required.",
+//       });
+//     }
+//     if (!student.dateOfBirth) {
+//       return res.status(400).json({
+//         status: false,
+//         message: "Student date of birth is required.",
+//       });
+//     }
+//     if (!student.medicalInformation) {
+//       return res.status(400).json({
+//         status: false,
+//         message: "Student medical information is required.",
+//       });
+//     }
+//     if (!student.classScheduleId) {
+//       return res.status(400).json({
+//         status: false,
+//         message: "classScheduleId is required for each student",
+//       });
+//     }
+
+//     // ✅ Emergency contact is OPTIONAL
+//     const emergency = req.body.emergency;
+
+//     if (emergency) {
+//       if (!emergency.emergencyFirstName) {
+//         return res.status(400).json({
+//           status: false,
+//           message: "Emergency contact first name is required.",
+//         });
+//       }
+//       if (!emergency.emergencyLastName) {
+//         return res.status(400).json({
+//           status: false,
+//           message: "Emergency contact last name is required.",
+//         });
+//       }
+//       if (!emergency.emergencyPhoneNumber) {
+//         return res.status(400).json({
+//           status: false,
+//           message: "Emergency contact phone number is required.",
+//         });
+//       }
+//     }
+
+//     // student.className = classData.className;
+//     // student.startTime = classData.startTime;
+//     // student.endTime = classData.endTime;
+
+//     // ✅ Use the global parents array (from formData.parents)
+//     if (!Array.isArray(formData.parents) || formData.parents.length === 0) {
+//       return res.status(400).json({
+//         status: false,
+//         message: "At least one parent must be provided.",
+//       });
+//     }
+
+//     for (const parent of formData.parents) {
+//       if (!parent.parentFirstName) {
+//         return res.status(400).json({
+//           status: false,
+//           message: "Parent first name is required.",
+//         });
+//       }
+//       if (!parent.parentLastName) {
+//         return res.status(400).json({
+//           status: false,
+//           message: "Parent last name is required.",
+//         });
+//       }
+//       if (!parent.parentEmail) {
+//         return res.status(400).json({
+//           status: false,
+//           message: "Parent email is required.",
+//         });
+//       }
+
+//       const rawEmail = parent.parentEmail;
+//       const emailvalid = rawEmail.trim().toLowerCase();
+
+//       // 🚫 Check for spaces
+//       if (/\s/.test(rawEmail)) {
+//         return res.status(400).json({
+//           status: false,
+//           message: `Parent email "${rawEmail}" should not contain spaces.`,
+//         });
+//       }
+
+//       // 🚫 Check for invalid characters
+//       const invalidCharRegex = /[^a-zA-Z0-9@._\-+]/;
+//       if (invalidCharRegex.test(emailvalid)) {
+//         return res.status(400).json({
+//           status: false,
+//           message: `Parent email "${rawEmail}" contains invalid characters.`,
+//         });
+//       }
+
+//       // 🚫 Validate email format
+//       const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
+//       if (!emailRegex.test(emailvalid)) {
+//         return res.status(400).json({
+//           status: false,
+//           message: `Parent email "${rawEmail}" is not a valid email address format.`,
+//         });
+//       }
+
+//       if (!parent.parentPhoneNumber) {
+//         return res.status(400).json({
+//           status: false,
+//           message: "Parent phone number is required.",
+//         });
+//       }
+
+//       const email = parent.parentEmail.trim().toLowerCase();
+//       if (emailMap.has(email)) continue;
+
+//       emailMap.set(email, parent);
+
+//       if (!isParentPortalBooking) {
+//         const exists = await Admin.findOne({ where: { email } });
+//         if (exists) {
+//           duplicateEmails.push(email);
+//         }
+//       }
+
+//     }
+//   }
+
+//   if (duplicateEmails.length > 0) {
+//     const unique = [...new Set(duplicateEmails)]; // remove duplicates
+//     const message =
+//       unique.length === 1
+//         ? `${unique[0]} email already in use.`
+//         : `${unique.join(", ")} emails already in use.`;
+
+//     if (DEBUG) console.warn("❌ Duplicate email(s) found.");
+//     await logActivity(req, PANEL, MODULE, "create", { message }, false);
+
+//     return res.status(409).json({ status: false, message });
+//   }
+
+//   try {
+//     if (DEBUG) console.log("🚀 Creating booking...");
+//     // const result = await BookingTrialService.createBooking(formData);
+//     const leadId = req.params.leadId || null;
+//     const parentAdminId = req.params.parentAdminId
+//       ? parseInt(req.params.parentAdminId, 10)
+//       : null;
+//     const result = await BookingTrialService.createBooking(formData, {
+//       // source: req.source,
+//       adminId: req.admin?.id, // <-- pass adminId here
+//       parentAdminId,
+//       adminFirstName: req.admin?.firstName || "Unknown",
+//       leadId,
+//     });
+
+//     if (!result.status) {
+//       if (DEBUG) console.error("❌ Booking service error:", result.message);
+//       await logActivity(req, PANEL, MODULE, "create", result, false);
+//       return res.status(500).json({ status: false, message: result.message });
+//     }
+
+//     const booking = result.data.booking;
+//     const studentId = result.data.studentId;
+//     const studentFirstName = result.data.studentFirstName;
+//     const studentLastName = result.data.studentLastName;
+
+//     // Send email
+//     const parentMetas = await BookingParentMeta.findAll({
+//       where: { studentId },
+//     });
+
+//     if (parentMetas && parentMetas.length > 0) {
+
+//       const firstParent = parentMetas[0];
+//       // 🔹 1️⃣ Get template category
+//       const templateCategory = await TemplateCategory.findOne({
+//         where: {
+//           category: "Free Trial Confirmation", // 👈 exact DB category name
+//         },
+//       });
+
+//       if (!templateCategory) {
+//         throw new Error("Template category not found.");
+//       }
+
+//       // 🔹 2️⃣ Get Custom Template (ARRAY support [])
+//       const allTemplates = await CustomTemplate.findAll({
+//         where: {
+//           mode_of_communication: "email",
+//         },
+//         order: [["createdAt", "DESC"]],
+//       });
+
+//       let customTemplate = null;
+
+//       for (const template of allTemplates) {
+//         try {
+//           const categoryIds = JSON.parse(template.template_category_id || "[]");
+
+//           if (
+//             Array.isArray(categoryIds) &&
+//             categoryIds.includes(Number(templateCategory.id))
+//           ) {
+//             customTemplate = template;
+//             break;
+//           }
+//         } catch (err) {
+//           console.error("Invalid template_category_id format:", err.message);
+//         }
+//       }
+
+//       if (!customTemplate || !customTemplate.content) {
+//         throw new Error("Custom email template not found.");
+//       }
+
+//       // 🔹 3️⃣ Extract subject + html from JSON content
+//       const subject =
+//         customTemplate.content.subject || "Free Trial Confirmation";
+
+//       let htmlTemplate =
+//         customTemplate.content.html || "";
+
+//       // 🔹 4️⃣ Get SMTP config only
+//       const { status: configStatus, emailConfig } =
+//         await emailModel.getEmailConfig(PANEL);
+
+//       if (!configStatus) {
+//         throw new Error("Email configuration not found.");
+//       }
+
+//       if (configStatus) {
+//         try {
+//           // ----------------------------
+//           // Safely get students for this parent
+//           // ----------------------------
+//           // Fetch ALL students for this booking
+//           const students = await BookingStudentMeta.findAll({
+//             where: { bookingTrialId: booking.id },
+//             include: [
+//               {
+//                 model: ClassSchedule,
+//                 attributes: ["className", "startTime", "endTime"],
+//               },
+//             ],
+//           });
+//           const firstStudent = students[0];
+//           const classData = firstStudent?.ClassSchedule || null;
+
+//           const studentsHtml = students.length
+//             ? students
+//               .map((s) => {
+//                 const classInfo = s.ClassSchedule;
+
+//                 return `
+//         <div style="margin-bottom:8px;">
+//           <p style="margin:0; font-size:13px; color:#5F5F6D;">
+//             <strong>Student:</strong> ${s.studentFirstName} ${s.studentLastName}
+//           </p>
+//           <p style="margin:0; font-size:13px; color:#5F5F6D;">
+//             <strong>Class:</strong> ${classInfo?.className || "N/A"}
+//           </p>
+//           <p style="margin:0; font-size:13px; color:#5F5F6D;">
+//             <strong>Time:</strong> ${classInfo
+//                     ? `${classInfo.startTime || ""} - ${classInfo.endTime || ""}`
+//                     : "N/A"
+//                   }
+//           </p>
+//         </div>
+//         `;
+//               })
+//               .join("")
+//             : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
+
+//           let finalHtml = htmlTemplate
+//             .replace(
+//               /{{parentName}}/g,
+//               `${firstParent.parentFirstName} ${firstParent.parentLastName}`
+//             )
+//             .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
+//             .replace(/{{parentPassword}}/g, "Synco123")
+//             .replace(/{{venueName}}/g, venue?.name || "N/A")
+//             .replace(/{{trialDate}}/g, booking?.trialDate || "")
+//             .replace(/{{className}}/g, classData?.className || "N/A")
+//             .replace(
+//               /{{classTime}}/g,
+//               classData
+//                 ? `${classData.startTime || ""}-${classData.endTime || ""}`
+//                 : "N/A"
+//             )
+//             .replace(/{{studentsHtml}}/g, studentsHtml)
+//             .replace(
+//               /{{logoUrl}}/g,
+//               "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
+//             )
+//             .replace(
+//               /{{kidsPlaying}}/g,
+//               "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
+//             );
+
+//           await sendEmail(emailConfig, {
+//             recipient: [
+//               {
+//                 name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
+//                 email: firstParent.parentEmail,
+//               },
+//             ],
+//             cc: emailConfig.cc || [],
+//             bcc: emailConfig.bcc || [],
+//             subject,
+//             htmlBody: finalHtml,
+//           });
+//         } catch (err) {
+//           console.error(
+//             `❌ Failed to send email to ${firstParent.parentEmail}:`,
+//             err.message
+//           );
+//         }
+//       }
+//     }
+
+//     if (DEBUG) console.log("📝 Logging activity...");
+//     const actualParentAdminId = booking.parentAdminId;
+
+//     if (actualParentAdminId) {
+//       await createCustomNotificationForAdmins({
+//         title: "Free Trial Booked",
+//         description: `Your free trial is scheduled on ${booking.trialDate}.`,
+//         category: "Updates",
+//         createdByAdminId: req.admin.id,
+//         recipientAdminIds: [actualParentAdminId],
+//       });
+
+//       console.log(
+//         "🔔 Custom notification sent to parentAdminId:",
+//         actualParentAdminId
+//       );
+//     }
+
+//     await logActivity(req, PANEL, MODULE, "create", result, true);
+
+//     if (DEBUG) console.log("🔔 Creating notification...");
+//     await createNotification(
+//       req,
+//       "New Booking Created",
+//       `Booking has been scheduled on ${booking.trialDate}.`,
+//       "System"
+//     );
+
+//     if (DEBUG) console.log("✅ Booking created successfully.");
+//     return res.status(201).json({
+//       status: true,
+//       message: "Booking created successfully.",
+//       data: booking,
+//     });
+//   } catch (error) {
+//     if (DEBUG) console.error("❌ Booking creation error:", error);
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "create",
+//       { error: error.message },
+//       false
+//     );
+//     return res.status(500).json({ status: false, message: "Server error." });
+//   }
+// };
+
 // Create Book a Free Trial
 
 exports.createBooking = async (req, res) => {

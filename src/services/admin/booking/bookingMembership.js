@@ -1420,14 +1420,14 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
                 [Op.ne]: null,
               },
             },
-            Sequelize.where(
-              Sequelize.fn(
+            sequelize.where(
+              sequelize.fn(
                 "LOWER",
-                Sequelize.fn(
+                sequelize.fn(
                   "CONCAT",
-                  Sequelize.col("students.studentFirstName"),
+                  sequelize.col("students.studentFirstName"),
                   " ",
-                  Sequelize.col("students.studentLastName")
+                  sequelize.col("students.studentLastName")
                 )
               ),
               {
