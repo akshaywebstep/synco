@@ -1,5 +1,5 @@
 const {
-  CustomTemplate, TemplateCategory
+  TemplateCategory
 } = require("../../../models");
 const { Op } = require("sequelize");
 
@@ -55,7 +55,7 @@ exports.listTemplateCategories = async (createdBy) => {
   }
 };
 
-// ✅ Soft delete category
+
 // exports.deleteTemplateCategory = async (id, adminId) => {
 //   try {
 //     const category = await TemplateCategory.findOne({ where: { id } });

@@ -168,7 +168,6 @@ exports.deleteCustomTemplate = async (id, adminId) => {
 };
 
 // ✅ UPDATE custom template
-// ✅ UPDATE custom template
 exports.updateCustomTemplate = async (id, data, adminId) => {
   try {
     // Fetch template only if created by this admin
