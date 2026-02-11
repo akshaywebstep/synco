@@ -118,8 +118,8 @@ const models = {
   HolidayBookingEmergencyMeta: require("./admin/holidayCamps/booking/HolidayBookingEmergencyMeta"),
   HolidayBookingPayment: require("./admin/holidayCamps/booking/HolidayBookingPayment"),
 
-  CustomTemplate: require("./admin/holidayCamps/emailAndTextTemplates/CustomTemplate"),
-  TemplateCategory: require("./admin/holidayCamps/emailAndTextTemplates/Templatecategory"),
+  CustomTemplate: require("./admin/emailAndTextTemplates/CustomTemplate"),
+  TemplateCategory: require("./admin/emailAndTextTemplates/Templatecategory"),
   ToDoList: require("./admin/holidayCamps/toDoList/ToDoList"),
 
   Folder: require("./admin/holidayCamps/folder/Folder"),
