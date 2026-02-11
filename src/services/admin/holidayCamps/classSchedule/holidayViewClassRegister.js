@@ -130,7 +130,7 @@ exports.updateAttendanceStatus = async (studentId, attendance) => {
   const t = await sequelize.transaction();
   try {
     // ✅ Validate input
-    if (!studentId || !["attended", "not attended"].includes(attendance)) {
+    if (!studentId || !["attended", "not attended", "pending"].includes(attendance)) {
       return { status: false, message: "Invalid studentId or attendance value." };
     }
 

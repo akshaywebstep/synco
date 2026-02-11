@@ -96,11 +96,11 @@ exports.updateAttendanceStatus = async (studentId, attendance) => {
   const t = await sequelize.transaction();
   try {
     // ✅ Validate input
-    if (!studentId || !["attended", "not attended","pending"].includes(attendance)) {
+    if (!studentId || !["attended", "not attended", "pending"].includes(attendance)) {
       return { status: false, message: "Invalid studentId or attendance value." };
     }
 
-    // ✅ Update the student record
+    // ✅ Update student attendance
     const [updatedRows] = await BookingStudentMeta.update(
       { attendance },
       { where: { id: studentId }, transaction: t }
@@ -111,7 +111,7 @@ exports.updateAttendanceStatus = async (studentId, attendance) => {
       return { status: false, message: "Student not found or no change made." };
     }
 
-    // ✅ Fetch the bookingTrialId of this student
+    // ✅ Get student record
     const student = await BookingStudentMeta.findByPk(studentId, { transaction: t });
     if (!student) {
       await t.rollback();
@@ -120,30 +120,45 @@ exports.updateAttendanceStatus = async (studentId, attendance) => {
 
     const bookingId = student.bookingTrialId;
 
-    // ✅ Fetch all students under the same booking
+    // ✅ Get all students under same booking
     const allStudents = await BookingStudentMeta.findAll({
       where: { bookingTrialId: bookingId },
       transaction: t,
     });
 
-    // ✅ Determine if booking can be marked attended
     const allAttended = allStudents.every(s => s.attendance === "attended");
+    const allNotAttended = allStudents.every(s => s.attendance === "not attended");
+    const anyPending = allStudents.some(s => s.attendance === "pending");
 
-    // ✅ Update booking status only if all students attended
+    // ✅ Booking status update logic
     if (allAttended) {
       await Booking.update(
         { status: "Attended", updatedAt: new Date() },
         { where: { id: bookingId }, transaction: t }
       );
+    } else if (allNotAttended) {
+      await Booking.update(
+        { status: "Not Attended", updatedAt: new Date() },
+        { where: { id: bookingId }, transaction: t }
+      );
     }
+    // ❌ If mixed or any pending → do nothing
 
     await t.commit();
 
     return {
       status: true,
       message: "Student attendance updated successfully.",
-      data: { studentId, attendance, bookingUpdated: allAttended },
+      data: {
+        studentId,
+        attendance,
+        bookingStatusUpdated:
+          allAttended ? "Attended" :
+          allNotAttended ? "Not Attended" :
+          "No Change (Pending/Mixed)",
+      },
     };
+
   } catch (error) {
     await t.rollback();
     console.error("❌ updateAttendanceStatus Service Error:", error);

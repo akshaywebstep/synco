@@ -244,7 +244,7 @@ exports.createHolidayBooking = async (data, options = {}) => {
         discountId: data.discountId ?? null,
         totalStudents: data.totalStudents,
         paymentPlanId: data.paymentPlanId,
-        status: "active",
+        status: "pending",
 
         bookedBy,          // ✅ admin only
         marketingChannel,  // ✅ admin/website
