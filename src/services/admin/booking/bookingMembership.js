@@ -330,6 +330,16 @@ exports.createBooking = async (data, options) => {
 
       if (source === "admin") {
         // 👨‍💼 ADMIN → ALWAYS create new parent
+        // 👨‍💼 ADMIN → Check duplicate email first
+        const existingAdmin = await Admin.findOne({
+          where: { email },
+          transaction: t,
+        });
+
+        if (existingAdmin) {
+          throw new Error("Parent with this email already exists.");
+        }
+
         const admin = await Admin.create(
           {
             firstName: firstParent.parentFirstName || "Parent",
@@ -339,7 +349,6 @@ exports.createBooking = async (data, options) => {
             password: hashedPassword,
             roleId: parentRole.id,
             status: "active",
-            // ✅ ADD THIS
             referralCode: generateReferralCode(),
           },
           { transaction: t }

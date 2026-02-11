@@ -89,6 +89,14 @@ exports.createBooking = async (data, options) => {
       const hashedPassword = await bcrypt.hash("Synco123", 10);
 
       if (source === "admin") {
+        const existingAdmin = await Admin.findOne({
+          where: { email },
+          transaction: t,
+        });
+
+        if (existingAdmin) {
+          throw new Error("Parent with this email already exists.");
+        }
         // ✅ ADMIN PORTAL → ALWAYS CREATE NEW PARENT
         const admin = await Admin.create(
           {
