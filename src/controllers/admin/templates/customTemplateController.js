@@ -232,11 +232,15 @@ exports.updateCustomTemplate = async (req, res) => {
   // -------------------------
   let parsedContent;
   try {
-    parsedContent = typeof content === "string" ? JSON.parse(content) : content;
+    parsedContent = typeof content === "string"
+      ? JSON.parse(content)
+      : content;
   } catch {
-    return res.status(400).json({ status: false, message: "Invalid JSON in content." });
+    return res.status(400).json({
+      status: false,
+      message: "Invalid JSON in content."
+    });
   }
-  if (!parsedContent?.blocks || !Array.isArray(parsedContent.blocks)) parsedContent = { blocks: [] };
 
   if (DEBUG) console.log("📝 Parsed Content:", parsedContent);
 
@@ -280,36 +284,21 @@ exports.updateCustomTemplate = async (req, res) => {
   if (DEBUG) console.log("🌐 Uploaded URLs:", uploadedUrls);
 
   // -------------------------
-  // 6) Replace image URLs recursively (conditional)
+  // 6) Replace image URLs inside htmlContent
   // -------------------------
-  function replaceImageUrls(blocks) {
-    if (!blocks || !Array.isArray(blocks)) return;
+  if (parsedContent?.htmlContent && Object.keys(uploadedUrls).length) {
+    for (const key in uploadedUrls) {
+      const imageUrl = uploadedUrls[key];
 
-    for (const block of blocks) {
-      if (block.url) {
-        // Replace only if placeholder matches uploaded file
-        if (uploadedUrls[block.url]) {
-          block.url = uploadedUrls[block.url];
-        }
-        // If full URL already present, leave it as-is
-        else if (block.url.startsWith("http")) {
-          // do nothing
-        } else {
-          // optional: clear invalid placeholder
-          block.url = "";
-        }
-      }
+      const regex = new RegExp(`src\\s*=\\s*["']${key}["']`, "g");
 
-      // Recursively process columns in sectionGrid
-      if (block.columns && Array.isArray(block.columns)) {
-        for (const col of block.columns) replaceImageUrls(col);
-      }
+      parsedContent.htmlContent =
+        parsedContent.htmlContent.replace(
+          regex,
+          `src="${imageUrl}"`
+        );
     }
   }
-
-  replaceImageUrls(parsedContent.blocks);
-
-  if (DEBUG) console.log("🔄 Content after URL replacement:", parsedContent);
 
   // -------------------------
   // 7) Prepare payload
