@@ -1359,9 +1359,9 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
 
     // 🔹 Apply filters
     if (filters.venueId) whereBooking.venueId = filters.venueId;
-    if (filters.venueName) {
+    if (filters.venueName)
       whereVenue.name = { [Op.like]: `%${filters.venueName}%` };
-    }
+
     if (filters.duration) {
       const raw = filters.duration.toLowerCase().trim();
 
@@ -1488,9 +1488,14 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
             {
               model: ClassSchedule,
               as: "classSchedule",
-              include: [
-                { model: Venue, as: "venue", where: whereVenue, required: true },
-              ],
+              // include: [
+              //   {
+              //     model: Venue, as: "venue", where: filters.venueName
+              //       ? { name: { [Op.like]: `%${filters.venueName}%` } }
+              //       : undefined,
+              //     required: !!filters.venueName,
+              //   },
+              // ],
             },
             { model: BookingParentMeta, as: "parents", required: false },
             {
@@ -1500,6 +1505,15 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
             },
           ],
           required: true,
+        },
+        // ✅ YEH NAYA ADD KIYA
+        {
+          model: Venue,
+          as: "venue",
+          where: filters.venueName
+            ? { name: { [Op.like]: `%${filters.venueName}%` } }
+            : undefined,
+          required: !!filters.venueName,
         },
         { model: BookingPayment, as: "payments", required: false },
         {
@@ -1525,7 +1539,7 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
     const memberShipSales = bookings.map((booking) => {
       // const venue = booking.classSchedule?.venue || {};
       // Get venue from the first student's classSchedule
-      const venue = booking.students?.[0]?.classSchedule?.venue || null;
+      const venue = booking.venue || null;
       const payment = booking.payments?.[0] || {};
       const plan = booking.paymentPlan || null;
 
@@ -1622,6 +1636,7 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
         status: booking.status,
         startDate: booking.startDate,
         dateBooked: booking.createdAt,
+        venueId: booking.venueId,
 
         // Full classSchedule + venue
         // classSchedule: booking.classSchedule || null,
@@ -1663,12 +1678,9 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
     // -------------------------------
     const venueMap = {};
     bookings.forEach((booking) => {
-      booking.students?.forEach((student) => {
-        const venue = student.classSchedule?.venue;
-        if (venue && venue.id) {
-          venueMap[venue.id] = venue;
-        }
-      });
+      if (booking.venue && booking.venue.id) {
+        venueMap[booking.venue.id] = booking.venue;
+      }
     });
     const allVenues = Object.values(venueMap);
 
