@@ -123,28 +123,23 @@ exports.createCustomTemplate = async (req, res) => {
     }
 
     // -------------------------
-    // 6) Replace image URLs recursively
+    // 6) Replace image URLs inside htmlContent
     // -------------------------
-    function replaceImageUrls(blocks) {
-      if (!blocks || !Array.isArray(blocks)) return;
 
-      for (const block of blocks) {
-        // Replace the url if it matches a key from uploaded files
-        if (block.url && uploadedUrls[block.url]) {
-          block.url = uploadedUrls[block.url];
-        }
+    if (parsedContent?.htmlContent) {
+      for (const key in uploadedUrls) {
+        const imageUrl = uploadedUrls[key];
 
-        // Recursively replace in columns (nested blocks)
-        if (block.columns && Array.isArray(block.columns)) {
-          for (const col of block.columns) {
-            replaceImageUrls(col);
-          }
-        }
+        // Replace src="image_1" with actual URL
+        const regex = new RegExp(`src\\s*=\\s*["']${key}["']`, "g");
+
+        parsedContent.htmlContent =
+          parsedContent.htmlContent.replace(
+            regex,
+            `src="${imageUrl}"`
+          );
       }
     }
-
-    replaceImageUrls(parsedContent.blocks);
-
     // -------------------------
     // 7) Prepare payload
     // -------------------------
