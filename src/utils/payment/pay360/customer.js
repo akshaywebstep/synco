@@ -41,6 +41,49 @@ function validateBankDetails({ account_number, branch_code }) {
  * Handle GoCardless API response safely
  */
 
+// async function handleResponse(response) {
+//   let rawText = "";
+//   let result = null;
+
+//   try {
+//     rawText = await response.text();
+//     result = rawText ? JSON.parse(rawText) : null;
+//   } catch (e) {
+//     // non-JSON response
+//   }
+
+//   if (!response.ok) {
+//     let message = "API request failed";
+
+//     // GoCardless standard error format
+//     if (result?.error?.message) {
+//       message = result.error.message;
+//     } else if (result?.errors?.length) {
+//       message = result.errors
+//         .map(e => e.message || e.reason || JSON.stringify(e))
+//         .join(", ");
+//     } else if (typeof rawText === "string" && rawText.trim()) {
+//       message = rawText;
+//     }
+
+//     console.error("❌ API Error:", {
+//       status: response.status,
+//       message,
+//       raw: result || rawText,
+//     });
+
+//     return {
+//       status: false,
+//       message,
+//       error: result || rawText,
+//     };
+//   }
+
+//   return {
+//     status: true,
+//     data: result,
+//   };
+// }
 async function handleResponse(response) {
   let rawText = "";
   let result = null;
@@ -55,14 +98,33 @@ async function handleResponse(response) {
   if (!response.ok) {
     let message = "API request failed";
 
-    // GoCardless standard error format
-    if (result?.error?.message) {
+    // ✅ Handle GoCardless structured errors properly
+    if (result?.error?.errors?.length) {
+      message = result.error.errors
+        .map(err => {
+          const field = err.field ? err.field.replace(/_/g, " ") : "";
+          const formattedField =
+            field.charAt(0).toUpperCase() + field.slice(1);
+          return field
+            ? `${formattedField} ${err.message}`
+            : err.message;
+        })
+        .join(", ");
+    }
+
+    // fallback to main message
+    else if (result?.error?.message) {
       message = result.error.message;
-    } else if (result?.errors?.length) {
+    }
+
+    // fallback generic errors
+    else if (result?.errors?.length) {
       message = result.errors
         .map(e => e.message || e.reason || JSON.stringify(e))
         .join(", ");
-    } else if (typeof rawText === "string" && rawText.trim()) {
+    }
+
+    else if (typeof rawText === "string" && rawText.trim()) {
       message = rawText;
     }
 
@@ -107,7 +169,6 @@ async function createCustomer({
   iban,
 }) {
   try {
-    // ✅ ADD ONLY THIS (no logic touched)
     const payload = {
       account_number,
       branch_code,
@@ -118,9 +179,12 @@ async function createCustomer({
       iban,
     };
 
-    validateBankDetails(payload); // ✅ validation here
+    validateBankDetails(payload);
 
-    if (DEBUG) console.log("🔹 [Customer] Step 1: Preparing request...");
+    if (DEBUG) {
+      console.log("🔹 [Customer] Step 1: Preparing request...");
+      console.log("📤 Customer Body:");
+    }
 
     const body = {
       customers: {
@@ -137,20 +201,46 @@ async function createCustomer({
       },
     };
 
+    if (DEBUG) {
+      console.log(JSON.stringify(body, null, 2));
+    }
+
     const response = await fetch(`${GOCARDLESS_API}/customers`, {
       method: "POST",
       headers: await buildHeaders(),
       body: JSON.stringify(body),
     });
 
-    const { status, data, message, error } = await handleResponse(response);
-    if (!status) {
-      return { status: false, message, error };
+    const rawText = await response.text();
+
+    if (DEBUG) {
+      console.log("📥 Raw GoCardless Response:");
+      console.log(rawText);
     }
 
-    const customer = data.customers;
+    const parsed = JSON.parse(rawText);
 
-    // Step 2: Bank account (same as before)
+    if (!response.ok) {
+      console.log("❌ FULL GoCardless Error:");
+      console.log(JSON.stringify(parsed, null, 2));
+
+      const mainMessage = parsed?.error?.message || "Customer creation failed";
+
+      const detailedErrors =
+        parsed?.error?.errors?.map(err =>
+          `${err.field} ${err.message}`
+        ).join(", ") || "";
+
+      return {
+        status: false,
+        message: detailedErrors || mainMessage,
+        error: parsed,
+      };
+    }
+
+    const customer = parsed.customers;
+
+    // 👉 BANK ACCOUNT STEP
     const customerBankAccountRes = await createCustomerBankAccount({
       customer: customer.id,
       country_code,
@@ -173,7 +263,9 @@ async function createCustomer({
       customer,
       bankAccount: customerBankAccountRes.bankAccount,
     };
+
   } catch (err) {
+    console.log("❌ INTERNAL ERROR:", err);
     return { status: false, message: err.message };
   }
 }

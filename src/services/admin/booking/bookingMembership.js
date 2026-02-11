@@ -730,11 +730,11 @@ exports.createBooking = async (data, options) => {
       const classSchedule = await ClassSchedule.findByPk(classScheduleId, { transaction: t });
 
       if (!classSchedule) {
-        throw new Error(`ClassSchedule ${classScheduleId} not found`);
+        throw new Error("ClassSchedule not found");
       }
 
       if (classSchedule.capacity < count) {
-        throw new Error(`Not enough capacity for classScheduleId ${classScheduleId}`);
+        throw new Error("Not enough capacity for class");
       }
 
       await classSchedule.update(
