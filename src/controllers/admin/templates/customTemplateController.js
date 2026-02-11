@@ -71,17 +71,18 @@ exports.createCustomTemplate = async (req, res) => {
     }
 
     // -------------------------
-    // 4) Parse content JSON
+    // 4) Parse content JSON (Save As It Is)
     // -------------------------
     let parsedContent;
+
     try {
       parsedContent = typeof content === "string" ? JSON.parse(content) : content;
-    } catch {
-      return res.status(400).json({ status: false, message: "Invalid JSON in content." });
+    } catch (err) {
+      return res.status(400).json({
+        status: false,
+        message: "Invalid JSON in content."
+      });
     }
-
-    if (!parsedContent?.blocks || !Array.isArray(parsedContent.blocks)) parsedContent = { blocks: [] };
-
     // -------------------------
     // 5) Upload images
     // -------------------------
