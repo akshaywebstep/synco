@@ -30,9 +30,9 @@ const BookingStudentMeta = sequelize.define(
     },
 
     attendance: {
-      type: DataTypes.ENUM("attended", "not attended"),
+      type: DataTypes.ENUM("attended", "not attended","pending"),
       allowNull: false,
-      defaultValue: "not attended",
+      defaultValue: "pending",
     },
     studentFirstName: DataTypes.STRING,
     studentLastName: DataTypes.STRING,
