@@ -23,7 +23,7 @@ const CustomTemplate = sequelize.define(
     template_category_id: {
       type: DataTypes.TEXT('long'),   // 👈 LONGTEXT (MySQL)
       allowNull: false,
-      defaultValue: "[]",             // 👈 store empty array as string
+      defaultValue: null,             // 👈 store empty array as string
     },
 
     tags: {
