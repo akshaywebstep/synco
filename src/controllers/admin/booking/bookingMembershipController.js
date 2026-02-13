@@ -231,48 +231,36 @@ exports.createBooking = async (req, res) => {
       }
 
       // 3️⃣ Extract subject + html
-      let contentObj;
+      let contentObj = { subject: "Booking Confirmation", htmlContent: "" };
 
-      if (typeof customTemplate.content === "string") {
-        // ✅ Try parsing safely
-        try {
+      try {
+        if (typeof customTemplate.content === "string") {
           const parsed = JSON.parse(customTemplate.content);
-
-          // ✅ Only accept if parsed is an object with htmlContent
-          if (parsed && typeof parsed === "object" && parsed.htmlContent) {
-            contentObj = parsed;
+          if (parsed && typeof parsed === "object") {
+            // Use either htmlContent or html
+            contentObj.subject = parsed.subject || customTemplate.subject || "Booking Confirmation";
+            contentObj.htmlContent = parsed.htmlContent || parsed.html || customTemplate.content || "";
           } else {
-            // It's not proper JSON with htmlContent, fallback to raw
-            contentObj = {
-              subject: customTemplate.subject || "Booking Confirmation",
-              htmlContent: customTemplate.content
-            };
+            // Raw string fallback
+            contentObj.subject = customTemplate.subject || "Booking Confirmation";
+            contentObj.htmlContent = customTemplate.content;
           }
-        } catch (err) {
-          // Not JSON, just use raw string
-          contentObj = {
-            subject: customTemplate.subject || "Booking Confirmation",
-            htmlContent: customTemplate.content
-          };
+        } else if (typeof customTemplate.content === "object") {
+          contentObj.subject = customTemplate.content.subject || customTemplate.subject || "Booking Confirmation";
+          contentObj.htmlContent = customTemplate.content.htmlContent || customTemplate.content.html || "";
         }
-      } else {
-        // Already an object
-        contentObj = customTemplate.content;
+      } catch (err) {
+        console.error("Error parsing template content:", err.message);
+        // fallback
+        contentObj.subject = customTemplate.subject || "Booking Confirmation";
+        contentObj.htmlContent = typeof customTemplate.content === "string" ? customTemplate.content : "";
       }
 
-      const subject =
-        contentObj.subject || "Your Membership Has Been Confirmed";
-
-      let htmlTemplate =
-        contentObj.htmlContent ||
-        contentObj.html ||
-        "";
+      const subject = contentObj.subject;
+      let htmlTemplate = contentObj.htmlContent || "";
 
       // Remove top heading if exists
-      htmlTemplate = htmlTemplate.replace(
-        /<h1[^>]*>.*?<\/h1>/i,
-        ""
-      );
+      htmlTemplate = htmlTemplate.replace(/<h1[^>]*>.*?<\/h1>/i, "");
 
       const { status: configStatus, emailConfig } =
         await emailModel.getEmailConfig(PANEL, "book-paid-trial");

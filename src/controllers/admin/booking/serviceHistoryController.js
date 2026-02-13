@@ -6,9 +6,12 @@ const {
   Booking,
   BookingStudentMeta,
   BookingParentMeta,
+  BookingPayment,
   BookingEmergencyMeta,
   ClassSchedule,
   Venue,
+  TemplateCategory,
+  CustomTemplate,
 } = require("../../../models"); // direct import
 
 // const Admin = require("../../../services/admin/Admin");
@@ -211,107 +214,149 @@ exports.updateBooking = async (req, res) => {
     const classSchedule =
       booking.students?.[0]?.classSchedule || null;
 
-    const venue = classSchedule?.venue || null;
+    const venue = await Venue.findByPk(payload.venueId);
 
-    const venueName =
-      venue?.venueName || venue?.name || "N/A";
+    if (!venue) {
+      console.log(`⚠️ Venue with ID ${payload.venueId} not found`);
+    }
 
-    console.log("📧 Using venue:", venueName);
-    console.log("📧 Using classSchedule:", classSchedule?.id);
+    const venueName = venue?.venueName || venue?.name || "N/A";
+    const facility = venue?.facility || "N/A";
 
-    const {
-      status: configStatus,
-      emailConfig,
-      htmlTemplate,
-      subject,
-    } = await emailModel.getEmailConfig(PANEL, "book-paid-trial");
+    console.log("📧 Using venue:", venueName, "Facility:", facility);
 
-    if (configStatus && htmlTemplate) {
-      console.log("✔️ Email template loaded");
+    // 🔹 Fetch template category
+    const templateCategory = await TemplateCategory.findOne({
+      where: { category: "Book A Membership" },
+    });
 
-      for (const student of booking.students || []) {
-        console.log("➡️ Processing student:", student.id);
-
-        const parentMetas = await BookingParentMeta.findAll({
-          where: { studentId: student.id },
-        });
-
-        if (!parentMetas.length) continue;
-
-        const firstParent = parentMetas[0];
-        if (!firstParent?.parentEmail) continue;
-
-        // 🔥 Fetch ALL students WITH classSchedule
-        const allStudents = await BookingStudentMeta.findAll({
-          where: { bookingTrialId: booking.id },
-          include: [
-            {
-              model: ClassSchedule,
-              as: "classSchedule",
-            },
-          ],
-        });
-
-        const studentsHtml = allStudents.length
-          ? allStudents
-            .map(
-              (s) =>
-                `<p style="margin:0; font-size:13px; color:#5F5F6D;">
-                ${s.studentFirstName} ${s.studentLastName}
-              </p>`
-            )
-            .join("")
-          : `<p style="margin:0;">N/A</p>`;
-
-        let htmlBody = htmlTemplate
-          .replace(
-            /{{parentName}}/g,
-            `${firstParent.parentFirstName} ${firstParent.parentLastName}`
-          )
-          .replace(/{{venueName}}/g, venueName)
-          .replace(
-            /{{className}}/g,
-            classSchedule?.className || "N/A"
-          )
-          .replace(
-            /{{classTime}}/g,
-            classSchedule
-              ? `${classSchedule.startTime} - ${classSchedule.endTime}`
-              : "N/A"
-          )
-          .replace(
-            /{{startDate}}/g,
-            booking?.trialDate || ""
-          )
-          .replace(/{{parentEmail}}/g, firstParent.parentEmail)
-          .replace(/{{parentPassword}}/g, "Synco123")
-          .replace(/{{appName}}/g, "Synco")
-          .replace(/{{year}}/g, new Date().getFullYear())
-          .replace(/{{studentsHtml}}/g, studentsHtml)
-          .replace(
-            /{{logoUrl}}/g,
-            "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
-          )
-          .replace(
-            /{{kidsPlaying}}/g,
-            "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
-          );
-
-        await sendEmail(emailConfig, {
-          recipient: [
-            {
-              name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
-              email: firstParent.parentEmail,
-            },
-          ],
-          subject,
-          htmlBody,
-        });
-
-        console.log("📧 Email sent to:", firstParent.parentEmail);
-      }
+    if (!templateCategory) {
+      console.warn("⚠️ Template category not found. Skipping email.");
     } else {
-      console.warn("⚠️ Email config missing or template empty");
+      const allTemplates = await CustomTemplate.findAll({
+        where: { mode_of_communication: "email" },
+        order: [["createdAt", "DESC"]],
+      });
+
+      let customTemplate = null;
+      for (const template of allTemplates) {
+        try {
+          const categoryIds = JSON.parse(template.template_category_id || "[]");
+          if (Array.isArray(categoryIds) && categoryIds.includes(Number(templateCategory.id))) {
+            customTemplate = template;
+            break;
+          }
+        } catch (err) {
+          console.error("Invalid template_category_id format:", err.message);
+        }
+      }
+
+      if (!customTemplate || !customTemplate.content) {
+        console.warn("⚠️ Custom email template not found. Skipping email.");
+      } else {
+        // Parse template content
+        let contentObj = { subject: "Booking Update", htmlContent: "" };
+        try {
+          if (typeof customTemplate.content === "string") {
+            const parsed = JSON.parse(customTemplate.content);
+            if (parsed && typeof parsed === "object") {
+              contentObj.subject = parsed.subject || customTemplate.subject || "Booking Update";
+              contentObj.htmlContent = parsed.htmlContent || parsed.html || customTemplate.content || "";
+            } else {
+              contentObj.subject = customTemplate.subject || "Booking Update";
+              contentObj.htmlContent = customTemplate.content;
+            }
+          } else if (typeof customTemplate.content === "object") {
+            contentObj.subject = customTemplate.content.subject || customTemplate.subject || "Booking Update";
+            contentObj.htmlContent = customTemplate.content.htmlContent || customTemplate.content.html || "";
+          }
+        } catch (err) {
+          console.error("Error parsing template content:", err.message);
+          contentObj.subject = customTemplate.subject || "Booking Update";
+          contentObj.htmlContent = typeof customTemplate.content === "string" ? customTemplate.content : "";
+        }
+
+        let htmlTemplate = contentObj.htmlContent.replace(/<h1[^>]*>.*?<\/h1>/i, "");
+        const subject = contentObj.subject;
+
+        const { status: configStatus, emailConfig } =
+          await emailModel.getEmailConfig(PANEL, "book-paid-trial");
+
+        if (configStatus && htmlTemplate) {
+          console.log("✔️ Email template loaded successfully");
+
+          const students = await BookingStudentMeta.findAll({
+            where: { bookingTrialId: booking.id },
+            include: [{ model: ClassSchedule, as: "classSchedule" }],
+          });
+
+          if (!students.length) {
+            console.log("⚠️ No students found for booking.");
+          }
+
+          const parentMetas = await BookingParentMeta.findAll({
+            where: { studentId: students.map(s => s.id) },
+          });
+
+          if (!parentMetas.length) {
+            console.log("⚠️ No parents found for booking.");
+          }
+
+          const firstParent = parentMetas[0];
+          if (firstParent?.parentEmail) {
+            const bookingPayment = await BookingPayment.findOne({
+              where: { bookingId: booking.id },
+              order: [["createdAt", "DESC"]],
+            });
+
+            const finalPrice = bookingPayment?.price || "0.00";
+
+            const studentsHtml = students.length
+              ? students.map(s => `${s.studentFirstName} ${s.studentLastName}`).join("<br/>")
+              : "N/A";
+
+            const classNameHtml = students.length
+              ? students.map(s => s.classSchedule?.className || "N/A").join("<br/>")
+              : "N/A";
+
+            const timeHtml = students.length
+              ? students.map(s => s.classSchedule
+                ? `${s.classSchedule.startTime || ""} - ${s.classSchedule.endTime || ""}`
+                : "N/A"
+              ).join("<br/>")
+              : "N/A";
+
+            const htmlBody = htmlTemplate
+              .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`)
+              .replace(/{{venueName}}/g, venueName)
+              .replace(/{{facility}}/g, facility)
+              .replace(/{{startDate}}/g, booking?.startDate || "")
+              .replace(/{{studentsHtml}}/g, studentsHtml)
+              .replace(/{{className}}/g, classNameHtml)
+              .replace(/{{classTime}}/g, timeHtml)
+              .replace(/{{price}}/g, finalPrice)
+              .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
+              .replace(/{{parentPassword}}/g, "Synco123")
+              .replace(/{{appName}}/g, "Synco")
+              .replace(/{{year}}/g, new Date().getFullYear().toString())
+              .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
+              .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png");
+
+            await sendEmail(emailConfig, {
+              recipient: [{
+                name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
+                email: firstParent.parentEmail,
+              }],
+              subject,
+              htmlBody,
+            });
+
+            console.log("📧 Email sent to:", firstParent.parentEmail);
+          }
+        } else {
+          console.warn("⚠️ Email config missing or template empty");
+        }
+      }
     }
     // 🔔 Booking converted notification
     if (booking?.isConvertedToMembership) {
@@ -371,6 +416,229 @@ exports.updateBooking = async (req, res) => {
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };
+
+// exports.updateBooking = async (req, res) => {
+//   const adminId = req.admin?.id;
+//   const payload = req.body || {};
+
+//   // Prefer id from body, fallbacks supported
+//   const id = payload.id || payload.bookingId || req.params.id;
+
+//   console.log(`✏️ Step 1: Updating booking ID: ${id}`, payload);
+
+//   try {
+//     if (!id) {
+//       console.log("❌ Booking ID missing.");
+//       return res.status(400).json({
+//         status: false,
+//         message:
+//           "Booking ID is required (body.id | body.bookingId | params.id).",
+//       });
+//     }
+
+//     // Step 2: Validation
+//     const requiredFields = ["startDate", "totalStudents"];
+//     for (const field of requiredFields) {
+//       if (!payload[field]) {
+//         const message = `${field} is required.`;
+//         console.log("❌ Validation failed:", message);
+//         await logActivity(req, PANEL, MODULE, "update", { message }, false);
+//         return res.status(400).json({
+//           status: false,
+//           message,
+//         });
+//       }
+//     }
+
+//     console.log("✅ Step 2: Validation passed");
+
+//     // Step 3: Update booking
+//     console.log("🔄 Step 3: Calling BookingTrialService.updateBooking");
+//     const result = await BookingTrialService.updateBooking(
+//       payload,
+//       adminId,
+//       id
+//     );
+
+//     if (!result || result.status === false) {
+//       const message = result?.message || "Booking update failed.";
+//       console.log("❌ Booking update failed:", message);
+//       await logActivity(req, PANEL, MODULE, "update", { message }, false);
+//       return res.status(400).json({
+//         status: false,
+//         message,
+//       });
+//     }
+
+//     const booking = result.data || result;
+//     console.log("✅ Step 3: Booking updated successfully:", booking?.id || id);
+
+//     // Step 4: Email configuration fetch
+//     // ---------------- EMAIL SECTION (FIXED) ----------------
+
+//     const classSchedule =
+//       booking.students?.[0]?.classSchedule || null;
+
+//     const venue = classSchedule?.venue || null;
+
+//     const venueName =
+//       venue?.venueName || venue?.name || "N/A";
+
+//     console.log("📧 Using venue:", venueName);
+//     console.log("📧 Using classSchedule:", classSchedule?.id);
+
+//     const {
+//       status: configStatus,
+//       emailConfig,
+//       htmlTemplate,
+//       subject,
+//     } = await emailModel.getEmailConfig(PANEL, "book-paid-trial");
+
+//     if (configStatus && htmlTemplate) {
+//       console.log("✔️ Email template loaded");
+
+//       for (const student of booking.students || []) {
+//         console.log("➡️ Processing student:", student.id);
+
+//         const parentMetas = await BookingParentMeta.findAll({
+//           where: { studentId: student.id },
+//         });
+
+//         if (!parentMetas.length) continue;
+
+//         const firstParent = parentMetas[0];
+//         if (!firstParent?.parentEmail) continue;
+
+//         // 🔥 Fetch ALL students WITH classSchedule
+//         const allStudents = await BookingStudentMeta.findAll({
+//           where: { bookingTrialId: booking.id },
+//           include: [
+//             {
+//               model: ClassSchedule,
+//               as: "classSchedule",
+//             },
+//           ],
+//         });
+
+//         const studentsHtml = allStudents.length
+//           ? allStudents
+//             .map(
+//               (s) =>
+//                 `<p style="margin:0; font-size:13px; color:#5F5F6D;">
+//                 ${s.studentFirstName} ${s.studentLastName}
+//               </p>`
+//             )
+//             .join("")
+//           : `<p style="margin:0;">N/A</p>`;
+
+//         let htmlBody = htmlTemplate
+//           .replace(
+//             /{{parentName}}/g,
+//             `${firstParent.parentFirstName} ${firstParent.parentLastName}`
+//           )
+//           .replace(/{{venueName}}/g, venueName)
+//           .replace(
+//             /{{className}}/g,
+//             classSchedule?.className || "N/A"
+//           )
+//           .replace(
+//             /{{classTime}}/g,
+//             classSchedule
+//               ? `${classSchedule.startTime} - ${classSchedule.endTime}`
+//               : "N/A"
+//           )
+//           .replace(
+//             /{{startDate}}/g,
+//             booking?.trialDate || ""
+//           )
+//           .replace(/{{parentEmail}}/g, firstParent.parentEmail)
+//           .replace(/{{parentPassword}}/g, "Synco123")
+//           .replace(/{{appName}}/g, "Synco")
+//           .replace(/{{year}}/g, new Date().getFullYear())
+//           .replace(/{{studentsHtml}}/g, studentsHtml)
+//           .replace(
+//             /{{logoUrl}}/g,
+//             "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
+//           )
+//           .replace(
+//             /{{kidsPlaying}}/g,
+//             "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
+//           );
+
+//         await sendEmail(emailConfig, {
+//           recipient: [
+//             {
+//               name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
+//               email: firstParent.parentEmail,
+//             },
+//           ],
+//           subject,
+//           htmlBody,
+//         });
+
+//         console.log("📧 Email sent to:", firstParent.parentEmail);
+//       }
+//     } else {
+//       console.warn("⚠️ Email config missing or template empty");
+//     }
+//     // 🔔 Booking converted notification
+//     if (booking?.isConvertedToMembership) {
+//       const conversionMessage =
+//         "🎉 Your free trial booking has been successfully converted into a paid membership.";
+
+//       // 🔹 System notification (for activity feed)
+//       await createNotification(
+//         req,
+//         "Booking Converted",
+//         conversionMessage,
+//         "System"
+//       );
+
+//       // 🔹 Custom notification (for parent admin)
+//       if (booking?.parentAdminId) {
+//         await createCustomNotificationForAdmins({
+//           title: "Booking Converted Successfully 🎉",
+//           description:
+//             "Your free trial booking has now been converted into an active paid membership. You can view full class and payment details in your dashboard.",
+//           category: "Booking",
+//           createdByAdminId: adminId,
+//           recipientAdminIds: [booking.parentAdminId],
+//         });
+//       }
+//     }
+
+//     // -------------------------------------------------------------------
+
+//     // Step 6: Activity Log
+//     console.log("🔹 Step 6: Logging activity");
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "update",
+//       { message: `Updated booking ID: ${id}` },
+//       true
+//     );
+
+//     console.log("✅ Step 7: Completed updateBooking successfully");
+//     return res.status(200).json({
+//       status: true,
+//       message: "Booking updated successfully.",
+//       data: booking,
+//     });
+//   } catch (error) {
+//     console.error("❌ Step 8: Error updating booking:", error);
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "update",
+//       { error: error.message },
+//       false
+//     );
+//     return res.status(500).json({ status: false, message: "Server error." });
+//   }
+// };
 
 exports.getAccountProfile = async (req, res) => {
   const { id } = req.params;
