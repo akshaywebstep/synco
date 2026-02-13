@@ -1312,16 +1312,18 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
     };
 
     // ✅ New: Fetch all venues from DB (including those with no bookings)
-    const allVenuesFromDB = await Venue.findAll({
-      order: [["name", "ASC"]],
-      include: [
-        {
-          model: ClassSchedule,
-          as: "classSchedules", // <-- make sure this matches your Sequelize association alias
-          required: false, // include venues even if they have no classes
-        },
-      ],
+    // ✅ Collect venues only from filtered bookings (hierarchy safe)
+    const venueMapFiltered = {};
+
+    finalBookings.forEach((b) => {
+      if (b.venue?.id) {
+        venueMapFiltered[b.venue.id] = b.venue;
+      }
     });
+
+    const allowedVenues = Object.values(venueMapFiltered).sort((a, b) =>
+      (a.name || "").localeCompare(b.name || "")
+    );
 
     return {
       status: true,
@@ -1329,9 +1331,9 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
       totalPaidBookings: finalBookings.length,
       data: {
         membership: finalBookings,
-        venue: allVenuesFromDB,
+        venue: allowedVenues,
+        allVenues: allowedVenues,
         bookedByAdmins: allAdmins, // ✅ unique list of admins like venues
-        allVenues: allVenuesFromDB,
       },
       stats,
     };
