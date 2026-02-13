@@ -1329,7 +1329,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
       totalPaidBookings: finalBookings.length,
       data: {
         membership: finalBookings,
-        venue: allVenues,
+        venue: allVenuesFromDB,
         bookedByAdmins: allAdmins, // ✅ unique list of admins like venues
         allVenues: allVenuesFromDB,
       },

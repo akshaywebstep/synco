@@ -10,6 +10,9 @@ const {
   Booking,
   BookingParentMeta,
   BookingStudentMeta,
+  TemplateCategory,
+  CustomTemplate,
+  BookingPayment,
 } = require("../../../models");
 const emailModel = require("../../../services/email");
 const sendEmail = require("../../../utils/email/sendEmail");
@@ -236,74 +239,157 @@ exports.createBooking = async (req, res) => {
 
     // Send confirmation email to parents
 
+    console.log("📧 ===== WAITING LIST EMAIL PROCESS STARTED =====");
+
     const parentMetas = await BookingParentMeta.findAll({
       where: { studentId },
     });
 
     if (parentMetas && parentMetas.length > 0) {
-      const {
-        status: configStatus,
-        emailConfig,
-        htmlTemplate,
-        subject,
-      } = await emailModel.getEmailConfig(PANEL, "waiting-list");
 
-      if (configStatus && htmlTemplate) {
-        const recipients = parentMetas.map((p) => ({
-          name: `${p.parentFirstName} ${p.parentLastName}`,
-          email: p.parentEmail,
-        }));
+      const firstParent = parentMetas[0];
 
-        // Fetch ALL students for the booking trial
-        const students = await BookingStudentMeta.findAll({
-          where: { bookingTrialId: booking.id },
-        });
-        const studentsHtml = students.length
-          ? students
-            .map(
-              (s) =>
-                `<p style="margin:0; font-size:13px; color:#5F5F6D;">
-             ${s.studentFirstName} ${s.studentLastName}
-           </p>`
-            )
-            .join("")
-          : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
+      // 1️⃣ Get template category
+      const templateCategory = await TemplateCategory.findOne({
+        where: { category: "Waiting List" }, // 🔥 your category name
+      });
 
-        for (const recipient of recipients) {
-          const variables = {
-            "{{studentsHtml}}": studentsHtml,
-            "{{parentName}}": recipient.name,
-            "{{parentEmail}}": recipient.email,
-            "{{parentPassword}}": "Synco123",
-            // "{{studentFirstName}}": studentFirstName || "",
-            // "{{studentLastName}}": studentLastName || "",
-            "{{venueName}}": venue?.name || "N/A",
-            // "{{className}}": classData?.className || "N/A",
-            // "{{startDate}}": booking?.startDate || "",
-            // "{{classTime}}": classData?.startTime || "",
-            "{{appName}}": "Synco",
-            "{{year}}": new Date().getFullYear().toString(),
-            "{{logoUrl}}":
-              "https://webstepdev.com/demo/syncoUploads/syncoLogo.png",
-            "{{kidsPlaying}}":
-              "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png",
-          };
+      if (!templateCategory) {
+        throw new Error("Waiting List template category not found.");
+      }
 
-          let finalHtml = htmlTemplate;
-          for (const [key, val] of Object.entries(variables)) {
-            finalHtml = finalHtml.replace(new RegExp(key, "g"), val);
+      // 2️⃣ Get Custom Templates
+      const allTemplates = await CustomTemplate.findAll({
+        where: { mode_of_communication: "email" },
+        order: [["createdAt", "DESC"]],
+      });
+
+      let customTemplate = null;
+
+      for (const template of allTemplates) {
+        try {
+          const categoryIds = JSON.parse(template.template_category_id || "[]");
+
+          if (
+            Array.isArray(categoryIds) &&
+            categoryIds.includes(Number(templateCategory.id))
+          ) {
+            customTemplate = template;
+            break;
           }
-
-          await sendEmail(emailConfig, {
-            recipient: [recipient],
-            cc: emailConfig.cc || [],
-            bcc: emailConfig.bcc || [],
-            subject,
-            htmlBody: finalHtml,
-          });
+        } catch (err) {
+          console.error("Invalid template_category_id format:", err.message);
         }
       }
+
+      if (!customTemplate || !customTemplate.content) {
+        throw new Error("Waiting List custom email template not found.");
+      }
+
+      // 3️⃣ Parse template safely
+      let contentObj;
+      if (typeof customTemplate.content === "string") {
+        try {
+          const parsed = JSON.parse(customTemplate.content);
+          contentObj =
+            parsed && typeof parsed === "object"
+              ? parsed
+              : {
+                subject: customTemplate.subject || "Waiting List Confirmation",
+                htmlContent: customTemplate.content,
+              };
+        } catch {
+          contentObj = {
+            subject: customTemplate.subject || "Waiting List Confirmation",
+            htmlContent: customTemplate.content,
+          };
+        }
+      } else {
+        contentObj = customTemplate.content;
+      }
+
+      const subject =
+        contentObj.subject || "Waiting List Confirmation";
+
+      let htmlTemplate =
+        contentObj.htmlContent || contentObj.html || "";
+
+      htmlTemplate = htmlTemplate.replace(/<h1[^>]*>.*?<\/h1>/i, "");
+
+      // 4️⃣ Get SMTP config
+      const { status: configStatus, emailConfig } =
+        await emailModel.getEmailConfig(PANEL, "waiting-list");
+
+      if (!configStatus) {
+        throw new Error("Email configuration not found.");
+      }
+
+      // 5️⃣ Fetch students for booking
+      const students = await BookingStudentMeta.findAll({
+        where: { bookingTrialId: booking.id },
+        include: [
+          {
+            model: ClassSchedule,
+            as: "classSchedule",
+          },
+        ],
+      });
+
+      const studentsHtml = students.length
+        ? students
+          .map((s) => `${s.studentFirstName} ${s.studentLastName}`)
+          .join("<br/>")
+        : "N/A";
+
+      const classNameHtml = students.length
+        ? students
+          .map((s) => s.classSchedule?.className || "N/A")
+          .join("<br/>")
+        : "N/A";
+
+      const timeHtml = students.length
+        ? students
+          .map((s) =>
+            s.classSchedule
+              ? `${s.classSchedule.startTime || ""} - ${s.classSchedule.endTime || ""}`
+              : "N/A"
+          )
+          .join("<br/>")
+        : "N/A";
+
+      const venueName = venue?.venueName || venue?.name || "N/A";
+      const facility = venue?.facility || "N/A";
+
+      const finalHtml = htmlTemplate
+        .replace(/{{studentsHtml}}/g, studentsHtml)
+        .replace(/{{className}}/g, classNameHtml)
+        .replace(/{{classTime}}/g, timeHtml)
+        .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`)
+        .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
+        .replace(/{{venueName}}/g, venueName)
+        .replace(/{{facility}}/g, facility)
+        .replace(/{{startDate}}/g, booking?.startDate || "")
+        .replace(/{{parentPassword}}/g, "Synco123")
+        .replace(/{{appName}}/g, "Synco")
+        .replace(/{{year}}/g, new Date().getFullYear().toString())
+        .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
+        .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png");
+
+      await sendEmail(emailConfig, {
+        recipient: [
+          {
+            name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
+            email: firstParent.parentEmail,
+          },
+        ],
+        subject,
+        htmlBody: finalHtml,
+      });
+
+      console.log("✅ Waiting List Email Sent");
     }
+
+    console.log("📧 ===== WAITING LIST EMAIL PROCESS COMPLETED =====");
     if (DEBUG) console.log("📝 Logging activity...");
     await logActivity(req, PANEL, MODULE, "create", result, true);
 
@@ -334,6 +420,317 @@ exports.createBooking = async (req, res) => {
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };
+
+// exports.createBooking = async (req, res) => {
+//   if (DEBUG) console.log("📥 Received booking request");
+//   const formData = req.body;
+
+//   if (DEBUG) console.log("🔍 Fetching class data...");
+
+//   if (DEBUG) console.log("✅ Validating form data...");
+//   const { isValid, error } = validateFormData(formData, {
+//     requiredFields: [
+//       "totalStudents",
+//       "classScheduleId",
+//       "interest",
+//       "startDate",
+//       "students", // array, validate inside loop
+//       "parents", // array, validate inside loop
+//       // "emergency", // object, validate inside
+//     ],
+//   });
+
+//   // Validate students
+//   if (!Array.isArray(formData.students) || formData.students.length === 0) {
+//     return res.status(400).json({
+//       status: false,
+//       message: "At least one student must be provided.",
+//     });
+//   }
+
+//   for (const student of formData.students) {
+//     const { isValid, error } = validateFormData(student, {
+//       requiredFields: [
+//         "studentFirstName",
+//         "studentLastName",
+//         "dateOfBirth",
+//         "medicalInformation",
+//         "classScheduleId", // ✅ REQUIRED HERE
+//       ],
+//     });
+//     if (!isValid) {
+//       return res.status(400).json({ status: false, ...error });
+//     }
+//   }
+
+//   // Validate parents
+//   if (!Array.isArray(formData.parents) || formData.parents.length === 0) {
+//     return res.status(400).json({
+//       status: false,
+//       message: "At least one parent must be provided.",
+//     });
+//   }
+
+//   for (const parent of formData.parents) {
+//     const { isValid, error } = validateFormData(parent, {
+//       requiredFields: [
+//         "parentFirstName",
+//         "parentLastName",
+//         "parentEmail",
+//         "parentPhoneNumber",
+//       ],
+//     });
+//     if (!isValid) {
+//       return res.status(400).json({ status: false, ...error });
+//     }
+//   }
+
+//   if (DEBUG) console.log("🏫 Fetching venue data...");
+//   const venue = await Venue.findByPk(formData.venueId);
+//   if (!venue) {
+//     const message = "Venue linked to this class is not configured.";
+//     if (DEBUG) console.warn("❌ Venue not found.");
+//     await logActivity(req, PANEL, MODULE, "create", { message }, false);
+//     return res.status(404).json({ status: false, message });
+//   }
+
+//   if (DEBUG) console.log("👨‍👩‍👧 Validating students and parents...");
+//   const emailMap = new Map();
+//   const duplicateEmails = [];
+
+//   for (const student of formData.students) {
+//     if (
+//       !student.studentFirstName ||
+//       !student.dateOfBirth ||
+//       !student.medicalInformation
+//     ) {
+//       if (DEBUG) console.warn("❌ Missing student info.");
+//       return res.status(400).json({
+//         status: false,
+//         message:
+//           "Each student must have a name, date of birth, and medical information.",
+//       });
+//     }
+
+//     // ✅ Emergency contact is OPTIONAL
+//     const emergency = req.body.emergency;
+
+//     if (emergency) {
+//       if (!emergency.emergencyFirstName) {
+//         return res.status(400).json({
+//           status: false,
+//           message: "Emergency contact first name is required.",
+//         });
+//       }
+//       if (!emergency.emergencyLastName) {
+//         return res.status(400).json({
+//           status: false,
+//           message: "Emergency contact last name is required.",
+//         });
+//       }
+//       if (!emergency.emergencyPhoneNumber) {
+//         return res.status(400).json({
+//           status: false,
+//           message: "Emergency contact phone number is required.",
+//         });
+//       }
+//     }
+
+//     // student.className = classData.className;
+//     // student.startTime = classData.startTime;
+//     // student.endTime = classData.endTime;
+
+//     const parents = [
+//       ...(student.parents || []),
+//       ...(student.secondParentDetails ? [student.secondParentDetails] : []),
+//     ];
+
+//     for (const parent of parents) {
+//       const email = parent?.parentEmail?.trim()?.toLowerCase();
+//       if (!email || !parent.parentFirstName || !parent.parentPhoneNumber) {
+//         if (DEBUG) console.warn("❌ Missing parent info.");
+//         return res.status(400).json({
+//           status: false,
+//           message: "Each parent must have a name, email, and phone number.",
+//         });
+//       }
+
+//       if (emailMap.has(email)) continue;
+
+//       const exists = await Admin.findOne({ where: { email } });
+//       if (exists) {
+//         if (DEBUG) console.warn(`⚠️ Duplicate email found: ${email}`);
+//         duplicateEmails.push(email);
+//       } else {
+//         emailMap.set(email, parent);
+//       }
+//     }
+//   }
+
+//   if (duplicateEmails.length > 0) {
+//     const unique = [...new Set(duplicateEmails)]; // remove duplicates
+//     const message =
+//       unique.length === 1
+//         ? `${unique[0]} email already in use.`
+//         : `${unique.join(", ")} emails already in use.`;
+
+//     if (DEBUG) console.warn("❌ Duplicate email(s) found.");
+//     await logActivity(req, PANEL, MODULE, "create", { message }, false);
+
+//     return res.status(409).json({ status: false, message });
+//   }
+
+//   try {
+//     if (DEBUG) console.log("🚀 Creating booking...");
+
+//     const leadId = req.params.leadId || null;
+
+//     const result = await BookingTrialService.createBooking(formData, {
+//       source: req.source,
+//       adminId: req.admin?.id,
+//       adminFirstName: req.admin?.firstName || "Unknown",
+//       leadId,
+//     });
+
+//     if (!result.status) {
+//       if (DEBUG) console.error("❌ Booking service error:", result.message);
+//       await logActivity(req, PANEL, MODULE, "create", result, false);
+//       return res.status(500).json({ status: false, message: result.message });
+//     }
+
+//     const booking = result.data.booking;
+//     const studentId = result.data.studentId;
+//     // 🔔 Custom notification to parent (Waiting List)
+//     try {
+//       const parentAdminId = booking?.parentAdminId;
+
+//       if (parentAdminId) {
+//         await createCustomNotificationForAdmins({
+//           title: "Added to Waiting List",
+//           description: `Your request has been added to the waiting list.`,
+//           category: "Updates",
+//           createdByAdminId: req.admin?.id || null,
+//           recipientAdminIds: [parentAdminId],
+//         });
+
+//         if (DEBUG) {
+//           console.log(
+//             "🔔 Waiting list custom notification sent to parentAdminId:",
+//             parentAdminId
+//           );
+//         }
+//       } else if (DEBUG) {
+//         console.warn(
+//           "⚠️ Waiting list booking created but parentAdminId not found."
+//         );
+//       }
+//     } catch (err) {
+//       console.error(
+//         "❌ Failed to create waiting list custom notification:",
+//         err.message
+//       );
+//     }
+
+//     // Send confirmation email to parents
+
+//     const parentMetas = await BookingParentMeta.findAll({
+//       where: { studentId },
+//     });
+
+//     if (parentMetas && parentMetas.length > 0) {
+//       const {
+//         status: configStatus,
+//         emailConfig,
+//         htmlTemplate,
+//         subject,
+//       } = await emailModel.getEmailConfig(PANEL, "waiting-list");
+
+//       if (configStatus && htmlTemplate) {
+//         const recipients = parentMetas.map((p) => ({
+//           name: `${p.parentFirstName} ${p.parentLastName}`,
+//           email: p.parentEmail,
+//         }));
+
+//         // Fetch ALL students for the booking trial
+//         const students = await BookingStudentMeta.findAll({
+//           where: { bookingTrialId: booking.id },
+//         });
+//         const studentsHtml = students.length
+//           ? students
+//             .map(
+//               (s) =>
+//                 `<p style="margin:0; font-size:13px; color:#5F5F6D;">
+//              ${s.studentFirstName} ${s.studentLastName}
+//            </p>`
+//             )
+//             .join("")
+//           : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
+
+//         for (const recipient of recipients) {
+//           const variables = {
+//             "{{studentsHtml}}": studentsHtml,
+//             "{{parentName}}": recipient.name,
+//             "{{parentEmail}}": recipient.email,
+//             "{{parentPassword}}": "Synco123",
+//             // "{{studentFirstName}}": studentFirstName || "",
+//             // "{{studentLastName}}": studentLastName || "",
+//             "{{venueName}}": venue?.name || "N/A",
+//             // "{{className}}": classData?.className || "N/A",
+//             // "{{startDate}}": booking?.startDate || "",
+//             // "{{classTime}}": classData?.startTime || "",
+//             "{{appName}}": "Synco",
+//             "{{year}}": new Date().getFullYear().toString(),
+//             "{{logoUrl}}":
+//               "https://webstepdev.com/demo/syncoUploads/syncoLogo.png",
+//             "{{kidsPlaying}}":
+//               "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png",
+//           };
+
+//           let finalHtml = htmlTemplate;
+//           for (const [key, val] of Object.entries(variables)) {
+//             finalHtml = finalHtml.replace(new RegExp(key, "g"), val);
+//           }
+
+//           await sendEmail(emailConfig, {
+//             recipient: [recipient],
+//             cc: emailConfig.cc || [],
+//             bcc: emailConfig.bcc || [],
+//             subject,
+//             htmlBody: finalHtml,
+//           });
+//         }
+//       }
+//     }
+//     if (DEBUG) console.log("📝 Logging activity...");
+//     await logActivity(req, PANEL, MODULE, "create", result, true);
+
+//     if (DEBUG) console.log("🔔 Creating notification...");
+//     await createNotification(
+//       req,
+//       "New Booking Created For Waiting List",
+//       "Booking added in waiting list",
+//       "System"
+//     );
+
+//     if (DEBUG) console.log("✅ Booking created successfully.");
+//     return res.status(201).json({
+//       status: true,
+//       message: "Booking created successfully. Confirmation email sent.",
+//       data: booking,
+//     });
+//   } catch (error) {
+//     if (DEBUG) console.error("❌ Booking creation error:", error);
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "create",
+//       { error: error.message },
+//       false
+//     );
+//     return res.status(500).json({ status: false, message: "Server error." });
+//   }
+// };
 
 // 📌 Get All Waiting List Bookings
 exports.getAllWaitingListBookings = async (req, res) => {
