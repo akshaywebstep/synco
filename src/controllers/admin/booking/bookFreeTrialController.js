@@ -367,28 +367,37 @@ exports.createBooking = async (req, res) => {
 
       // 3️⃣ Extract subject + html
       // Ensure content is parsed JSON
-      const contentObj =
-        typeof customTemplate.content === "string"
-          ? JSON.parse(customTemplate.content)
-          : customTemplate.content;
+      // 3️⃣ Extract subject + html safely
+      let contentObj;
+      if (typeof customTemplate.content === "string") {
+        try {
+          const parsed = JSON.parse(customTemplate.content);
+          if (parsed && typeof parsed === "object" && parsed.htmlContent) {
+            contentObj = parsed;
+          } else {
+            // Not a valid JSON with htmlContent → fallback to raw HTML
+            contentObj = {
+              subject: customTemplate.subject || "Your FREE Trial is Set! See You on the Pitch",
+              htmlContent: customTemplate.content
+            };
+          }
+        } catch (err) {
+          // Parsing failed → use raw HTML
+          contentObj = {
+            subject: customTemplate.subject || "Your FREE Trial is Set! See You on the Pitch",
+            htmlContent: customTemplate.content
+          };
+        }
+      } else {
+        contentObj = customTemplate.content;
+      }
 
-      console.log("✅ Parsed Content Keys:", Object.keys(contentObj));
+      // Extract subject & html
+      const subject = contentObj.subject || "Your FREE Trial is Set! See You on the Pitch";
+      let htmlTemplate = contentObj.htmlContent || contentObj.html || "";
 
-      // Extract subject
-      const subject =
-        contentObj.subject ||
-        "Your FREE Trial is Set! See You on the Pitch";
-
-      // Extract HTML
-      let htmlTemplate =
-        contentObj.htmlContent ||
-        contentObj.html ||
-        "";
-      // Remove top heading (h1) from email body
-      htmlTemplate = htmlTemplate.replace(
-        /<h1[^>]*>.*?<\/h1>/i,
-        ""
-      )
+      // Remove top <h1> if exists
+      htmlTemplate = htmlTemplate.replace(/<h1[^>]*>.*?<\/h1>/i, "");
 
       console.log("📄 HTML Template Length:", htmlTemplate.length);
 
