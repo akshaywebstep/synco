@@ -12,27 +12,6 @@ const CustomTemplate = require("../../../services/admin/templates/customTemplate
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 const PANEL = "admin";
 const MODULE = "custom-template";
-function cleanTags(tags) {
-  if (!tags) return [];
-
-  if (typeof tags === "string") {
-    try {
-      tags = JSON.parse(tags);
-    } catch { }
-
-    return tags
-      .map(tag => tag.replace(/\//g, "").trim())
-      .filter(Boolean);
-  }
-
-  if (Array.isArray(tags)) {
-    return tags
-      .map(tag => typeof tag === "string" ? tag.replace(/\//g, "").trim() : "")
-      .filter(Boolean);
-  }
-
-  return [];
-}
 
 // ✅ CREATE Template Category
 
@@ -95,17 +74,13 @@ exports.createCustomTemplate = async (req, res) => {
     // -------------------------
     let parsedContent;
 
-    // 1️⃣ Remove escaped slashes before parsing
-    if (typeof content === "string") {
-      const fixedContent = content.replace(/\\\//g, "/"); // remove all `\/`
-
-      try {
-        parsedContent = JSON.parse(fixedContent);      // parse JSON
-      } catch (err) {
-        return res.status(400).json({ status: false, message: "Invalid JSON in content." });
-      }
-    } else {
-      parsedContent = content;
+    try {
+      parsedContent = typeof content === "string" ? JSON.parse(content) : content;
+    } catch (err) {
+      return res.status(400).json({
+        status: false,
+        message: "Invalid JSON in content."
+      });
     }
     // -------------------------
     // 5) Upload images
@@ -172,7 +147,7 @@ exports.createCustomTemplate = async (req, res) => {
       mode_of_communication,
       template_category_id: categoryId,
       content: parsedContent,
-      tags: cleanTags(tags),
+      tags,
       createdBy: adminId
     };
 
@@ -255,18 +230,15 @@ exports.updateCustomTemplate = async (req, res) => {
   // 4) Parse content JSON
   // -------------------------
   let parsedContent;
-
-  // 1️⃣ Remove escaped slashes before parsing
-  if (typeof content === "string") {
-    const fixedContent = content.replace(/\\\//g, "/"); // remove all `\/`
-
-    try {
-      parsedContent = JSON.parse(fixedContent);      // parse JSON
-    } catch (err) {
-      return res.status(400).json({ status: false, message: "Invalid JSON in content." });
-    }
-  } else {
-    parsedContent = content;
+  try {
+    parsedContent = typeof content === "string"
+      ? JSON.parse(content)
+      : content;
+  } catch {
+    return res.status(400).json({
+      status: false,
+      message: "Invalid JSON in content."
+    });
   }
 
   if (DEBUG) console.log("📝 Parsed Content:", parsedContent);
@@ -335,7 +307,7 @@ exports.updateCustomTemplate = async (req, res) => {
     mode_of_communication,
     template_category_id: categoryId,
     content: parsedContent,
-    tags: cleanTags(tags),
+    tags
   };
   if (mode_of_communication === "text") payload.sender_name = sender_name;
 

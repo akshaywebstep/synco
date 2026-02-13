@@ -234,16 +234,29 @@ exports.createBooking = async (req, res) => {
       let contentObj;
 
       if (typeof customTemplate.content === "string") {
+        // ✅ Try parsing safely
         try {
-          contentObj = JSON.parse(customTemplate.content);
+          const parsed = JSON.parse(customTemplate.content);
+
+          // ✅ Only accept if parsed is an object with htmlContent
+          if (parsed && typeof parsed === "object" && parsed.htmlContent) {
+            contentObj = parsed;
+          } else {
+            // It's not proper JSON with htmlContent, fallback to raw
+            contentObj = {
+              subject: customTemplate.subject || "Booking Confirmation",
+              htmlContent: customTemplate.content
+            };
+          }
         } catch (err) {
-          console.log("Template JSON invalid, using raw HTML");
+          // Not JSON, just use raw string
           contentObj = {
             subject: customTemplate.subject || "Booking Confirmation",
             htmlContent: customTemplate.content
           };
         }
       } else {
+        // Already an object
         contentObj = customTemplate.content;
       }
 
