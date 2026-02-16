@@ -261,7 +261,7 @@ exports.getAllClassSchedules = async (req, res) => {
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
     const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
 
-    const result = await ClassScheduleService.getAllClasses(superAdminId); // ✅ pass admin ID
+    const result = await ClassScheduleService.getAllClasses(adminId,superAdminId); // ✅ pass admin ID
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Fetch failed:", result.message);
@@ -406,6 +406,7 @@ exports.getAllClassSchedules = async (req, res) => {
 exports.getClassScheduleDetails = async (req, res) => {
   const { id } = req.params; // Class ID
   const createdBy = req.admin?.id; // Current admin ID
+  const adminId = req.admin?.id;
   if (DEBUG) console.log(`🔍 Fetching class + venue for class ID: ${id}`);
 
   try {
@@ -416,6 +417,7 @@ exports.getClassScheduleDetails = async (req, res) => {
     // ✅ Pass both classId and superAdminId to the service
     const result = await ClassScheduleService.getClassByIdWithFullDetails(
       id,
+      adminId,
       superAdminId
     );
 

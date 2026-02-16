@@ -6,6 +6,7 @@ const {
   SessionExercise,
   PaymentPlan,
   PaymentGroup,
+  Admin,
   // PaymentGroupHasPlan,
 } = require("../../../models");
 const axios = require("axios");
@@ -683,18 +684,40 @@ exports.updateVenue = async (id, data) => {
 //   }
 // };
 
-exports.getAllVenues = async (createdBy) => {
+exports.getAllVenues = async (createdBy, adminId) => {
   try {
-    if (!createdBy || isNaN(Number(createdBy))) {
+    const currentAdmin = await Admin.findByPk(adminId);
+
+    if (!currentAdmin) {
       return {
         status: false,
-        message: "No valid parent or super admin found for this request.",
+        message: "Admin not found.",
         data: [],
       };
     }
 
+    let whereCondition = {};
+
+    // ✅ If SuperAdmin (no superAdminId)
+    if (!currentAdmin.superAdminId) {
+      const childAdmins = await Admin.findAll({
+        where: { superAdminId: adminId },
+        attributes: ["id"],
+      });
+
+      const childIds = childAdmins.map(a => a.id);
+
+      // SuperAdmin can see own + franchise data
+      whereCondition.createdBy = [adminId, ...childIds];
+    }
+    // ✅ If Franchise / Normal Admin
+    else {
+      // 🔥 Only show venues created by this franchise
+      whereCondition.createdBy = adminId;
+    }
+
     const venues = await Venue.findAll({
-      where: { createdBy: Number(createdBy) },
+      where: whereCondition,
       order: [["createdAt", "DESC"]],
       attributes: [
         "id",
@@ -1166,19 +1189,46 @@ exports.getAllVenues = async (createdBy) => {
 //     };
 //   }
 // };
-exports.getVenueById = async (id, createdBy) => {
+exports.getVenueById = async (id, adminId) => {
   try {
-    if (!createdBy || isNaN(Number(createdBy))) {
+
+    const currentAdmin = await Admin.findByPk(adminId);
+
+    if (!currentAdmin) {
       return {
         status: false,
-        message: "No valid parent or super admin found for this request.",
+        message: "Admin not found.",
         data: [],
       };
     }
 
+    let whereCondition = {};
+
+    // ✅ If SuperAdmin (no superAdminId)
+    if (!currentAdmin.superAdminId) {
+      const childAdmins = await Admin.findAll({
+        where: { superAdminId: adminId },
+        attributes: ["id"],
+      });
+
+      const childIds = childAdmins.map(a => a.id);
+
+      // SuperAdmin can see own + franchise data
+      whereCondition.createdBy = [adminId, ...childIds];
+    }
+    // ✅ If Franchise / Normal Admin
+    else {
+      // 🔥 Only show venues created by this franchise
+      whereCondition.createdBy = adminId;
+    }
+
     const venue = await Venue.findOne({
       // where: { id },
-      where: { id, createdBy: Number(createdBy) },
+      where: {
+        id,
+        ...whereCondition
+      }
+      ,
       attributes: [
         "id",
         "area",

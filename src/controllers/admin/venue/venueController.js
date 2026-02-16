@@ -72,12 +72,13 @@ exports.createVenue = async (req, res) => {
 // ✅ Get All Venues
 exports.getAllVenues = async (req, res) => {
   const createdBy = req.admin?.id;
+  const adminId = req.admin?.id; // ✅ Get admin ID from request
 
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
-    const result = await venueModel.getAllVenues(superAdminId);
+    const result = await venueModel.getAllVenues(createdBy, adminId, superAdminId);
 
     await logActivity(req, PANEL, MODULE, "list", result, result.status);
 
@@ -107,14 +108,14 @@ exports.getAllVenues = async (req, res) => {
 exports.getVenueById = async (req, res) => {
   const { id } = req.params;
   const createdBy = req.admin?.id; // ✅ Ensure only venues created by this admin are accessed
-
+ const adminId = req.admin?.id; // ✅ Get admin ID from request
   console.log("📥 Incoming request for venue ID:", id);
 
   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
-    const result = await venueModel.getVenueById(id, superAdminId); // 👈 Pass createdBy if required
+    const result = await venueModel.getVenueById(id,adminId, superAdminId); // 👈 Pass createdBy if required
 
     await logActivity(req, PANEL, MODULE, "getById", result, result.status); // ✅ Consistent logging
 
