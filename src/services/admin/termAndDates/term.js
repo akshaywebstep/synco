@@ -3,6 +3,7 @@ const {
   TermGroup,
   SessionPlanGroup,
   SessionExercise,
+  Admin,
 } = require("../../../models");
 const { Op } = require("sequelize");
 const moment = require("moment");
@@ -113,16 +114,35 @@ function removeNullFields(obj) {
 // ✅ GET ALL TERMS (by admin)
 exports.getAllTerms = async (adminId) => {
   try {
-    if (!adminId || isNaN(Number(adminId))) {
-      return {
-        status: false,
-        message: "No valid parent or super admin found for this request.",
-        data: [],
-      };
+    // if (!adminId || isNaN(Number(adminId))) {
+    //   return {
+    //     status: false,
+    //     message: "No valid parent or super admin found for this request.",
+    //     data: [],
+    //   };
+    // }
+    const currentAdmin = await Admin.findByPk(adminId);
+
+    let whereCondition = {};
+
+    if (!currentAdmin.superAdminId) {
+      // ✅ This is SuperAdmin
+      const childAdmins = await Admin.findAll({
+        where: { superAdminId: Number(adminId) },
+        attributes: ["id"],
+      });
+
+      const childIds = childAdmins.map(a => a.id);
+      childIds.push(Number(adminId)); // include self
+
+      whereCondition.createdBy = childIds;
+    } else {
+      // ✅ Normal Admin / Franchisee → only own data
+      whereCondition.createdBy = Number(adminId);
     }
 
     const terms = await Term.findAll({
-      where: { createdBy: Number(adminId) },
+      where: whereCondition,
       include: [
         {
           model: TermGroup,
@@ -267,8 +287,28 @@ exports.getAllTerms = async (adminId) => {
 // ✅ GET TERM BY ID (by admin)
 exports.getTermById = async (id, adminId) => {
   try {
+    const currentAdmin = await Admin.findByPk(adminId);
+
+    let whereCondition = {};
+
+    if (!currentAdmin.superAdminId) {
+      // ✅ This is SuperAdmin
+      const childAdmins = await Admin.findAll({
+        where: { superAdminId: Number(adminId) },
+        attributes: ["id"],
+      });
+
+      const childIds = childAdmins.map(a => a.id);
+      childIds.push(Number(adminId)); // include self
+
+      whereCondition.createdBy = childIds;
+    } else {
+      // ✅ Normal Admin / Franchisee → only own data
+      whereCondition.createdBy = Number(adminId);
+    }
+
     const term = await Term.findOne({
-      where: { id, createdBy: adminId },
+      where: { id, ...whereCondition },
       include: [
         {
           model: TermGroup,

@@ -1,4 +1,4 @@
-const { SessionExercise } = require("../../../models");
+const { SessionExercise, Admin } = require("../../../models");
 const { Op } = require("sequelize");
 
 // ✅ Duplicate Session Exercise
@@ -9,12 +9,12 @@ exports.duplicateSessionExercise = async (oldExerciseId, createdBy) => {
     if (!oldExercise) return { status: false, message: "Original exercise not found" };
 
     const oldData = oldExercise.get({ plain: true });
-     const newTitle = `${oldData.title} (copy)`;
+    const newTitle = `${oldData.title} (copy)`;
 
     // STEP 2: Create new exercise row (without files yet)
     const newExercise = await SessionExercise.create({
       // title: oldData.title,
-       title: newTitle,
+      title: newTitle,
       duration: oldData.duration,
       description: oldData.description,
       imageUrl: [], // files will be handled separately
@@ -42,15 +42,35 @@ exports.createSessionExercise = async (data) => {
 // Get All
 exports.getAllSessionExercises = async (adminId) => {
   try {
-    if (!adminId || isNaN(Number(adminId))) {
-      return {
-        status: false,
-        message: "No valid parent or super admin found for this request.",
-        data: [],
-      };
+    const currentAdmin = await Admin.findByPk(adminId);
+
+    let whereCondition = {};
+
+    if (!currentAdmin.superAdminId) {
+      // ✅ This is SuperAdmin
+      const childAdmins = await Admin.findAll({
+        where: { superAdminId: Number(adminId) },
+        attributes: ["id"],
+      });
+
+      const childIds = childAdmins.map(a => a.id);
+      childIds.push(Number(adminId)); // include self
+
+      whereCondition.createdBy = childIds;
+    } else {
+      // ✅ Normal Admin / Franchisee → only own data
+      whereCondition.createdBy = Number(adminId);
     }
+
+    // if (!adminId || isNaN(Number(adminId))) {
+    //   return {
+    //     status: false,
+    //     message: "No valid parent or super admin found for this request.",
+    //     data: [],
+    //   };
+    // }
     const exercises = await SessionExercise.findAll({
-      where: { createdBy:  Number(adminId) },
+      where: whereCondition,
       order: [["createdAt", "DESC"]],
     });
 
@@ -64,15 +84,35 @@ exports.getAllSessionExercises = async (adminId) => {
 // ✅ Get by ID
 exports.getSessionExerciseById = async (id, adminId) => {
   try {
-    if (!adminId || isNaN(Number(adminId))) {
-      return {
-        status: false,
-        message: "No valid parent or super admin found for this request.",
-        data: [],
-      };
+    // if (!adminId || isNaN(Number(adminId))) {
+    //   return {
+    //     status: false,
+    //     message: "No valid parent or super admin found for this request.",
+    //     data: [],
+    //   };
+    // }
+    const currentAdmin = await Admin.findByPk(adminId);
+
+    let whereCondition = {};
+
+    if (!currentAdmin.superAdminId) {
+      // ✅ This is SuperAdmin
+      const childAdmins = await Admin.findAll({
+        where: { superAdminId: Number(adminId) },
+        attributes: ["id"],
+      });
+
+      const childIds = childAdmins.map(a => a.id);
+      childIds.push(Number(adminId)); // include self
+
+      whereCondition.createdBy = childIds;
+    } else {
+      // ✅ Normal Admin / Franchisee → only own data
+      whereCondition.createdBy = Number(adminId);
     }
+
     const exercise = await SessionExercise.findOne({
-      where: { id, createdBy: Number(adminId) },
+      where: { ...whereCondition, id },
     });
 
     if (!exercise) {

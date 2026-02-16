@@ -223,6 +223,7 @@ exports.getSessionExerciseById = async (req, res) => {
   try {
     const result = await SessionExerciseService.getSessionExerciseById(
       id,
+      adminId,
       superAdminId
     ); // pass adminId
 
@@ -260,7 +261,7 @@ exports.getAllSessionExercises = async (req, res) => {
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
-    const result = await SessionExerciseService.getAllSessionExercises(superAdminId);
+    const result = await SessionExerciseService.getAllSessionExercises(adminId,superAdminId);
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Fetch failed:", result.message);

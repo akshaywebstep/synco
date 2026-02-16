@@ -1,4 +1,4 @@
-const { SessionPlanGroup, SessionExercise } = require("../../../models");
+const { SessionPlanGroup, SessionExercise, Admin } = require("../../../models");
 const { deleteFile } = require("../../../utils/fileHandler");
 const path = require("path");
 const { Readable } = require("stream");
@@ -22,7 +22,7 @@ exports.duplicateSessionPlanGroup = async (id, createdBy) => {
     // 3️⃣ Clone data (✅ include level-wise videos too)
     const newGroupData = {
       // groupName: group.groupName,
-       groupName: `${group.groupName} copy`,
+      groupName: `${group.groupName} copy`,
       banner: group.banner,
       player: group.player,
       levels: parsedLevels, // store as object if DB supports JSON
@@ -67,46 +67,47 @@ exports.getAllSessionPlanGroups = async ({
   orderBy = "createdAt",
   order = "DESC",
   createdBy,
+  adminId,
 } = {}) => {
   try {
-    if (!createdBy || isNaN(Number(createdBy))) {
-      return {
-        status: false,
-        message: "No valid parent or super admin found for this request.",
-        data: { groups: [], exerciseMap: {} },
-      };
+    // if (!createdBy || isNaN(Number(createdBy))) {
+    //   return {
+    //     status: false,
+    //     message: "No valid parent or super admin found for this request.",
+    //     data: { groups: [], exerciseMap: {} },
+    //   };
+    // }
+    const currentAdmin = await Admin.findByPk(adminId);
+
+    let whereCondition = {};
+
+    if (!currentAdmin.superAdminId) {
+      // ✅ This is SuperAdmin
+      const childAdmins = await Admin.findAll({
+        where: { superAdminId: Number(adminId) },
+        attributes: ["id"],
+      });
+
+      const childIds = childAdmins.map(a => a.id);
+      childIds.push(Number(adminId)); // include self
+
+      whereCondition.createdBy = childIds;
+    } else {
+      // ✅ Normal Admin / Franchisee → only own data
+      whereCondition.createdBy = Number(adminId);
     }
 
     const groups = await SessionPlanGroup.findAll({
-      where: { createdBy: Number(createdBy),
-         type: "weekly_classes",
-       },
+      where: {
+        ...whereCondition,
+        type: "weekly_classes",
+      },
       // order: [[orderBy, order]],
       order: [["sortOrder", "ASC"]],
-      // attributes: [
-      //   "id",
-      //   "groupName",
-      //   "sortOrder",
-      //   "banner",
-      //   "pinned",
-      //   "type",
-      //   "beginner_video",
-      //   "intermediate_video",
-      //   "pro_video",
-      //   "advanced_video",
-      //   "player",
-      //   "levels",
-      //   "beginner_upload",
-      //   "intermediate_upload",
-      //   "pro_upload",
-      //   "advanced_upload",
-      //   "createdAt",
-      //   "updatedAt",
-      // ],
     });
 
     const sessionExercises = await SessionExercise.findAll({
-      where: { createdBy },
+      where: { createdBy: whereCondition.createdBy },
     });
 
     const exerciseMap = sessionExercises.reduce((acc, exercise) => {
@@ -148,41 +149,41 @@ exports.getAllSessionPlanGroups = async ({
   }
 };
 
-exports.getSessionPlanGroupById = async (id, createdBy) => {
+exports.getSessionPlanGroupById = async (id, createdBy, adminId) => {
   try {
 
-    if (!createdBy || isNaN(Number(createdBy))) {
-      return {
-        status: false,
-        message: "No valid parent or super admin found for this request.",
-        data: [],
-      };
+    // if (!createdBy || isNaN(Number(createdBy))) {
+    //   return {
+    //     status: false,
+    //     message: "No valid parent or super admin found for this request.",
+    //     data: [],
+    //   };
+    // }
+    const currentAdmin = await Admin.findByPk(adminId);
+
+    let whereCondition = {};
+
+    if (!currentAdmin.superAdminId) {
+      // ✅ This is SuperAdmin
+      const childAdmins = await Admin.findAll({
+        where: { superAdminId: Number(adminId) },
+        attributes: ["id"],
+      });
+
+      const childIds = childAdmins.map(a => a.id);
+      childIds.push(Number(adminId)); // include self
+
+      whereCondition.createdBy = childIds;
+    } else {
+      // ✅ Normal Admin / Franchisee → only own data
+      whereCondition.createdBy = Number(adminId);
     }
 
     const group = await SessionPlanGroup.findOne({
-      where: { id, createdBy: Number(createdBy),
-         type: "weekly_classes",
-       },
-      // attributes: [
-      //   "id",
-      //   "groupName",
-      //   "banner",
-      //   "pinned",
-      //   "type",
-      //   // "video",
-      //   "beginner_video",
-      //   "intermediate_video",
-      //   "pro_video",
-      //   "advanced_video",
-      //   "player",
-      //   "levels",
-      //   "beginner_upload",
-      //   "intermediate_upload",
-      //   "pro_upload",
-      //   "advanced_upload",
-      //   "createdAt",
-      //   "updatedAt",
-      // ],
+      where: {
+        id, ...whereCondition,
+        type: "weekly_classes",
+      },
     });
 
     if (!group) {
@@ -202,7 +203,7 @@ exports.getSessionPlanGroupById = async (id, createdBy) => {
 
     // ✅ Get all session exercises created by this admin
     const exercises = await SessionExercise.findAll({
-      where: { createdBy },
+      where: {  createdBy: whereCondition.createdBy },
     });
 
     const exerciseMap = exercises.reduce((acc, item) => {

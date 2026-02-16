@@ -72,7 +72,7 @@ exports.getAllGroups = async (req, res) => {
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
-    const result = await TermGroupService.getAllGroups(superAdminId); // ✅ pass adminId
+    const result = await TermGroupService.getAllGroups(adminId, superAdminId); // ✅ pass adminId
     await logActivity(req, PANEL, MODULE, "list", result, result.status);
     return res.status(result.status ? 200 : 500).json(result);
   } catch (error) {
@@ -108,7 +108,7 @@ exports.getGroupById = async (req, res) => {
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
-    const result = await TermGroupService.getGroupById(id, superAdminId); // ✅ pass adminId
+    const result = await TermGroupService.getGroupById(id,adminId, superAdminId); // ✅ pass adminId
     await logActivity(req, PANEL, MODULE, "getById", result, result.status);
     return res.status(result.status ? 200 : 404).json(result);
   } catch (error) {

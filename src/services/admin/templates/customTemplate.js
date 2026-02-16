@@ -31,45 +31,93 @@ exports.createCustomTemplate = async (data) => {
 };
 
 // ✅ LIST custom templates (filter by category if provided, dynamic admin scoping)
-exports.listCustomTemplates = async () => {
+exports.listCustomTemplates = async (adminId, superAdminId, createdBy, templateCategoryId = null) => {
   try {
 
     // -------------------------
-    // 1) Fetch ALL templates (No where condition)
+    // 1) No admin / createdBy filtering
+    // -------------------------
+    const where = {}; // <-- FILTER REMOVED
+
+    // (Optional) Agar templateCategoryId ka filter rakhna hai to ye rehne do
+    if (templateCategoryId !== undefined && templateCategoryId !== null) {
+      const filterId = Number(templateCategoryId);
+      if (!isNaN(filterId)) {
+        where.template_category_id = sequelize.where(
+          sequelize.fn("JSON_CONTAINS", sequelize.col("template_category_id"), JSON.stringify(filterId)),
+          1
+        );
+      }
+    }
+
+    // -------------------------
+    // 2) Fetch templates (same as before)
     // -------------------------
     const templates = await CustomTemplate.findAll({
+      where,
       order: [["id", "DESC"]],
       raw: true,
     });
 
     // -------------------------
-    // 2) Group templates by mode
+    // 3) Fetch categories (same as before)
+    // -------------------------
+    const catResult = await TemplateCategoryService.listTemplateCategories(createdBy);
+    const catMap = {};
+    catResult.data.forEach(cat => {
+      catMap[cat.id] = cat.category;
+    });
+
+    // -------------------------
+    // 4) Group templates by mode & category (UNCHANGED)
     // -------------------------
     const grouped = { email: [], text: [] };
+    const bucket = { email: {}, text: {} };
 
     templates.forEach(temp => {
+      if (typeof temp.tags === "string") temp.tags = temp.tags.replace(/\\|"/g, "").trim();
 
-      // Clean tags
-      if (typeof temp.tags === "string") {
-        temp.tags = temp.tags.replace(/\\|"/g, "").trim();
-      }
-
-      // Parse content safely
       if (typeof temp.content === "string") {
-        try {
-          temp.content = JSON.parse(temp.content);
-        } catch {
-          temp.content = { blocks: [] };
-        }
+        try { temp.content = JSON.parse(temp.content); } 
+        catch { temp.content = { blocks: [] }; }
       }
 
-      const mode =
-        ["email", "text"].includes(temp.mode_of_communication)
-          ? temp.mode_of_communication
-          : "email";
+      let catIds = [];
+      try {
+        const parsed = JSON.parse(temp.template_category_id);
+        parsed.forEach(item => {
+          if (typeof item === "string") {
+            const cleaned = item.replace(/[\[\]]/g, "");
+            cleaned.split(",").forEach(id => {
+              const n = Number(id);
+              if (!isNaN(n)) catIds.push(n);
+            });
+          } else if (typeof item === "number") {
+            catIds.push(item);
+          }
+        });
+      } catch { catIds = []; }
 
-      grouped[mode].push(temp);
+      const catNames = catIds.length
+        ? catIds.map(id => catMap[id] || "Uncategorized")
+        : ["Uncategorized"];
+
+      const mode = ["email", "text"].includes(temp.mode_of_communication) ? temp.mode_of_communication : "email";
+
+      catNames.forEach(catName => {
+        if (!bucket[mode][catName]) bucket[mode][catName] = [];
+        bucket[mode][catName].push(temp);
+      });
     });
+
+    for (const mode of ["email", "text"]) {
+      Object.keys(bucket[mode]).forEach(cat => {
+        grouped[mode].push({
+          template_category: cat,
+          templates: bucket[mode][cat],
+        });
+      });
+    }
 
     return { status: true, data: grouped };
 
@@ -246,9 +294,9 @@ exports.getCustomTemplateById = async (id) => {
     const templateId = Number(id);
     // const adminIdNum = Number(adminId);
 
-    if (isNaN(templateId) || isNaN(adminIdNum)) {
-      return { status: false, message: "Invalid ID provided." };
-    }
+    // if (isNaN(templateId) || isNaN(adminIdNum)) {
+    //   return { status: false, message: "Invalid ID provided." };
+    // }
 
     // -------------------------
     // 1) Determine allowed admin IDs

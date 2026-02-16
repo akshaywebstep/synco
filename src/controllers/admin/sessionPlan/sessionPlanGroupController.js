@@ -936,21 +936,22 @@ exports.createSessionPlanGroup = async (req, res) => {
 exports.getAllSessionPlanGroups = async (req, res) => {
   try {
     const createdBy = req.admin?.id || req.user?.id;
+    const adminId = req.admin?.id || null;
     console.log("Fetching session plan groups for createdBy:", createdBy);
 
-    if (!createdBy) {
-      return res.status(400).json({
-        status: false,
-        message: "Unauthorized request: missing admin or user ID.",
-      });
-    }
+    // if (!createdBy) {
+    //   return res.status(400).json({
+    //     status: false,
+    //     message: "Unauthorized request: missing admin or user ID.",
+    //   });
+    // }
 
     // Get top-level super admin (if exists)
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? createdBy;
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
     // Fetch session plan groups from service
-    const result = await SessionPlanGroupService.getAllSessionPlanGroups({ createdBy });
+    const result = await SessionPlanGroupService.getAllSessionPlanGroups({ adminId, superAdminId });
 
     if (!result.status) {
       await logActivity(req, PANEL, MODULE, "list", result, false);
@@ -1348,14 +1349,15 @@ exports.getSessionPlanGroupDetails = async (req, res) => {
   try {
     const { id } = req.params;
     const createdBy = req.admin?.id || req.user?.id;
+    const adminId= req.admin?.id || null;
 
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
     if (DEBUG)
       console.log("Fetching session plan group id:", id, "user:", createdBy);
 
-    const result = await SessionPlanGroupService.getSessionPlanGroupById(id, superAdminId);
+    const result = await SessionPlanGroupService.getSessionPlanGroupById(id,adminId, superAdminId);
 
     if (!result.status) {
       if (DEBUG) console.warn("Session plan group not found:", id);

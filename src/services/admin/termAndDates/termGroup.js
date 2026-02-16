@@ -1,4 +1,4 @@
-const { TermGroup, Term } = require("../../../models"); // ✅ Correct model
+const { TermGroup, Term, Admin } = require("../../../models"); // ✅ Correct model
 
 // ✅ CREATE
 exports.createGroup = async ({ name, createdBy }) => {
@@ -13,16 +13,35 @@ exports.createGroup = async ({ name, createdBy }) => {
 // ✅ GET ALL - by admin
 exports.getAllGroups = async (adminId) => {
   try {
-    if (!adminId || isNaN(Number(adminId))) {
-      return {
-        status: false,
-        message: "No valid parent or super admin found for this request.",
-        data: [],
-      };
+    // if (!adminId || isNaN(Number(adminId))) {
+    //   return {
+    //     status: false,
+    //     message: "No valid parent or super admin found for this request.",
+    //     data: [],
+    //   };
+    // }
+    const currentAdmin = await Admin.findByPk(adminId);
+
+    let whereCondition = {};
+
+    if (!currentAdmin.superAdminId) {
+      // ✅ This is SuperAdmin
+      const childAdmins = await Admin.findAll({
+        where: { superAdminId: Number(adminId) },
+        attributes: ["id"],
+      });
+
+      const childIds = childAdmins.map(a => a.id);
+      childIds.push(Number(adminId)); // include self
+
+      whereCondition.createdBy = childIds;
+    } else {
+      // ✅ Normal Admin / Franchisee → only own data
+      whereCondition.createdBy = Number(adminId);
     }
-    
+
     const groups = await TermGroup.findAll({
-      where: { createdBy: Number(adminId) },
+      where: whereCondition,
       order: [["createdAt", "DESC"]],
     });
     return { status: true, data: groups };
@@ -35,16 +54,35 @@ exports.getAllGroups = async (adminId) => {
 exports.getGroupById = async (id, adminId) => {
   try {
 
-    if (!adminId || isNaN(Number(adminId))) {
-      return {
-        status: false,
-        message: "No valid parent or super admin found for this request.",
-        data: [],
-      };
+    // if (!adminId || isNaN(Number(adminId))) {
+    //   return {
+    //     status: false,
+    //     message: "No valid parent or super admin found for this request.",
+    //     data: [],
+    //   };
+    // }
+    const currentAdmin = await Admin.findByPk(adminId);
+
+    let whereCondition = {};
+
+    if (!currentAdmin.superAdminId) {
+      // ✅ This is SuperAdmin
+      const childAdmins = await Admin.findAll({
+        where: { superAdminId: Number(adminId) },
+        attributes: ["id"],
+      });
+
+      const childIds = childAdmins.map(a => a.id);
+      childIds.push(Number(adminId)); // include self
+
+      whereCondition.createdBy = childIds;
+    } else {
+      // ✅ Normal Admin / Franchisee → only own data
+      whereCondition.createdBy = Number(adminId);
     }
 
     const group = await TermGroup.findOne({
-      where: { id, createdBy: Number(adminId) },
+      where: { id, ...whereCondition },
     });
     if (!group) {
       return { status: false, message: "Group not found or unauthorized." };

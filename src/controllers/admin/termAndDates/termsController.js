@@ -107,16 +107,16 @@ exports.createTerm = async (req, res) => {
 exports.getAllTerms = async (req, res) => {
   const adminId = req.admin?.id;
   if (!adminId) {
-      return res
-        .status(401)
-        .json({ status: false, message: "Unauthorized. Admin ID missing." });
-    }
-  
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
-  
+    return res
+      .status(401)
+      .json({ status: false, message: "Unauthorized. Admin ID missing." });
+  }
+
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+
   try {
-    const result = await TermService.getAllTerms(superAdminId);
+    const result = await TermService.getAllTerms(adminId, superAdminId);
     await logActivity(req, PANEL, MODULE, "list", result, result.status);
     return res.status(result.status ? 200 : 500).json(result);
   } catch (error) {
@@ -151,7 +151,7 @@ exports.getTermById = async (req, res) => {
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
-    const result = await TermService.getTermById(id, superAdminId);
+    const result = await TermService.getTermById(id, adminId, superAdminId);
     await logActivity(req, PANEL, MODULE, "getById", result, result.status);
     return res.status(result.status ? 200 : 404).json(result);
   } catch (error) {
