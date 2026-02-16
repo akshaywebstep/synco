@@ -94,11 +94,11 @@ exports.createTemplateCategory = async (req, res) => {
 };
 
 exports.listTemplateCategories = async (req, res) => {
-  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+  // const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  // const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
   if (DEBUG) console.log("📥 Listing all template categories");
 
-  const result = await TemplateCategory.listTemplateCategories(superAdminId); // ✅ FIX HERE
+  const result = await TemplateCategory.listTemplateCategories(); // ✅ FIX HERE
 
   if (!result.status) {
     await logActivity(req, PANEL, MODULE, "list", { message: result.message }, false);

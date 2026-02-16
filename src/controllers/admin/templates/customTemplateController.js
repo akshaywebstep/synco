@@ -347,17 +347,17 @@ exports.updateCustomTemplate = async (req, res) => {
 
 // ✅ LIST API
 exports.listCustomTemplates = async (req, res) => {
-  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+  // const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  // const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
   if (DEBUG) console.log("📥 Listing all custom templates");
   const { template_category_id } = req.query;
 
   if (DEBUG) console.log("📥 Listing all template categories");
 
   const result = await CustomTemplate.listCustomTemplates(
-    req.admin.id,       // adminId
-    superAdminId,       // superAdminId
-    req.admin.id,       // createdBy
+    // req.admin.id,       // adminId
+    // superAdminId,       // superAdminId
+    // req.admin.id,       // createdBy
     template_category_id // templateCategoryId
   );
 
@@ -397,14 +397,14 @@ exports.deleteCustomTemplate = async (req, res) => {
 // ✅ FETCH BY ID API
 exports.getCustomTemplate = async (req, res) => {
   const { id } = req.params;
-  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+  // const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  // const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
   if (DEBUG) console.log("📥 Listing all custom templates");
   try {
     const result = await CustomTemplate.getCustomTemplateById(
       req.params.id,
-      req.admin.id,
-      superAdminId
+      // req.admin.id,
+      // superAdminId
     );
     if (!result.status) {
       await logActivity(req, PANEL, MODULE, "view", { message: result.message }, false);

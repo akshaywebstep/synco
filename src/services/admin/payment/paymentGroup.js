@@ -1,4 +1,4 @@
-const { PaymentGroup, PaymentPlan } = require("../../../models");
+const { PaymentGroup, PaymentPlan, Admin } = require("../../../models");
 const { Op } = require("sequelize");
 
 // ✅ Create a group
@@ -28,13 +28,42 @@ exports.getAllPaymentGroups = async (adminId) => {
     if (!adminId || isNaN(Number(adminId))) {
       return {
         status: false,
-        message: "No valid parent or super admin found for this request.",
+        message: "Invalid admin ID",
         data: [],
       };
     }
 
+    const currentAdmin = await Admin.findByPk(adminId);
+
+    if (!currentAdmin) {
+      return {
+        status: false,
+        message: "Admin not found",
+        data: [],
+      };
+    }
+
+    let whereCondition = {};
+
+    // ✅ SuperAdmin (superAdminId null)
+    if (!currentAdmin.superAdminId) {
+      const childAdmins = await Admin.findAll({
+        where: { superAdminId: Number(adminId) },
+        attributes: ["id"],
+      });
+
+      const childIds = childAdmins.map(a => a.id);
+      childIds.push(Number(adminId));
+
+      whereCondition.createdBy = childIds;
+    } 
+    else {
+      // ✅ Admin / Franchisee
+      whereCondition.createdBy = Number(adminId);
+    }
+
     const groups = await PaymentGroup.findAll({
-      where: { createdBy: Number(adminId) },
+      where: whereCondition,
       include: [
         {
           model: PaymentPlan,
@@ -54,7 +83,6 @@ exports.getAllPaymentGroups = async (adminId) => {
     return {
       status: false,
       message: "Failed to fetch payment groups",
-      error,
     };
   }
 };
@@ -69,8 +97,28 @@ exports.getPaymentGroupById = async (id, adminId) => {
       };
     }
 
+    const currentAdmin = await Admin.findByPk(adminId);
+
+    let whereCondition = { id };
+
+    // ✅ SuperAdmin (superAdminId null)
+    if (currentAdmin && !currentAdmin.superAdminId) {
+      const childAdmins = await Admin.findAll({
+        where: { superAdminId: Number(adminId) },
+        attributes: ["id"],
+      });
+
+      const childIds = childAdmins.map(a => a.id);
+      childIds.push(Number(adminId));
+
+      whereCondition.createdBy = childIds;
+    } else {
+      // ✅ Normal Admin / Franchisee
+      whereCondition.createdBy = Number(adminId);
+    }
+
     const group = await PaymentGroup.findOne({
-      where: { id, createdBy: Number(adminId) },
+      where: whereCondition,
       include: [
         {
           model: PaymentPlan,

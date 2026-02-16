@@ -406,7 +406,7 @@ exports.getAllPaymentPlans = async (req, res) => {
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
-    const result = await PaymentPlan.getAllPlans(superAdminId); // ✅ filtered by admin
+    const result = await PaymentPlan.getAllPlans(superAdminId,adminId); // ✅ filtered by admin
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Fetch failed:", result.message);
@@ -459,7 +459,7 @@ exports.getPaymentPlanById = async (req, res) => {
   if (DEBUG) console.log(`🔍 Fetching plan by ID: ${id}`);
 
   try {
-    const result = await PaymentPlan.getPlanById(id, superAdminId); // ✅ adminId added
+    const result = await PaymentPlan.getPlanById(id, superAdminId,adminId); // ✅ adminId added
 
     if (!result.status) {
       if (DEBUG) console.log("⚠️ Plan not found:", result.message);

@@ -33,18 +33,18 @@ exports.createTemplateCategory = async (data) => {
     };
   }
 };
-exports.listTemplateCategories = async (createdBy) => {
-  if (!createdBy || isNaN(Number(createdBy))) {
-    return {
-      status: false,
-      message: "No valid parent or super admin found for this request.",
-      data: [],
-    };
-  }
+exports.listTemplateCategories = async () => {
+  // if (!createdBy || isNaN(Number(createdBy))) {
+  //   return {
+  //     status: false,
+  //     message: "No valid parent or super admin found for this request.",
+  //     data: [],
+  //   };
+  // }
 
   try {
     const categories = await TemplateCategory.findAll({
-      where: { createdBy: Number(createdBy) }, // ✅ Filter only his created data
+      // where: { createdBy: Number(createdBy) }, // ✅ Filter only his created data
       order: [["id", "DESC"]],
     });
 
@@ -54,7 +54,6 @@ exports.listTemplateCategories = async (createdBy) => {
     return { status: false, message: error.message, data: [] };
   }
 };
-
 
 // exports.deleteTemplateCategory = async (id, adminId) => {
 //   try {

@@ -183,7 +183,7 @@ exports.getAllPaymentGroups = async (req, res) => {
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
-    const result = await paymentGroupModel.getAllPaymentGroups(superAdminId);
+    const result = await paymentGroupModel.getAllPaymentGroups(adminId,superAdminId);
 
     await logActivity(req, PANEL, MODULE, "getAll", result, result.status);
 
@@ -205,6 +205,38 @@ exports.getAllPaymentGroups = async (req, res) => {
     });
   }
 };
+// exports.getAllPaymentGroups = async (req, res) => {
+//   const adminId = req.admin?.id;
+
+//   if (DEBUG)
+//     console.log(`📦 Getting all payment groups for admin ID: ${adminId}`);
+
+//   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+//   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+
+//   try {
+//     const result = await paymentGroupModel.getAllPaymentGroups(superAdminId);
+
+//     await logActivity(req, PANEL, MODULE, "getAll", result, result.status);
+
+//     if (!result.status) {
+//       return res.status(400).json({ status: false, message: result.message });
+//     }
+
+//     return res.status(200).json({
+//       status: true,
+//       message: result.message,
+//       data: result.data,
+//     });
+//   } catch (error) {
+//     console.error("❌ getAllPaymentGroups Error:", error);
+//     await logActivity(req, PANEL, MODULE, "getAll", error, false);
+//     return res.status(500).json({
+//       status: false,
+//       message: "Internal server error",
+//     });
+//   }
+// };
 
 exports.getPaymentGroupById = async (req, res) => {
   const { id } = req.params;
@@ -217,7 +249,7 @@ exports.getPaymentGroupById = async (req, res) => {
   const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   try {
-    const result = await paymentGroupModel.getPaymentGroupById(id, superAdminId);
+    const result = await paymentGroupModel.getPaymentGroupById(id,adminId,superAdminId);
 
     await logActivity(req, PANEL, MODULE, "getById", result, result.status);
 

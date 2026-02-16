@@ -77,7 +77,7 @@ const Feedback = sequelize.define(
       type: DataTypes.ENUM(
         "holiday camp",
         "weekly class membership",
-        "weekly class_trial",
+        "weekly class trial",
         "one to one",
         "birthday party"
       ),

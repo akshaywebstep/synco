@@ -251,7 +251,7 @@ exports.createBooking = async (req, res) => {
 
       // 1️⃣ Get template category
       const templateCategory = await TemplateCategory.findOne({
-        where: { category: "Waiting List" }, // 🔥 your category name
+        where: { category: "Add to Waiting List" }, // 🔥 your category name
       });
 
       if (!templateCategory) {

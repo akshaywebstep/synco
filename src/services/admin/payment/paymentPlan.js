@@ -1,6 +1,6 @@
 const PaymentPlan = require("../../../models/admin/payment/PaymentPlan");
 const { Op } = require("sequelize");
-
+const {Admin} = require("../../../models");
 // ✅ Create a new payment plan
 exports.createPlan = async (data) => {
   try {
@@ -45,17 +45,34 @@ exports.createPlan = async (data) => {
 };
 
 // ✅ Get all payment plans for current admin
-exports.getAllPlans = async (adminId) => {
+exports.getAllPlans = async (superAdminId, adminId) => {
   try {
-    if (!adminId || isNaN(Number(adminId))) {
-      return {
-        status: false,
-        message: "No valid parent or super admin found for this request.",
-        data: [],
-      };
+
+    const currentAdmin = await Admin.findByPk(adminId);
+
+    let whereCondition = {};
+
+    // ✅ If superAdminId is null → This is SuperAdmin
+    if (!currentAdmin.superAdminId) {
+      // get all child admins/franchisee
+      const childAdmins = await Admin.findAll({
+        where: { superAdminId: Number(adminId) },
+        attributes: ["id"],
+      });
+
+      const childIds = childAdmins.map(a => a.id);
+
+      childIds.push(Number(adminId)); // include self
+
+      whereCondition.createdBy = childIds;
+    } 
+    else {
+      // ✅ Normal Admin / Franchisee → only own data
+      whereCondition.createdBy = Number(adminId);
     }
+
     const plans = await PaymentPlan.findAll({
-      where: { createdBy: Number(adminId) },
+      where: whereCondition,
       order: [["createdAt", "DESC"]],
     });
 
@@ -78,18 +95,48 @@ exports.getPlanById = async (id, adminId) => {
     if (!adminId || isNaN(Number(adminId))) {
       return {
         status: false,
-        message: "No valid parent or super admin found for this request.",
+        message: "Invalid admin ID.",
         data: [],
       };
     }
+
+    const currentAdmin = await Admin.findByPk(adminId);
+
+    if (!currentAdmin) {
+      return {
+        status: false,
+        message: "Admin not found.",
+      };
+    }
+
+    let whereCondition = { id };
+
+    // ✅ SuperAdmin (superAdminId null)
+    if (!currentAdmin.superAdminId) {
+
+      const childAdmins = await Admin.findAll({
+        where: { superAdminId: Number(adminId) },
+        attributes: ["id"],
+      });
+
+      const childIds = childAdmins.map(a => a.id);
+      childIds.push(Number(adminId));
+
+      whereCondition.createdBy = childIds;
+    } 
+    else {
+      // ✅ Normal Admin / Franchisee
+      whereCondition.createdBy = Number(adminId);
+    }
+
     const plan = await PaymentPlan.findOne({
-      where: { id, createdBy: Number(adminId) },
+      where: whereCondition,
     });
 
     if (!plan) {
       return {
         status: false,
-        message: "No payment plan found with the provided ID. (1)",
+        message: "No payment plan found with the provided ID.",
       };
     }
 
@@ -98,6 +145,7 @@ exports.getPlanById = async (id, adminId) => {
       data: plan,
       message: "Payment plan retrieved successfully.",
     };
+
   } catch (error) {
     return {
       status: false,
@@ -105,6 +153,39 @@ exports.getPlanById = async (id, adminId) => {
     };
   }
 };
+
+// exports.getPlanById = async (id, adminId) => {
+//   try {
+//     if (!adminId || isNaN(Number(adminId))) {
+//       return {
+//         status: false,
+//         message: "No valid parent or super admin found for this request.",
+//         data: [],
+//       };
+//     }
+//     const plan = await PaymentPlan.findOne({
+//       where: { id, createdBy: Number(adminId) },
+//     });
+
+//     if (!plan) {
+//       return {
+//         status: false,
+//         message: "No payment plan found with the provided ID. (1)",
+//       };
+//     }
+
+//     return {
+//       status: true,
+//       data: plan,
+//       message: "Payment plan retrieved successfully.",
+//     };
+//   } catch (error) {
+//     return {
+//       status: false,
+//       message: `Error fetching payment plan. ${error.message}`,
+//     };
+//   }
+// };
 
 // Public lookup
 exports.getPublicPlanById = async (id) => {

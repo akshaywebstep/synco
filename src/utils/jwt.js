@@ -14,8 +14,8 @@ const createToken = (user, expiresIn = process.env.JWT_EXPIRES_IN || "7d") => {
   }
 
   try {
-    const { id, name, email } = user;
-    const token = jwt.sign({ id, name, email }, process.env.JWT_SECRET, {
+    const { id, name, email, role } = user;
+    const token = jwt.sign({ id, name, email, role }, process.env.JWT_SECRET, {
       expiresIn,
     });
     return token;

@@ -31,122 +31,170 @@ exports.createCustomTemplate = async (data) => {
 };
 
 // ✅ LIST custom templates (filter by category if provided, dynamic admin scoping)
-exports.listCustomTemplates = async (adminId, superAdminId, createdBy, templateCategoryId = null) => {
+exports.listCustomTemplates = async () => {
   try {
-    const createdByNum = Number(createdBy);
-    if (isNaN(createdByNum)) {
-      return { status: false, message: "Invalid createdBy ID", data: [] };
-    }
 
     // -------------------------
-    // 1) Determine allowed admin IDs
-    // -------------------------
-    let allowedAdminIds = [];
-    if (superAdminId && superAdminId === adminId) {
-      // Super Admin → fetch all admins under them + self
-      const managedAdmins = await Admin.findAll({
-        where: { superAdminId },
-        attributes: ["id"],
-      });
-      allowedAdminIds = managedAdmins.map(a => a.id);
-      allowedAdminIds.push(superAdminId);
-    } else if (superAdminId && adminId) {
-      // Admin → fetch own + super admin
-      allowedAdminIds = [adminId, superAdminId];
-    } else {
-      // Fallback → just self
-      allowedAdminIds = [adminId];
-    }
-
-    // -------------------------
-    // 2) Build WHERE condition
-    // -------------------------
-    const where = { createdBy: { [Op.in]: allowedAdminIds } };
-
-    if (templateCategoryId !== undefined && templateCategoryId !== null) {
-      const filterId = Number(templateCategoryId);
-      if (!isNaN(filterId)) {
-        where.template_category_id = sequelize.where(
-          sequelize.fn("JSON_CONTAINS", sequelize.col("template_category_id"), JSON.stringify(filterId)),
-          1
-        );
-      }
-    }
-
-    // -------------------------
-    // 3) Fetch templates
+    // 1) Fetch ALL templates (No where condition)
     // -------------------------
     const templates = await CustomTemplate.findAll({
-      where,
       order: [["id", "DESC"]],
       raw: true,
     });
 
     // -------------------------
-    // 4) Fetch categories
-    // -------------------------
-    const catResult = await TemplateCategoryService.listTemplateCategories(createdBy);
-    const catMap = {};
-    catResult.data.forEach(cat => {
-      catMap[cat.id] = cat.category;
-    });
-
-    // -------------------------
-    // 5) Group templates by mode & category
+    // 2) Group templates by mode
     // -------------------------
     const grouped = { email: [], text: [] };
-    const bucket = { email: {}, text: {} };
 
     templates.forEach(temp => {
-      if (typeof temp.tags === "string") temp.tags = temp.tags.replace(/\\|"/g, "").trim();
 
-      if (typeof temp.content === "string") {
-        try { temp.content = JSON.parse(temp.content); } 
-        catch { temp.content = { blocks: [] }; }
+      // Clean tags
+      if (typeof temp.tags === "string") {
+        temp.tags = temp.tags.replace(/\\|"/g, "").trim();
       }
 
-      let catIds = [];
-      try {
-        const parsed = JSON.parse(temp.template_category_id);
-        parsed.forEach(item => {
-          if (typeof item === "string") {
-            const cleaned = item.replace(/[\[\]]/g, "");
-            cleaned.split(",").forEach(id => {
-              const n = Number(id);
-              if (!isNaN(n)) catIds.push(n);
-            });
-          } else if (typeof item === "number") {
-            catIds.push(item);
-          }
-        });
-      } catch { catIds = []; }
+      // Parse content safely
+      if (typeof temp.content === "string") {
+        try {
+          temp.content = JSON.parse(temp.content);
+        } catch {
+          temp.content = { blocks: [] };
+        }
+      }
 
-      const catNames = catIds.length
-        ? catIds.map(id => catMap[id] || "Uncategorized")
-        : ["Uncategorized"];
+      const mode =
+        ["email", "text"].includes(temp.mode_of_communication)
+          ? temp.mode_of_communication
+          : "email";
 
-      const mode = ["email", "text"].includes(temp.mode_of_communication) ? temp.mode_of_communication : "email";
-      catNames.forEach(catName => {
-        if (!bucket[mode][catName]) bucket[mode][catName] = [];
-        bucket[mode][catName].push(temp);
-      });
+      grouped[mode].push(temp);
     });
 
-    for (const mode of ["email", "text"]) {
-      Object.keys(bucket[mode]).forEach(cat => {
-        grouped[mode].push({
-          template_category: cat,
-          templates: bucket[mode][cat],
-        });
-      });
-    }
-
     return { status: true, data: grouped };
+
   } catch (error) {
     console.error("❌ listCustomTemplates Error:", error);
     return { status: false, message: error.message, data: [] };
   }
 };
+
+// exports.listCustomTemplates = async (adminId, superAdminId, createdBy, templateCategoryId = null) => {
+//   try {
+//     const createdByNum = Number(createdBy);
+//     if (isNaN(createdByNum)) {
+//       return { status: false, message: "Invalid createdBy ID", data: [] };
+//     }
+
+//     // -------------------------
+//     // 1) Determine allowed admin IDs
+//     // -------------------------
+//     let allowedAdminIds = [];
+//     if (superAdminId && superAdminId === adminId) {
+//       // Super Admin → fetch all admins under them + self
+//       const managedAdmins = await Admin.findAll({
+//         where: { superAdminId },
+//         attributes: ["id"],
+//       });
+//       allowedAdminIds = managedAdmins.map(a => a.id);
+//       allowedAdminIds.push(superAdminId);
+//     } else if (superAdminId && adminId) {
+//       // Admin → fetch own + super admin
+//       allowedAdminIds = [adminId, superAdminId];
+//     } else {
+//       // Fallback → just self
+//       allowedAdminIds = [adminId];
+//     }
+
+//     // -------------------------
+//     // 2) Build WHERE condition
+//     // -------------------------
+//     const where = { createdBy: { [Op.in]: allowedAdminIds } };
+
+//     if (templateCategoryId !== undefined && templateCategoryId !== null) {
+//       const filterId = Number(templateCategoryId);
+//       if (!isNaN(filterId)) {
+//         where.template_category_id = sequelize.where(
+//           sequelize.fn("JSON_CONTAINS", sequelize.col("template_category_id"), JSON.stringify(filterId)),
+//           1
+//         );
+//       }
+//     }
+
+//     // -------------------------
+//     // 3) Fetch templates
+//     // -------------------------
+//     const templates = await CustomTemplate.findAll({
+//       where,
+//       order: [["id", "DESC"]],
+//       raw: true,
+//     });
+
+//     // -------------------------
+//     // 4) Fetch categories
+//     // -------------------------
+//     const catResult = await TemplateCategoryService.listTemplateCategories(createdBy);
+//     const catMap = {};
+//     catResult.data.forEach(cat => {
+//       catMap[cat.id] = cat.category;
+//     });
+
+//     // -------------------------
+//     // 5) Group templates by mode & category
+//     // -------------------------
+//     const grouped = { email: [], text: [] };
+//     const bucket = { email: {}, text: {} };
+
+//     templates.forEach(temp => {
+//       if (typeof temp.tags === "string") temp.tags = temp.tags.replace(/\\|"/g, "").trim();
+
+//       if (typeof temp.content === "string") {
+//         try { temp.content = JSON.parse(temp.content); } 
+//         catch { temp.content = { blocks: [] }; }
+//       }
+
+//       let catIds = [];
+//       try {
+//         const parsed = JSON.parse(temp.template_category_id);
+//         parsed.forEach(item => {
+//           if (typeof item === "string") {
+//             const cleaned = item.replace(/[\[\]]/g, "");
+//             cleaned.split(",").forEach(id => {
+//               const n = Number(id);
+//               if (!isNaN(n)) catIds.push(n);
+//             });
+//           } else if (typeof item === "number") {
+//             catIds.push(item);
+//           }
+//         });
+//       } catch { catIds = []; }
+
+//       const catNames = catIds.length
+//         ? catIds.map(id => catMap[id] || "Uncategorized")
+//         : ["Uncategorized"];
+
+//       const mode = ["email", "text"].includes(temp.mode_of_communication) ? temp.mode_of_communication : "email";
+//       catNames.forEach(catName => {
+//         if (!bucket[mode][catName]) bucket[mode][catName] = [];
+//         bucket[mode][catName].push(temp);
+//       });
+//     });
+
+//     for (const mode of ["email", "text"]) {
+//       Object.keys(bucket[mode]).forEach(cat => {
+//         grouped[mode].push({
+//           template_category: cat,
+//           templates: bucket[mode][cat],
+//         });
+//       });
+//     }
+
+//     return { status: true, data: grouped };
+//   } catch (error) {
+//     console.error("❌ listCustomTemplates Error:", error);
+//     return { status: false, message: error.message, data: [] };
+//   }
+// };
 
 // ✅ DELETE custom template (soft delete + track deletedBy)
 exports.deleteCustomTemplate = async (id, adminId) => {
@@ -193,10 +241,10 @@ exports.updateCustomTemplate = async (id, data, adminId) => {
   }
 };
 
-exports.getCustomTemplateById = async (id, adminId, superAdminId) => {
+exports.getCustomTemplateById = async (id) => {
   try {
     const templateId = Number(id);
-    const adminIdNum = Number(adminId);
+    // const adminIdNum = Number(adminId);
 
     if (isNaN(templateId) || isNaN(adminIdNum)) {
       return { status: false, message: "Invalid ID provided." };
@@ -205,26 +253,26 @@ exports.getCustomTemplateById = async (id, adminId, superAdminId) => {
     // -------------------------
     // 1) Determine allowed admin IDs
     // -------------------------
-    let allowedAdminIds = [];
+    // let allowedAdminIds = [];
 
-    if (superAdminId && superAdminId === adminIdNum) {
-      // 🟢 Super Admin → fetch all admins under them + self
-      const managedAdmins = await Admin.findAll({
-        where: { superAdminId },
-        attributes: ["id"],
-      });
+    // if (superAdminId && superAdminId === adminIdNum) {
+    //   // 🟢 Super Admin → fetch all admins under them + self
+    //   const managedAdmins = await Admin.findAll({
+    //     where: { superAdminId },
+    //     attributes: ["id"],
+    //   });
 
-      allowedAdminIds = managedAdmins.map(a => a.id);
-      allowedAdminIds.push(superAdminId);
+    //   allowedAdminIds = managedAdmins.map(a => a.id);
+    //   allowedAdminIds.push(superAdminId);
 
-    } else if (superAdminId && adminIdNum) {
-      // 🟢 Admin → own + super admin
-      allowedAdminIds = [adminIdNum, superAdminId];
+    // } else if (superAdminId && adminIdNum) {
+    //   // 🟢 Admin → own + super admin
+    //   allowedAdminIds = [adminIdNum, superAdminId];
 
-    } else {
-      // 🟢 Fallback → only self
-      allowedAdminIds = [adminIdNum];
-    }
+    // } else {
+    //   // 🟢 Fallback → only self
+    //   allowedAdminIds = [adminIdNum];
+    // }
 
     // -------------------------
     // 2) Fetch template
@@ -232,7 +280,7 @@ exports.getCustomTemplateById = async (id, adminId, superAdminId) => {
     const template = await CustomTemplate.findOne({
       where: {
         id: templateId,
-        createdBy: { [Op.in]: allowedAdminIds },
+        // createdBy: { [Op.in]: allowedAdminIds },
       },
       raw: true,
     });
