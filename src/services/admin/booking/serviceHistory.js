@@ -139,15 +139,11 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
           "gender",
           "medicalInformation",
         ].forEach((field) => {
-<<<<<<< HEAD
           if (
             student[field] !== undefined &&
             student[field] !== null &&
             !(typeof student[field] === "string" && student[field].trim() === "")
           ) {
-=======
-          if (student[field] !== undefined) {
->>>>>>> 1078a6fe6fdbc9f3115c479227d18723c771807e
             studentRecord[field] = student[field];
           }
         });
@@ -207,15 +203,11 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
                 "relationToChild",
                 "howDidYouHear",
               ].forEach((field) => {
-<<<<<<< HEAD
                 if (
                   parent[field] !== undefined &&
                   parent[field] !== null &&
                   !(typeof parent[field] === "string" && parent[field].trim() === "")
                 ) {
-=======
-                if (parent[field] !== undefined) {
->>>>>>> 1078a6fe6fdbc9f3115c479227d18723c771807e
                   parentRecord[field] = parent[field];
                 }
               });
@@ -272,7 +264,6 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
                 "emergencyPhoneNumber",
                 "emergencyRelation",
               ].forEach((field) => {
-<<<<<<< HEAD
                 if (
                   emergency[field] !== undefined &&
                   emergency[field] !== null &&
@@ -281,11 +272,6 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
                   emergencyRecord[field] = emergency[field];
                 }
 
-=======
-                if (emergency[field] !== undefined) {
-                  emergencyRecord[field] = emergency[field];
-                }
->>>>>>> 1078a6fe6fdbc9f3115c479227d18723c771807e
               });
 
               await emergencyRecord.save({ transaction: t });

@@ -12,4 +12,3 @@ router.get("/:id", authMiddleware, coachProfile.getAdminProfile);
 router.put("/update/:id", upload.single("profile"), authMiddleware, coachProfile.updateAdmin);
 
 module.exports = router;
-// dsad
