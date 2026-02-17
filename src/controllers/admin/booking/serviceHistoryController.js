@@ -62,7 +62,7 @@ exports.updateBookingStudents = async (req, res) => {
       if (!Array.isArray(student.emergencyContacts))
         student.emergencyContacts = [];
     });
-<<<<<<< HEAD
+
     // ✅ Deep validation before DB transaction
     for (let i = 0; i < studentsPayload.length; i++) {
       const student = studentsPayload[i];
@@ -150,8 +150,7 @@ exports.updateBookingStudents = async (req, res) => {
         }
       }
     }
-=======
->>>>>>> 1078a6fe6fdbc9f3115c479227d18723c771807e
+
 
     // 🔹 Transaction
     const t = await sequelize.transaction();
