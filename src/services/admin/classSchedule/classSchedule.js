@@ -1,0 +1,910 @@
+const {
+  CancelSession,
+  ClassSchedule,
+  Venue,
+  TermGroup,
+  Term,
+  SessionPlanGroup,
+  SessionExercise,
+  PaymentPlan,
+  ClassScheduleTermMap,
+  PaymentGroup,
+  Admin,
+} = require("../../../models");
+const { Op } = require("sequelize");
+
+const {
+  getVideoDurationInSeconds,
+  formatDuration,
+} = require("../../../utils/videoHelper");
+
+exports.autoUpdateSessionStatusByDate = async () => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const terms = await Term.findAll({
+      attributes: ["id", "sessionsMap"],
+    });
+
+    for (const term of terms) {
+      if (!term.sessionsMap) continue;
+
+      const sessions =
+        typeof term.sessionsMap === "string"
+          ? JSON.parse(term.sessionsMap)
+          : term.sessionsMap;
+
+      for (const session of sessions) {
+        if (!session.sessionDate || !session.sessionPlanId) continue;
+
+        const sessionDate = new Date(session.sessionDate);
+        sessionDate.setHours(0, 0, 0, 0);
+
+        /**
+         * ✅ PAST SESSION → COMPLETED
+         * ONLY IF NOT CANCELLED
+         */
+        if (sessionDate < today) {
+          await ClassScheduleTermMap.update(
+            { status: "completed" },
+            {
+              where: {
+                termId: term.id,
+                sessionPlanId: session.sessionPlanId,
+                status: { [Op.ne]: "cancelled" },
+              },
+            }
+          );
+        }
+
+        /**
+         * ✅ FUTURE SESSION → PENDING
+         * ONLY IF NOT CANCELLED
+         */
+        if (sessionDate >= today) {
+          await ClassScheduleTermMap.update(
+            { status: "pending" },
+            {
+              where: {
+                termId: term.id,
+                sessionPlanId: session.sessionPlanId,
+                status: { [Op.ne]: "cancelled" },
+              },
+            }
+          );
+        }
+      }
+    }
+
+    // console.log("✅ CRON: Session status auto-updated (rule-safe)");
+  } catch (err) {
+    console.error("❌ CRON FAILED:", err);
+  }
+};
+
+exports.getAllClasses = async (adminId) => {
+  try {
+    const currentAdmin = await Admin.findByPk(adminId);
+
+    if (!currentAdmin) {
+      return {
+        status: false,
+        message: "Admin not found.",
+        data: [],
+      };
+    }
+
+    let whereCondition = {};
+
+    // ✅ If SuperAdmin (no superAdminId)
+    if (!currentAdmin.superAdminId) {
+      const childAdmins = await Admin.findAll({
+        where: { superAdminId: adminId },
+        attributes: ["id"],
+      });
+
+      const childIds = childAdmins.map(a => a.id);
+
+      // SuperAdmin can see own + franchise data
+      whereCondition.createdBy = [adminId, ...childIds];
+    }
+    // ✅ If Franchise / Normal Admin
+    else {
+      // 🔥 Only show venues created by this franchise
+      whereCondition.createdBy = adminId;
+    }
+
+    async function getCancelledSessionBySessionPlanId(mapId, sessionPlanId) {
+      try {
+        console.log(
+          "🔹 Function called with mapId:",
+          mapId,
+          "sessionPlanId:",
+          sessionPlanId
+        );
+
+        // ✅ Validate input: both IDs are required
+        if (!mapId || !sessionPlanId) {
+          console.log("⚠️ mapId and sessionPlanId are required");
+          return {
+            status: false,
+            message: "Both mapId and sessionPlanId are required.",
+          };
+        }
+
+        // Fetch only the first cancelled session matching both IDs
+        console.log(
+          "⏳ Fetching first CancelSession with mapId and sessionPlanId..."
+        );
+        const cancelSession = await CancelSession.findOne({
+          where: {
+            mapId,
+            sessionPlanGroupId: sessionPlanId,
+          },
+          order: [["cancelledAt", "ASC"]], // earliest cancellation first
+        });
+
+        if (!cancelSession) {
+          console.log(
+            `⚠️ No cancelled session found for mapId=${mapId}, sessionPlanId=${sessionPlanId}`
+          );
+          return { status: false, message: "Cancelled session not found." };
+        }
+
+        console.log("✔️ Found cancelled session ID:", cancelSession.id);
+        return { status: true, cancelSession };
+      } catch (error) {
+        console.error("❌ Error fetching cancelled session:", error);
+        return {
+          status: false,
+          message: "Something went wrong.",
+          error: error.message,
+        };
+      }
+    }
+
+    const classes = await ClassSchedule.findAll({
+      where: whereCondition,
+      order: [["id", "ASC"]],
+      include: [{ model: Venue, as: "venue" }],
+    });
+
+    // Fetch all mappings once
+    const mappings = await ClassScheduleTermMap.findAll();
+
+    for (const cls of classes) {
+      const venue = cls.venue;
+
+      if (venue) {
+        // =====================
+        // paymentGroupId → single integer now
+        // =====================
+        let paymentGroups = [];
+        if (venue.paymentGroupId) {
+          const pg = await PaymentGroup.findAll({
+            where: { id: venue.paymentGroupId },
+            include: [
+              {
+                model: PaymentPlan,
+                as: "paymentPlans",
+                attributes: [
+                  "id",
+                  "title",
+                  "price",
+                  "priceLesson",
+                  "interval",
+                  "duration",
+                  "students",
+                  "joiningFee",
+                  "HolidayCampPackage",
+                  "termsAndCondition",
+                  "createdBy",
+                  "createdAt",
+                  "updatedAt",
+                ],
+              },
+            ],
+            order: [["createdAt", "DESC"]],
+          });
+          paymentGroups = pg;
+        }
+        venue.dataValues.paymentGroups = paymentGroups;
+
+        // =====================
+        // termGroupId → array of IDs
+        // =====================
+        let termGroupIds = [];
+        if (typeof venue.termGroupId === "string") {
+          try {
+            termGroupIds = JSON.parse(venue.termGroupId);
+          } catch {
+            termGroupIds = [];
+          }
+        } else if (Array.isArray(venue.termGroupId)) {
+          termGroupIds = venue.termGroupId;
+        }
+
+        // =====================
+        // Fetch term groups with terms
+        // =====================
+        if (termGroupIds.length > 0) {
+          const termGroups = await TermGroup.findAll({
+            where: { id: termGroupIds },
+            include: [
+              {
+                model: Term,
+                as: "terms",
+                attributes: [
+                  "id",
+                  "termGroupId",
+                  "termName",
+                  "day",
+                  "startDate",
+                  "endDate",
+                  "exclusionDates",
+                  "totalSessions",
+                  "sessionsMap",
+                ],
+              },
+            ],
+          });
+
+          const termIds = JSON.parse(cls.termIds || "[]").map(Number);
+
+          for (const termGroup of termGroups) {
+            for (const term of termGroup.terms || []) {
+              if (!termIds.includes(term.id)) {
+                continue;
+              }
+
+              if (typeof term.exclusionDates === "string") {
+                try {
+                  term.dataValues.exclusionDates = JSON.parse(
+                    term.exclusionDates
+                  );
+                } catch {
+                  term.dataValues.exclusionDates = [];
+                }
+              }
+
+              let parsedSessionsMap = [];
+              if (typeof term.sessionsMap === "string") {
+                try {
+                  parsedSessionsMap = JSON.parse(term.sessionsMap);
+                } catch {
+                  parsedSessionsMap = [];
+                }
+              } else {
+                parsedSessionsMap = term.sessionsMap || [];
+              }
+
+              // ✅ New array to hold only sessions that exist in ClassScheduleTermMap
+              const filteredSessions = [];
+
+              // ✅ Get all sessionPlanIds that already exist in mapping for this class + term
+              const existingSessionPlanIds = mappings
+                .filter(
+                  (m) =>
+                    m.classScheduleId === cls.id &&
+                    m.termGroupId === termGroup.id &&
+                    m.termId === term.id
+                )
+                .map((m) => m.sessionPlanId);
+
+              for (let i = 0; i < parsedSessionsMap.length; i++) {
+                const entry = parsedSessionsMap[i];
+                if (!entry.sessionPlanId) continue;
+
+                // 🧩 Skip sessions that were newly added in term.sessionMap (not in mapping yet)
+                if (!existingSessionPlanIds.includes(entry.sessionPlanId)) {
+                  continue;
+                }
+
+                const spg = await SessionPlanGroup.findByPk(
+                  entry.sessionPlanId,
+                  {
+                    attributes: [
+                      "id",
+                      "groupName",
+                      "levels",
+                      "type",
+                      "pinned",
+                      "beginner_video",
+                      "intermediate_video",
+                      "advanced_video",
+                      "pro_video",
+                      "banner",
+                      "intermediate_banner",
+                      "pro_banner",
+                      "beginner_banner",
+                      "advanced_banner",
+                      "player",
+                      "beginner_upload",
+                      "intermediate_upload",
+                      "advanced_upload",
+                      "pro_upload",
+                      "createdBy",
+                      "createdAt",
+                    ],
+                  }
+                );
+
+                if (!spg) continue;
+
+                const relatedMappings = mappings.filter(
+                  (m) =>
+                    m.classScheduleId === cls.id &&
+                    m.termGroupId === termGroup.id &&
+                    m.termId === term.id &&
+                    m.sessionPlanId === entry.sessionPlanId
+                );
+
+                if (relatedMappings.length === 0) continue;
+
+                // 🧩 Parse levels safely
+                let levels = {};
+                try {
+                  levels =
+                    typeof spg.levels === "string"
+                      ? JSON.parse(spg.levels)
+                      : spg.levels || {};
+                } catch {
+                  levels = {};
+                }
+
+                const allExercises = await SessionExercise.findAll({
+                  where: { createdBy: spg.createdBy },
+                });
+                const exerciseMap = allExercises.reduce((acc, ex) => {
+                  acc[ex.id] = ex;
+                  return acc;
+                }, {});
+
+                for (const levelKey of Object.keys(levels)) {
+                  for (const item of levels[levelKey]) {
+                    if (Array.isArray(item.sessionExerciseId)) {
+                      item.sessionExercises = item.sessionExerciseId
+                        .map((exId) => exerciseMap[exId])
+                        .filter(Boolean)
+                        .map((ex) => ({
+                          id: ex.id,
+                          title: ex.title,
+                          description: ex.description,
+                          duration: ex.duration,
+                          imageUrl: ex.imageUrl,
+                        }));
+                    } else {
+                      item.sessionExercises = [];
+                    }
+                  }
+                }
+
+                const getElapsedTime = (createdAt) => {
+                  const now = new Date();
+                  const created = new Date(createdAt);
+                  const diffMs = now - created;
+                  const diffSeconds = Math.floor(diffMs / 1000);
+                  const diffMinutes = Math.floor(diffSeconds / 60);
+                  const diffHours = Math.floor(diffMinutes / 60);
+                  const diffDays = Math.floor(diffHours / 24);
+                  if (diffDays > 0) return `${diffDays} day(s) ago`;
+                  if (diffHours > 0) return `${diffHours} hour(s) ago`;
+                  if (diffMinutes > 0) return `${diffMinutes} minute(s) ago`;
+                  return `${diffSeconds} second(s) ago`;
+                };
+
+                const videoUploadedAgo = {};
+                for (const level of [
+                  "beginner",
+                  "intermediate",
+                  "advanced",
+                  "pro",
+                ]) {
+                  if (spg[`${level}_video`]) {
+                    videoUploadedAgo[`${level}_video`] = getElapsedTime(
+                      spg.createdAt
+                    );
+                  } else {
+                    videoUploadedAgo[`${level}_video`] = null;
+                  }
+                }
+
+                const mapping =
+                  relatedMappings[i] || relatedMappings[0] || null;
+
+                entry.sessionPlan = {
+                  id: spg.id,
+                  groupName: spg.groupName,
+                  levels,
+                  beginner_banner: spg.beginner_banner,
+                  intermediate_banner: spg.intermediate_banner,
+                  pro_banner: spg.pro_banner,
+                  advanced_banner: spg.advanced_banner,
+                  beginner_video: spg.beginner_video,
+                  intermediate_video: spg.intermediate_video,
+                  advanced_video: spg.advanced_video,
+                  pro_video: spg.pro_video,
+                  banner: spg.banner,
+                  player: spg.player,
+                  videoUploadedAgo,
+                  ...(mapping
+                    ? {
+                      mapId: mapping.id,
+                      classScheduleId: mapping.classScheduleId,
+                      termGroupId: mapping.termGroupId,
+                      termId: mapping.termId,
+                      sessionPlanId: mapping.sessionPlanId,
+                      cancelSession: await (async () => {
+                        const cancelled =
+                          await getCancelledSessionBySessionPlanId(
+                            mapping.id,
+                            mapping.sessionPlanId
+                          );
+                        return cancelled?.status
+                          ? cancelled.cancelSession
+                          : {};
+                      })(),
+                      status: mapping.status,
+                      createdAt: mapping.createdAt,
+                      updatedAt: mapping.updatedAt,
+                    }
+                    : {}),
+                };
+
+                // ✅ Only push if mapping exists
+                filteredSessions.push(entry);
+              }
+
+              // ✅ Replace with filtered sessions only
+              term.dataValues.sessionsMap = filteredSessions;
+            }
+
+            // ✅ Remove empty terms
+            termGroup.terms = termGroup.terms.filter(
+              (t) => (t.dataValues.sessionsMap || []).length > 0
+            );
+          }
+
+          // ✅ Remove empty term groups
+          const filteredTermGroups = termGroups.filter(
+            (tg) => (tg.terms || []).length > 0
+          );
+
+          venue.dataValues.termGroups = filteredTermGroups;
+        }
+      } else {
+        // venue is null — avoid crash
+        cls.dataValues.venue = null;
+        console.warn(`⚠️ ClassSchedule ${cls.id} has no venue`);
+      }
+    }
+
+    return {
+      status: true,
+      message: "Fetched class schedules successfully.",
+      data: classes,
+    };
+  } catch (error) {
+    console.error("❌ getAllClasses Error:", error);
+    return { status: false, message: error.message };
+  }
+};
+
+// ✅ Create a new class
+exports.createClass = async (data) => {
+  try {
+    const newClass = await ClassSchedule.create(data);
+    return { status: true, data: newClass };
+  } catch (error) {
+    console.error("❌ createClass Error:", error);
+    return { status: false, message: error.message };
+  }
+};
+
+// ✅ Update class by ID
+exports.updateClass = async (id, data) => {
+  try {
+    const cls = await ClassSchedule.findByPk(id);
+    if (!cls) return { status: false, message: "Class not found" };
+
+    await cls.update(data);
+    return { status: true, data: cls };
+  } catch (error) {
+    console.error("❌ updateClass Error:", error);
+    return { status: false, message: error.message };
+  }
+};
+
+exports.getClassByIdWithFullDetails = async (classId, createdBy) => {
+  try {
+    const currentAdmin = await Admin.findByPk(adminId);
+
+    if (!currentAdmin) {
+      return {
+        status: false,
+        message: "Admin not found.",
+        data: [],
+      };
+    }
+
+    let whereCondition = {};
+
+    // ✅ If SuperAdmin (no superAdminId)
+    if (!currentAdmin.superAdminId) {
+      const childAdmins = await Admin.findAll({
+        where: { superAdminId: adminId },
+        attributes: ["id"],
+      });
+
+      const childIds = childAdmins.map(a => a.id);
+
+      // SuperAdmin can see own + franchise data
+      whereCondition.createdBy = [adminId, ...childIds];
+    }
+    // ✅ If Franchise / Normal Admin
+    else {
+      // 🔥 Only show venues created by this franchise
+      whereCondition.createdBy = adminId;
+    }
+
+    const cls = await ClassSchedule.findOne({
+      where: { id: classId, ...whereCondition },
+      include: [{ model: Venue, as: "venue" }],
+    });
+
+    if (!cls) {
+      return { status: false, message: "Class not found.", data: [] };
+    }
+
+    const venue = cls.venue;
+
+    if (venue) {
+      // =====================
+      // paymentGroupId → single integer
+      // =====================
+      let paymentGroups = [];
+      if (venue.paymentGroupId) {
+        const pg = await PaymentGroup.findAll({
+          where: { id: venue.paymentGroupId },
+          include: [
+            {
+              model: PaymentPlan,
+              as: "paymentPlans",
+              attributes: [
+                "id",
+                "title",
+                "price",
+                "priceLesson",
+                "interval",
+                "duration",
+                "students",
+                "joiningFee",
+                "HolidayCampPackage",
+                "termsAndCondition",
+                "createdBy",
+                "createdAt",
+                "updatedAt",
+              ],
+            },
+          ],
+          order: [["createdAt", "DESC"]],
+        });
+        paymentGroups = pg;
+      }
+      venue.dataValues.paymentGroups = paymentGroups;
+
+      // =====================
+      // termGroupId → array of IDs
+      // =====================
+      let termGroupIds = [];
+      if (typeof venue.termGroupId === "string") {
+        try {
+          termGroupIds = JSON.parse(venue.termGroupId);
+        } catch {
+          termGroupIds = [];
+        }
+      } else if (Array.isArray(venue.termGroupId)) {
+        termGroupIds = venue.termGroupId;
+      }
+
+      // Fetch all mappings once (for this class)
+      const mappings = await ClassScheduleTermMap.findAll({
+        where: { classScheduleId: cls.id },
+      });
+
+      // =====================
+      // Fetch term groups with terms
+      // =====================
+      if (termGroupIds.length > 0) {
+        const termGroups = await TermGroup.findAll({
+          where: { id: termGroupIds },
+          include: [
+            {
+              model: Term,
+              as: "terms",
+              attributes: [
+                "id",
+                "termGroupId",
+                "termName",
+                "day",
+                "startDate",
+                "endDate",
+                "exclusionDates",
+                "totalSessions",
+                "sessionsMap",
+              ],
+            },
+          ],
+        });
+
+        for (const termGroup of termGroups) {
+          for (const term of termGroup.terms || []) {
+            if (typeof term.exclusionDates === "string") {
+              try {
+                term.dataValues.exclusionDates = JSON.parse(
+                  term.exclusionDates
+                );
+              } catch {
+                term.dataValues.exclusionDates = [];
+              }
+            }
+
+            let parsedSessionsMap = [];
+            if (typeof term.sessionsMap === "string") {
+              try {
+                parsedSessionsMap = JSON.parse(term.sessionsMap);
+              } catch {
+                parsedSessionsMap = [];
+              }
+            } else {
+              parsedSessionsMap = term.sessionsMap || [];
+            }
+
+            // ✅ Corrected loop: only include sessions present in ClassScheduleTermMap
+            const filteredSessions = [];
+
+            for (let i = 0; i < parsedSessionsMap.length; i++) {
+              const entry = parsedSessionsMap[i];
+              if (!entry.sessionPlanId) continue;
+
+              const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
+                attributes: [
+                  "id",
+                  "groupName",
+                  "levels",
+                  "type",
+                  "pinned",
+                  "beginner_video",
+                  "intermediate_video",
+                  "advanced_video",
+                  "pro_video",
+                  "banner",
+                  "player",
+                  "beginner_upload",
+                  "intermediate_upload",
+                  "advanced_upload",
+                  "pro_upload",
+                  "createdBy",
+                  "createdAt",
+                ],
+              });
+
+              if (!spg) continue;
+
+              // ✅ Only include if mapping exists in ClassScheduleTermMap
+              const relatedMappings = mappings.filter(
+                (m) =>
+                  m.classScheduleId === cls.id &&
+                  m.termGroupId === termGroup.id &&
+                  m.termId === term.id &&
+                  m.sessionPlanId === spg.id
+              );
+
+              if (relatedMappings.length === 0) continue; // skip sessions not in map
+
+              // Parse levels safely
+              let levels = {};
+              try {
+                levels =
+                  typeof spg.levels === "string"
+                    ? JSON.parse(spg.levels)
+                    : spg.levels || {};
+              } catch {
+                levels = {};
+              }
+
+              // Fetch exercises
+              const allExercises = await SessionExercise.findAll({
+                where: { createdBy: spg.createdBy },
+              });
+              const exerciseMap = allExercises.reduce((acc, ex) => {
+                acc[ex.id] = ex;
+                return acc;
+              }, {});
+
+              for (const levelKey of Object.keys(levels)) {
+                for (const item of levels[levelKey]) {
+                  if (Array.isArray(item.sessionExerciseId)) {
+                    item.sessionExercises = item.sessionExerciseId
+                      .map((exId) => exerciseMap[exId])
+                      .filter(Boolean)
+                      .map((ex) => ({
+                        id: ex.id,
+                        title: ex.title,
+                        description: ex.description,
+                        duration: ex.duration,
+                        imageUrl: ex.imageUrl,
+                      }));
+                  } else {
+                    item.sessionExercises = [];
+                  }
+                }
+              }
+
+              // Uploaded ago calculation
+              const getElapsedTime = (createdAt) => {
+                const now = new Date();
+                const created = new Date(createdAt);
+                const diffMs = now - created;
+                const diffSeconds = Math.floor(diffMs / 1000);
+                const diffMinutes = Math.floor(diffSeconds / 60);
+                const diffHours = Math.floor(diffMinutes / 60);
+                const diffDays = Math.floor(diffHours / 24);
+
+                if (diffDays > 0) return `${diffDays} day(s) ago`;
+                if (diffHours > 0) return `${diffHours} hour(s) ago`;
+                if (diffMinutes > 0) return `${diffMinutes} minute(s) ago`;
+                return `${diffSeconds} second(s) ago`;
+              };
+
+              // Build combined video info (duration + uploadedAgo)
+              const videoUploadedAgo = {};
+
+              for (const level of [
+                "beginner",
+                "intermediate",
+                "advanced",
+                "pro",
+              ]) {
+                const video = spg[`${level}_video`];
+
+                const videoPath =
+                  typeof video === "string"
+                    ? video
+                    : video?.path || video?.url || null;
+
+                if (videoPath) {
+                  try {
+                    const durationInSeconds = await getVideoDurationInSeconds(
+                      videoPath
+                    );
+                    const formattedDuration = formatDuration(durationInSeconds);
+
+                    videoUploadedAgo[`${level}_video_duration`] =
+                      formattedDuration;
+                    videoUploadedAgo[`${level}_video_uploadedAgo`] =
+                      getElapsedTime(spg.createdAt);
+                  } catch (err) {
+                    console.error(
+                      `Error getting duration for ${level} video:`,
+                      err
+                    );
+                    videoUploadedAgo[`${level}_video_duration`] = null;
+                    videoUploadedAgo[`${level}_video_uploadedAgo`] =
+                      getElapsedTime(spg.createdAt);
+                  }
+                } else {
+                  videoUploadedAgo[`${level}_video_duration`] = null;
+                  videoUploadedAgo[`${level}_video_uploadedAgo`] = null;
+                }
+              }
+
+              const mapping = relatedMappings[i] || relatedMappings[0] || null;
+
+              entry.sessionPlan = {
+                id: spg.id,
+                groupName: spg.groupName,
+                levels,
+                beginner_video: spg.beginner_video,
+                intermediate_video: spg.intermediate_video,
+                advanced_video: spg.advanced_video,
+                pro_video: spg.pro_video,
+                banner: spg.banner,
+                player: spg.player,
+                videoUploadedAgo,
+                ...(mapping
+                  ? {
+                    mapId: mapping.id,
+                    classScheduleId: mapping.classScheduleId,
+                    termGroupId: mapping.termGroupId,
+                    termId: mapping.termId,
+                    sessionPlanId: mapping.sessionPlanId,
+                    status: mapping.status,
+                    createdAt: mapping.createdAt,
+                    updatedAt: mapping.updatedAt,
+                  }
+                  : {}),
+              };
+
+              // ✅ Add only mapped sessions
+              filteredSessions.push(entry);
+            }
+
+            // ✅ Replace the old sessionsMap with filtered result
+            term.dataValues.sessionsMap = filteredSessions;
+          }
+        }
+
+        venue.dataValues.termGroups = termGroups;
+      } else {
+        venue.dataValues.termGroups = [];
+      }
+    } else {
+      cls.dataValues.venue = null;
+      console.warn(`⚠️ ClassSchedule ${cls.id} has no venue`);
+    }
+
+    return {
+      status: true,
+      message: "Fetched class schedule successfully.",
+      data: cls,
+    };
+  } catch (error) {
+    console.error("❌ getClassByIdWithFullDetails Error:", error);
+    return { status: false, message: error.message };
+  }
+};
+exports.deleteClass = async (id, deletedBy) => {
+  try {
+    // Find the class (not already deleted)
+    const classSchedule = await ClassSchedule.findOne({
+      where: { id, deletedAt: null },
+    });
+
+    if (!classSchedule) {
+      return { status: false, message: "Class schedule not found." };
+    }
+
+    // Track who deleted
+    await classSchedule.update({ deletedBy });
+
+    // Soft delete (sets deletedAt automatically because of paranoid)
+    await classSchedule.destroy();
+
+    return { status: true, message: "Class schedule deleted successfully." };
+  } catch (error) {
+    console.error("❌ deleteClass Service Error:", error);
+    return {
+      status: false,
+      message: `Failed to delete class. ${error.message}`,
+    };
+  }
+};
+
+exports.getClassScheduleTermMapById = async (id) => {
+  try {
+    console.log("🔹 Fetching ClassScheduleTermMap with ID:", id);
+
+    const mapEntry = await ClassScheduleTermMap.findByPk(id);
+
+    if (!mapEntry) {
+      console.log("⚠️ No ClassScheduleTermMap found for ID:", id);
+      return { status: false, message: "ClassScheduleTermMap not found." };
+    }
+
+    console.log("✔️ Found ClassScheduleTermMap:", mapEntry.id);
+    return {
+      status: true,
+      message: "ClassScheduleTermMap fetched successfully.",
+      mapEntry,
+    };
+  } catch (error) {
+    console.error("❌ Error fetching ClassScheduleTermMap:", error);
+    return {
+      status: false,
+      message: "Something went wrong.",
+      error: error.message,
+    };
+  }
+};

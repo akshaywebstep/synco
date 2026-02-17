@@ -1,0 +1,1688 @@
+const { validateFormData } = require("../../../utils/validateFormData");
+const BookingTrialService = require("../../../services/admin/booking/waitingList");
+const { logActivity } = require("../../../utils/admin/activityLogger");
+const { sequelize } = require("../../../models");
+
+const {
+  Venue,
+  ClassSchedule,
+  Admin,
+  Booking,
+  BookingParentMeta,
+  BookingStudentMeta,
+  TemplateCategory,
+  CustomTemplate,
+  BookingPayment,
+} = require("../../../models");
+const emailModel = require("../../../services/email");
+const sendEmail = require("../../../utils/email/sendEmail");
+const {
+  createNotification,
+  createCustomNotificationForAdmins,
+} = require("../../../utils/admin/notificationHelper");
+const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
+
+const DEBUG = process.env.DEBUG === "true";
+const PANEL = "admin";
+const MODULE = "waiting_list";
+
+// Create Waiting List
+exports.createBooking = async (req, res) => {
+  if (DEBUG) console.log("📥 Received booking request");
+  const formData = req.body;
+
+  if (DEBUG) console.log("🔍 Fetching class data...");
+
+  if (DEBUG) console.log("✅ Validating form data...");
+  const { isValid, error } = validateFormData(formData, {
+    requiredFields: [
+      "totalStudents",
+      "classScheduleId",
+      "interest",
+      "startDate",
+      "students", // array, validate inside loop
+      "parents", // array, validate inside loop
+      // "emergency", // object, validate inside
+    ],
+  });
+
+  // Validate students
+  if (!Array.isArray(formData.students) || formData.students.length === 0) {
+    return res.status(400).json({
+      status: false,
+      message: "At least one student must be provided.",
+    });
+  }
+
+  for (const student of formData.students) {
+    const { isValid, error } = validateFormData(student, {
+      requiredFields: [
+        "studentFirstName",
+        "studentLastName",
+        "dateOfBirth",
+        "medicalInformation",
+        "classScheduleId", // ✅ REQUIRED HERE
+      ],
+    });
+    if (!isValid) {
+      return res.status(400).json({ status: false, ...error });
+    }
+  }
+
+  // Validate parents
+  if (!Array.isArray(formData.parents) || formData.parents.length === 0) {
+    return res.status(400).json({
+      status: false,
+      message: "At least one parent must be provided.",
+    });
+  }
+
+  for (const parent of formData.parents) {
+    const { isValid, error } = validateFormData(parent, {
+      requiredFields: [
+        "parentFirstName",
+        "parentLastName",
+        "parentEmail",
+        "parentPhoneNumber",
+      ],
+    });
+    if (!isValid) {
+      return res.status(400).json({ status: false, ...error });
+    }
+  }
+
+  if (DEBUG) console.log("🏫 Fetching venue data...");
+  const venue = await Venue.findByPk(formData.venueId);
+  if (!venue) {
+    const message = "Venue linked to this class is not configured.";
+    if (DEBUG) console.warn("❌ Venue not found.");
+    await logActivity(req, PANEL, MODULE, "create", { message }, false);
+    return res.status(404).json({ status: false, message });
+  }
+
+  if (DEBUG) console.log("👨‍👩‍👧 Validating students and parents...");
+  const emailMap = new Map();
+  const duplicateEmails = [];
+
+  for (const student of formData.students) {
+    if (
+      !student.studentFirstName ||
+      !student.dateOfBirth ||
+      !student.medicalInformation
+    ) {
+      if (DEBUG) console.warn("❌ Missing student info.");
+      return res.status(400).json({
+        status: false,
+        message:
+          "Each student must have a name, date of birth, and medical information.",
+      });
+    }
+
+    // ✅ Emergency contact is OPTIONAL
+    const emergency = req.body.emergency;
+
+    if (emergency) {
+      if (!emergency.emergencyFirstName) {
+        return res.status(400).json({
+          status: false,
+          message: "Emergency contact first name is required.",
+        });
+      }
+      if (!emergency.emergencyLastName) {
+        return res.status(400).json({
+          status: false,
+          message: "Emergency contact last name is required.",
+        });
+      }
+      if (!emergency.emergencyPhoneNumber) {
+        return res.status(400).json({
+          status: false,
+          message: "Emergency contact phone number is required.",
+        });
+      }
+    }
+
+    // student.className = classData.className;
+    // student.startTime = classData.startTime;
+    // student.endTime = classData.endTime;
+
+    const parents = [
+      ...(student.parents || []),
+      ...(student.secondParentDetails ? [student.secondParentDetails] : []),
+    ];
+
+    for (const parent of parents) {
+      const email = parent?.parentEmail?.trim()?.toLowerCase();
+      if (!email || !parent.parentFirstName || !parent.parentPhoneNumber) {
+        if (DEBUG) console.warn("❌ Missing parent info.");
+        return res.status(400).json({
+          status: false,
+          message: "Each parent must have a name, email, and phone number.",
+        });
+      }
+
+      if (emailMap.has(email)) continue;
+
+      const exists = await Admin.findOne({ where: { email } });
+      if (exists) {
+        if (DEBUG) console.warn(`⚠️ Duplicate email found: ${email}`);
+        duplicateEmails.push(email);
+      } else {
+        emailMap.set(email, parent);
+      }
+    }
+  }
+
+  if (duplicateEmails.length > 0) {
+    const unique = [...new Set(duplicateEmails)]; // remove duplicates
+    const message =
+      unique.length === 1
+        ? `${unique[0]} email already in use.`
+        : `${unique.join(", ")} emails already in use.`;
+
+    if (DEBUG) console.warn("❌ Duplicate email(s) found.");
+    await logActivity(req, PANEL, MODULE, "create", { message }, false);
+
+    return res.status(409).json({ status: false, message });
+  }
+
+  try {
+    if (DEBUG) console.log("🚀 Creating booking...");
+
+    const leadId = req.params.leadId || null;
+
+    const result = await BookingTrialService.createBooking(formData, {
+      source: req.source,
+      adminId: req.admin?.id,
+      adminFirstName: req.admin?.firstName || "Unknown",
+      leadId,
+    });
+
+    if (!result.status) {
+      if (DEBUG) console.error("❌ Booking service error:", result.message);
+      await logActivity(req, PANEL, MODULE, "create", result, false);
+      return res.status(500).json({ status: false, message: result.message });
+    }
+
+    const booking = result.data.booking;
+    const studentId = result.data.studentId;
+    // 🔔 Custom notification to parent (Waiting List)
+    try {
+      const parentAdminId = booking?.parentAdminId;
+
+      if (parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "Added to Waiting List",
+          description: `Your request has been added to the waiting list.`,
+          category: "Updates",
+          createdByAdminId: req.admin?.id || null,
+          recipientAdminIds: [parentAdminId],
+        });
+
+        if (DEBUG) {
+          console.log(
+            "🔔 Waiting list custom notification sent to parentAdminId:",
+            parentAdminId
+          );
+        }
+      } else if (DEBUG) {
+        console.warn(
+          "⚠️ Waiting list booking created but parentAdminId not found."
+        );
+      }
+    } catch (err) {
+      console.error(
+        "❌ Failed to create waiting list custom notification:",
+        err.message
+      );
+    }
+
+    // Send confirmation email to parents
+
+    console.log("📧 ===== WAITING LIST EMAIL PROCESS STARTED =====");
+
+    const parentMetas = await BookingParentMeta.findAll({
+      where: { studentId },
+    });
+
+    if (parentMetas && parentMetas.length > 0) {
+
+      const firstParent = parentMetas[0];
+
+      // 1️⃣ Get template category
+      const templateCategory = await TemplateCategory.findOne({
+        where: { category: "Add to Waiting List" }, // 🔥 your category name
+      });
+
+      if (!templateCategory) {
+        throw new Error("Waiting List template category not found.");
+      }
+
+      // 2️⃣ Get Custom Templates
+      const allTemplates = await CustomTemplate.findAll({
+        where: { mode_of_communication: "email" },
+        order: [["createdAt", "DESC"]],
+      });
+
+      let customTemplate = null;
+
+      for (const template of allTemplates) {
+        try {
+          const categoryIds = JSON.parse(template.template_category_id || "[]");
+
+          if (
+            Array.isArray(categoryIds) &&
+            categoryIds.includes(Number(templateCategory.id))
+          ) {
+            customTemplate = template;
+            break;
+          }
+        } catch (err) {
+          console.error("Invalid template_category_id format:", err.message);
+        }
+      }
+
+      if (!customTemplate || !customTemplate.content) {
+        throw new Error("Waiting List custom email template not found.");
+      }
+
+      // 3️⃣ Parse template safely
+      let contentObj;
+      if (typeof customTemplate.content === "string") {
+        try {
+          const parsed = JSON.parse(customTemplate.content);
+          contentObj =
+            parsed && typeof parsed === "object"
+              ? parsed
+              : {
+                subject: customTemplate.subject || "Waiting List Confirmation",
+                htmlContent: customTemplate.content,
+              };
+        } catch {
+          contentObj = {
+            subject: customTemplate.subject || "Waiting List Confirmation",
+            htmlContent: customTemplate.content,
+          };
+        }
+      } else {
+        contentObj = customTemplate.content;
+      }
+
+      const subject =
+        contentObj.subject || "Waiting List Confirmation";
+
+      let htmlTemplate =
+        contentObj.htmlContent || contentObj.html || "";
+
+      htmlTemplate = htmlTemplate.replace(/<h1[^>]*>.*?<\/h1>/i, "");
+
+      // 4️⃣ Get SMTP config
+      const { status: configStatus, emailConfig } =
+        await emailModel.getEmailConfig(PANEL, "waiting-list");
+
+      if (!configStatus) {
+        throw new Error("Email configuration not found.");
+      }
+
+      // 5️⃣ Fetch students for booking
+      const students = await BookingStudentMeta.findAll({
+        where: { bookingTrialId: booking.id },
+        include: [
+          {
+            model: ClassSchedule,
+            as: "classSchedule",
+          },
+        ],
+      });
+
+      const studentsHtml = students.length
+        ? students
+          .map((s) => `${s.studentFirstName} ${s.studentLastName}`)
+          .join("<br/>")
+        : "N/A";
+
+      const classNameHtml = students.length
+        ? students
+          .map((s) => s.classSchedule?.className || "N/A")
+          .join("<br/>")
+        : "N/A";
+
+      const timeHtml = students.length
+        ? students
+          .map((s) =>
+            s.classSchedule
+              ? `${s.classSchedule.startTime || ""} - ${s.classSchedule.endTime || ""}`
+              : "N/A"
+          )
+          .join("<br/>")
+        : "N/A";
+
+      const venueName = venue?.venueName || venue?.name || "N/A";
+      const facility = venue?.facility || "N/A";
+
+      const finalHtml = htmlTemplate
+        .replace(/{{studentsHtml}}/g, studentsHtml)
+        .replace(/{{className}}/g, classNameHtml)
+        .replace(/{{classTime}}/g, timeHtml)
+        .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`)
+        .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
+        .replace(/{{venueName}}/g, venueName)
+        .replace(/{{facility}}/g, facility)
+        .replace(/{{startDate}}/g, booking?.startDate || "")
+        .replace(/{{parentPassword}}/g, "Synco123")
+        .replace(/{{appName}}/g, "Synco")
+        .replace(/{{year}}/g, new Date().getFullYear().toString())
+        .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
+        .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png");
+
+      await sendEmail(emailConfig, {
+        recipient: [
+          {
+            name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
+            email: firstParent.parentEmail,
+          },
+        ],
+        subject,
+        htmlBody: finalHtml,
+      });
+
+      console.log("✅ Waiting List Email Sent");
+    }
+
+    console.log("📧 ===== WAITING LIST EMAIL PROCESS COMPLETED =====");
+    if (DEBUG) console.log("📝 Logging activity...");
+    await logActivity(req, PANEL, MODULE, "create", result, true);
+
+    if (DEBUG) console.log("🔔 Creating notification...");
+    await createNotification(
+      req,
+      "New Booking Created For Waiting List",
+      "Booking added in waiting list",
+      "System"
+    );
+
+    if (DEBUG) console.log("✅ Booking created successfully.");
+    return res.status(201).json({
+      status: true,
+      message: "Booking created successfully. Confirmation email sent.",
+      data: booking,
+    });
+  } catch (error) {
+    if (DEBUG) console.error("❌ Booking creation error:", error);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "create",
+      { error: error.message },
+      false
+    );
+    return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
+
+// exports.createBooking = async (req, res) => {
+//   if (DEBUG) console.log("📥 Received booking request");
+//   const formData = req.body;
+
+//   if (DEBUG) console.log("🔍 Fetching class data...");
+
+//   if (DEBUG) console.log("✅ Validating form data...");
+//   const { isValid, error } = validateFormData(formData, {
+//     requiredFields: [
+//       "totalStudents",
+//       "classScheduleId",
+//       "interest",
+//       "startDate",
+//       "students", // array, validate inside loop
+//       "parents", // array, validate inside loop
+//       // "emergency", // object, validate inside
+//     ],
+//   });
+
+//   // Validate students
+//   if (!Array.isArray(formData.students) || formData.students.length === 0) {
+//     return res.status(400).json({
+//       status: false,
+//       message: "At least one student must be provided.",
+//     });
+//   }
+
+//   for (const student of formData.students) {
+//     const { isValid, error } = validateFormData(student, {
+//       requiredFields: [
+//         "studentFirstName",
+//         "studentLastName",
+//         "dateOfBirth",
+//         "medicalInformation",
+//         "classScheduleId", // ✅ REQUIRED HERE
+//       ],
+//     });
+//     if (!isValid) {
+//       return res.status(400).json({ status: false, ...error });
+//     }
+//   }
+
+//   // Validate parents
+//   if (!Array.isArray(formData.parents) || formData.parents.length === 0) {
+//     return res.status(400).json({
+//       status: false,
+//       message: "At least one parent must be provided.",
+//     });
+//   }
+
+//   for (const parent of formData.parents) {
+//     const { isValid, error } = validateFormData(parent, {
+//       requiredFields: [
+//         "parentFirstName",
+//         "parentLastName",
+//         "parentEmail",
+//         "parentPhoneNumber",
+//       ],
+//     });
+//     if (!isValid) {
+//       return res.status(400).json({ status: false, ...error });
+//     }
+//   }
+
+//   if (DEBUG) console.log("🏫 Fetching venue data...");
+//   const venue = await Venue.findByPk(formData.venueId);
+//   if (!venue) {
+//     const message = "Venue linked to this class is not configured.";
+//     if (DEBUG) console.warn("❌ Venue not found.");
+//     await logActivity(req, PANEL, MODULE, "create", { message }, false);
+//     return res.status(404).json({ status: false, message });
+//   }
+
+//   if (DEBUG) console.log("👨‍👩‍👧 Validating students and parents...");
+//   const emailMap = new Map();
+//   const duplicateEmails = [];
+
+//   for (const student of formData.students) {
+//     if (
+//       !student.studentFirstName ||
+//       !student.dateOfBirth ||
+//       !student.medicalInformation
+//     ) {
+//       if (DEBUG) console.warn("❌ Missing student info.");
+//       return res.status(400).json({
+//         status: false,
+//         message:
+//           "Each student must have a name, date of birth, and medical information.",
+//       });
+//     }
+
+//     // ✅ Emergency contact is OPTIONAL
+//     const emergency = req.body.emergency;
+
+//     if (emergency) {
+//       if (!emergency.emergencyFirstName) {
+//         return res.status(400).json({
+//           status: false,
+//           message: "Emergency contact first name is required.",
+//         });
+//       }
+//       if (!emergency.emergencyLastName) {
+//         return res.status(400).json({
+//           status: false,
+//           message: "Emergency contact last name is required.",
+//         });
+//       }
+//       if (!emergency.emergencyPhoneNumber) {
+//         return res.status(400).json({
+//           status: false,
+//           message: "Emergency contact phone number is required.",
+//         });
+//       }
+//     }
+
+//     // student.className = classData.className;
+//     // student.startTime = classData.startTime;
+//     // student.endTime = classData.endTime;
+
+//     const parents = [
+//       ...(student.parents || []),
+//       ...(student.secondParentDetails ? [student.secondParentDetails] : []),
+//     ];
+
+//     for (const parent of parents) {
+//       const email = parent?.parentEmail?.trim()?.toLowerCase();
+//       if (!email || !parent.parentFirstName || !parent.parentPhoneNumber) {
+//         if (DEBUG) console.warn("❌ Missing parent info.");
+//         return res.status(400).json({
+//           status: false,
+//           message: "Each parent must have a name, email, and phone number.",
+//         });
+//       }
+
+//       if (emailMap.has(email)) continue;
+
+//       const exists = await Admin.findOne({ where: { email } });
+//       if (exists) {
+//         if (DEBUG) console.warn(`⚠️ Duplicate email found: ${email}`);
+//         duplicateEmails.push(email);
+//       } else {
+//         emailMap.set(email, parent);
+//       }
+//     }
+//   }
+
+//   if (duplicateEmails.length > 0) {
+//     const unique = [...new Set(duplicateEmails)]; // remove duplicates
+//     const message =
+//       unique.length === 1
+//         ? `${unique[0]} email already in use.`
+//         : `${unique.join(", ")} emails already in use.`;
+
+//     if (DEBUG) console.warn("❌ Duplicate email(s) found.");
+//     await logActivity(req, PANEL, MODULE, "create", { message }, false);
+
+//     return res.status(409).json({ status: false, message });
+//   }
+
+//   try {
+//     if (DEBUG) console.log("🚀 Creating booking...");
+
+//     const leadId = req.params.leadId || null;
+
+//     const result = await BookingTrialService.createBooking(formData, {
+//       source: req.source,
+//       adminId: req.admin?.id,
+//       adminFirstName: req.admin?.firstName || "Unknown",
+//       leadId,
+//     });
+
+//     if (!result.status) {
+//       if (DEBUG) console.error("❌ Booking service error:", result.message);
+//       await logActivity(req, PANEL, MODULE, "create", result, false);
+//       return res.status(500).json({ status: false, message: result.message });
+//     }
+
+//     const booking = result.data.booking;
+//     const studentId = result.data.studentId;
+//     // 🔔 Custom notification to parent (Waiting List)
+//     try {
+//       const parentAdminId = booking?.parentAdminId;
+
+//       if (parentAdminId) {
+//         await createCustomNotificationForAdmins({
+//           title: "Added to Waiting List",
+//           description: `Your request has been added to the waiting list.`,
+//           category: "Updates",
+//           createdByAdminId: req.admin?.id || null,
+//           recipientAdminIds: [parentAdminId],
+//         });
+
+//         if (DEBUG) {
+//           console.log(
+//             "🔔 Waiting list custom notification sent to parentAdminId:",
+//             parentAdminId
+//           );
+//         }
+//       } else if (DEBUG) {
+//         console.warn(
+//           "⚠️ Waiting list booking created but parentAdminId not found."
+//         );
+//       }
+//     } catch (err) {
+//       console.error(
+//         "❌ Failed to create waiting list custom notification:",
+//         err.message
+//       );
+//     }
+
+//     // Send confirmation email to parents
+
+//     const parentMetas = await BookingParentMeta.findAll({
+//       where: { studentId },
+//     });
+
+//     if (parentMetas && parentMetas.length > 0) {
+//       const {
+//         status: configStatus,
+//         emailConfig,
+//         htmlTemplate,
+//         subject,
+//       } = await emailModel.getEmailConfig(PANEL, "waiting-list");
+
+//       if (configStatus && htmlTemplate) {
+//         const recipients = parentMetas.map((p) => ({
+//           name: `${p.parentFirstName} ${p.parentLastName}`,
+//           email: p.parentEmail,
+//         }));
+
+//         // Fetch ALL students for the booking trial
+//         const students = await BookingStudentMeta.findAll({
+//           where: { bookingTrialId: booking.id },
+//         });
+//         const studentsHtml = students.length
+//           ? students
+//             .map(
+//               (s) =>
+//                 `<p style="margin:0; font-size:13px; color:#5F5F6D;">
+//              ${s.studentFirstName} ${s.studentLastName}
+//            </p>`
+//             )
+//             .join("")
+//           : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
+
+//         for (const recipient of recipients) {
+//           const variables = {
+//             "{{studentsHtml}}": studentsHtml,
+//             "{{parentName}}": recipient.name,
+//             "{{parentEmail}}": recipient.email,
+//             "{{parentPassword}}": "Synco123",
+//             // "{{studentFirstName}}": studentFirstName || "",
+//             // "{{studentLastName}}": studentLastName || "",
+//             "{{venueName}}": venue?.name || "N/A",
+//             // "{{className}}": classData?.className || "N/A",
+//             // "{{startDate}}": booking?.startDate || "",
+//             // "{{classTime}}": classData?.startTime || "",
+//             "{{appName}}": "Synco",
+//             "{{year}}": new Date().getFullYear().toString(),
+//             "{{logoUrl}}":
+//               "https://webstepdev.com/demo/syncoUploads/syncoLogo.png",
+//             "{{kidsPlaying}}":
+//               "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png",
+//           };
+
+//           let finalHtml = htmlTemplate;
+//           for (const [key, val] of Object.entries(variables)) {
+//             finalHtml = finalHtml.replace(new RegExp(key, "g"), val);
+//           }
+
+//           await sendEmail(emailConfig, {
+//             recipient: [recipient],
+//             cc: emailConfig.cc || [],
+//             bcc: emailConfig.bcc || [],
+//             subject,
+//             htmlBody: finalHtml,
+//           });
+//         }
+//       }
+//     }
+//     if (DEBUG) console.log("📝 Logging activity...");
+//     await logActivity(req, PANEL, MODULE, "create", result, true);
+
+//     if (DEBUG) console.log("🔔 Creating notification...");
+//     await createNotification(
+//       req,
+//       "New Booking Created For Waiting List",
+//       "Booking added in waiting list",
+//       "System"
+//     );
+
+//     if (DEBUG) console.log("✅ Booking created successfully.");
+//     return res.status(201).json({
+//       status: true,
+//       message: "Booking created successfully. Confirmation email sent.",
+//       data: booking,
+//     });
+//   } catch (error) {
+//     if (DEBUG) console.error("❌ Booking creation error:", error);
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "create",
+//       { error: error.message },
+//       false
+//     );
+//     return res.status(500).json({ status: false, message: "Server error." });
+//   }
+// };
+
+// 📌 Get All Waiting List Bookings
+exports.getAllWaitingListBookings = async (req, res) => {
+  console.debug("🔹 getAllWaitingListBookings called with query:", req.query);
+  try {
+    const role = req.admin?.role?.toLowerCase();
+    const adminId = req.admin.id;
+
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId, true);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+    const childAdminIds = (mainSuperAdminResult?.admins || []).map((a) => a.id);
+
+    const filters = { ...req.query };
+
+    // ----------------------------------
+    // bookedBy explicitly provided
+    // ----------------------------------
+    if (req.query.bookedBy) {
+      filters.bookedBy = req.query.bookedBy
+        .split(",")
+        .map(Number)
+        .filter(Boolean);
+    }
+
+    // ----------------------------------
+    // Role-based default access
+    // ----------------------------------
+    else {
+      if (role === "super admin") {
+        filters.bookedBy = [adminId, ...childAdminIds];
+      } else if (role === "admin") {
+        filters.bookedBy = [adminId, superAdminId].filter(Boolean);
+      } else {
+        filters.bookedBy = [adminId]; // agent
+      }
+    }
+
+    const result = await BookingTrialService.getWaitingList(filters);
+
+    console.debug(
+      "🔹 Result from getWaitingList:",
+      JSON.stringify(result, null, 2)
+    );
+
+    if (!result.status) {
+      console.warn("⚠️ Failed to fetch waiting list bookings:", result.message);
+      await logActivity(req, PANEL, MODULE, "read", result, false);
+      return res.status(400).json({ status: false, message: result.message });
+    }
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "read",
+      { message: "Fetched all waiting list bookings successfully." },
+      true
+    );
+
+    console.debug(
+      `✅ Successfully fetched ${result.data.waitingList.length} waiting list bookings`
+    );
+
+    return res.status(200).json({
+      status: true,
+      message: "Waiting list bookings fetched successfully.",
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching waiting list bookings:", error);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "read",
+      { error: error.message },
+      false
+    );
+    return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
+
+exports.sendEmail = async (req, res) => {
+  const { bookingIds } = req.body;
+
+  if (!bookingIds || !Array.isArray(bookingIds) || bookingIds.length === 0) {
+    return res.status(400).json({
+      status: false,
+      message: "bookingIds (array) is required",
+    });
+  }
+
+  if (DEBUG) {
+    console.log("📨 Sending Emails for bookingIds:", bookingIds);
+  }
+
+  try {
+    const allSentTo = [];
+
+    for (const bookingId of bookingIds) {
+      // Call service for each bookingId
+      const result = await BookingTrialService.sendAllEmailToParents({
+        bookingId,
+      });
+
+      if (!result.status) {
+        await logActivity(req, PANEL, MODULE, "send", result, false);
+        return res.status(500).json({
+          status: false,
+          message: result.message,
+          error: result.error,
+        });
+      }
+
+      allSentTo.push(...result.sentTo);
+
+      await logActivity(
+        req,
+        PANEL,
+        MODULE,
+        "send",
+        {
+          message: `Email sent for bookingId ${bookingId}`,
+        },
+        true
+      );
+    }
+
+    return res.status(200).json({
+      status: true,
+      message: `Emails sent for ${bookingIds.length} bookings`,
+      sentTo: allSentTo, // combined array of all parent emails
+    });
+  } catch (error) {
+    console.error("❌ Controller Send Email Error:", error);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "send",
+      { error: error.message },
+      false
+    );
+    return res.status(500).json({ status: false, message: "Server error" });
+  }
+};
+
+exports.getAccountProfile = async (req, res) => {
+  const { id } = req.params;
+  const adminId = req.admin?.id;
+  const superAdminId = req.admin?.superAdminId || adminId; // ✅ Include superAdminId (fallback to self)
+
+  if (DEBUG) {
+    console.log("==============================================");
+    console.log("📘 [getAccountProfile] API Call Started");
+    console.log("🔍 Params:", { id });
+    console.log("👤 Admin Info:", {
+      adminId,
+      superAdminId,
+      email: req.admin?.email,
+      roleId: req.admin?.roleId,
+    });
+    console.log("==============================================");
+  }
+
+  try {
+    // ✅ Pass both adminId and superAdminId to service
+    if (DEBUG) console.log("🚀 Calling BookingTrialService.getBookingById...");
+    const result = await BookingTrialService.getBookingById(
+      id,
+      adminId,
+      superAdminId
+    );
+
+    if (DEBUG) {
+      console.log("📦 Service Response:", JSON.stringify(result, null, 2));
+    }
+
+    // ⚠️ If booking not found or unauthorized
+    if (!result.status) {
+      if (DEBUG) console.warn(`⚠️ Booking ID ${id} not found or unauthorized.`);
+
+      await logActivity(
+        req,
+        PANEL,
+        MODULE,
+        "getById",
+        { message: `Booking not found: ${id}`, adminId, superAdminId },
+        false
+      );
+
+      return res.status(404).json({
+        status: false,
+        message: result.message || "Booking not found or not authorized.",
+      });
+    }
+
+    // ✅ Log successful activity
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "getById",
+      { message: `Fetched booking ID: ${id}`, adminId, superAdminId },
+      true
+    );
+
+    if (DEBUG) {
+      console.log("✅ Booking fetched successfully from service.");
+      console.log("📤 Sending response to client...");
+    }
+
+    return res.status(200).json({
+      status: true,
+      message: "Fetched booking details successfully.",
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ Error in getAccountProfile:", error);
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "getById",
+      { error: error.message, stack: error.stack, adminId, superAdminId },
+      false
+    );
+
+    if (DEBUG) {
+      console.error("💥 Detailed Error Trace:", error);
+    }
+
+    return res.status(500).json({
+      status: false,
+      message: "Server error while fetching booking.",
+      error: DEBUG ? error.message : undefined, // show error only in debug mode
+    });
+  } finally {
+    if (DEBUG) console.log("🏁 [getAccountProfile] Execution Completed\n");
+  }
+};
+
+exports.updateWaitinglistBooking = async (req, res) => {
+  const DEBUG = process.env.DEBUG === "true";
+
+  try {
+    if (DEBUG) console.log("🔹 Controller entered: updateWaitinglistBooking");
+
+    const bookingId = req.params?.bookingId;
+    const studentsPayload = req.body?.students || [];
+    const adminId = req.admin?.id;
+
+    // ✅ Security check
+    if (!adminId)
+      return res.status(401).json({ status: false, message: "Unauthorized" });
+
+    // ✅ Validate bookingId
+    if (!bookingId)
+      return res
+        .status(400)
+        .json({ status: false, message: "Booking ID is required in URL" });
+
+    // ✅ Validate payload
+    if (!Array.isArray(studentsPayload) || studentsPayload.length === 0) {
+      return res.status(400).json({
+        status: false,
+        message: "Students array is required and cannot be empty",
+      });
+    }
+
+    studentsPayload.forEach((student) => {
+      if (!student.id) throw new Error("Each student must have an ID");
+      if (!Array.isArray(student.parents)) student.parents = [];
+      if (!Array.isArray(student.emergencyContacts))
+        student.emergencyContacts = [];
+    });
+
+    const t = await sequelize.transaction();
+    const result = await BookingTrialService.updateBookingStudents(
+      bookingId,
+      studentsPayload,
+      t
+    );
+
+    if (!result.status) {
+      await t.rollback();
+      return res.status(400).json(result);
+    }
+
+    await t.commit();
+    if (DEBUG) console.log("✅ Transaction committed");
+    // 🔔 Custom notification to parent (Waiting List Update)
+    try {
+      const bookingRecord = await Booking.findByPk(bookingId, {
+        attributes: ["id", "parentAdminId"],
+      });
+
+      const parentAdminId = bookingRecord?.parentAdminId;
+
+      if (parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "Waiting List Booking Updated",
+          description:
+            "Student, parent, or emergency contact details for your waiting list booking have been updated.",
+          category: "Updates",
+          createdByAdminId: req.admin?.id || null,
+          recipientAdminIds: [parentAdminId],
+        });
+
+        if (DEBUG) {
+          console.log(
+            "🔔 Custom update notification sent to parentAdminId:",
+            parentAdminId
+          );
+        }
+      } else if (DEBUG) {
+        console.warn(
+          "⚠️ Booking updated but parentAdminId not found. Skipping custom notification."
+        );
+      }
+    } catch (err) {
+      console.error(
+        "❌ Failed to create custom update notification:",
+        err.message
+      );
+    }
+
+    // 🔹 Log activity
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "update",
+      {
+        message: `Updated student, parent, and emergency data for booking ID: ${bookingId}`,
+      },
+      true
+    );
+
+    // 🔹 Send notification
+    await createNotification(
+      req,
+      "Booking Updated",
+      `Student, parent, and emergency data updated for booking ID: ${bookingId}.`,
+      "System"
+    );
+
+    if (DEBUG) console.log("✅ Controller finished successfully");
+
+    return res.status(200).json(result);
+  } catch (error) {
+    if (DEBUG)
+      console.error(
+        "❌ Controller updateWaitinglistBooking Error:",
+        error.message
+      );
+    return res.status(500).json({ status: false, message: error.message });
+  }
+};
+
+exports.removeWaitingList = async (req, res) => {
+  try {
+    const { bookingId, removedReason, removedNotes } = req.body;
+    // const removedBy = req.adminId?.id || null;
+
+    if (DEBUG) {
+      console.log("📥 removeWaitingList request:", {
+        bookingId,
+        removedReason,
+        removedNotes,
+        // removedBy,
+      });
+    }
+
+    if (!bookingId || !removedReason) {
+      if (DEBUG)
+        console.log("❌ Validation failed: bookingId or removedReason missing");
+      return res.status(400).json({
+        status: false,
+        message: "Booking ID and reason are required.",
+      });
+    }
+
+    const result = await BookingTrialService.removeWaitingList({
+      bookingId,
+      // removedBy,
+      reason: removedReason,
+      notes: removedNotes,
+    });
+
+    if (!result.status) {
+      if (DEBUG)
+        console.log("❌ removeWaitingList service failed:", result.message);
+      return res.status(404).json(result);
+    }
+
+    // 🔔 Custom notification to parent admin
+    try {
+      const bookingRecord = await Booking.findByPk(bookingId, {
+        attributes: ["id", "parentAdminId"],
+      });
+
+      const parentAdminId = bookingRecord?.parentAdminId;
+
+      if (parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "Removed From Waiting List",
+          description: `Your booking has been removed from the waiting list. Reason: ${removedReason}`,
+          category: "Updates",
+          createdByAdminId: req.admin?.id || null,
+          recipientAdminIds: [parentAdminId],
+        });
+
+        if (DEBUG) {
+          console.log(
+            "🔔 Custom waiting-list removal notification sent to parentAdminId:",
+            parentAdminId
+          );
+        }
+      } else if (DEBUG) {
+        console.warn(
+          "⚠️ Waiting list removed but parentAdminId not found. Skipping custom notification."
+        );
+      }
+    } catch (err) {
+      console.error(
+        "❌ Failed to create custom waiting-list removal notification:",
+        err.message
+      );
+    }
+
+    await createNotification(
+      req,
+      "Booking Removed From Waiting List",
+      `Booking  was removed from waiting list. Reason: ${removedReason}`,
+      "System"
+    );
+
+    if (DEBUG) console.log("✅ removeWaitingList success:", result.data);
+
+    return res.status(200).json(result);
+  } catch (error) {
+    if (DEBUG)
+      console.error("🔥 removeWaitingList Controller Error:", error.message);
+    return res.status(500).json({
+      status: false,
+      message: "Server error while removing booking from waiting list.",
+    });
+  }
+};
+
+exports.convertToMembership = async (req, res) => {
+  const formData = {
+    ...req.body,
+    id: req.params.id ? parseInt(req.params.id, 10) : req.body.id,
+  };
+
+  if (DEBUG)
+    console.log("📥 [convertToMembership] Incoming formData:", formData);
+
+  try {
+
+    // Step 3: Validate form
+    const { isValid, error } = validateFormData(formData, {
+      // requiredFields: ["startDate", "totalStudents", "classScheduleId"],
+      requiredFields: ["startDate"]
+    });
+    if (!isValid) {
+      if (DEBUG) console.log("❌ Validation failed:", error);
+      await logActivity(req, PANEL, MODULE, "create", error, false);
+      return res.status(400).json({ status: false, ...error });
+    }
+
+    if (!Array.isArray(formData.students) || formData.students.length === 0) {
+      if (DEBUG) console.log("❌ No students provided");
+      return res
+        .status(400)
+        .json({ status: false, message: "At least one student is required." });
+    }
+    const classScheduleId = formData.students[0].classScheduleId;
+
+    if (!classScheduleId) {
+      return res.status(400).json({
+        status: false,
+        message: "classScheduleId is missing in students.",
+      });
+    }
+    const classData = await ClassSchedule.findByPk(classScheduleId);
+
+    if (!classData) {
+      return res.status(404).json({
+        status: false,
+        message: "Class schedule not found.",
+      });
+    }
+    const totalStudents = formData.students.length;
+
+    if (classData.capacity < totalStudents) {
+      return res.status(400).json({
+        status: false,
+        message: `Only ${classData.capacity} slot(s) left for this class.`,
+      });
+    }
+
+    // Step 4: Attach venueId
+    formData.totalStudents = totalStudents;
+    formData.classScheduleId = classScheduleId;
+
+    if (DEBUG) console.log("📦 Final formData sent to service:", formData);
+
+    // Step 5: Call Service
+    const result = await BookingTrialService.convertToMembership(formData, {
+      adminId: req.admin?.id || null,
+    });
+
+    if (DEBUG)
+      console.log("🔄 Service response:", JSON.stringify(result, null, 2));
+
+    if (!result.status) {
+      await logActivity(req, PANEL, MODULE, "create", result, false);
+      return res.status(500).json({ status: false, message: result.message });
+    }
+
+    const booking = result.data.booking;
+    const studentIds = result.data.studentIds || [result.data.studentId];
+    // 🔔 Custom notification to parent admin (Waiting → Membership)
+    try {
+      const bookingRecord = await Booking.findByPk(booking.id, {
+        attributes: ["id", "parentAdminId"],
+      });
+
+      const parentAdminId = bookingRecord?.parentAdminId;
+
+      if (parentAdminId) {
+        await createCustomNotificationForAdmins({
+          title: "Membership Activated",
+          description:
+            "Your waiting list booking has been successfully converted into an active membership.",
+          category: "Updates",
+          createdByAdminId: req.admin?.id || null,
+          recipientAdminIds: [parentAdminId],
+        });
+
+        if (DEBUG) {
+          console.log(
+            "🔔 Custom membership notification sent to parentAdminId:",
+            parentAdminId
+          );
+        }
+      } else if (DEBUG) {
+        console.warn(
+          "⚠️ Membership converted but parentAdminId not found. Skipping custom notification."
+        );
+      }
+    } catch (err) {
+      console.error(
+        "❌ Failed to create custom membership notification:",
+        err.message
+      );
+    }
+
+    // Step 6: Send Emails to Parents
+    const venue = await Venue.findByPk(classData.venueId);
+    const venueName = venue?.venueName || venue?.name || "N/A";
+    const facility = venue?.facility || "N/A";
+
+    const templateCategory = await TemplateCategory.findOne({
+      where: { category: "Book A Membership" },
+    });
+
+    let customTemplate = null;
+    if (templateCategory) {
+      const allTemplates = await CustomTemplate.findAll({
+        where: { mode_of_communication: "email" },
+        order: [["createdAt", "DESC"]],
+      });
+
+      for (const template of allTemplates) {
+        try {
+          const categoryIds = JSON.parse(template.template_category_id || "[]");
+          if (Array.isArray(categoryIds) && categoryIds.includes(Number(templateCategory.id))) {
+            customTemplate = template;
+            break;
+          }
+        } catch (err) {
+          console.error("Invalid template_category_id format:", err.message);
+        }
+      }
+
+    }
+
+    if (!customTemplate || !customTemplate.content) {
+      console.warn("⚠️ Custom email template not found. Skipping email.");
+    } else {
+      // Parse template content
+      let contentObj = { subject: "Booking Update", htmlContent: "" };
+      try {
+        if (typeof customTemplate.content === "string") {
+          const parsed = JSON.parse(customTemplate.content);
+          if (parsed && typeof parsed === "object") {
+            contentObj.subject = parsed.subject || customTemplate.subject || "Booking Update";
+            contentObj.htmlContent = parsed.htmlContent || parsed.html || customTemplate.content || "";
+          } else {
+            contentObj.subject = customTemplate.subject || "Booking Update";
+            contentObj.htmlContent = customTemplate.content;
+          }
+        } else if (typeof customTemplate.content === "object") {
+          contentObj.subject = customTemplate.content.subject || customTemplate.subject || "Booking Update";
+          contentObj.htmlContent = customTemplate.content.htmlContent || customTemplate.content.html || "";
+        }
+      } catch (err) {
+        console.error("Error parsing template content:", err.message);
+        contentObj.subject = customTemplate.subject || "Booking Update";
+        contentObj.htmlContent = typeof customTemplate.content === "string" ? customTemplate.content : "";
+      }
+
+      let htmlTemplate = contentObj.htmlContent.replace(/<h1[^>]*>.*?<\/h1>/i, "");
+      const subject = contentObj.subject;
+
+      const { status: configStatus, emailConfig } =
+        await emailModel.getEmailConfig(PANEL, "book-paid-trial");
+
+      if (configStatus && htmlTemplate) {
+        console.log("✔️ Email template loaded successfully");
+
+        const students = await BookingStudentMeta.findAll({
+          where: { bookingTrialId: booking.id },
+          include: [{ model: ClassSchedule, as: "classSchedule" }],
+        });
+
+        if (!students.length) {
+          console.log("⚠️ No students found for booking.");
+        }
+
+        const parentMetas = await BookingParentMeta.findAll({
+          where: { studentId: students.map(s => s.id) },
+        });
+
+        if (!parentMetas.length) {
+          console.log("⚠️ No parents found for booking.");
+        }
+
+        const firstParent = parentMetas[0];
+        if (firstParent?.parentEmail) {
+          const bookingPayment = await BookingPayment.findOne({
+            where: { bookingId: booking.id },
+            order: [["createdAt", "DESC"]],
+          });
+
+          const finalPrice = bookingPayment?.price || "0.00";
+
+          const studentsHtml = students.length
+            ? students.map(s => `${s.studentFirstName} ${s.studentLastName}`).join("<br/>")
+            : "N/A";
+
+          const classNameHtml = students.length
+            ? students.map(s => s.classSchedule?.className || "N/A").join("<br/>")
+            : "N/A";
+
+          const timeHtml = students.length
+            ? students.map(s => s.classSchedule
+              ? `${s.classSchedule.startTime || ""} - ${s.classSchedule.endTime || ""}`
+              : "N/A"
+            ).join("<br/>")
+            : "N/A";
+
+          const htmlBody = htmlTemplate
+            .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`)
+            .replace(/{{venueName}}/g, venueName)
+            .replace(/{{facility}}/g, facility)
+            .replace(/{{startDate}}/g, booking?.startDate || "")
+            .replace(/{{studentsHtml}}/g, studentsHtml)
+            .replace(/{{className}}/g, classNameHtml)
+            .replace(/{{classTime}}/g, timeHtml)
+            .replace(/{{price}}/g, finalPrice)
+            .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
+            .replace(/{{parentPassword}}/g, "Synco123")
+            .replace(/{{appName}}/g, "Synco")
+            .replace(/{{year}}/g, new Date().getFullYear().toString())
+            .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
+            .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png");
+
+          await sendEmail(emailConfig, {
+            recipient: [{
+              name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
+              email: firstParent.parentEmail,
+            }],
+            subject,
+            htmlBody,
+          });
+
+          console.log("📧 Email sent to:", firstParent.parentEmail);
+        }
+      } else {
+        console.warn("⚠️ Email config missing or template empty");
+      }
+    }
+
+    // Step 7: Notifications & Logs
+    await createNotification(
+      req,
+      "New Membership Created",
+      `Booking "${classData.className}" scheduled on ${formData.startDate}`,
+      "System"
+    );
+    await logActivity(req, PANEL, MODULE, "create", result, true);
+
+    return res.status(201).json({
+      status: true,
+      message:
+        "Waiting to Membership Converted Successfully and Confirmation email sent.",
+      data: booking,
+    });
+  } catch (error) {
+    if (DEBUG) console.error("💥 Server error in convertToMembership:", error);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "create",
+      { error: error.message },
+      false
+    );
+    return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
+
+// exports.convertToMembership = async (req, res) => {
+//   const formData = {
+//     ...req.body,
+//     id: req.params.id ? parseInt(req.params.id, 10) : req.body.id,
+//   };
+
+//   if (DEBUG)
+//     console.log("📥 [convertToMembership] Incoming formData:", formData);
+
+//   try {
+
+//     // Step 3: Validate form
+//     const { isValid, error } = validateFormData(formData, {
+//       // requiredFields: ["startDate", "totalStudents", "classScheduleId"],
+//       requiredFields: ["startDate"]
+//     });
+//     if (!isValid) {
+//       if (DEBUG) console.log("❌ Validation failed:", error);
+//       await logActivity(req, PANEL, MODULE, "create", error, false);
+//       return res.status(400).json({ status: false, ...error });
+//     }
+
+//     if (!Array.isArray(formData.students) || formData.students.length === 0) {
+//       if (DEBUG) console.log("❌ No students provided");
+//       return res
+//         .status(400)
+//         .json({ status: false, message: "At least one student is required." });
+//     }
+//     const classScheduleId = formData.students[0].classScheduleId;
+
+//     if (!classScheduleId) {
+//       return res.status(400).json({
+//         status: false,
+//         message: "classScheduleId is missing in students.",
+//       });
+//     }
+//     const classData = await ClassSchedule.findByPk(classScheduleId);
+
+//     if (!classData) {
+//       return res.status(404).json({
+//         status: false,
+//         message: "Class schedule not found.",
+//       });
+//     }
+//     const totalStudents = formData.students.length;
+
+//     if (classData.capacity < totalStudents) {
+//       return res.status(400).json({
+//         status: false,
+//         message: `Only ${classData.capacity} slot(s) left for this class.`,
+//       });
+//     }
+
+//     // Step 4: Attach venueId
+//     formData.totalStudents = totalStudents;
+//     formData.classScheduleId = classScheduleId;
+
+//     if (DEBUG) console.log("📦 Final formData sent to service:", formData);
+
+//     // Step 5: Call Service
+//     const result = await BookingTrialService.convertToMembership(formData, {
+//       adminId: req.admin?.id || null,
+//     });
+
+//     if (DEBUG)
+//       console.log("🔄 Service response:", JSON.stringify(result, null, 2));
+
+//     if (!result.status) {
+//       await logActivity(req, PANEL, MODULE, "create", result, false);
+//       return res.status(500).json({ status: false, message: result.message });
+//     }
+
+//     const booking = result.data.booking;
+//     const studentIds = result.data.studentIds || [result.data.studentId];
+//     // 🔔 Custom notification to parent admin (Waiting → Membership)
+//     try {
+//       const bookingRecord = await Booking.findByPk(booking.id, {
+//         attributes: ["id", "parentAdminId"],
+//       });
+
+//       const parentAdminId = bookingRecord?.parentAdminId;
+
+//       if (parentAdminId) {
+//         await createCustomNotificationForAdmins({
+//           title: "Membership Activated",
+//           description:
+//             "Your waiting list booking has been successfully converted into an active membership.",
+//           category: "Updates",
+//           createdByAdminId: req.admin?.id || null,
+//           recipientAdminIds: [parentAdminId],
+//         });
+
+//         if (DEBUG) {
+//           console.log(
+//             "🔔 Custom membership notification sent to parentAdminId:",
+//             parentAdminId
+//           );
+//         }
+//       } else if (DEBUG) {
+//         console.warn(
+//           "⚠️ Membership converted but parentAdminId not found. Skipping custom notification."
+//         );
+//       }
+//     } catch (err) {
+//       console.error(
+//         "❌ Failed to create custom membership notification:",
+//         err.message
+//       );
+//     }
+
+//     // Step 6: Send Emails to Parents
+//     const venue = await Venue.findByPk(classData.venueId);
+//     const venueName = venue?.venueName || venue?.name || "N/A";
+
+//     const {
+//       status: configStatus,
+//       emailConfig,
+//       htmlTemplate,
+//       subject,
+//     } = await emailModel.getEmailConfig(PANEL, "book-paid-trial");
+
+//     if (DEBUG)
+//       console.log("📧 Email config loaded:", { configStatus, subject });
+
+//     if (!configStatus || !htmlTemplate) {
+//       console.warn("⚠️ Email not sent: missing template for book-membership");
+//     } else if (studentIds?.length) {
+//       for (const sId of studentIds) {
+//         const parentMetas = await BookingParentMeta.findAll({
+//           where: { studentId: sId },
+//         });
+
+//         if (DEBUG) console.log(`👨‍👩‍👦 Parents for student ${sId}:`, parentMetas);
+
+//         for (const p of parentMetas) {
+//           try {
+//             if (!p.parentEmail) continue;
+
+//             // ✅ Fetch all students for this parent in the same booking
+//             const allStudents = await BookingStudentMeta.findAll({
+//               where: { bookingTrialId: booking.id, parentId: p.id },
+//             });
+
+//             // ✅ Generate HTML list of all students
+//             const studentsHtml = allStudents.length
+//               ? allStudents
+//                 .map(
+//                   (s) =>
+//                     `<p style="margin:0; font-size:13px; color:#5F5F6D;">${s.studentFirstName} ${s.studentLastName}</p>`
+//                 )
+//                 .join("")
+//               : `<p style="margin:0; font-size:13px; color:#5F5F6D;">N/A</p>`;
+
+//             // ✅ Replace placeholders in template
+//             const htmlBody = htmlTemplate
+//               .replace(
+//                 /{{parentName}}/g,
+//                 `${p.parentFirstName} ${p.parentLastName}`
+//               )
+//               .replace(/{{studentsHtml}}/g, studentsHtml)
+//               .replace(/{{venueName}}/g, venueName)
+//               .replace(/{{className}}/g, classData.className || "N/A")
+//               .replace(
+//                 /{{classTime}}/g,
+//                 `${classData.startTime} - ${classData.endTime}`
+//               )
+//               .replace(
+//                 /{{startDate}}/g,
+//                 booking?.trialDate || formData.startDate
+//               )
+//               .replace(/{{parentEmail}}/g, p.parentEmail || "")
+//               .replace(/{{parentPassword}}/g, "Synco123")
+//               .replace(/{{appName}}/g, "Synco")
+//               .replace(/{{year}}/g, new Date().getFullYear().toString());
+
+//             if (DEBUG) console.log(`📨 Sending email to ${p.parentEmail}`);
+
+//             await sendEmail(emailConfig, {
+//               recipient: [
+//                 {
+//                   name: `${p.parentFirstName} ${p.parentLastName}`,
+//                   email: p.parentEmail,
+//                 },
+//               ],
+//               subject,
+//               htmlBody,
+//             });
+
+//             if (DEBUG) console.log(`✅ Email sent to ${p.parentEmail}`);
+//           } catch (err) {
+//             console.error(
+//               `❌ Failed to send email to ${p.parentEmail}:`,
+//               err.message
+//             );
+//           }
+//         }
+//       }
+//     }
+
+//     // Step 7: Notifications & Logs
+//     await createNotification(
+//       req,
+//       "New Membership Created",
+//       `Booking "${classData.className}" scheduled on ${formData.startDate}`,
+//       "System"
+//     );
+//     await logActivity(req, PANEL, MODULE, "create", result, true);
+
+//     return res.status(201).json({
+//       status: true,
+//       message:
+//         "Waiting to Membership Converted Successfully and Confirmation email sent.",
+//       data: booking,
+//     });
+//   } catch (error) {
+//     if (DEBUG) console.error("💥 Server error in convertToMembership:", error);
+//     await logActivity(
+//       req,
+//       PANEL,
+//       MODULE,
+//       "create",
+//       { error: error.message },
+//       false
+//     );
+//     return res.status(500).json({ status: false, message: "Server error." });
+//   }
+// };

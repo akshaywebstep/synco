@@ -1,0 +1,160 @@
+ROOT PROBLEM (एक लाइन में)
+
+👉 तुम listing bookedBy पर filter कर रहे हो,
+जबकि data visibility superAdminId पर होनी चाहिए।
+
+यहीं पूरा scene गड़बड़ हो रहा है।
+
+STEP 1: पहले hierarchy model lock करो
+
+तुम्हारी admin hierarchy:
+
+SuperAdmin-1
+ ├─ Admin A
+ └─ Admin B
+
+SuperAdmin-2
+ ├─ Admin C
+ └─ Admin D
+
+Rule (IMPORTANT)
+
+SuperAdmin-1:
+
+Admin A + Admin B का data देख सकता है
+
+Admin A:
+
+Admin B का data देख सकता है (same super admin)
+
+SuperAdmin-2:
+
+सिर्फ Admin C + D का data
+
+👉 Cross super-admin data कभी नहीं दिखेगा
+
+STEP 2: booking visibility ka golden rule
+
+❌ गलत सोच:
+
+listing = bookedBy
+
+
+✅ सही सोच:
+
+listing = superAdminId (scope)
+
+STEP 3: booking table me hierarchy kaise aayegi?
+
+तुम्हारे Booking model me already है:
+
+parentAdminId
+
+
+और Admin model me:
+
+superAdminId
+
+
+👉 यही chain use होगी।
+
+STEP 4: LISTING ka correct logic
+Goal
+
+Admin ko:
+
+Website bookings bhi dikhni chahiye
+
+Admin-created bookings bhi
+
+Same super admin ke andar ki sab
+
+Correct WHERE condition (conceptually)
+booking.parentAdminId IN (
+  all admins where superAdminId = currentSuperAdminId
+)
+OR
+booking.parentAdminId IS NULL (website bookings)
+
+
+❗ bookedBy yahan bilkul use nahi hoga
+
+STEP 5: Practical Sequelize example
+Step A: super admin nikalo
+const mainSuperAdmin = await getMainSuperAdminOfAdmin(req.admin.id);
+const superAdminId = mainSuperAdmin.superAdmin.id;
+
+Step B: us super admin ke saare admins lao
+const admins = await Admin.findAll({
+  where: {
+    superAdminId,
+  },
+  attributes: ["id"],
+});
+
+const adminIds = admins.map(a => a.id);
+
+Step C: booking listing query
+const bookings = await Booking.findAll({
+  where: {
+    [Op.or]: [
+      { parentAdminId: { [Op.in]: adminIds } },
+      { parentAdminId: null }, // website bookings
+    ],
+  },
+});
+
+STEP 6: role-wise visibility (optional polish)
+Agar Admin (not super admin) login hai
+
+Still same logic:
+
+Same superAdmin ke admins ka data dikhe
+
+Because client wants shared pool
+
+STEP 7: Agent assignment listing
+
+Assign screen me add karo:
+
+where: {
+  status: "attended",
+  assignedAgentId: null,
+}
+
+
+But hierarchy filter same rahega.
+
+🔥 SUPER IMPORTANT CLARITY
+bookedBy ka role sirf ye hai:
+
+Audit
+
+“kisne banaya”
+
+Listing / visibility ke liye:
+
+❌ bookedBy
+✅ superAdminId → parentAdminId
+
+FINAL MENTAL MODEL (YAAD RAKH)
+
+🧠 Three layers
+
+WHO CAN SEE?   → superAdminId
+WHO CREATED?  → bookedBy
+WHO WILL SELL?→ assignedAgentId
+
+One-line fix jo tumhe yaad rahe
+
+Listing = hierarchy
+Assignment = assignedAgentId
+History = bookedBy
+
+अगर चाहो तो next step me main:
+
+exact reusable Sequelize scope
+
+middleware for visibility
+
+frontend filter contract

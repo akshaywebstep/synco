@@ -1,0 +1,479 @@
+const { validateFormData } = require("../../../../utils/validateFormData");
+const { logActivity } = require("../../../../utils/admin/activityLogger");
+
+const RecruitmentLeadService = require("../../../../services/admin/recruitment/franchise/franchiseRecruitmentLead");
+const {
+  createNotification,
+} = require("../../../../utils/admin/notificationHelper");
+const { getMainSuperAdminOfAdmin } = require("../../../../utils/auth");
+
+const DEBUG = process.env.DEBUG === "true";
+const PANEL = "admin";
+const MODULE = "recruitment-franchise-lead";
+
+// ----------------------------------------
+// ✅ CREATE RECRUITMENT / FRANCHISE LEAD
+// ----------------------------------------
+
+exports.createRecruitmentFranchiseLead = async (req, res) => {
+  if (DEBUG) console.log("▶️ Incoming Request Body:", req.body);
+
+  const adminId = req.admin?.id || null;
+  const isAdminRequest = !!adminId;
+
+  if (DEBUG) {
+    console.log("▶️ Admin ID:", adminId);
+    console.log("▶️ Is Admin Request:", isAdminRequest);
+  }
+
+  // ----------------------------------
+  // 🔍 Conditional Validation
+  // ----------------------------------
+  const validation = validateFormData(req.body, {
+    requiredFields: isAdminRequest
+      ? ["firstName", "lastName", "email"]
+      : ["firstName", "lastName", "email", "phoneNumber"],
+  });
+
+  if (!validation.isValid) {
+    await logActivity(req, PANEL, MODULE, "create", validation.error, false);
+    return res.status(400).json({ status: false, ...validation });
+  }
+
+  try {
+    // ----------------------------------
+    // 🧠 Build Payload Dynamically
+    // ----------------------------------
+    const payload = {
+      firstName: req.body.firstName,
+      lastName: req.body.lastName,
+      email: req.body.email, // ✅ always required
+      phoneNumber: req.body.phoneNumber || null,
+      status: "pending",
+      appliedFor: "franchise",
+      createdBy: isAdminRequest ? adminId : null,
+      source: isAdminRequest ? "admin" : "website", // ✅ SOURCE BADGE
+    };
+
+    // 🔹 Admin-confirmed extras
+    if (isAdminRequest) {
+      payload.dob = req.body.dob;
+      payload.age = req.body.age;
+      payload.gender = req.body.gender;
+      payload.postcode = req.body.postcode;
+      payload.managementExperience = req.body.managementExperience;
+      // payload.dbs = req.body.dbs;
+      // payload.level = req.body.level;
+    }
+
+    // ----------------------------------
+    // 🔹 Public Website (Franchise Enquiry)
+    // ----------------------------------
+    if (!isAdminRequest) {
+      payload.desiredFranchiseLocatxion = req.body.desiredFranchiseLocation;
+      payload.liquidCapital = req.body.liquidCapital;
+      payload.message = req.body.message;
+    }
+
+    if (DEBUG) console.log("💾 Final Payload:", payload);
+
+    // ----------------------------------
+    // 💾 Create Lead
+    // ----------------------------------
+    const result = await RecruitmentLeadService.createRecruitmentFranchiseLead(
+      payload
+    );
+
+    if (DEBUG) console.log("💾 Create Service Result:", result);
+
+    await logActivity(req, PANEL, MODULE, "create", result, result.status);
+
+    // ----------------------------------
+    // 🔔 Notifications (Admin only)
+    // ----------------------------------
+    if (isAdminRequest) {
+      await createNotification(
+        req,
+        "Recruitment Lead Created",
+        `Recruitment Lead created by ${req?.admin?.firstName || "Admin"}.`,
+        "System"
+      );
+    }
+
+    return res.status(result.status ? 201 : 500).json(result);
+  } catch (error) {
+    console.error("❌ Error in createRecruitmentFranchiseLead:", error);
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "create",
+      { oneLineMessage: error.message },
+      false
+    );
+
+    return res.status(500).json({
+      status: false,
+      message: "Server error.",
+      error: DEBUG ? error.message : undefined,
+    });
+  }
+};
+
+exports.getAllFranchiseRecruitmentLead = async (req, res) => {
+  const adminId = req.admin?.id;
+
+  if (!adminId) {
+    return res
+      .status(401)
+      .json({ status: false, message: "Unauthorized. Admin ID missing." });
+  }
+
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+
+  try {
+    const result = await RecruitmentLeadService.getAllFranchiseRecruitmentLead(
+      superAdminId
+    ); // ✅ pass adminId
+    await logActivity(req, PANEL, MODULE, "list", result, result.status);
+    return res.status(result.status ? 200 : 500).json(result);
+  } catch (error) {
+    console.error("❌ Error in getAllFranchiseRecruitmentLead:", error);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { oneLineMessage: error.message },
+      false
+    );
+    return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
+
+// Assign Booking to Admin / Agent
+exports.assignLeadToAgent = async (req, res) => {
+  try {
+    const { leadIds, createdBy } = req.body;
+
+    // ✅ Validation
+    if (!Array.isArray(leadIds) || leadIds.length === 0) {
+      return res.status(400).json({
+        status: false,
+        message: "Lead IDs array is required.",
+      });
+    }
+
+    if (!createdBy || isNaN(Number(createdBy))) {
+      return res.status(400).json({
+        status: false,
+        message: "Valid agent ID is required.",
+      });
+    }
+
+    // ✅ Call service
+    const result = await RecruitmentLeadService.assignLeadToAgent({
+      leadIds,
+      createdBy,
+    });
+
+    // ❌ Service failed (e.g. already assigned)
+    if (!result.status) {
+      await logActivity(req, PANEL, MODULE, "update", result, false);
+      return res.status(400).json(result);
+    }
+
+    // ✅ Notification (success only)
+    await createNotification(
+      req,
+      "Franchise Lead Assigned",
+      `${leadIds.length} lead(s) assigned to agent successfully.`,
+      "System"
+    );
+
+    // ✅ Activity log (success)
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "update",
+      {
+        oneLineMessage: `Assigned ${leadIds.length} lead(s) to admin ${createdBy}`,
+      },
+      true
+    );
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("❌ Assign bookings controller error:", error);
+
+    return res.status(500).json({
+      status: false,
+      message: error.message || "Failed to assign bookings.",
+    });
+  }
+};
+
+exports.getFranchiseRecruitmentLeadById = async (req, res) => {
+  const { id } = req.params;
+  const adminId = req.admin?.id;
+
+  if (!id) {
+    return res.status(400).json({ status: false, message: "ID is required." });
+  }
+
+  if (!adminId) {
+    return res
+      .status(401)
+      .json({ status: false, message: "Unauthorized. Admin ID missing." });
+  }
+
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+
+  try {
+    const result = await RecruitmentLeadService.getFranchiseRecruitmentLeadById(
+      id,
+      superAdminId
+    ); // ✅ pass adminId
+    await logActivity(req, PANEL, MODULE, "getById", result, result.status);
+    return res.status(result.status ? 200 : 404).json(result);
+  } catch (error) {
+    console.error("❌ Error in getFranchiseRecruitmentLeadById:", error);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "getById",
+      { oneLineMessage: error.message },
+      false
+    );
+    return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
+
+exports.rejectFranchiseRecruitmentStatusById = async (req, res) => {
+  const { id } = req.params; // recruitment lead id
+  const adminId = req.admin?.id;
+
+  if (!id) {
+    return res
+      .status(400)
+      .json({ status: false, message: "Recruitment Lead ID is required." });
+  }
+
+  if (!adminId) {
+    return res
+      .status(401)
+      .json({ status: false, message: "Unauthorized. Admin ID missing." });
+  }
+
+  try {
+    // -----------------------------------
+    // 🔧 SERVICE CALL
+    // -----------------------------------
+    const result =
+      await RecruitmentLeadService.rejectFranchiseRecruitmentStatusById(
+        id,
+        adminId
+      );
+
+    // Log Activity
+    await logActivity(req, PANEL, MODULE, "reject", result, result.status);
+
+    return res.status(result.status ? 200 : 400).json(result);
+  } catch (error) {
+    console.error("❌ Error in rejectRecruitmentLeadStatus:", error);
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "reject",
+      { oneLineMessage: error.message },
+      false
+    );
+
+    return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
+
+exports.sendEmail = async (req, res) => {
+  const { recruitmentLeadId } = req.body;
+
+  if (!Array.isArray(recruitmentLeadId) || recruitmentLeadId.length === 0) {
+    return res.status(400).json({
+      status: false,
+      message: "recruitmentLeadId (array) is required",
+    });
+  }
+
+  try {
+    const results = await Promise.all(
+      recruitmentLeadId.map(async (leadId) => {
+        const result = await RecruitmentLeadService.sendEmail({
+          recruitmentLeadId: leadId,
+          admin: req.admin,
+        });
+
+        await logActivity(
+          req,
+          PANEL,
+          MODULE,
+          "send",
+          {
+            message: `Email attempt for recruitmentLeadId ${leadId}: ${result.message}`,
+          },
+          result.status
+        );
+
+        return { recruitmentLeadId: leadId, ...result };
+      })
+    );
+
+    const allSentTo = results.flatMap((r) => r.sentTo || []);
+
+    return res.status(200).json({
+      status: true,
+      message: `Emails send candidate(s)`,
+      results,
+      sentTo: allSentTo,
+    });
+  } catch (error) {
+    console.error("❌ Controller Send Email Error:", error);
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "send",
+      { error: error.message },
+      false
+    );
+
+    return res.status(500).json({ status: false, message: "Server error" });
+  }
+};
+
+exports.sendOfferEmail = async (req, res) => {
+  const { recruitmentLeadId } = req.body;
+
+  if (!Array.isArray(recruitmentLeadId) || recruitmentLeadId.length === 0) {
+    return res.status(400).json({
+      status: false,
+      message: "recruitmentLeadId (array) is required",
+    });
+  }
+
+  try {
+    const results = await Promise.all(
+      recruitmentLeadId.map(async (leadId) => {
+        const result = await RecruitmentLeadService.sendOfferEmail({
+          recruitmentLeadId: leadId,
+          admin: req.admin,
+        });
+
+        await logActivity(
+          req,
+          PANEL,
+          MODULE,
+          "send",
+          {
+            message: `Email attempt for recruitmentLeadId ${leadId}: ${result.message}`,
+          },
+          result.status
+        );
+
+        return { recruitmentLeadId: leadId, ...result };
+      })
+    );
+
+    const allSentTo = results.flatMap((r) => r.sentTo || []);
+
+    return res.status(200).json({
+      status: true,
+      message: `Emails send candidate(s)`,
+      results,
+      sentTo: allSentTo,
+    });
+  } catch (error) {
+    console.error("❌ Controller Send Email Error:", error);
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "send",
+      { error: error.message },
+      false
+    );
+
+    return res.status(500).json({ status: false, message: "Server error" });
+  }
+};
+
+exports.getAllFranchiseRecruitmentLeadRport = async (req, res) => {
+  try {
+    const adminId = req.admin?.id;
+    // 👉 accept ?dateRange=thisMonth | lastMonth | last3Months | last6Months
+    // const { dateRange } = req.query;
+    let { dateRange } = req.query;
+    if (!dateRange || dateRange === "undefined" || dateRange === "") {
+      dateRange = null;
+    }
+    if (!adminId) {
+      return res.status(401).json({
+        status: false,
+        message: "Unauthorized. Admin ID missing.",
+      });
+    }
+
+    // 🔍 Get parent super admin
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+
+    if (!superAdminId) {
+      return res.status(400).json({
+        status: false,
+        message: "Super admin not found for this admin.",
+      });
+    }
+
+    // 📌 Service call
+    const result =
+      await RecruitmentLeadService.getAllFranchiseRecruitmentLeadRport(
+        superAdminId,
+        dateRange
+      );
+
+    // 📝 Activity Log
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { superAdminId, dateRange },
+      result.status
+    );
+
+    return res.status(result.status ? 200 : 400).json(result);
+  } catch (error) {
+    console.error("❌ Controller Error getAllRecruitmentLeadRport:", error);
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { oneLineMessage: error.message },
+      false
+    );
+
+    return res.status(500).json({
+      status: false,
+      message: "Server error while fetching recruitment report.",
+    });
+  }
+};

@@ -1,0 +1,64 @@
+const express = require("express");
+const router = express.Router();
+const multer = require("multer");
+const upload = multer(); // ✅ Handles multipart/form-data
+
+const authMiddleware = require("../../middleware/admin/authenticate");
+const permissionMiddleware = require("../../middleware/admin/permission");
+
+const {
+  createSessionExercise,
+  getAllSessionExercises,
+  getSessionExerciseById,
+  updateSessionExercise,
+  deleteSessionExercise,
+  duplicateSessionExercise,
+} = require("../../controllers/admin/sessionPlan/sessionExerciseController");
+
+// 🌐 Base Path: /api/admin/session-plan-exercise
+
+router.post(
+  "/",
+  authMiddleware,
+  upload.array("images", 10),
+  permissionMiddleware("session-exercise", "create"),
+  createSessionExercise
+);
+
+router.get(
+  "/",
+  authMiddleware,
+  permissionMiddleware("session-exercise", "view-listing"),
+  getAllSessionExercises
+);
+
+router.get(
+  "/:id",
+  authMiddleware,
+  permissionMiddleware("session-exercise", "view-listing"),
+  getSessionExerciseById
+);
+
+router.put(
+  "/:id",
+  authMiddleware,
+  upload.array("images", 10),
+  permissionMiddleware("session-exercise", "update"),
+  updateSessionExercise
+);
+router.delete(
+  "/:id",
+  authMiddleware,
+  permissionMiddleware("session-exercise", "delete"),
+  deleteSessionExercise
+);
+
+router.post(
+  "/:id/duplicate",
+  authMiddleware,
+  upload.any(), // ✅ accept banner, video, AND dynamic recording_* fields
+  permissionMiddleware("session-exercise", "create"),
+  duplicateSessionExercise
+);
+
+module.exports = router;

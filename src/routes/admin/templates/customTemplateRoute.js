@@ -1,0 +1,53 @@
+const express = require("express");
+const router = express.Router();
+const multer = require("multer");
+
+const storage = multer.memoryStorage();
+const upload = multer(); // ✅ Handles multipart/form-data
+const authMiddleware = require("../../../middleware/admin/authenticate");
+const permissionMiddleware = require("../../../middleware/admin/permission");
+const {
+  createCustomTemplate,
+  listCustomTemplates,
+  deleteCustomTemplate,
+  updateCustomTemplate,
+  getCustomTemplate
+} = require("../../../controllers/admin/templates/customTemplateController");
+
+router.post(
+  "/create",
+  authMiddleware,
+  upload.any(),
+  permissionMiddleware("holiday-custom-template", "create"),
+  createCustomTemplate
+);
+
+router.get(
+  "/list",
+  authMiddleware,
+  permissionMiddleware("holiday-custom-template", "view-listing"),
+  listCustomTemplates
+);
+router.get(
+  "/get/:id",
+  authMiddleware,
+  permissionMiddleware("holiday-custom-template", "view"),
+  getCustomTemplate   // <-- your new controller
+);
+// ✅ Delete Route
+router.delete(
+  "/delete/:id",
+  authMiddleware,
+  permissionMiddleware("holiday-custom-template", "delete"),
+  deleteCustomTemplate
+);
+// ✅ Update Route
+router.put(
+  "/update/:id",
+  authMiddleware,
+   upload.any(),
+  permissionMiddleware("holiday-custom-template", "update"),
+  updateCustomTemplate
+);
+
+module.exports = router;

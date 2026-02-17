@@ -1,0 +1,168 @@
+const HolidayPaymentPlan = require("../../../../models/admin/holidayCamps/payment/HolidayPaymentPlan");
+const { Op } = require("sequelize");
+
+// ✅ Create a new payment plan
+exports.createHolidayPlan = async (data) => {
+  try {
+    const {
+      title,
+      price,
+      interval,
+      duration,
+      students,
+      joiningFee,
+      holidayCampPackage,
+      termsAndCondition,
+      createdBy,
+    } = data;
+
+    const plan = await HolidayPaymentPlan.create({
+      title,
+      price,
+      interval,
+      duration,
+      students,
+      joiningFee,
+      holidayCampPackage,
+      termsAndCondition,
+      createdBy,
+    });
+
+    return {
+      status: true,
+      data: plan,
+      message: "Payment plan created successfully.",
+    };
+  } catch (error) {
+    console.error("❌ createPlan error:", error.message);
+    return {
+      status: false,
+      message: `Failed to create payment plan. ${error.message}`,
+    };
+  }
+};
+
+// ✅ Get all payment plans for current admin
+exports.getAllHolidayPlans = async (adminId) => {
+  try {
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
+    const plans = await HolidayPaymentPlan.findAll({
+      where: { createdBy: Number(adminId) },
+      order: [["createdAt", "DESC"]],
+    });
+
+    return {
+      status: true,
+      data: plans,
+      message: `${plans.length} payment plan(s) found.`,
+    };
+  } catch (error) {
+    return {
+      status: false,
+      message: `Failed to fetch payment plans. ${error.message}`,
+    };
+  }
+};
+
+// ✅ Get payment plan by ID and createdBy
+exports.getHolidayPlanById = async (id, adminId) => {
+  try {
+    if (!adminId || isNaN(Number(adminId))) {
+      return {
+        status: false,
+        message: "No valid parent or super admin found for this request.",
+        data: [],
+      };
+    }
+    const plan = await HolidayPaymentPlan.findOne({
+      where: { id, createdBy: Number(adminId) },
+    });
+
+    if (!plan) {
+      return {
+        status: false,
+        message: "No payment plan found with the provided ID. (1)",
+      };
+    }
+
+    return {
+      status: true,
+      data: plan,
+      message: "Payment plan retrieved successfully.",
+    };
+  } catch (error) {
+    return {
+      status: false,
+      message: `Error fetching payment plan. ${error.message}`,
+    };
+  }
+};
+
+// ✅ Update a payment plan by ID and createdBy
+exports.updateHolidayPlan = async (id, adminId, data) => {
+  try {
+    const plan = await HolidayPaymentPlan.findOne({
+      where: { id, createdBy: adminId },
+    });
+
+    if (!plan) {
+      return {
+        status: false,
+        message: "Cannot update. Payment plan not found.",
+      };
+    }
+
+    await plan.update(data);
+
+    return {
+      status: true,
+      data: plan,
+      message: "Payment plan updated successfully.",
+    };
+  } catch (error) {
+    return {
+      status: false,
+      message: `Failed to update payment plan. ${error.message}`,
+    };
+  }
+};
+
+// ✅ Soft delete a payment plan by ID (restricted by createdBy/admin)
+exports.deleteHolidayPlan = async (id, deletedBy) => {
+  try {
+    // ✅ Find plan owned by this admin and not already deleted
+    const plan = await HolidayPaymentPlan.findOne({
+      where: { id, createdBy: deletedBy, deletedAt: null },
+    });
+
+    if (!plan) {
+      return {
+        status: false,
+        message: "Payment plan not found or unauthorized.",
+      };
+    }
+
+    // ✅ Track who deleted
+    await plan.update({ deletedBy });
+
+    // ✅ Soft delete (sets deletedAt automatically)
+    await plan.destroy();
+
+    return {
+      status: true,
+      message: "Payment plan deleted successfully.",
+    };
+  } catch (error) {
+    console.error("❌ deletePlan Service Error:", error);
+    return {
+      status: false,
+      message: `Failed to  delete payment plan. ${error.message}`,
+    };
+  }
+};

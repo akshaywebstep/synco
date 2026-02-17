@@ -1,0 +1,64 @@
+const express = require("express");
+const router = express.Router();
+const multer = require("multer");
+// Multer memory storage
+const upload = multer({ storage: multer.memoryStorage() });
+
+const authMiddleware = require("../../../middleware/admin/authenticate");
+const permissionMiddleware = require("../../../middleware/admin/permission");
+
+const {
+    createStudentCourse,
+    getAllStudentCourses,
+    getStudentCourseById,
+    updateStudentCourse,
+    deleteStudentCourse,
+    reorderStudentCourse,
+} = require("../../../controllers/admin/coaches/studentCourseController");
+
+// Route: Upload music (unlimited files)
+router.post(
+    "/create",
+    authMiddleware,
+    // upload.fields([
+    //     { name: "coverImage", maxCount: 1 }, 
+    // ]),
+    upload.any(),
+    permissionMiddleware("student-course", "create"),
+    createStudentCourse
+);
+
+router.get(
+    "/list",
+    authMiddleware,
+    permissionMiddleware("student-course", "view-listing"),
+    getAllStudentCourses
+);
+
+router.get(
+    "/listBy/:id",
+    authMiddleware,
+    permissionMiddleware("student-course", "view-listing"),
+    getStudentCourseById
+);
+
+router.put(
+    "/update/:id",
+    authMiddleware,
+    upload.any(),
+    permissionMiddleware("student-course", "update"),
+    updateStudentCourse
+);
+
+router.delete(
+    "/delete/:id",
+    authMiddleware,
+    upload.any(),
+    permissionMiddleware("student-course", "delete"),
+    deleteStudentCourse
+);
+
+// ✅ Reorder Session Plan Groups
+router.patch("/reorder", authMiddleware, reorderStudentCourse);
+
+module.exports = router;
