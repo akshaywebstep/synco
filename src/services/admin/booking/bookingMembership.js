@@ -3096,17 +3096,17 @@ exports.retryBookingPayment = async (bookingId, newData) => {
 
         // ✅ Fetch GoCardless access token from AppConfig
         const gcAccessTokenConfig = await AppConfig.findOne({
-          where: { key: "GOCARDLESS_ACCESS_TOKEN" },
+          where: { key: "GC_HEAD_OFFICE_TOKEN" },
           transaction: t,
         });
 
         if (!gcAccessTokenConfig || !gcAccessTokenConfig.value) {
           throw new Error(
-            "Missing GOCARDLESS_ACCESS_TOKEN in AppConfig table."
+            "Missing GC_HEAD_OFFICE_TOKEN in AppConfig table."
           );
         }
 
-        const GOCARDLESS_ACCESS_TOKEN = gcAccessTokenConfig.value;
+        const GC_HEAD_OFFICE_TOKEN = gcAccessTokenConfig.value;
 
         // ✅ Make GoCardless API call
         const response = await axios.post(
@@ -3114,7 +3114,7 @@ exports.retryBookingPayment = async (bookingId, newData) => {
           gcPayload,
           {
             headers: {
-              Authorization: `Bearer ${GOCARDLESS_ACCESS_TOKEN}`, // ✅ from DB, not env
+              Authorization: `Bearer ${GC_HEAD_OFFICE_TOKEN}`, // ✅ from DB, not env
               "Content-Type": "application/json",
               "GoCardless-Version": "2015-07-06",
             },

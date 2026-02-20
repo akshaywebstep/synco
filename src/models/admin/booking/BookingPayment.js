@@ -71,6 +71,12 @@ const BookingPayment = sequelize.define(
       allowNull: false,
       defaultValue: "card", // optional: choose a default if needed
     },
+    paymentCategory: {
+      type: DataTypes.ENUM("starter_pack", "pro_rata", "recurring"),
+      allowNull: true, // ✅ nullable for old data
+      defaultValue: null,
+    },
+
 
     account_number: {
       type: DataTypes.STRING(20),

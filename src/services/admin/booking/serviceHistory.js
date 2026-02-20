@@ -139,7 +139,11 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
           "gender",
           "medicalInformation",
         ].forEach((field) => {
-          if (student[field] !== undefined) {
+          if (
+            student[field] !== undefined &&
+            student[field] !== null &&
+            !(typeof student[field] === "string" && student[field].trim() === "")
+          ) {
             studentRecord[field] = student[field];
           }
         });
@@ -199,7 +203,11 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
                 "relationToChild",
                 "howDidYouHear",
               ].forEach((field) => {
-                if (parent[field] !== undefined) {
+                if (
+                  parent[field] !== undefined &&
+                  parent[field] !== null &&
+                  !(typeof parent[field] === "string" && parent[field].trim() === "")
+                ) {
                   parentRecord[field] = parent[field];
                 }
               });
@@ -256,9 +264,14 @@ exports.updateBookingStudents = async (bookingId, studentsPayload, adminId) => {
                 "emergencyPhoneNumber",
                 "emergencyRelation",
               ].forEach((field) => {
-                if (emergency[field] !== undefined) {
+                if (
+                  emergency[field] !== undefined &&
+                  emergency[field] !== null &&
+                  !(typeof emergency[field] === "string" && emergency[field].trim() === "")
+                ) {
                   emergencyRecord[field] = emergency[field];
                 }
+
               });
 
               await emergencyRecord.save({ transaction: t });

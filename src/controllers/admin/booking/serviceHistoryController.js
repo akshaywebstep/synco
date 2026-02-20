@@ -62,6 +62,93 @@ exports.updateBookingStudents = async (req, res) => {
       if (!Array.isArray(student.emergencyContacts))
         student.emergencyContacts = [];
     });
+    // ✅ Deep validation before DB transaction
+    for (let i = 0; i < studentsPayload.length; i++) {
+      const student = studentsPayload[i];
+
+      // 🔹 Student validation
+      const studentValidation = validateFormData(student, {
+        requiredFields: [
+          "studentFirstName",
+          "studentLastName",
+          "dateOfBirth",
+          "age",
+          "gender",
+        ],
+        patternValidations: {
+          studentFirstName: "string",
+          studentLastName: "string",
+          dateOfBirth: "date",
+          age: "number",
+          gender: "string",
+        },
+      });
+
+      if (!studentValidation.isValid) {
+        return res.status(400).json({
+          status: false,
+          message: `Student ${i + 1}: ${studentValidation.message}`,
+        });
+      }
+
+      // 🔹 Parent validation
+      if (Array.isArray(student.parents)) {
+        for (let j = 0; j < student.parents.length; j++) {
+          const parent = student.parents[j];
+
+          const parentValidation = validateFormData(parent, {
+            requiredFields: [
+              "parentFirstName",
+              "parentLastName",
+              "parentEmail",
+              "parentPhoneNumber",
+              "relationToChild",
+            ],
+            patternValidations: {
+              parentFirstName: "string",
+              parentLastName: "string",
+              parentEmail: "email",
+              parentPhoneNumber: "phone",
+              relationToChild: "string",
+            },
+          });
+
+          if (!parentValidation.isValid) {
+            return res.status(400).json({
+              status: false,
+              message: `Student ${i + 1}, Parent ${j + 1}: ${parentValidation.message}`,
+            });
+          }
+        }
+      }
+
+      // 🔹 Emergency validation
+      if (Array.isArray(student.emergencyContacts)) {
+        for (let k = 0; k < student.emergencyContacts.length; k++) {
+          const emergency = student.emergencyContacts[k];
+
+          const emergencyValidation = validateFormData(emergency, {
+            requiredFields: [
+              "emergencyFirstName",
+              "emergencyLastName",
+              "emergencyPhoneNumber",
+            ],
+            patternValidations: {
+              emergencyFirstName: "string",
+              emergencyLastName: "string",
+              emergencyPhoneNumber: "phone",
+            },
+          });
+
+          if (!emergencyValidation.isValid) {
+            return res.status(400).json({
+              status: false,
+              message: `Student ${i + 1}, Emergency ${k + 1}: ${emergencyValidation.message}`,
+            });
+          }
+        }
+      }
+    }
 
     // 🔹 Transaction
     const t = await sequelize.transaction();

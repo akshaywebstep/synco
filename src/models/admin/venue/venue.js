@@ -33,6 +33,14 @@ const Venue = sequelize.define(
       type: DataTypes.TEXT,
     },
 
+    // ✅ NEW FIELD
+    starterPack: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      comment: "Enable or disable starter pack for this venue",
+    },
+
     // ✅ plain text only (no FK)
     // paymentGroupId: {
     //   type: DataTypes.TEXT("long"),

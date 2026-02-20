@@ -20,10 +20,10 @@ function buildHeaders(accessToken) {
  */
 async function getGoCardlessAccessToken() {
   const config = await AppConfig.findOne({
-    where: { key: "GOCARDLESS_ACCESS_TOKEN" },
+    where: { key: "GC_HEAD_OFFICE_TOKEN" },
   });
   if (!config || !config.value) {
-    throw new Error("Missing GOCARDLESS_ACCESS_TOKEN in AppConfig.");
+    throw new Error("Missing GC_HEAD_OFFICE_TOKEN in AppConfig.");
   }
   return config.value;
 }
