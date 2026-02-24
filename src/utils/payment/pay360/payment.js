@@ -18,13 +18,14 @@ function buildHeaders(accessToken) {
 /**
  * Get GoCardless Access Token from AppConfig
  */
-async function getGoCardlessAccessToken() {
+async function getGoCardlessAccessToken(overrideToken = null) {
+  if (overrideToken) return overrideToken;
+
   const config = await AppConfig.findOne({
     where: { key: "GC_HEAD_OFFICE_TOKEN" },
   });
-  if (!config || !config.value) {
-    throw new Error("Missing GC_HEAD_OFFICE_TOKEN in AppConfig.");
-  }
+
+  if (!config?.value) throw new Error("Missing GC token");
   return config.value;
 }
 
@@ -80,34 +81,35 @@ async function handleResponse(response) {
 /**
  * Create a GoCardless Billing Request (Payment + Mandate + Bank Account)
  */
-async function createBillingRequest({
-  customerId,
-  description,
-  amount,
-  currency = "GBP", // default currency
-  accountHolderName,
-  accountNumber,
-  branchCode,
-  reference,
-  mandateReference,
-  metadata = {},
-  fallbackEnabled = true,
-  countryCode = "GB", // default country
-}) {
+async function createBillingRequest(payload, overrideToken = null) {
   try {
     if (DEBUG) console.log("🔹 [Payment] Step 1: Preparing request body...");
 
-    // ✅ Fetch access token from AppConfig
-    const accessToken = await getGoCardlessAccessToken();
+    const accessToken = overrideToken || await getGoCardlessAccessToken();
 
-    // Payload includes both billing request and customer bank account
+    // ✅ Proper payload destructuring
+    const {
+      description,
+      amount,
+      currency = "GBP",
+      metadata = {},
+      customerId,
+      account_holder_name,
+      account_number,
+      branch_code,
+      country_code = "GB",
+    } = payload;
+
+    if (!customerId) throw new Error("customerId is required");
+    if (!amount) throw new Error("amount is required");
+
     const body = {
       billing_requests: {
         payment_request: {
           description,
           amount,
-          scheme: "faster_payments",
           currency,
+          scheme: "faster_payments",
           metadata,
         },
         mandate_request: {
@@ -119,45 +121,37 @@ async function createBillingRequest({
         links: { customer: customerId },
         metadata,
       },
-      customer_bank_accounts: {
-        account_holder_name: accountHolderName,
-        account_number: accountNumber,
-        branch_code: branchCode,
-        country_code: countryCode, // MUST be valid (e.g., 'GB')
-        currency, // MUST match payment currency
-        links: { customer: customerId },
-      },
+
+      // ⚠️ Only include bank account if provided
+      ...(account_number && branch_code
+        ? {
+            customer_bank_accounts: {
+              account_holder_name,
+              account_number,
+              branch_code,
+              country_code,
+              links: { customer: customerId },
+            },
+          }
+        : {}),
     };
 
     if (DEBUG) console.log("✅ Request body:", body);
 
-    // Send request to GoCardless
     if (DEBUG)
       console.log("🔹 [Payment] Step 2: Sending request to GoCardless...");
+
     const response = await fetch(`${GOCARDLESS_API}/billing_requests`, {
       method: "POST",
-      headers: buildHeaders(accessToken), // ✅ fixed here
+      headers: buildHeaders(accessToken),
       body: JSON.stringify(body),
     });
 
-    // const { status, data, error } = await handleResponse(response);
     const { status, data, message, error } = await handleResponse(response);
-    if (!status) {
-      return {
-        status: false,
-        message,
-        error,
-      };
-    }
 
-    // if (!status) {
-    //   return {
-    //     status: false,
-    //     message:
-    //       "Failed to create billing request. Please check details and try again.",
-    //     error,
-    //   };
-    // }
+    if (!status) {
+      return { status: false, message, error };
+    }
 
     if (DEBUG)
       console.log("✅ Billing request created successfully:", data);
@@ -171,11 +165,69 @@ async function createBillingRequest({
     console.error("❌ Error creating billing request:", err.message);
     return {
       status: false,
-      message:
-        "An unexpected error occurred while creating the billing request.",
+      message: "An unexpected error occurred while creating billing request.",
       error: err.message,
     };
   }
 }
 
-module.exports = { createBillingRequest };
+// Create mandates
+async function createMandate({ customer_bank_account_id }, overrideToken = null) {
+  try {
+    const token = await getGoCardlessAccessToken(overrideToken);
+
+    const body = {
+      mandates: {
+        scheme: "bacs",
+        links: { customer_bank_account: customer_bank_account_id },
+      },
+    };
+
+    const response = await fetch(`${GOCARDLESS_API}/mandates`, {
+      method: "POST",
+      headers: buildHeaders(token),
+      body: JSON.stringify(body),
+    });
+
+    const { status, data, message } = await handleResponse(response);
+    if (!status) return { status: false, message };
+
+    return { status: true, mandate: data.mandates };
+  } catch (err) {
+    return { status: false, message: err.message };
+  }
+}
+
+// create payment
+async function createPayment(
+  { mandateId, amount, currency = "GBP", description },
+  overrideToken = null
+) {
+  try {
+    const token = await getGoCardlessAccessToken(overrideToken);
+
+    const body = {
+      payments: {
+        amount,
+        currency,
+        description,
+        links: { mandate: mandateId },
+      },
+    };
+
+    const response = await fetch(`${GOCARDLESS_API}/payments`, {
+      method: "POST",
+      headers: buildHeaders(token),
+      body: JSON.stringify(body),
+    });
+
+    const { status, data, message } = await handleResponse(response);
+    if (!status) return { status: false, message };
+
+    return { status: true, payment: data.payments };
+  } catch (err) {
+    return { status: false, message: err.message };
+  }
+}
+
+module.exports = { createBillingRequest, createPayment, createMandate };

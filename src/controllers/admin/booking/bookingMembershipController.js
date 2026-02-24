@@ -173,15 +173,26 @@ exports.createBooking = async (req, res) => {
       null;
 
     console.log("🧾 Normalized paymentPlan:", normalizedPlan);
-
     if (normalizedPlan?.interval && normalizedPlan?.duration) {
-      const interval = String(normalizedPlan.interval).toLowerCase();
+      let interval = String(normalizedPlan.interval).toLowerCase();
       const duration = parseInt(normalizedPlan.duration, 10);
+
+      if (interval === "monthly") interval = "month";
+      if (interval === "quarterly") interval = "quarter";
+      if (interval === "yearly" || interval === "annually") interval = "year";
 
       if (["month", "quarter", "year"].includes(interval) && duration > 0) {
         paymentPlanType = `${duration}-${interval}`;
       }
     }
+    // if (normalizedPlan?.interval && normalizedPlan?.duration) {
+    //   const interval = String(normalizedPlan.interval).toLowerCase();
+    //   const duration = parseInt(normalizedPlan.duration, 10);
+
+    //   if (["month", "quarter", "year"].includes(interval) && duration > 0) {
+    //     paymentPlanType = `${duration}-${interval}`;
+    //   }
+    // }
 
     console.log("➡️ paymentPlanType =", paymentPlanType);
 
