@@ -18,7 +18,7 @@ exports.createTerm = async (payload) => {
       day,
       startDate,
       endDate,
-      totalNumberOfSessions,
+      totalSessions,
       exclusionDates = [],
       sessionsMap = [],
       createdBy,
@@ -87,7 +87,7 @@ exports.createTerm = async (payload) => {
       day,
       startDate,
       endDate,
-      totalSessions: totalNumberOfSessions,
+      totalSessions,
       exclusionDates: JSON.stringify(exclusionDates), // Store as JSON string
       sessionsMap: JSON.stringify(sessionsMap), // Store as JSON string
       createdBy,
