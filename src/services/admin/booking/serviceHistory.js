@@ -687,8 +687,9 @@ exports.updateBooking = async (payload, adminId, id) => {
           };
 
           const customerRes = await createAccessPaySuiteCustomer(customerPayload);
-          if (!customerRes.status)
-            throw new Error("Access PaySuite: Customer creation failed");
+          if (!customerRes.status) {
+            throw new Error(customerRes.message);   // ✅ gateway ka exact message
+          }
           console.log("APS CREATE CUSTOMER RESPONSE:", customerRes);
           const customerId =
             customerRes.data?.CustomerId ||
