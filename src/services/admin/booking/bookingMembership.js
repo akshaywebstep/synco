@@ -529,7 +529,11 @@ exports.createBooking = async (data, options) => {
         throw new Error("Not enough capacity for class");
       }
     }
+
+
     await t.commit();
+
+
 
     /* ================= STARTER PACK FIRST ================= */
 
@@ -595,6 +599,7 @@ exports.createBooking = async (data, options) => {
             status: stripeRes.raw?.status,
           },
           gatewayResponse: stripeRes.raw, // store full response
+          // transaction: t
         });
 
         console.log("🔥 Starter pack payment saved successfully");
@@ -745,26 +750,11 @@ exports.createBooking = async (data, options) => {
                 paymentType: "bank",
                 paymentCategory: "pro_rata",
                 gatewayResponse: gcRes,
-              });
+              },
+                // { transaction: t }
+              );
             }
-            // else {
-            //   /* -------- HQ → Access PaySuite -------- */
 
-            //   const apsCharge = await createSchedule({
-            //     amount: proRataTotal,
-            //     description: "Pro-rata lesson charge",
-            //   });
-
-            //   await createBookingPayment({
-            //     bookingId: booking.id,
-            //     studentId: firstStudentId,
-            //     parent: data.parents?.[0],
-            //     amount: proRataTotal,
-            //     paymentType: "accesspaysuite",
-            //     paymentCategory: "pro_rata",
-            //     gatewayResponse: apsCharge,
-            //   });
-            // }
           }
 
           const billingRequestPayload = {
@@ -845,8 +835,9 @@ exports.createBooking = async (data, options) => {
           };
 
           const customerRes = await createAccessPaySuiteCustomer(customerPayload);
-          if (!customerRes.status)
-            throw new Error("Access PaySuite: Customer creation failed");
+          if (!customerRes.status) {
+            throw new Error(customerRes.message);   // ✅ gateway ka exact message
+          }
           console.log("APS CREATE CUSTOMER RESPONSE:", customerRes);
           const customerId =
             customerRes.data?.CustomerId ||
@@ -913,6 +904,7 @@ exports.createBooking = async (data, options) => {
               goCardlessBillingRequest: null,
               createdAt: new Date(),
               updatedAt: new Date(),
+              // transaction: t
             });
 
             console.log("✅ APS pro-rata row saved same as recurring");
@@ -983,6 +975,7 @@ exports.createBooking = async (data, options) => {
             gatewayResponse?.goCardlessBillingRequest || null,
           createdAt: new Date(),
           updatedAt: new Date(),
+          // transaction: t
         });
 
         if (paymentStatusFromGateway === "failed")
@@ -999,6 +992,8 @@ exports.createBooking = async (data, options) => {
         return { status: false, message: error.message };
       }
     }
+
+
 
     return {
       status: true,

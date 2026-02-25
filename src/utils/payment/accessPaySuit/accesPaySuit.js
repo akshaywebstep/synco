@@ -72,6 +72,24 @@ async function handleResponse(res) {
 
   return { status: true, data };
 }
+function sanitizeBankDetails(accountNumber, sortCode) {
+  const cleanAccount = String(accountNumber).replace(/\D/g, "");
+  const cleanSort = String(sortCode).replace(/\D/g, "");
+
+  if (cleanAccount.length !== 8) {
+    throw new Error("Account number must be exactly 8 digits");
+  }
+
+  if (cleanSort.length !== 6) {
+    throw new Error("Sort code must be exactly 6 digits");
+  }
+
+  return {
+    accountNumber: cleanAccount,
+    bankSortCode: cleanSort,
+  };
+}
+
 
 // ================================
 // 1. Create Schedule
@@ -213,56 +231,36 @@ async function getSchedules() {
 // }
 
 async function createAccessPaySuiteCustomer(queryParams) {
-  try {
-    const { clientCode } = await getCredentials();
-    const headers = await buildHeaders();
+  const { clientCode } = await getCredentials();
+  const headers = await buildHeaders();
 
-    const queryString = new URLSearchParams(queryParams).toString();
-    const url = `${BASE_URL}/api/v3/client/${clientCode}/customer?${queryString}`;
+  const queryString = new URLSearchParams(queryParams).toString();
+  const url = `${BASE_URL}/api/v3/client/${clientCode}/customer?${queryString}`;
 
-    if (DEBUG) console.log("Creating customer URL:", url);
+  console.log("APS CUSTOMER URL:", url);
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-    });
+  const res = await fetch(url, { method: "POST", headers });
 
-    if (!res.ok) {
-      // Try to extract error message from response body
-      let errorData;
-      try {
-        errorData = await res.json();
-      } catch {
-        // If response is not json
-        errorData = await res.text();
-      }
+  const raw = await res.text();
 
-      let errorMessage = "Gateway error occurred";
-      if (errorData) {
-        if (typeof errorData === "string") {
-          errorMessage = errorData;
-        } else if (errorData.message) {
-          errorMessage = errorData.message;
-        } else {
-          errorMessage = JSON.stringify(errorData);
-        }
-      }
+  let data;
+  try { data = raw ? JSON.parse(raw) : raw; }
+  catch { data = raw; }
 
-      return {
-        status: false,
-        message: errorMessage,
-      };
-    }
+  if (!res.ok) {
+    console.log("APS RAW ERROR:", data);
 
-    // If response is ok, handle it normally
-    return handleResponse(res);
-  } catch (error) {
-    // Network or unexpected error
     return {
       status: false,
-      message: error.message || "Unexpected error occurred",
+      message:
+        data?.Errors?.[0]?.Message ||
+        data?.Detail ||
+        data?.Message ||
+        raw,     // ✅ EXACT gateway text
     };
   }
+
+  return { status: true, data };
 }
 
 // async function createContract(customerId, queryParams) {
