@@ -179,51 +179,52 @@ exports.createBooking = async (req, res) => {
       console.log("✔️ paymentPlanType is truthy. Proceeding...");
       let requiredTitle = "Book A Membership";
 
-<<<<<<< HEAD
+
       if (duration >= 7) {
-=======
-      if (duration && duration !== 1) {
->>>>>>> dabf57c35cafe2d760d6a28b40cd04dba154e24c
-        requiredTitle = "Book A Membership (12months)";
-      }
 
-      console.log("➡️ requiredTitle =", requiredTitle);
+        if (duration && duration !== 1) {
+          dabf57c35cafe2d760d6a28b40cd04dba154e24c
+          requiredTitle = "Book A Membership (12months)";
+        }
 
-      // 🔹 Step 3: Fetch email template (book-paid-trial)
-      console.log("➡️ Fetching email config for 'book-paid-trial'...");
-      // 1️⃣ Get template category
-      const templateCategory = await TemplateCategory.findOne({
-        where: { category: "Book A Membership" }, // 👈 yaha apna correct category name daalo
-      });
+        console.log("➡️ requiredTitle =", requiredTitle);
 
-      if (!templateCategory) {
-        throw new Error("Template category not found.");
-      }
+        // 🔹 Step 3: Fetch email template (book-paid-trial)
+        console.log("➡️ Fetching email config for 'book-paid-trial'...");
+        // 1️⃣ Get template category
+        const templateCategory = await TemplateCategory.findOne({
+          where: { category: "Book A Membership" }, // 👈 yaha apna correct category name daalo
+        });
 
-      // 2️⃣ Get Custom Templates
-      const allTemplates = await CustomTemplate.findAll({
-        where: {
-          mode_of_communication: "email",
-          title: requiredTitle,     // 👈 MAGIC LINE
-        },
-        order: [["createdAt", "DESC"]],
-      });
+        if (!templateCategory) {
+          throw new Error("Template category not found.");
+        }
 
-      let customTemplate = null;
+        // 2️⃣ Get Custom Templates
+        const allTemplates = await CustomTemplate.findAll({
+          where: {
+            mode_of_communication: "email",
+            title: requiredTitle,     // 👈 MAGIC LINE
+          },
+          order: [["createdAt", "DESC"]],
+        });
 
-      for (const template of allTemplates) {
-        try {
-          const categoryIds = JSON.parse(template.template_category_id || "[]");
+        let customTemplate = null;
 
-          if (
-            Array.isArray(categoryIds) &&
-            categoryIds.includes(Number(templateCategory.id))
-          ) {
-            customTemplate = template;
-            break;
+        for (const template of allTemplates) {
+          try {
+            const categoryIds = JSON.parse(template.template_category_id || "[]");
+
+            if (
+              Array.isArray(categoryIds) &&
+              categoryIds.includes(Number(templateCategory.id))
+            ) {
+              customTemplate = template;
+              break;
+            }
+          } catch (err) {
+            console.error("Invalid template_category_id format:", err.message);
           }
-        } catch (err) {
-          console.error("Invalid template_category_id format:", err.message);
         }
       }
 
@@ -378,11 +379,11 @@ exports.createBooking = async (req, res) => {
               .replace(/{{className}}/g, classNameHtml)
               .replace(/{{classTime}}/g, timeHtml)
               .replace(/{{day}}/g, dayHtml) // ✅ NEW variable
-<<<<<<< HEAD
+
               // .replace(/{{endDate}}/g, endDate)
-=======
+
               .replace(/{{endDate}}/g, endDate)
->>>>>>> dabf57c35cafe2d760d6a28b40cd04dba154e24c
+
               // ✅ Payment placeholders
               .replace(/{{price}}/g, totalPrice)
               .replace(/{{time}}/g, timeHtml)
