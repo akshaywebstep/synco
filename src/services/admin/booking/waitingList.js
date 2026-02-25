@@ -2321,17 +2321,17 @@ exports.convertToMembership = async (data, options) => {
           if (proRataTotal > 0) {
             console.log("🔥 APS PRO RATA:", proRataTotal);
 
-            const recurringContractStartDate = getNextBillingCycleDate();
+            const recurringContractStartDate = calculateContractStartDate(18);
             const proRataContractPayload = {
               scheduleName: matchedSchedule.Name,
-              start: proRataContractStartDate,
+              start: recurringContractStartDate,
               isGiftAid: false,
               terminationType: paymentPlan.duration ? "Fixed term" : "Until further notice",
               atTheEnd: "Switch to further notice",
               InitialAmount: proRataTotal,
             };
             if (paymentPlan.duration) {
-              const start = new Date(proRataContractStartDate);
+              const start = new Date(recurringContractStartDate);
               const end = new Date(start);
               end.setMonth(end.getMonth() + Number(paymentPlan.duration));
               proRataContractPayload.TerminationDate = end.toISOString().split("T")[0];
