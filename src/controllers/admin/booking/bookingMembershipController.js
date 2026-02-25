@@ -179,7 +179,11 @@ exports.createBooking = async (req, res) => {
       console.log("✔️ paymentPlanType is truthy. Proceeding...");
       let requiredTitle = "Book A Membership";
 
+<<<<<<< HEAD
       if (duration >= 7) {
+=======
+      if (duration && duration !== 1) {
+>>>>>>> dabf57c35cafe2d760d6a28b40cd04dba154e24c
         requiredTitle = "Book A Membership (12months)";
       }
 
@@ -374,7 +378,11 @@ exports.createBooking = async (req, res) => {
               .replace(/{{className}}/g, classNameHtml)
               .replace(/{{classTime}}/g, timeHtml)
               .replace(/{{day}}/g, dayHtml) // ✅ NEW variable
+<<<<<<< HEAD
               // .replace(/{{endDate}}/g, endDate)
+=======
+              .replace(/{{endDate}}/g, endDate)
+>>>>>>> dabf57c35cafe2d760d6a28b40cd04dba154e24c
               // ✅ Payment placeholders
               .replace(/{{price}}/g, totalPrice)
               .replace(/{{time}}/g, timeHtml)
