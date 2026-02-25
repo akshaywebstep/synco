@@ -208,22 +208,36 @@ async function autoSyncFreezeBilling() {
 }
 // GBP → pence (GoCardless only)
 const gbpToPence = (amount) => Math.round(Number(amount) * 100);
-function getNextBillingDate(fromDate) {
-  const d = new Date(fromDate);
-  return new Date(d.getFullYear(), d.getMonth() + 1, 1);
-}
+
 function countRemainingSessionsFromTerms(startDate, terms) {
   const start = new Date(startDate);
   let totalSessions = 0;
 
-  const safeTerms = terms || []; // default to empty array if undefined
+  const safeTerms = terms || [];
   safeTerms.forEach((term) => {
     if (term.totalSessions) {
       totalSessions += term.totalSessions;
     } else if (term.sessionsMap) {
-      totalSessions += term.sessionsMap.filter(
-        (s) => new Date(s.sessionDate) >= new Date(startDate),
-      ).length;
+      let sessions = term.sessionsMap;
+
+      // If it's a string (JSON from DB), parse it
+      if (typeof sessions === "string") {
+        try {
+          sessions = JSON.parse(sessions);
+        } catch (err) {
+          console.error("Failed to parse term.sessionsMap:", sessions);
+          sessions = [];
+        }
+      }
+
+      // Ensure it's an array before filtering
+      if (Array.isArray(sessions)) {
+        totalSessions += sessions.filter(
+          (s) => new Date(s.sessionDate) >= start
+        ).length;
+      } else {
+        console.warn("term.sessionsMap is not an array:", sessions);
+      }
     }
   });
 
@@ -818,11 +832,11 @@ exports.createBooking = async (data, options) => {
           const customerPayload = {
             email: data.payment?.email || data.parents?.[0]?.parentEmail,
             title: "Mr",
-            customerRef: `BOOK-${booking.id}`,
+            customerRef: `BOOK-${booking.id}-${Date.now()}`,
             firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
             surname: data.payment?.lastName || data.parents?.[0]?.parentLastName,
-            line1: data.payment?.addressLine1 || "N/A",
-            postCode: data.payment?.postalCode || "N/A",
+            line1: data.payment?.addressLine1 || "10 Downing Street",
+            postCode: data.payment?.postalCode || "SW1A 2AA",
             accountNumber: data.payment?.account_number,
             bankSortCode: data.payment?.branch_code,
             accountHolderName:
@@ -833,7 +847,7 @@ exports.createBooking = async (data, options) => {
           const customerRes = await createAccessPaySuiteCustomer(customerPayload);
           if (!customerRes.status)
             throw new Error("Access PaySuite: Customer creation failed");
-
+          console.log("APS CREATE CUSTOMER RESPONSE:", customerRes);
           const customerId =
             customerRes.data?.CustomerId ||
             customerRes.data?.Id ||
