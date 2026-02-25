@@ -365,7 +365,7 @@ exports.createBooking = async (req, res) => {
       const finalHtml = htmlTemplate
         .replace(/{{studentsHtml}}/g, studentsHtml)
         .replace(/{{className}}/g, classNameHtml)
-        .replace(/{{classTime}}/g, timeHtml)
+        .replace(/{{time}}/g, timeHtml)
         .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`)
         .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
         .replace(/{{venueName}}/g, venueName)
@@ -1478,7 +1478,7 @@ exports.convertToMembership = async (req, res) => {
       console.log("❌ paymentPlanType is falsy. Skipping email sending block.");
     }
     // 🔔 Booking converted notification
-    if (booking?.isConvertedToMembership) {
+    if (booking) {
       const conversionMessage =
         "🎉 Your free trial booking has been successfully converted into a paid membership.";
 
