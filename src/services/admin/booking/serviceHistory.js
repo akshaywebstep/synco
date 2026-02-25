@@ -34,6 +34,12 @@ const {
   createCustomer,
   removeCustomer,
 } = require("../../../utils/payment/pay360/customer");
+function getNextBillingCycleDate() {
+  const today = new Date();
+  const next = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  return next.toISOString().split("T")[0];
+}
+
 const {
   createBillingRequest,
 } = require("../../../utils/payment/pay360/payment");
@@ -705,7 +711,7 @@ exports.updateBooking = async (payload, adminId, id) => {
           if (proRataTotal > 0) {
             console.log("🔥 APS PRO RATA:", proRataTotal);
 
-            const proRataContractStartDate = calculateContractStartDate(18);
+            const recurringContractStartDate = getNextBillingCycleDate();
             const proRataContractPayload = {
               scheduleName: matchedSchedule.Name,
               start: proRataContractStartDate,

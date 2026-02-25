@@ -78,7 +78,11 @@ function calculateContractStartDate(delayDays = 18) {
   start.setHours(0, 0, 0, 0);
   return start.toISOString().split("T")[0];
 }
-
+function getNextBillingCycleDate() {
+  const today = new Date();
+  const next = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  return next.toISOString().split("T")[0];
+}
 function findMatchingSchedule(schedules) {
   if (!Array.isArray(schedules)) return null;
 
@@ -2020,38 +2024,33 @@ exports.convertToMembership = async (data, options) => {
 
     console.log("🔥 ===== STARTER PACK FLOW START =====");
 
-    const venueForStarter = await Venue.findByPk(data.venueId);
+    const venueForStarter = await Venue.findByPk(data.venueId, { transaction: t });
 
     console.log("🔥 booking venueId:", data.venueId);
     console.log("🔥 venue found:", !!venueForStarter);
     console.log("🔥 starterPack flag:", venueForStarter?.starterPack);
 
-    if (venueForStarter?.starterPack) {
+    if (!venueForStarter) {
+      throw new Error("Venue not found");
+    }
+
+    /* ✅ ONLY charge when explicitly enabled */
+    const isStarterPackEnabled =
+      venueForStarter.starterPack === true ||
+      venueForStarter.starterPack === 1 ||
+      venueForStarter.starterPack === "1";
+
+    if (isStarterPackEnabled) {
       console.log("🔥 Starter pack enabled for venue");
 
       const starterPack = await StarterPack.findOne({
         where: { enabled: true },
+        transaction: t,
       });
 
-      console.log("🔥 StarterPack record:", starterPack);
-
-      if (!starterPack) {
-        console.log("❌ No enabled starter pack found in DB");
-      }
-
       if (starterPack && Number(starterPack.price) > 0) {
-        console.log("🔥 StarterPack price:", starterPack.price);
-
         const parent = data.parents?.[0];
-
-        console.log("🔥 Parent object:", parent);
-
-        if (!parent) {
-          console.log("❌ Parent missing");
-          throw new Error("Parent required for starter pack");
-        }
-
-        console.log("🔥 Calling chargeStarterPack...");
+        if (!parent) throw new Error("Parent required for starter pack");
 
         const stripeRes = await chargeStarterPack({
           name: `${parent.parentFirstName} ${parent.parentLastName}`,
@@ -2059,14 +2058,8 @@ exports.convertToMembership = async (data, options) => {
           starterPack,
         });
 
-        console.log("🔥 Stripe Response:", stripeRes);
-
-        if (!stripeRes?.status) {
-          console.log("❌ Stripe returned failure:", stripeRes?.message);
+        if (!stripeRes?.status)
           throw new Error(stripeRes?.message || "Starter pack payment failed");
-        }
-
-        console.log("🔥 Stripe success, saving BookingPayment...");
 
         await createBookingPayment({
           bookingId: booking.id,
@@ -2074,19 +2067,19 @@ exports.convertToMembership = async (data, options) => {
           parent,
           amount: starterPack.price,
           paymentType: "stripe",
-          paymentCategory: "starter_pack", // better naming
+          paymentCategory: "starter_pack",
           transactionMeta: {
             paymentIntentId: stripeRes.paymentIntentId,
             status: stripeRes.raw?.status,
           },
-          gatewayResponse: stripeRes.raw, // store full response
-          transaction: t
+          gatewayResponse: stripeRes.raw,
+          transaction: t,
         });
 
-        console.log("🔥 Starter pack payment saved successfully");
-      } else {
-        console.log("⚠️ Starter pack price invalid or 0");
+        console.log("✅ Starter pack payment saved");
       }
+    } else {
+      console.log("⛔ Starter pack disabled — skipping charge");
     }
 
     console.log("🔥 ===== STARTER PACK FLOW END =====");
@@ -2108,47 +2101,65 @@ exports.convertToMembership = async (data, options) => {
         const paymentPlan = booking.paymentPlanId
           ? await PaymentPlan.findByPk(booking.paymentPlanId, {})
           : null;
-        const recurringAmount = Number(paymentPlan?.price || 0);
 
-        let totalProRata = 0;
+        // ✅ Fetch effective classScheduleId from first student
+        let effectiveScheduleId =
+          studentRecords[0]?.classScheduleId || data.students?.[0]?.classScheduleId;
+        // Check if data.students array exists and has at least 1 student
 
-        for (const student of studentRecords) {
-          const classSchedule = await ClassSchedule.findByPk(student.classScheduleId);
 
-          if (!classSchedule)
-            throw new Error(`ClassSchedule not found for ${student.classScheduleId}`);
-
-          // termIds parse
-          let termIds = [];
-          if (Array.isArray(classSchedule.termIds)) termIds = classSchedule.termIds;
-          else if (typeof classSchedule.termIds === "string") {
-            try {
-              termIds = JSON.parse(classSchedule.termIds);
-            } catch {
-              termIds = [];
-            }
-          }
-
-          const terms = await Term.findAll({ where: { id: termIds } });
-
-          const studentProRata = await calculateProRata({
-            paymentPlan,
-            terms,
-            startDate: data.startDate,
-          });
-
-          totalProRata += Number(studentProRata || 0);
+        if (!effectiveScheduleId) {
+          throw new Error("Cannot determine classScheduleId: No student found");
         }
 
-        totalProRata = Number(totalProRata.toFixed(2));
+        // Fetch the ClassSchedule
+        const classSchedule = await ClassSchedule.findByPk(effectiveScheduleId);
+
+        if (!classSchedule) {
+          throw new Error(
+            `ClassSchedule not found for ID: ${effectiveScheduleId}`,
+          );
+        }
+
+        // Safely parse termIds (DB has JSON array string)
+        let termIds = [];
+        if (Array.isArray(classSchedule.termIds)) {
+          termIds = classSchedule.termIds;
+        } else if (typeof classSchedule.termIds === "string") {
+          try {
+            termIds = JSON.parse(classSchedule.termIds);
+          } catch (err) {
+            console.error(
+              "Failed to parse classSchedule.termIds:",
+              classSchedule.termIds,
+            );
+            termIds = [];
+          }
+        }
+
+        // Fetch Terms
+        const terms = await Term.findAll({
+          where: { id: termIds || [] },
+        });
 
 
+        const proRataAmount = await calculateProRata({
+          paymentPlan,
+          terms,
+          startDate: data.startDate,
+        });
+
+        const recurringAmount = Number(paymentPlan.price || 0);
+
+        const proRataTotal = Number(
+          (proRataAmount * (data.totalStudents || 1)).toFixed(2)
+        );
 
         // ✅ Step 2: frontend should send price only
         const frontendPrice = Number(data.payment?.price);
         console.log("FRONTEND PRICE:", frontendPrice);
         console.log("PLAN PRICE:", recurringAmount);
-        console.log("PRORATA:", totalProRata);
+        console.log("PRORATA:", proRataTotal);
 
 
         if (Math.abs(frontendPrice - recurringAmount) > 0.01) {
@@ -2191,21 +2202,21 @@ exports.convertToMembership = async (data, options) => {
               "Failed to create GoCardless customer.",
             );
 
-          if (totalProRata > 0) {
+          if (proRataTotal > 0) {
             if (!isHQVenue) {
               /* -------- Franchisee → GoCardless -------- */
 
               const gcRes = await createBillingRequest({
                 customerId: createCustomerRes.customer.id,
                 description: "Pro-rata lesson charge",
-                amount: gbpToPence(totalProRata),
+                amount: gbpToPence(proRataTotal),
               }, overrideToken);
 
               await createBookingPayment({
                 bookingId: booking.id,
                 studentId: firstStudentId,
                 parent: data.parents?.[0],
-                amount: totalProRata,
+                amount: proRataTotal,
                 paymentType: "bank",
                 paymentCategory: "pro_rata",
                 gatewayResponse: gcRes,
@@ -2307,17 +2318,17 @@ exports.convertToMembership = async (data, options) => {
           if (!customerId) throw new Error("Access PaySuite: Customer ID missing");
 
           // ================= PRO-RATA CONTRACT =================
-          if (totalProRata > 0) {
-            console.log("🔥 APS PRO RATA:", totalProRata);
+          if (proRataTotal > 0) {
+            console.log("🔥 APS PRO RATA:", proRataTotal);
 
-            const proRataContractStartDate = calculateContractStartDate(18);
+            const recurringContractStartDate = getNextBillingCycleDate();
             const proRataContractPayload = {
               scheduleName: matchedSchedule.Name,
               start: proRataContractStartDate,
               isGiftAid: false,
               terminationType: paymentPlan.duration ? "Fixed term" : "Until further notice",
               atTheEnd: "Switch to further notice",
-              InitialAmount: totalProRata,
+              InitialAmount: proRataTotal,
             };
             if (paymentPlan.duration) {
               const start = new Date(proRataContractStartDate);
@@ -2340,13 +2351,13 @@ exports.convertToMembership = async (data, options) => {
               firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName || "",
               lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName || "",
               email: data.payment?.email || data.parents?.[0]?.parentEmail || "",
-              amount: totalProRata,
-              price: totalProRata,
+              amount: proRataTotal,
+              price: proRataTotal,
               billingAddress: data.payment?.billingAddress || "",
               account_number: data.payment?.account_number || "",
               branch_code: data.payment?.branch_code || "",
               account_holder_name: data.payment?.account_holder_name || "",
-              paymentStatus: "active",
+              paymentStatus: "pending",
               currency: "GBP",
               merchantRef: `PR-${booking.id}-${Date.now()}`,
               description: `${venue?.name || "Venue"} - ${firstSchedule?.className || "Class"}`,
@@ -2357,7 +2368,7 @@ exports.convertToMembership = async (data, options) => {
                 customer: customerRes.data,
                 contract: proRataContractRes.data,
               },
-              transactionMeta: { status: "active" },
+              transactionMeta: { status: "pending" },
               goCardlessCustomer: null,
               goCardlessBankAccount: null,
               goCardlessBillingRequest: null,

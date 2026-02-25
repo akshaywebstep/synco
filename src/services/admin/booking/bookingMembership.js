@@ -83,6 +83,11 @@ function calculateContractStartDate(delayDays = 18) {
   start.setHours(0, 0, 0, 0);
   return start.toISOString().split("T")[0];
 }
+function getNextBillingCycleDate() {
+  const today = new Date();
+  const next = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  return next.toISOString().split("T")[0];
+}
 
 function findMatchingSchedule(schedules) {
   if (!Array.isArray(schedules)) return null;
@@ -504,30 +509,31 @@ exports.createBooking = async (data, options) => {
     }
 
     // Update Class Capacity
-    // Step 5: Update Class Capacity
-    const scheduleCountMap = {};
+    // Step 6: Update Class Capacity
+    const scheduleMap = {};
 
-    for (const student of data.students) {
-      scheduleCountMap[student.classScheduleId] =
-        (scheduleCountMap[student.classScheduleId] || 0) + 1;
+    for (const s of studentRecords) {
+      scheduleMap[s.classScheduleId] =
+        (scheduleMap[s.classScheduleId] || 0) + 1;
     }
 
-    for (const [classScheduleId, count] of Object.entries(scheduleCountMap)) {
-      const [result] = await sequelize.query(
-        `
-    UPDATE class_schedules
-    SET capacity = capacity - :count
-    WHERE id = :id AND capacity >= :count
-    `,
-        {
-          replacements: { id: classScheduleId, count },
-          transaction: t,
-        },
-      );
+    for (const scheduleId of Object.keys(scheduleMap)) {
+      const count = scheduleMap[scheduleId];
 
-      if (result.affectedRows === 0) {
-        throw new Error("Not enough capacity for class");
-      }
+      const classSchedule = await ClassSchedule.findByPk(scheduleId, {
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!classSchedule) throw new Error(`Schedule ${scheduleId} not found`);
+
+      if (classSchedule.capacity < count)
+        throw new Error(`Not enough capacity for schedule ${scheduleId}`);
+
+      await classSchedule.update(
+        { capacity: classSchedule.capacity - count },
+        { transaction: t }
+      );
     }
 
 
@@ -911,7 +917,8 @@ exports.createBooking = async (data, options) => {
           }
 
           // ================= RECURRING CONTRACT =================
-          const recurringContractStartDate = calculateContractStartDate(18);
+          // const recurringContractStartDate = calculateContractStartDate(18);
+          const recurringContractStartDate = getNextBillingCycleDate();
           const recurringContractPayload = {
             scheduleName: matchedSchedule.Name,
             start: recurringContractStartDate,
