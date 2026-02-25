@@ -8,6 +8,8 @@ const {
   PaymentGroup,
   PaymentGroupHasPlan,
   SessionExercise,
+  Admin,
+  StarterPack,
 } = require("../../../models");
 
 const { Op, Sequelize } = require("sequelize");
@@ -93,17 +95,46 @@ exports.getAllVenuesWithClasses = async ({
   userLatitude,
   userLongitude,
   searchRadiusMiles,
-  createdBy
+  createdBy,
+  adminId
 }) => {
   try {
 
-    if (!createdBy || isNaN(Number(createdBy))) {
+    const currentAdmin = await Admin.findByPk(adminId);
+
+    if (!currentAdmin) {
       return {
         status: false,
-        message: "No valid super admin found for this request.",
+        message: "Admin not found.",
         data: [],
       };
     }
+
+    let createdByIds = [];
+
+    // ✅ If SuperAdmin
+    if (!currentAdmin.superAdminId) {
+      const childAdmins = await Admin.findAll({
+        where: { superAdminId: adminId },
+        attributes: ["id"],
+      });
+
+      const childIds = childAdmins.map(a => a.id);
+
+      // SuperAdmin can see own + franchise venues
+      createdByIds = [adminId, ...childIds];
+    }
+    // ✅ If Franchise
+    else {
+      createdByIds = [adminId];
+    }
+    // if (!createdBy || isNaN(Number(createdBy))) {
+    //   return {
+    //     status: false,
+    //     message: "No valid super admin found for this request.",
+    //     data: [],
+    //   };
+    // }
 
     let venues;
     const hasCoordinates =
@@ -137,7 +168,8 @@ exports.getAllVenuesWithClasses = async ({
 
       venues = await Venue.findAll({
         where: {
-          createdBy: Number(createdBy), // ✅ filter only super admin data
+          // createdBy: Number(createdBy), // ✅ filter only super admin data
+          createdBy: createdByIds, // ✅ SuperAdmin + Franchise support
           ...whereCondition,
         },
 
@@ -158,7 +190,7 @@ exports.getAllVenuesWithClasses = async ({
       });
     } else {
       venues = await Venue.findAll({
-        where: { createdBy: Number(createdBy) }, // ✅ only super admin’s venues
+        where: { createdBy: createdByIds }, // ✅ only super admin’s venues
         include: [
           {
             model: ClassSchedule,
@@ -186,7 +218,8 @@ exports.getAllVenuesWithClasses = async ({
             ? await PaymentGroup.findAll({
               where: {
                 id: venue.paymentGroupId,
-                createdBy: Number(createdBy),
+                // createdBy: Number(createdBy),
+                createdBy: createdByIds,
               },
               include: [
                 {
@@ -226,7 +259,8 @@ exports.getAllVenuesWithClasses = async ({
           ? await TermGroup.findAll({
             where: {
               id: termGroupIds,
-              createdBy: Number(createdBy),
+              // createdBy: Number(createdBy),
+              createdBy: createdByIds
             },
             attributes: ["id", "name"],
           })
@@ -237,7 +271,8 @@ exports.getAllVenuesWithClasses = async ({
           ? await Term.findAll({
             where: {
               termGroupId: { [Op.in]: termGroupIds },
-              createdBy: Number(createdBy),
+              // createdBy: Number(createdBy),
+              createdBy: createdByIds
             },
             attributes: [
               "id",
@@ -404,6 +439,204 @@ exports.getAllVenuesWithClasses = async ({
     };
   }
 };
+exports.getClassById = async (classId, adminId, createdBy) => {
+  try {
+    const currentAdmin = await Admin.findByPk(adminId);
+
+    if (!currentAdmin) {
+      return { status: false, message: "Admin not found." };
+    }
+
+    let createdByIds = [];
+
+    // ✅ SuperAdmin
+    if (!currentAdmin.superAdminId) {
+      const childAdmins = await Admin.findAll({
+        where: { superAdminId: adminId },
+        attributes: ["id"],
+      });
+
+      const childIds = childAdmins.map(a => a.id);
+
+      createdByIds = [adminId, ...childIds];
+    }
+    // ✅ Franchise
+    else {
+      createdByIds = [adminId];
+    }
+    const cls = await ClassSchedule.findOne({
+      where: {
+        id: classId,              // ✅ filter by class ID
+        // createdBy: Number(createdBy) // ✅ filter by admin/super admin
+        createdBy: createdByIds
+      },
+      include: [{ model: Venue, as: "venue", where: { createdBy: createdByIds } }], // ✅ ensure venue belongs to admin
+    });
+
+    if (!cls) {
+      return { status: false, message: "Class not found." };
+    }
+
+    const venue = cls.venue;
+    // =====================
+    // Fetch enabled starter packs for this venue/admin
+    // =====================
+    let starterPacks = await StarterPack.findAll({
+      where: {
+        enabled: true,           // only enabled packs
+        createdBy: createdByIds, // only those created by this admin/super admin
+      },
+      attributes: [
+        "id",
+        "title",
+        "description",
+        "price",
+        "mandatory",
+        "appliesOnTrialConversion",
+        "appliesOnDirectMembership",
+        "paymentRouting",
+      ],
+    });
+
+    // =====================
+    // Attach starterPack ONLY if exists
+    // =====================
+    if (starterPacks.length) {
+      cls.dataValues.starterPack = starterPacks; // show starter pack if enabled
+    }
+    // =====================
+    // Fetch other classes of SAME venue
+    // =====================
+    const venueClasses = await ClassSchedule.findAll({
+      where: {
+        venueId: venue.id,          // ✅ same venue only
+        // createdBy: Number(createdBy)
+        createdBy: createdByIds
+      },
+      attributes: [
+        "id",
+        "className",
+        "capacity",
+        "startTime",
+        "endTime",
+        "day",
+      ],
+    });
+
+    // =====================
+    // Parse termGroupId → array
+    // =====================
+    let termGroupIds = [];
+    if (typeof venue.termGroupId === "string") {
+      try { termGroupIds = JSON.parse(venue.termGroupId); } catch { termGroupIds = []; }
+    } else if (Array.isArray(venue.termGroupId)) {
+      termGroupIds = venue.termGroupId;
+    }
+
+    // =====================
+    // Fetch termGroups with nested terms & sessions
+    // =====================
+    let termGroups = [];
+
+    if (termGroupIds.length) {
+      termGroups = await TermGroup.findAll({
+        where: {
+          id: termGroupIds,
+          // createdBy: Number(createdBy)
+          createdBy: createdByIds
+        },
+        include: [{ model: Term, as: "terms" }],
+      });
+
+      for (const group of termGroups) {
+        for (const term of group.terms || []) {
+          // Parse exclusionDates
+          if (typeof term.exclusionDates === "string") {
+            term.dataValues.exclusionDates = JSON.parse(term.exclusionDates || "[]");
+          }
+
+          // Parse sessionsMap
+          let parsedMap = typeof term.sessionsMap === "string"
+            ? JSON.parse(term.sessionsMap || "[]")
+            : term.sessionsMap || [];
+
+          // Enrich sessionPlan
+          for (const entry of parsedMap) {
+            if (!entry.sessionPlanId) continue;
+
+            const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
+              attributes: [
+                "id", "groupName", "levels",
+                "beginner_video", "intermediate_video", "advanced_video", "pro_video",
+                "banner", "player",
+                "beginner_upload", "intermediate_upload", "pro_upload", "advanced_upload",
+              ],
+            });
+
+            entry.sessionPlan = spg ? await parseSessionPlanGroupLevels(spg) : null;
+          }
+
+          term.dataValues.sessionsMap = parsedMap;
+        }
+      }
+    }
+
+    // --------------------------------------------------
+    // 🚨 CHECK EMPTY TERMS (Your requirement)
+    // --------------------------------------------------
+    let noTerms = false;
+
+    if (!termGroups.length) {
+      noTerms = true;
+    } else {
+      const hasAnyTerms = termGroups.some(g => g.terms && g.terms.length > 0);
+      if (!hasAnyTerms) noTerms = true;
+    }
+
+    if (noTerms) {
+      venue.dataValues.termGroups = [];
+      venue.dataValues.noTermsMessage = "This venue does not have any term and dates.";
+    } else {
+      venue.dataValues.termGroups = termGroups;
+    }
+
+    // =====================
+    // Fetch paymentGroups with nested paymentPlans
+    // =====================
+    let paymentGroups = [];
+    if (venue.paymentGroupId) {
+      paymentGroups = await PaymentGroup.findAll({
+        where: {
+          id: venue.paymentGroupId,
+          // createdBy: Number(createdBy) // ✅ only super admin’s payment groups
+          createdBy: createdByIds
+        },
+        include: [
+          {
+            model: PaymentPlan,
+            as: "paymentPlans",
+            through: {
+              model: PaymentGroupHasPlan,
+              attributes: ["id", "payment_plan_id", "payment_group_id", "createdBy", "createdAt", "updatedAt"],
+            },
+          },
+        ],
+        order: [["createdAt", "DESC"]],
+      });
+    }
+    venue.dataValues.paymentGroups = paymentGroups;
+    cls.dataValues.venueClasses = venueClasses;
+    return {
+      status: true,
+      message: "Class and full details fetched successfully.",
+      data: cls
+    };
+  } catch (error) {
+    console.error("❌ getClassById Error:", error.message);
+    return { status: false, message: "Fetch failed: " + error.message };
+  }
+};
+
 
 exports.getAllClasses = async (adminId) => {
   try {
@@ -502,147 +735,3 @@ exports.getAllClasses = async (adminId) => {
   }
 };
 
-exports.getClassById = async (classId, createdBy) => {
-  try {
-    const cls = await ClassSchedule.findOne({
-      where: {
-        id: classId,              // ✅ filter by class ID
-        createdBy: Number(createdBy) // ✅ filter by admin/super admin
-      },
-      include: [{ model: Venue, as: "venue", where: { createdBy: Number(createdBy) } }], // ✅ ensure venue belongs to admin
-    });
-
-    if (!cls) {
-      return { status: false, message: "Class not found." };
-    }
-
-    const venue = cls.venue;
-    // =====================
-    // Fetch other classes of SAME venue
-    // =====================
-    const venueClasses = await ClassSchedule.findAll({
-      where: {
-        venueId: venue.id,          // ✅ same venue only
-        createdBy: Number(createdBy)
-      },
-      attributes: [
-        "id",
-        "className",
-        "capacity",
-        "startTime",
-        "endTime",
-        "day",
-      ],
-    });
-
-    // =====================
-    // Parse termGroupId → array
-    // =====================
-    let termGroupIds = [];
-    if (typeof venue.termGroupId === "string") {
-      try { termGroupIds = JSON.parse(venue.termGroupId); } catch { termGroupIds = []; }
-    } else if (Array.isArray(venue.termGroupId)) {
-      termGroupIds = venue.termGroupId;
-    }
-
-    // =====================
-    // Fetch termGroups with nested terms & sessions
-    // =====================
-    let termGroups = [];
-
-    if (termGroupIds.length) {
-      termGroups = await TermGroup.findAll({
-        where: {
-          id: termGroupIds,
-          createdBy: Number(createdBy)
-        },
-        include: [{ model: Term, as: "terms" }],
-      });
-
-      for (const group of termGroups) {
-        for (const term of group.terms || []) {
-          // Parse exclusionDates
-          if (typeof term.exclusionDates === "string") {
-            term.dataValues.exclusionDates = JSON.parse(term.exclusionDates || "[]");
-          }
-
-          // Parse sessionsMap
-          let parsedMap = typeof term.sessionsMap === "string"
-            ? JSON.parse(term.sessionsMap || "[]")
-            : term.sessionsMap || [];
-
-          // Enrich sessionPlan
-          for (const entry of parsedMap) {
-            if (!entry.sessionPlanId) continue;
-
-            const spg = await SessionPlanGroup.findByPk(entry.sessionPlanId, {
-              attributes: [
-                "id", "groupName", "levels",
-                "beginner_video", "intermediate_video", "advanced_video", "pro_video",
-                "banner", "player",
-                "beginner_upload", "intermediate_upload", "pro_upload", "advanced_upload",
-              ],
-            });
-
-            entry.sessionPlan = spg ? await parseSessionPlanGroupLevels(spg) : null;
-          }
-
-          term.dataValues.sessionsMap = parsedMap;
-        }
-      }
-    }
-
-    // --------------------------------------------------
-    // 🚨 CHECK EMPTY TERMS (Your requirement)
-    // --------------------------------------------------
-    let noTerms = false;
-
-    if (!termGroups.length) {
-      noTerms = true;
-    } else {
-      const hasAnyTerms = termGroups.some(g => g.terms && g.terms.length > 0);
-      if (!hasAnyTerms) noTerms = true;
-    }
-
-    if (noTerms) {
-      venue.dataValues.termGroups = [];
-      venue.dataValues.noTermsMessage = "This venue does not have any term and dates.";
-    } else {
-      venue.dataValues.termGroups = termGroups;
-    }
-
-    // =====================
-    // Fetch paymentGroups with nested paymentPlans
-    // =====================
-    let paymentGroups = [];
-    if (venue.paymentGroupId) {
-      paymentGroups = await PaymentGroup.findAll({
-        where: {
-          id: venue.paymentGroupId,
-          createdBy: Number(createdBy) // ✅ only super admin’s payment groups
-        },
-        include: [
-          {
-            model: PaymentPlan,
-            as: "paymentPlans",
-            through: {
-              model: PaymentGroupHasPlan,
-              attributes: ["id", "payment_plan_id", "payment_group_id", "createdBy", "createdAt", "updatedAt"],
-            },
-          },
-        ],
-        order: [["createdAt", "DESC"]],
-      });
-    }
-    venue.dataValues.paymentGroups = paymentGroups;
-    cls.dataValues.venueClasses = venueClasses;
-    return {
-      status: true,
-      message: "Class and full details fetched successfully.",
-      data: cls
-    };
-  } catch (error) {
-    console.error("❌ getClassById Error:", error.message);
-    return { status: false, message: "Fetch failed: " + error.message };
-  }
-};

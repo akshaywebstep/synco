@@ -1,5 +1,5 @@
 const fetch = require("node-fetch"); // npm install node-fetch@2
-const axios = require('axios');
+const axios = require("axios");
 
 const { AppConfig } = require("../../../models");
 
@@ -72,6 +72,24 @@ async function handleResponse(res) {
 
   return { status: true, data };
 }
+function sanitizeBankDetails(accountNumber, sortCode) {
+  const cleanAccount = String(accountNumber).replace(/\D/g, "");
+  const cleanSort = String(sortCode).replace(/\D/g, "");
+
+  if (cleanAccount.length !== 8) {
+    throw new Error("Account number must be exactly 8 digits");
+  }
+
+  if (cleanSort.length !== 6) {
+    throw new Error("Sort code must be exactly 6 digits");
+  }
+
+  return {
+    accountNumber: cleanAccount,
+    bankSortCode: cleanSort,
+  };
+}
+
 
 // ================================
 // 1. Create Schedule
@@ -82,7 +100,8 @@ async function createSchedule(scheduleData) {
 
   const url = `${BASE_URL}/api/v3/client/${clientCode}/schedules`;
 
-  if (DEBUG) console.log("Creating schedule with JSON body:", url, scheduleData);
+  if (DEBUG)
+    console.log("Creating schedule with JSON body:", url, scheduleData);
 
   const res = await fetch(url, {
     method: "POST",
@@ -93,36 +112,8 @@ async function createSchedule(scheduleData) {
   return handleResponse(res);
 }
 
-// async function getSchedules() {
-//   try {
-//     const { clientCode } = await getCredentials();
-//     const headers = await buildHeaders();
-
-//     const response = await axios.get(
-//       `${BASE_URL}/api/v3/client/${clientCode}/schedules`,
-//       { headers }
-//     );
-
-//     if (DEBUG) {
-//       console.log("APS Schedules response:", JSON.stringify(response.data));
-//     }
-
-//     return {
-//       status: true,
-//       data: response.data,
-//     };
-//   } catch (error) {
-//     console.error("APS getSchedules error:", error.response?.data || error.message);
-
-//     return {
-//       status: false,
-//       error: error.response?.data || error.message,
-//     };
-//   }
-// }
-
 // ================================
-// 2. Create Customer (query params)
+// 2. Get Schedule
 // ================================
 async function getSchedules() {
   try {
@@ -131,7 +122,7 @@ async function getSchedules() {
 
     const response = await axios.get(
       `${BASE_URL}/api/v3/client/${clientCode}/schedules`,
-      { headers }
+      { headers },
     );
 
     if (DEBUG) {
@@ -143,7 +134,10 @@ async function getSchedules() {
       data: response.data,
     };
   } catch (error) {
-    console.error("APS getSchedules error:", error.response?.data || error.message);
+    console.error(
+      "APS getSchedules error:",
+      error.response?.data || error.message,
+    );
 
     // Extract a user-friendly message from error.response.data or fallback to error.message
     let errorMessage = "Unknown error occurred";
@@ -237,57 +231,36 @@ async function getSchedules() {
 // }
 
 async function createAccessPaySuiteCustomer(queryParams) {
-  try {
-    const { clientCode } = await getCredentials();
-    const headers = await buildHeaders();
+  const { clientCode } = await getCredentials();
+  const headers = await buildHeaders();
 
-    const queryString = new URLSearchParams(queryParams).toString();
-    const url = `${BASE_URL}/api/v3/client/${clientCode}/customer?${queryString}`;
+  const queryString = new URLSearchParams(queryParams).toString();
+  const url = `${BASE_URL}/api/v3/client/${clientCode}/customer?${queryString}`;
 
-    if (DEBUG) console.log("Creating customer URL:", url);
+  console.log("APS CUSTOMER URL:", url);
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-    });
+  const res = await fetch(url, { method: "POST", headers });
 
-    if (!res.ok) {
-      // Try to extract error message from response body
-      let errorData;
-      try {
-        errorData = await res.json();
-      } catch {
-        // If response is not json
-        errorData = await res.text();
-      }
+  const raw = await res.text();
 
-      let errorMessage = "Gateway error occurred";
-      if (errorData) {
-        if (typeof errorData === "string") {
-          errorMessage = errorData;
-        } else if (errorData.message) {
-          errorMessage = errorData.message;
-        } else {
-          errorMessage = JSON.stringify(errorData);
-        }
-      }
+  let data;
+  try { data = raw ? JSON.parse(raw) : raw; }
+  catch { data = raw; }
 
-      return {
-        status: false,
-        message: errorMessage,
-      };
-    }
+  if (!res.ok) {
+    console.log("APS RAW ERROR:", data);
 
-    // If response is ok, handle it normally
-    return handleResponse(res);
-
-  } catch (error) {
-    // Network or unexpected error
     return {
       status: false,
-      message: error.message || "Unexpected error occurred",
+      message:
+        data?.Errors?.[0]?.Message ||
+        data?.Detail ||
+        data?.Message ||
+        raw,     // ✅ EXACT gateway text
     };
   }
+
+  return { status: true, data };
 }
 
 // async function createContract(customerId, queryParams) {
@@ -374,7 +347,9 @@ async function cancelContract(contractId, queryParams = {}) {
 
   const queryString = new URLSearchParams(queryParams).toString();
   const url = `${BASE_URL}/api/v3/client/${clientCode}/contract/${contractId}/cancel?${queryString}`;
-  { headers }
+  {
+    headers;
+  }
   if (DEBUG) console.log("Cancelling contract:", url);
 
   const res = await fetch(url, {
@@ -427,8 +402,7 @@ async function freezeContract(contractId, freezeData) {
       // 🎯 APS specific error mapping
       if (
         res.status === 400 &&
-        (data?.Detail?.includes("No previous version") ||
-          data?.ErrorCode === 4)
+        (data?.Detail?.includes("No previous version") || data?.ErrorCode === 4)
       ) {
         errorMessage =
           "This membership has not started yet. You can freeze the membership only after the contract becomes active.";
@@ -456,8 +430,7 @@ async function freezeContract(contractId, freezeData) {
     return {
       status: false,
       message:
-        error.message ||
-        "Unexpected error occurred while freezing membership.",
+        error.message || "Unexpected error occurred while freezing membership.",
     };
   }
 }
@@ -528,6 +501,76 @@ async function reactivateContract(contractId, reactivateData) {
 }
 
 // ================================
+// 7. ONE OFF PAYMENT (PRO-RATA)
+// ================================
+// ================================
+// 7. ONE OFF PAYMENT (PRO-RATA)
+// ================================
+async function createOneOffPayment(customerId, paymentData) {
+  try {
+    const { clientCode } = await getCredentials();
+    const headers = await buildHeaders();
+
+    const params = {
+      amount: paymentData.amount,
+      description: paymentData.description,
+      reference: paymentData.reference,
+    };
+
+    // add collectionDate if exists
+    if (paymentData.collectionDate) params.collectionDate = paymentData.collectionDate;
+
+    const queryString = new URLSearchParams(params).toString();
+
+    const url = `${BASE_URL}/api/v3/client/${clientCode}/customer/${customerId}/payment`;
+
+    // 🔹 ADD THIS LOG HERE, fetch se pehle
+    console.log("💰 Creating one-off payment for customerId:", customerId, "payload:", params);
+
+    if (DEBUG) console.log("💰 Creating one-off payment:", url);
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(params), // <- body me JSON send karo
+    });
+
+    const raw = await res.text();
+
+    let data;
+    try {
+      data = raw ? JSON.parse(raw) : null;
+    } catch {
+      data = raw;
+    }
+
+    if (!res.ok) {
+      console.log("❌ APS ONE-OFF ERROR STATUS:", res.status);
+      console.log("❌ APS ONE-OFF ERROR BODY:", data);
+
+      return {
+        status: false,
+        message:
+          data?.Detail ||
+          data?.Message ||
+          data?.Errors ||
+          JSON.stringify(data) ||
+          "One-off payment failed",
+      };
+    }
+
+    return {
+      status: true,
+      data,
+    };
+  } catch (err) {
+    return {
+      status: false,
+      message: err.message,
+    };
+  }
+}
+// ================================
 // Full Flow: Schedule → Customer → Contract
 // ================================
 
@@ -542,6 +585,7 @@ module.exports = {
   cancelContract,
   freezeContract,
   reactivateContract,
+  createOneOffPayment,
 };
 
 // {

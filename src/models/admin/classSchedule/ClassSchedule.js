@@ -105,7 +105,7 @@ const ClassSchedule = sequelize.define(
     tableName: "class_schedules",
     timestamps: true,
     paranoid: true, // ✅ Enable soft deletes
-  }
+  },
 );
 
 // ✅ Add this association inside the model file
@@ -126,6 +126,7 @@ ClassSchedule.associate = function (models) {
     foreignKey: "classScheduleId",
     as: "students",
   });
+ 
 };
 
 module.exports = ClassSchedule;

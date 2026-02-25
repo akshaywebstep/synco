@@ -41,6 +41,9 @@ router.use("/payment-plan", require("./paymentPlanRoutes"));
 // Payment Group Module Base Route
 router.use("/payment-group", require("./paymentGroupRoutes"));
 
+// Starter Pack Module Base Route
+router.use("/starter-pack", require("./starterPackRoutes"));
+
 // Discount  Module Base Route
 router.use("/discount", require("./discountRoutes"));
 

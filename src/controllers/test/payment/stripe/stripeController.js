@@ -8,7 +8,9 @@ let stripe;
 async function getStripeInstance() {
   if (stripe) return stripe; // reuse if already loaded
 
-  const config = await AppConfig.findOne({ where: { key: "STRIPE_SECRET_KEY" } });
+  const config = await AppConfig.findOne({
+    where: { key: "STRIPE_SECRET_KEY" },
+  });
   if (!config || !config.value) {
     throw new Error("Missing STRIPE_SECRET_KEY in AppConfig.");
   }
@@ -129,7 +131,12 @@ const createCharges = async ({ body }) => {
       receipt_email: email || "test@example.com",
     });
 
-    console.log("✅ [Stripe] Charge Successful:", charge.id, "Status:", charge.status);
+    console.log(
+      "✅ [Stripe] Charge Successful:",
+      charge.id,
+      "Status:",
+      charge.status,
+    );
 
     return {
       success: true,

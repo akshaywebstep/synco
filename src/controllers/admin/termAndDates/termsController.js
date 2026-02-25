@@ -21,7 +21,7 @@ exports.createTerm = async (req, res) => {
     day,
     startDate,
     endDate,
-    totalNumberOfSessions,
+    totalSessions,
     exclusionDates = [],
     sessionsMap = [],
     createdBy,
@@ -38,7 +38,7 @@ exports.createTerm = async (req, res) => {
       // "day",
       "startDate",
       "endDate",
-      "totalNumberOfSessions",
+      "totalSessions",
       "sessionsMap",
     ],
   });
@@ -62,7 +62,7 @@ exports.createTerm = async (req, res) => {
       day,
       startDate,
       endDate,
-      totalSessions: totalNumberOfSessions,
+      totalSessions,
       exclusionDates, // JSON array
       sessionsMap, // JSON array of sessions
       createdBy: adminId,

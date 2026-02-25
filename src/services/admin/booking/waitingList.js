@@ -15,13 +15,16 @@ const {
   BookingPayment,
   AdminRole,
   AppConfig,
+  StarterPack,
 } = require("../../../models");
 const { sequelize } = require("../../../models");
+const chargeStarterPack = require("../../../utils/payment/pay360/starterPackCharge");
 const {
   createSchedule,
   getSchedules,
   createAccessPaySuiteCustomer,
   createContract,
+  createOneOffPayment
 } = require("../../../utils/payment/accessPaySuit/accesPaySuit");
 const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
@@ -75,11 +78,106 @@ function calculateContractStartDate(delayDays = 18) {
   start.setHours(0, 0, 0, 0);
   return start.toISOString().split("T")[0];
 }
+function getNextBillingCycleDate() {
+  const today = new Date();
+  const next = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  return next.toISOString().split("T")[0];
+}
 function findMatchingSchedule(schedules) {
   if (!Array.isArray(schedules)) return null;
 
   return schedules.find(
-    (s) => s.Name && s.Name.trim().toLowerCase() === "default schedule"
+    (s) => s.Name && s.Name.trim().toLowerCase() === "default schedule",
+  );
+}
+function countRemainingSessionsFromTerms(startDate, terms) {
+  const start = new Date(startDate);
+  let totalSessions = 0;
+
+  const safeTerms = terms || [];
+  safeTerms.forEach((term) => {
+    if (term.totalSessions) {
+      totalSessions += term.totalSessions;
+    } else if (term.sessionsMap) {
+      let sessions = term.sessionsMap;
+
+      // If it's a string (JSON from DB), parse it
+      if (typeof sessions === "string") {
+        try {
+          sessions = JSON.parse(sessions);
+        } catch (err) {
+          console.error("Failed to parse term.sessionsMap:", sessions);
+          sessions = [];
+        }
+      }
+
+      // Ensure it's an array before filtering
+      if (Array.isArray(sessions)) {
+        totalSessions += sessions.filter(
+          (s) => new Date(s.sessionDate) >= start
+        ).length;
+      } else {
+        console.warn("term.sessionsMap is not an array:", sessions);
+      }
+    }
+  });
+
+  return totalSessions;
+}
+async function calculateProRata({ paymentPlan, terms, startDate }) {
+  if (!paymentPlan || !terms) return 0;
+
+  const pricePerLesson = Number(paymentPlan.priceLesson || 0);
+  if (!pricePerLesson) return 0;
+
+  // Count remaining sessions across terms
+  const sessions = countRemainingSessionsFromTerms(startDate, terms);
+
+  // ✅ Multiply pricePerLesson * remaining sessions ONLY (no students here)
+  return Number((pricePerLesson * sessions).toFixed(2));
+}
+// 🟢 Helper: create a payment row
+async function createBookingPayment({
+  bookingId,
+  studentId,
+  parent,
+  amount,
+  paymentType,
+  description,
+  paymentCategory = "recurring",
+  gatewayResponse = null,
+  currency = "GBP",
+  merchantId = null,
+  transaction,
+}) {
+  return await BookingPayment.create(
+    {
+      bookingId,
+      studentId,
+      firstName: parent?.firstName || "",
+      lastName: parent?.lastName || "",
+      email: parent?.email || "",
+      amount,
+      price: amount,
+      paymentType,
+      description,
+      paymentCategory,
+      paymentStatus: gatewayResponse ? "active" : "pending",
+      currency,
+      merchantRef:
+        gatewayResponse?.transaction?.merchantRef || `TXN-${Date.now()}`,
+      gatewayResponse,
+      account_holder_name: parent.account_holder_name || null,
+      account_number: parent.account_number || null,
+      branch_code: parent.branch_code || null,
+      goCardlessCustomer: gatewayResponse?.goCardlessCustomer || null,
+      goCardlessBankAccount: gatewayResponse?.goCardlessBankAccount || null,
+      goCardlessBillingRequest:
+        gatewayResponse?.goCardlessBillingRequest || null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    { transaction },
   );
 }
 const DEBUG = process.env.DEBUG === "true";
@@ -1768,14 +1866,6 @@ exports.removeWaitingList = async ({ bookingId, reason, notes }) => {
   }
 };
 
-function generateBookingId(length = 12) {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let result = "";
-  for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-}
 
 exports.convertToMembership = async (data, options) => {
   const t = await sequelize.transaction();
@@ -1858,6 +1948,7 @@ exports.convertToMembership = async (data, options) => {
         studentRecord = await BookingStudentMeta.create(
           {
             bookingTrialId: booking.id,
+            classScheduleId: student.classScheduleId,   // ✅ MUST
             studentFirstName: student.studentFirstName,
             studentLastName: student.studentLastName,
             dateOfBirth: student.dateOfBirth,
@@ -1929,36 +2020,167 @@ exports.convertToMembership = async (data, options) => {
     }
 
     // Step 5: Payment Handling (GoCardless / AccessPaysuite)
-    if (booking.paymentPlanId && data.payment?.paymentType) {
-      const paymentType = data.payment.paymentType;
-      let paymentStatusFromGateway = "pending";
-      // Payload price
-      if (!data.payment?.price || Number(data.payment.price) <= 0) {
-        throw new Error("Price must be provided in data.payment.price and > 0");
+    /* ================= STARTER PACK FIRST ================= */
+
+    console.log("🔥 ===== STARTER PACK FLOW START =====");
+
+    const venueForStarter = await Venue.findByPk(data.venueId, { transaction: t });
+
+    console.log("🔥 booking venueId:", data.venueId);
+    console.log("🔥 venue found:", !!venueForStarter);
+    console.log("🔥 starterPack flag:", venueForStarter?.starterPack);
+
+    if (!venueForStarter) {
+      throw new Error("Venue not found");
+    }
+
+    /* ✅ ONLY charge when explicitly enabled */
+    const isStarterPackEnabled =
+      venueForStarter.starterPack === true ||
+      venueForStarter.starterPack === 1 ||
+      venueForStarter.starterPack === "1";
+
+    if (isStarterPackEnabled) {
+      console.log("🔥 Starter pack enabled for venue");
+
+      const starterPack = await StarterPack.findOne({
+        where: { enabled: true },
+        transaction: t,
+      });
+
+      if (starterPack && Number(starterPack.price) > 0) {
+        const parent = data.parents?.[0];
+        if (!parent) throw new Error("Parent required for starter pack");
+
+        const stripeRes = await chargeStarterPack({
+          name: `${parent.parentFirstName} ${parent.parentLastName}`,
+          email: parent.parentEmail,
+          starterPack,
+        });
+
+        if (!stripeRes?.status)
+          throw new Error(stripeRes?.message || "Starter pack payment failed");
+
+        await createBookingPayment({
+          bookingId: booking.id,
+          studentId: studentRecords[0]?.id,
+          parent,
+          amount: starterPack.price,
+          paymentType: "stripe",
+          paymentCategory: "starter_pack",
+          transactionMeta: {
+            paymentIntentId: stripeRes.paymentIntentId,
+            status: stripeRes.raw?.status,
+          },
+          gatewayResponse: stripeRes.raw,
+          transaction: t,
+        });
+
+        console.log("✅ Starter pack payment saved");
       }
-      const payloadPrice = Number(data.payment.price); // ✅ use everywheree once
+    } else {
+      console.log("⛔ Starter pack disabled — skipping charge");
+    }
+
+    console.log("🔥 ===== STARTER PACK FLOW END =====");
+
+    // Payment processing (same as your logic but fixed typo and consistency)
+    if (booking.paymentPlanId && data.payment?.paymentType) {
+      const venue = await Venue.findByPk(data.venueId);
+      const venueOwnerAdmin = await Admin.findByPk(venue.createdBy);
+      const overrideToken = venueOwnerAdmin?.GC_FRANCHISE_TOKEN || null;
+      const isHQVenue = !overrideToken;
+      const paymentType = isHQVenue ? "accesspaysuite" : "bank";
+      if (DEBUG)
+        console.log("Step 5: Start payment process, paymentType:", paymentType);
+
+      let paymentStatusFromGateway = "pending";
       const firstStudentId = studentRecords[0]?.id;
 
       try {
-        const paymentPlan = await PaymentPlan.findByPk(booking.paymentPlanId, {
-          transaction: t,
-        });
-        if (!paymentPlan) throw new Error("Invalid payment plan selected.");
-        // const price = paymentPlan.price || 0;
+        const paymentPlan = booking.paymentPlanId
+          ? await PaymentPlan.findByPk(booking.paymentPlanId, {})
+          : null;
 
-        const venue = await Venue.findByPk(data.venueId, { transaction: t });
-        const classSchedule = await ClassSchedule.findByPk(
-          data.classScheduleId,
-          {
-            transaction: t,
+        // ✅ Fetch effective classScheduleId from first student
+        let effectiveScheduleId =
+          studentRecords[0]?.classScheduleId || data.students?.[0]?.classScheduleId;
+        // Check if data.students array exists and has at least 1 student
+
+
+        if (!effectiveScheduleId) {
+          throw new Error("Cannot determine classScheduleId: No student found");
+        }
+
+        // Fetch the ClassSchedule
+        const classSchedule = await ClassSchedule.findByPk(effectiveScheduleId);
+
+        if (!classSchedule) {
+          throw new Error(
+            `ClassSchedule not found for ID: ${effectiveScheduleId}`,
+          );
+        }
+
+        // Safely parse termIds (DB has JSON array string)
+        let termIds = [];
+        if (Array.isArray(classSchedule.termIds)) {
+          termIds = classSchedule.termIds;
+        } else if (typeof classSchedule.termIds === "string") {
+          try {
+            termIds = JSON.parse(classSchedule.termIds);
+          } catch (err) {
+            console.error(
+              "Failed to parse classSchedule.termIds:",
+              classSchedule.termIds,
+            );
+            termIds = [];
           }
+        }
+
+        // Fetch Terms
+        const terms = await Term.findAll({
+          where: { id: termIds || [] },
+        });
+
+
+        const proRataAmount = await calculateProRata({
+          paymentPlan,
+          terms,
+          startDate: data.startDate,
+        });
+
+        const recurringAmount = Number(paymentPlan.price || 0);
+
+        const proRataTotal = Number(
+          (proRataAmount * (data.totalStudents || 1)).toFixed(2)
         );
 
-        const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
-        let gatewayResponse = null;
-        let goCardlessCustomer, goCardlessBankAccount, goCardlessBillingRequest;
+        // ✅ Step 2: frontend should send price only
+        const frontendPrice = Number(data.payment?.price);
+        console.log("FRONTEND PRICE:", frontendPrice);
+        console.log("PLAN PRICE:", recurringAmount);
+        console.log("PRORATA:", proRataTotal);
 
+
+        if (Math.abs(frontendPrice - recurringAmount) > 0.01) {
+          return {
+            status: false,
+            message: `Plan price mismatch. Frontend: ${frontendPrice}, Backend: ${recurringAmount}`,
+          };
+        }
+
+        console.log("✅ Price matches frontend and backend");
+
+        const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
+
+        let gatewayResponse = null;
+        let goCardlessCustomer = null;
+        let goCardlessBankAccount = null;
+        let goCardlessBillingRequest = null;
+        // const paymentType = isHQVenue ? "accesspaysuite" : "bank";
+        const firstSchedule = await ClassSchedule.findByPk(studentRecords[0].classScheduleId);
         if (paymentType === "bank") {
+          // ✅ Prepare GoCardless payload
           const customerPayload = {
             email: data.payment.email || data.parents?.[0]?.parentEmail || "",
             given_name: data.payment.firstName || "",
@@ -1973,53 +2195,81 @@ exports.convertToMembership = async (data, options) => {
             branch_code: data.payment.branch_code || "",
           };
 
-          const createCustomerRes = await createCustomer(customerPayload);
+          const createCustomerRes = await createCustomer(customerPayload, overrideToken);
           if (!createCustomerRes.status)
-            throw new Error(createCustomerRes.message);
+            throw new Error(
+              createCustomerRes.message ||
+              "Failed to create GoCardless customer.",
+            );
+
+          if (proRataTotal > 0) {
+            if (!isHQVenue) {
+              /* -------- Franchisee → GoCardless -------- */
+
+              const gcRes = await createBillingRequest({
+                customerId: createCustomerRes.customer.id,
+                description: "Pro-rata lesson charge",
+                amount: gbpToPence(proRataTotal),
+              }, overrideToken);
+
+              await createBookingPayment({
+                bookingId: booking.id,
+                studentId: firstStudentId,
+                parent: data.parents?.[0],
+                amount: proRataTotal,
+                paymentType: "bank",
+                paymentCategory: "pro_rata",
+                gatewayResponse: gcRes,
+                transaction: t,
+              },
+              );
+            }
+
+          }
 
           const billingRequestPayload = {
             customerId: createCustomerRes.customer.id,
             description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
               }`,
-
-            // amount: payloadPrice, //payload price
-            amount: gbpToPence(payloadPrice), // ✅ 147 pence
+            // amount: planPrice, // ✅ use plan price
+            // amount: payloadPrice, // ✅ FROM PAYLOAD
+            amount: gbpToPence(recurringAmount),
             scheme: "faster_payments",
             currency: "GBP",
-            reference: `TRX-${Date.now()}`,
-            mandateReference: `MD-${Date.now()}`,
+            reference: `TRX-${Date.now()}-${Math.floor(
+              1000 + Math.random() * 9000,
+            )}`,
+            mandateReference: `MD-${Date.now()}-${Math.floor(
+              1000 + Math.random() * 9000,
+            )}`,
+            metadata: { crm_id: customerPayload.crm_id },
             fallbackEnabled: true,
           };
 
           const createBillingRequestRes = await createBillingRequest(
-            billingRequestPayload
+            billingRequestPayload,
+            overrideToken
           );
           if (!createBillingRequestRes.status) {
-            await removeCustomer(createCustomerRes.customer.id);
-            throw new Error(createBillingRequestRes.message);
+            await removeCustomer(createCustomerRes.customer.id, overrideToken);
           }
 
           goCardlessCustomer = createCustomerRes.customer;
-          goCardlessBankAccount = createCustomerRes.bankAccount || null;
-          goCardlessBillingRequest = createBillingRequestRes.billingRequest;
+          goCardlessBankAccount = createCustomerRes.bankAccount;
+          goCardlessBillingRequest = {
+            ...createBillingRequestRes.billingRequest,
+            // planPrice,
+            price: recurringAmount,
+          };
 
           gatewayResponse = {
             gateway: "gocardless",
-            customer: goCardlessCustomer,
-            bankAccount: goCardlessBankAccount,
-            billingRequest: goCardlessBillingRequest,
-            meta: {
-              // amount: price,
-              amount: payloadPrice,
-              currency: "GBP",
-              scheme: "faster_payments",
-            },
+            goCardlessCustomer,
+            goCardlessBankAccount,
+            goCardlessBillingRequest,
           };
-
-          paymentStatusFromGateway = "pending";
         } else if (paymentType === "accesspaysuite") {
-          if (DEBUG)
-            console.log("🔁 Processing Access PaySuite recurring payment");
+          if (DEBUG) console.log("🔁 Processing Access PaySuite recurring payment");
 
           const schedulesRes = await getSchedules();
           if (!schedulesRes.status) {
@@ -2027,32 +2277,26 @@ exports.convertToMembership = async (data, options) => {
           }
 
           const services = schedulesRes.data?.Services || [];
-          const schedules = services.flatMap(
-            (service) => service.Schedules || []
-          );
+          const schedules = services.flatMap(service => service.Schedules || []);
 
           let matchedSchedule = findMatchingSchedule(schedules, paymentPlan);
 
           if (!matchedSchedule) {
-            // DO NOT try to create the schedule
             throw new Error(
               `Access PaySuite: Schedule "Default Schedule" not found. Please create this schedule in APS dashboard before proceeding.`
             );
           }
 
-          // Use matchedSchedule.id for contract creation
           const scheduleId = matchedSchedule.ScheduleId;
 
           const customerPayload = {
             email: data.payment?.email || data.parents?.[0]?.parentEmail,
             title: "Mr",
-            customerRef: `BOOK-${booking.id}-${Date.now()}`, // ✅ unique reference
-            firstName:
-              data.payment?.firstName || data.parents?.[0]?.parentFirstName,
-            surname:
-              data.payment?.lastName || data.parents?.[0]?.parentLastName,
-            line1: data.payment?.addressLine1 || "N/A",
-            postCode: data.payment?.postalCode || "N/A",
+            customerRef: `BOOK-${booking.id}-${Date.now()}`,
+            firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+            surname: data.payment?.lastName || data.parents?.[0]?.parentLastName,
+            line1: data.payment?.addressLine1 || "10 Downing Street",
+            postCode: data.payment?.postalCode || "SW1A 2AA",
             accountNumber: data.payment?.account_number,
             bankSortCode: data.payment?.branch_code,
             accountHolderName:
@@ -2060,119 +2304,195 @@ exports.convertToMembership = async (data, options) => {
               `${data.parents?.[0]?.parentFirstName} ${data.parents?.[0]?.parentLastName}`,
           };
 
-          const customerRes = await createAccessPaySuiteCustomer(
-            customerPayload
-          );
-          if (!customerRes.status)
-            throw new Error("Access PaySuite: Customer creation failed");
-
+          const customerRes = await createAccessPaySuiteCustomer(customerPayload);
+          if (!customerRes.status) {
+            throw new Error(customerRes.message);   // ✅ gateway ka exact message
+          }
+          console.log("APS CREATE CUSTOMER RESPONSE:", customerRes);
           const customerId =
             customerRes.data?.CustomerId ||
             customerRes.data?.Id ||
             customerRes.data?.customerId ||
             customerRes.data?.id;
 
-          if (!customerId)
-            throw new Error("Access PaySuite: Customer ID missing");
+          if (!customerId) throw new Error("Access PaySuite: Customer ID missing");
 
-          // const normalizedStartDate = normalizeContractStartDate(
-          //   data.startDate,
-          //   matchedSchedule
-          // );
-          const contractStartDate = calculateContractStartDate(18);
+          // ================= PRO-RATA CONTRACT =================
+          if (proRataTotal > 0) {
+            console.log("🔥 APS PRO RATA:", proRataTotal);
 
-          const contractPayload = {
+            const recurringContractStartDate = getNextBillingCycleDate();
+            const proRataContractPayload = {
+              scheduleName: matchedSchedule.Name,
+              start: proRataContractStartDate,
+              isGiftAid: false,
+              terminationType: paymentPlan.duration ? "Fixed term" : "Until further notice",
+              atTheEnd: "Switch to further notice",
+              InitialAmount: proRataTotal,
+            };
+            if (paymentPlan.duration) {
+              const start = new Date(proRataContractStartDate);
+              const end = new Date(start);
+              end.setMonth(end.getMonth() + Number(paymentPlan.duration));
+              proRataContractPayload.TerminationDate = end.toISOString().split("T")[0];
+            }
+
+            const proRataContractRes = await createContract(customerId, proRataContractPayload);
+            if (!proRataContractRes.status)
+              throw new Error("Access PaySuite: Pro-rata contract creation failed");
+
+            // Save PRO-RATA as separate BookingPayment row
+            await BookingPayment.create({
+              bookingId: booking.id,
+              paymentPlanId: booking.paymentPlanId,
+              studentId: firstStudentId,
+              paymentType: "accesspaysuite",
+              paymentCategory: "pro_rata",
+              firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName || "",
+              lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName || "",
+              email: data.payment?.email || data.parents?.[0]?.parentEmail || "",
+              amount: proRataTotal,
+              price: proRataTotal,
+              billingAddress: data.payment?.billingAddress || "",
+              account_number: data.payment?.account_number || "",
+              branch_code: data.payment?.branch_code || "",
+              account_holder_name: data.payment?.account_holder_name || "",
+              paymentStatus: "pending",
+              currency: "GBP",
+              merchantRef: `PR-${booking.id}-${Date.now()}`,
+              description: `${venue?.name || "Venue"} - ${firstSchedule?.className || "Class"}`,
+              commerceType: "ECOM",
+              gatewayResponse: {
+                gateway: "accesspaysuite",
+                schedule: matchedSchedule,
+                customer: customerRes.data,
+                contract: proRataContractRes.data,
+              },
+              transactionMeta: { status: "pending" },
+              goCardlessCustomer: null,
+              goCardlessBankAccount: null,
+              goCardlessBillingRequest: null,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+
+            },
+              { transaction: t }
+            );
+
+            console.log("✅ APS pro-rata row saved same as recurring");
+          }
+
+          // ================= RECURRING CONTRACT =================
+          const recurringContractStartDate = calculateContractStartDate(18);
+          const recurringContractPayload = {
             scheduleName: matchedSchedule.Name,
-            start: contractStartDate,
+            start: recurringContractStartDate,
             isGiftAid: false,
-            terminationType: paymentPlan.duration
-              ? "Fixed term"
-              : "Until further notice",
+            terminationType: paymentPlan.duration ? "Fixed term" : "Until further notice",
             atTheEnd: "Switch to further notice",
           };
           if (paymentPlan.duration) {
-            const start = new Date(contractStartDate);
+            const start = new Date(recurringContractStartDate);
             const end = new Date(start);
             end.setMonth(end.getMonth() + Number(paymentPlan.duration));
-
-            contractPayload.TerminationDate = end.toISOString().split("T")[0];
+            recurringContractPayload.TerminationDate = end.toISOString().split("T")[0];
           }
 
-          const contractRes = await createContract(customerId, contractPayload);
-          if (!contractRes.status)
-            throw new Error("Access PaySuite: Contract creation failed");
+          const recurringContractRes = await createContract(customerId, recurringContractPayload);
+          if (!recurringContractRes.status)
+            throw new Error("Access PaySuite: Recurring contract creation failed");
 
           gatewayResponse = {
             gateway: "accesspaysuite",
             schedule: matchedSchedule,
             customer: customerRes.data,
-            contract: contractRes.data,
+            contract: recurringContractRes.data,
           };
 
           paymentStatusFromGateway = "active";
         }
 
         // Save BookingPayment
-        await BookingPayment.create(
-          {
-            bookingId: booking.id,
-            paymentPlanId: booking.paymentPlanId,
-            studentId: firstStudentId,
-            paymentType,
-            firstName:
-              data.payment.firstName ||
-              data.parents?.[0]?.parentFirstName ||
-              "",
-            lastName:
-              data.payment.lastName || data.parents?.[0]?.parentLastName || "",
-            email: data.payment.email || data.parents?.[0]?.parentEmail || "",
-            // amount: price,
-            price: payloadPrice,
-            billingAddress: data.payment.billingAddress || "",
-            account_holder_name: data.payment.account_holder_name || "",
-            account_number: data.payment.account_number || "",
-            branch_code: data.payment.branch_code || "",
-            paymentStatus: paymentStatusFromGateway,
-            currency:
-              gatewayResponse?.transaction?.currency ||
-              gatewayResponse?.billing_requests?.currency ||
-              "GBP",
-            merchantRef:
-              gatewayResponse?.transaction?.merchantRef || merchantRef,
-            description:
-              gatewayResponse?.transaction?.description ||
-              `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-              }`,
-            commerceType: "ECOM",
-            gatewayResponse,
-            goCardlessCustomer,
-            goCardlessBankAccount,
-            goCardlessBillingRequest,
-            createdAt: new Date(),
-            updatedAt: new Date(),
+        await BookingPayment.create({
+          bookingId: booking.id,
+          paymentPlanId: booking.paymentPlanId,
+          studentId: firstStudentId,
+          paymentType,
+          paymentCategory: "recurring",
+          firstName:
+            data.payment.firstName || data.parents?.[0]?.parentFirstName || "",
+          lastName:
+            data.payment.lastName || data.parents?.[0]?.parentLastName || "",
+          email: data.payment.email || data.parents?.[0]?.parentEmail || "",
+          amount: recurringAmount, // plan + pro-rata
+          price: recurringAmount, // plan + pro-rata
+          billingAddress: data.payment.billingAddress || "",
+          account_number: data.payment.account_number || "",
+          branch_code: data.payment.branch_code || "",
+          account_holder_name: data.payment.account_holder_name || "",
+          paymentStatus: paymentStatusFromGateway,
+          currency: gatewayResponse?.transaction?.currency || "GBP",
+          merchantRef: gatewayResponse?.transaction?.merchantRef || merchantRef,
+          description:
+            gatewayResponse?.transaction?.description ||
+            `${venue?.name || "Venue"} - ${firstSchedule?.className || "Class"}`,
+          commerceType: "ECOM",
+          gatewayResponse,
+          transactionMeta: {
+            status: gatewayResponse?.transaction?.status || "pending",
           },
+          goCardlessCustomer: gatewayResponse?.goCardlessCustomer || null,
+          goCardlessBankAccount: gatewayResponse?.goCardlessBankAccount || null,
+          goCardlessBillingRequest:
+            gatewayResponse?.goCardlessBillingRequest || null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+
+        },
           { transaction: t }
         );
 
-        if (paymentStatusFromGateway === "failed") {
-          throw new Error("Payment failed. Booking not updated.");
+        if (paymentStatusFromGateway === "failed")
+          throw new Error("Payment failed. Booking not created.");
+
+        if (DEBUG) {
+          console.log(
+            "🔍 [DEBUG] Payment processed with status:",
+            paymentStatusFromGateway,
+          );
         }
-      } catch (err) {
-        await t.rollback();
-        const errorMessage =
-          err.response?.data?.reasonMessage || err.message || "Payment failed";
-        return { status: false, message: errorMessage };
+      } catch (error) {
+        if (!t.finished) await t.rollback();
+        return { status: false, message: error.message };
       }
     }
 
     // Step 6: Update Class Capacity
-    const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, {
-      transaction: t,
-    });
-    const newCapacity = classSchedule.capacity - data.totalStudents;
-    if (newCapacity < 0) throw new Error("Not enough capacity left.");
-    await classSchedule.update({ capacity: newCapacity }, { transaction: t });
+    const scheduleMap = {};
 
+    for (const s of studentRecords) {
+      scheduleMap[s.classScheduleId] =
+        (scheduleMap[s.classScheduleId] || 0) + 1;
+    }
+
+    for (const scheduleId of Object.keys(scheduleMap)) {
+      const count = scheduleMap[scheduleId];
+
+      const classSchedule = await ClassSchedule.findByPk(scheduleId, {
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!classSchedule) throw new Error(`Schedule ${scheduleId} not found`);
+
+      if (classSchedule.capacity < count)
+        throw new Error(`Not enough capacity for schedule ${scheduleId}`);
+
+      await classSchedule.update(
+        { capacity: classSchedule.capacity - count },
+        { transaction: t }
+      );
+    }
     await t.commit();
     return {
       status: true,

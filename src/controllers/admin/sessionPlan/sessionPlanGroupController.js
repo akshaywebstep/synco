@@ -1541,8 +1541,10 @@ exports.updateSessionPlanGroup = async (req, res) => {
       return res.status(401).json({ status: false, message: "Unauthorized" });
     }
 
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
     // STEP 1: Fetch existing group
-    const existingResult = await SessionPlanGroupService.getSessionPlanGroupById(id, adminId);
+    const existingResult = await SessionPlanGroupService.getSessionPlanGroupById(id, adminId,superAdminId);
     if (!existingResult.status || !existingResult.data) {
       return res.status(404).json({ status: false, message: "Session Plan Group not found" });
     }

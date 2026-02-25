@@ -26,6 +26,7 @@ const models = {
   PaymentPlan: require("./admin/payment/PaymentPlan"),
   PaymentGroup: require("./admin/payment/PaymentGroup"),
   PaymentGroupHasPlan: require("./admin/payment/PaymentGroupHasPlan"),
+  StarterPack: require("./admin/payment/StarterPack"),
 
   // 🎟️ Discount System
   Discount: require("./admin/discount/Discount"),
@@ -165,6 +166,7 @@ const {
   PaymentPlan,
   PaymentGroup,
   PaymentGroupHasPlan,
+  StarterPack,
   Discount,
   DiscountAppliesTo,
   DiscountUsage,
@@ -289,10 +291,6 @@ TermGroup.associate = (models) => {
   });
 };
 
-// Venue.belongsTo(models.PaymentPlan, {
-//   foreignKey: "paymentPlanId",
-//   as: "paymentPlan",
-// });
 Venue.belongsTo(models.PaymentPlan, {
   foreignKey: "paymentGroupId",
   as: "paymentGroup",
@@ -605,11 +603,6 @@ Feedback.belongsTo(models.HolidayVenue, {
   as: "holidayVenue",
 });
 
-// Booking.belongsTo(Admin, {
-//   foreignKey: "updatedBy",
-//   as: "updatedByAdmin",
-// });
-
 // Booking associations
 Booking.hasMany(Feedback, { foreignKey: "bookingId", as: "feedbacks" });
 
@@ -638,6 +631,7 @@ module.exports = {
   PaymentPlan,
   PaymentGroup,
   PaymentGroupHasPlan,
+  StarterPack,
 
   Discount,
   DiscountAppliesTo,

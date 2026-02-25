@@ -1,10 +1,12 @@
 const {
+
   Booking,
   FreezeBooking,
   BookingStudentMeta,
   BookingParentMeta,
   BookingEmergencyMeta,
   BookingPayment,
+  Term,
   ClassSchedule,
   Venue,
   PaymentPlan,
@@ -12,12 +14,23 @@ const {
   AdminRole,
   CancelBooking,
   AppConfig,
+  StarterPack,
 } = require("../../../models");
 const { sequelize } = require("../../../models");
-const { validateFormData, isValidEmail } = require("../../../utils/validateFormData");
-const { createSchedule, getSchedules, createAccessPaySuiteCustomer,
-  createContract, } = require("../../../utils/payment/accessPaySuit/accesPaySuit");
+const {
+  validateFormData,
+  isValidEmail,
+} = require("../../../utils/validateFormData");
+const {
+  createSchedule,
+  getSchedules,
+  createAccessPaySuiteCustomer,
+  createContract,
+  createOneOffPayment
+} = require("../../../utils/payment/accessPaySuit/accesPaySuit");
 const generateReferralCode = require("../../../utils/generateReferralCode");
+const chargeStarterPack = require("../../../utils/payment/pay360/starterPackCharge");
+
 const axios = require("axios");
 const { Op } = require("sequelize");
 const bcrypt = require("bcrypt");
@@ -30,6 +43,7 @@ const {
 const {
   createBillingRequest,
 } = require("../../../utils/payment/pay360/payment");
+
 function safeJsonParse(value, label = "JSON") {
   if (!value) return {};
 
@@ -70,106 +84,20 @@ function calculateContractStartDate(delayDays = 18) {
   start.setHours(0, 0, 0, 0);
   return start.toISOString().split("T")[0];
 }
+function getNextBillingCycleDate() {
+  const today = new Date();
+  const next = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  return next.toISOString().split("T")[0];
+}
 
 function findMatchingSchedule(schedules) {
   if (!Array.isArray(schedules)) return null;
 
   return schedules.find(
-    (s) =>
-      s.Name &&
-      s.Name.trim().toLowerCase() === "default schedule"
+    (s) => s.Name && s.Name.trim().toLowerCase() === "default schedule",
   );
 }
 
-async function updateBookingStats() {
-  const debugData = [];
-
-  try {
-    const freezeBookings = await FreezeBooking.findAll();
-
-    if (!freezeBookings || freezeBookings.length === 0) {
-      console.log("⚠️ No freeze bookings found.");
-      return {
-        status: false,
-        message: "No freeze bookings found.",
-        data: debugData,
-      };
-    }
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // normalize to date-only
-
-    for (const freezeBooking of freezeBookings) {
-      const bookingId = freezeBooking.bookingId || freezeBooking.id; // use correct bookingId field
-      const freezeStartDate = new Date(freezeBooking.freezeStartDate);
-      const reactivateOn = new Date(freezeBooking.reactivateOn);
-
-      const bookingDebug = {
-        freezeBookingId: freezeBooking.id,
-        bookingId,
-        freezeStartDate,
-        reactivateOn,
-        actions: [],
-      };
-
-      console.log(`Booking ID: ${bookingId}`);
-      console.log(`  - Freeze Start Date: ${freezeStartDate}`);
-      console.log(`  - Reactivate On: ${reactivateOn}`);
-
-      // Freeze booking if freezeStartDate is today or in the past
-      if (freezeStartDate <= today) {
-        const booking = await Booking.findOne({ where: { id: bookingId } });
-
-        if (booking) {
-          await booking.update({ status: "frozen" });
-          console.log(`  -> Booking status updated to FROZEN`);
-          bookingDebug.actions.push("status updated to frozen");
-        } else {
-          console.log(`  ⚠️ Booking not found for freezing`);
-          bookingDebug.actions.push("booking not found for frozen");
-        }
-      }
-
-      // Reactivate booking if reactivateOn is today or in the past
-      if (reactivateOn <= today) {
-        const booking = await Booking.findOne({ where: { id: bookingId } });
-
-        if (booking) {
-          await booking.update({ status: "active" });
-          console.log(`  -> Booking status updated to ACTIVE`);
-          bookingDebug.actions.push("status updated to active");
-        } else {
-          console.log(`  ⚠️ Booking not found for reactivation`);
-          bookingDebug.actions.push("booking not found for active");
-        }
-
-        console.log(
-          `  -> Deleting FreezeBooking entry ID: ${freezeBooking.id}`
-        );
-        await freezeBooking.destroy();
-        bookingDebug.actions.push("freezeBooking entry deleted");
-      }
-
-      debugData.push(bookingDebug);
-    }
-
-    console.log("✅ Booking stats update completed.");
-
-    return {
-      status: true,
-      message: "Booking stats updated successfully.",
-      data: debugData,
-    };
-  } catch (error) {
-    console.error("❌ Error updating booking stats:", error);
-    return {
-      status: false,
-      message: "Error updating booking stats.",
-      error: error.message,
-      data: debugData,
-    };
-  }
-}
 async function autoSyncFreezeBilling() {
   const logs = [];
 
@@ -287,6 +215,97 @@ async function autoSyncFreezeBilling() {
 // GBP → pence (GoCardless only)
 const gbpToPence = (amount) => Math.round(Number(amount) * 100);
 
+function countRemainingSessionsFromTerms(startDate, terms) {
+  const start = new Date(startDate);
+  let totalSessions = 0;
+
+  const safeTerms = terms || [];
+  safeTerms.forEach((term) => {
+    if (term.totalSessions) {
+      totalSessions += term.totalSessions;
+    } else if (term.sessionsMap) {
+      let sessions = term.sessionsMap;
+
+      // If it's a string (JSON from DB), parse it
+      if (typeof sessions === "string") {
+        try {
+          sessions = JSON.parse(sessions);
+        } catch (err) {
+          console.error("Failed to parse term.sessionsMap:", sessions);
+          sessions = [];
+        }
+      }
+
+      // Ensure it's an array before filtering
+      if (Array.isArray(sessions)) {
+        totalSessions += sessions.filter(
+          (s) => new Date(s.sessionDate) >= start
+        ).length;
+      } else {
+        console.warn("term.sessionsMap is not an array:", sessions);
+      }
+    }
+  });
+
+  return totalSessions;
+}
+async function calculateProRata({ paymentPlan, terms, startDate }) {
+  if (!paymentPlan || !terms) return 0;
+
+  const pricePerLesson = Number(paymentPlan.priceLesson || 0);
+  if (!pricePerLesson) return 0;
+
+  // Count remaining sessions across terms
+  const sessions = countRemainingSessionsFromTerms(startDate, terms);
+
+  // ✅ Multiply pricePerLesson * remaining sessions ONLY (no students here)
+  return Number((pricePerLesson * sessions).toFixed(2));
+}
+// 🟢 Helper: create a payment row
+async function createBookingPayment({
+  bookingId,
+  studentId,
+  parent,
+  amount,
+  paymentType,
+  description,
+  paymentCategory = "recurring",
+  gatewayResponse = null,
+  currency = "GBP",
+  merchantId = null,
+  transaction,
+}) {
+  return await BookingPayment.create(
+    {
+      bookingId,
+      studentId,
+      firstName: parent?.firstName || "",
+      lastName: parent?.lastName || "",
+      email: parent?.email || "",
+      amount,
+      price: amount,
+      paymentType,
+      description,
+      paymentCategory,
+      paymentStatus: gatewayResponse ? "active" : "pending",
+      currency,
+      merchantRef:
+        gatewayResponse?.transaction?.merchantRef || `TXN-${Date.now()}`,
+      gatewayResponse,
+      account_holder_name: parent.account_holder_name || null,
+      account_number: parent.account_number || null,
+      branch_code: parent.branch_code || null,
+      goCardlessCustomer: gatewayResponse?.goCardlessCustomer || null,
+      goCardlessBankAccount: gatewayResponse?.goCardlessBankAccount || null,
+      goCardlessBillingRequest:
+        gatewayResponse?.goCardlessBillingRequest || null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    { transaction },
+  );
+}
+
 exports.createBooking = async (data, options) => {
   const t = await sequelize.transaction();
   try {
@@ -313,9 +332,7 @@ exports.createBooking = async (data, options) => {
     if (source === "parent") {
       // 👪 Parent portal → already logged in
       parentAdminId = parentPortalAdminId;
-    }
-
-    else if (data.parents?.length > 0) {
+    } else if (data.parents?.length > 0) {
       const firstParent = data.parents[0];
       const email = firstParent.parentEmail?.trim()?.toLowerCase();
 
@@ -351,12 +368,11 @@ exports.createBooking = async (data, options) => {
             status: "active",
             referralCode: generateReferralCode(),
           },
-          { transaction: t }
+          { transaction: t },
         );
 
         parentAdminId = admin.id;
-      }
-      else {
+      } else {
         // 🌐 WEBSITE → findOrCreate
         const [admin, isCreated] = await Admin.findOrCreate({
           where: { email },
@@ -376,7 +392,7 @@ exports.createBooking = async (data, options) => {
         // 🛡️ Safety net (old parent but referralCode missing)
         if (!isCreated && !admin.referralCode) {
           admin.referralCode = generateReferralCode();
-          await admin.save({ transaction });
+          await admin.save({ transaction: t });
         }
 
         parentAdminId = admin.id;
@@ -388,7 +404,7 @@ exports.createBooking = async (data, options) => {
     let bookingSource = null;
 
     if (source === "admin") {
-      bookedBy = adminId;   // ✅ admin who booked
+      bookedBy = adminId; // ✅ admin who booked
       bookingSource = null;
     } else {
       bookedBy = null;
@@ -410,13 +426,13 @@ exports.createBooking = async (data, options) => {
         bookingType: data.paymentPlanId ? "paid" : "free",
         paymentPlanId: data.paymentPlanId || null,
         status: data.status || "active",
-        bookedBy,                     // ✅ admin or null
-        source: bookingSource,        // ✅ website or null
+        bookedBy, // ✅ admin or null
+        source: bookingSource, // ✅ website or null
         // bookedBy: source === "open" ? bookedByAdminId : adminId,
         createdAt: new Date(),
         updatedAt: new Date(),
       },
-      { transaction: t }
+      { transaction: t },
     );
     if (DEBUG) {
       console.log("✅ FINAL BOOKING VALUES", {
@@ -432,7 +448,7 @@ exports.createBooking = async (data, options) => {
       const studentMeta = await BookingStudentMeta.create(
         {
           bookingTrialId: booking.id, // renamed from bookingTrialId to bookingId
-          classScheduleId: student.classScheduleId, // ✅ new
+          classScheduleId: student.classScheduleId, // ✅ safe
           studentFirstName: student.studentFirstName,
           studentLastName: student.studentLastName,
           dateOfBirth: student.dateOfBirth,
@@ -442,7 +458,7 @@ exports.createBooking = async (data, options) => {
           createdAt: new Date(),
           updatedAt: new Date(),
         },
-        { transaction: t }
+        { transaction: t },
       );
       studentRecords.push(studentMeta);
     }
@@ -467,7 +483,7 @@ exports.createBooking = async (data, options) => {
             createdAt: new Date(),
             updatedAt: new Date(),
           },
-          { transaction: t }
+          { transaction: t },
         );
       }
     }
@@ -489,28 +505,208 @@ exports.createBooking = async (data, options) => {
           createdAt: new Date(),
           updatedAt: new Date(),
         },
+        { transaction: t },
+      );
+    }
+
+    // Update Class Capacity
+    // Step 6: Update Class Capacity
+    const scheduleMap = {};
+
+    for (const s of studentRecords) {
+      scheduleMap[s.classScheduleId] =
+        (scheduleMap[s.classScheduleId] || 0) + 1;
+    }
+
+    for (const scheduleId of Object.keys(scheduleMap)) {
+      const count = scheduleMap[scheduleId];
+
+      const classSchedule = await ClassSchedule.findByPk(scheduleId, {
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!classSchedule) throw new Error(`Schedule ${scheduleId} not found`);
+
+      if (classSchedule.capacity < count)
+        throw new Error(`Not enough capacity for schedule ${scheduleId}`);
+
+      await classSchedule.update(
+        { capacity: classSchedule.capacity - count },
         { transaction: t }
       );
     }
 
+
+    await t.commit();
+
+
+
+    /* ================= STARTER PACK FIRST ================= */
+
+    console.log("🔥 ===== STARTER PACK FLOW START =====");
+
+    const venueForStarter = await Venue.findByPk(data.venueId);
+
+    console.log("🔥 booking venueId:", data.venueId);
+    console.log("🔥 venue found:", !!venueForStarter);
+    console.log("🔥 starterPack flag:", venueForStarter?.starterPack);
+
+    if (venueForStarter?.starterPack) {
+      console.log("🔥 Starter pack enabled for venue");
+
+      const starterPack = await StarterPack.findOne({
+        where: { enabled: true },
+      });
+
+      console.log("🔥 StarterPack record:", starterPack);
+
+      if (!starterPack) {
+        console.log("❌ No enabled starter pack found in DB");
+      }
+
+      if (starterPack && Number(starterPack.price) > 0) {
+        console.log("🔥 StarterPack price:", starterPack.price);
+
+        const parent = data.parents?.[0];
+
+        console.log("🔥 Parent object:", parent);
+
+        if (!parent) {
+          console.log("❌ Parent missing");
+          throw new Error("Parent required for starter pack");
+        }
+
+        console.log("🔥 Calling chargeStarterPack...");
+
+        const stripeRes = await chargeStarterPack({
+          name: `${parent.parentFirstName} ${parent.parentLastName}`,
+          email: parent.parentEmail,
+          starterPack,
+        });
+
+        console.log("🔥 Stripe Response:", stripeRes);
+
+        if (!stripeRes?.status) {
+          console.log("❌ Stripe returned failure:", stripeRes?.message);
+          throw new Error(stripeRes?.message || "Starter pack payment failed");
+        }
+
+        console.log("🔥 Stripe success, saving BookingPayment...");
+
+        await createBookingPayment({
+          bookingId: booking.id,
+          studentId: studentRecords[0]?.id,
+          parent,
+          amount: starterPack.price,
+          paymentType: "stripe",
+          paymentCategory: "starter_pack", // better naming
+          transactionMeta: {
+            paymentIntentId: stripeRes.paymentIntentId,
+            status: stripeRes.raw?.status,
+          },
+          gatewayResponse: stripeRes.raw, // store full response
+          // transaction: t
+        });
+
+        console.log("🔥 Starter pack payment saved successfully");
+      } else {
+        console.log("⚠️ Starter pack price invalid or 0");
+      }
+    }
+
+    console.log("🔥 ===== STARTER PACK FLOW END =====");
+
     // Payment processing (same as your logic but fixed typo and consistency)
     if (booking.paymentPlanId && data.payment?.paymentType) {
-      const paymentType = data.payment.paymentType;
-      if (DEBUG) console.log("Step 5: Start payment process, paymentType:", paymentType);
+      const venue = await Venue.findByPk(data.venueId);
+      const venueOwnerAdmin = await Admin.findByPk(venue.createdBy);
+      const overrideToken = venueOwnerAdmin?.GC_FRANCHISE_TOKEN || null;
+      const isHQVenue = !overrideToken;
+      const paymentType = isHQVenue ? "accesspaysuite" : "bank";
+      if (DEBUG)
+        console.log("Step 5: Start payment process, paymentType:", paymentType);
 
       let paymentStatusFromGateway = "pending";
       const firstStudentId = studentRecords[0]?.id;
 
       try {
         const paymentPlan = booking.paymentPlanId
-          ? await PaymentPlan.findByPk(booking.paymentPlanId, { transaction: t })
+          ? await PaymentPlan.findByPk(booking.paymentPlanId, {})
           : null;
-        const payloadPrice = Number(data.payment?.price);
-        if (isNaN(payloadPrice)) {
-          throw new Error("Invalid payment price from payload");
+
+        // ✅ Fetch effective classScheduleId from first student
+        let effectiveScheduleId = null;
+
+        // Check if data.students array exists and has at least 1 student
+        if (Array.isArray(data.students) && data.students.length > 0) {
+          effectiveScheduleId = data.students[0].classScheduleId;
         }
-        const venue = await Venue.findByPk(data.venueId, { transaction: t });
-        const classSchedule = await ClassSchedule.findByPk(data.classScheduleId, { transaction: t });
+
+        if (!effectiveScheduleId) {
+          throw new Error("Cannot determine classScheduleId: No student found");
+        }
+
+        // Fetch the ClassSchedule
+        const classSchedule = await ClassSchedule.findByPk(effectiveScheduleId);
+
+        if (!classSchedule) {
+          throw new Error(
+            `ClassSchedule not found for ID: ${effectiveScheduleId}`,
+          );
+        }
+
+        // Safely parse termIds (DB has JSON array string)
+        let termIds = [];
+        if (Array.isArray(classSchedule.termIds)) {
+          termIds = classSchedule.termIds;
+        } else if (typeof classSchedule.termIds === "string") {
+          try {
+            termIds = JSON.parse(classSchedule.termIds);
+          } catch (err) {
+            console.error(
+              "Failed to parse classSchedule.termIds:",
+              classSchedule.termIds,
+            );
+            termIds = [];
+          }
+        }
+
+        // Fetch Terms
+        const terms = await Term.findAll({
+          where: { id: termIds || [] },
+        });
+
+
+        const proRataAmount = await calculateProRata({
+          paymentPlan,
+          terms,
+          startDate: data.startDate,
+        });
+
+        const recurringAmount = Number(paymentPlan.price || 0);
+
+        const proRataTotal = Number(
+          (proRataAmount * (data.totalStudents || 1)).toFixed(2)
+        );
+
+
+
+        // ✅ Step 2: frontend should send price only
+        const frontendPrice = Number(data.payment?.price);
+        console.log("FRONTEND PRICE:", frontendPrice);
+        console.log("PLAN PRICE:", recurringAmount);
+        console.log("PRORATA:", proRataTotal);
+
+
+        if (Math.abs(frontendPrice - recurringAmount) > 0.01) {
+          return {
+            status: false,
+            message: `Plan price mismatch. Frontend: ${frontendPrice}, Backend: ${recurringAmount}`,
+          };
+        }
+
+        console.log("✅ Price matches frontend and backend");
 
         const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -518,6 +714,7 @@ exports.createBooking = async (data, options) => {
         let goCardlessCustomer = null;
         let goCardlessBankAccount = null;
         let goCardlessBillingRequest = null;
+        // const paymentType = isHQVenue ? "accesspaysuite" : "bank";
 
         if (paymentType === "bank") {
           // ✅ Prepare GoCardless payload
@@ -535,12 +732,37 @@ exports.createBooking = async (data, options) => {
             branch_code: data.payment.branch_code || "",
           };
 
-          const createCustomerRes = await createCustomer(customerPayload);
+          const createCustomerRes = await createCustomer(customerPayload, overrideToken);
           if (!createCustomerRes.status)
             throw new Error(
               createCustomerRes.message ||
-              "Failed to create GoCardless customer."
+              "Failed to create GoCardless customer.",
             );
+
+          if (proRataTotal > 0) {
+            if (!isHQVenue) {
+              /* -------- Franchisee → GoCardless -------- */
+
+              const gcRes = await createBillingRequest({
+                customerId: createCustomerRes.customer.id,
+                description: "Pro-rata lesson charge",
+                amount: gbpToPence(proRataTotal),
+              }, overrideToken);
+
+              await createBookingPayment({
+                bookingId: booking.id,
+                studentId: firstStudentId,
+                parent: data.parents?.[0],
+                amount: proRataTotal,
+                paymentType: "bank",
+                paymentCategory: "pro_rata",
+                gatewayResponse: gcRes,
+              },
+                // { transaction: t }
+              );
+            }
+
+          }
 
           const billingRequestPayload = {
             customerId: createCustomerRes.customer.id,
@@ -548,28 +770,25 @@ exports.createBooking = async (data, options) => {
               }`,
             // amount: planPrice, // ✅ use plan price
             // amount: payloadPrice, // ✅ FROM PAYLOAD
-            amount: gbpToPence(payloadPrice), // ✅ 147 pence
+            amount: gbpToPence(recurringAmount),
             scheme: "faster_payments",
             currency: "GBP",
             reference: `TRX-${Date.now()}-${Math.floor(
-              1000 + Math.random() * 9000
+              1000 + Math.random() * 9000,
             )}`,
             mandateReference: `MD-${Date.now()}-${Math.floor(
-              1000 + Math.random() * 9000
+              1000 + Math.random() * 9000,
             )}`,
             metadata: { crm_id: customerPayload.crm_id },
             fallbackEnabled: true,
           };
 
           const createBillingRequestRes = await createBillingRequest(
-            billingRequestPayload
+            billingRequestPayload,
+            overrideToken
           );
           if (!createBillingRequestRes.status) {
-            await removeCustomer(createCustomerRes.customer.id);
-            throw new Error(
-              createBillingRequestRes.message ||
-              "Failed to create billing request."
-            );
+            await removeCustomer(createCustomerRes.customer.id, overrideToken);
           }
 
           goCardlessCustomer = createCustomerRes.customer;
@@ -577,7 +796,7 @@ exports.createBooking = async (data, options) => {
           goCardlessBillingRequest = {
             ...createBillingRequestRes.billingRequest,
             // planPrice,
-            price: payloadPrice,
+            price: recurringAmount,
           };
 
           gatewayResponse = {
@@ -586,7 +805,6 @@ exports.createBooking = async (data, options) => {
             goCardlessBankAccount,
             goCardlessBillingRequest,
           };
-
         } else if (paymentType === "accesspaysuite") {
           if (DEBUG) console.log("🔁 Processing Access PaySuite recurring payment");
 
@@ -596,32 +814,26 @@ exports.createBooking = async (data, options) => {
           }
 
           const services = schedulesRes.data?.Services || [];
-          const schedules = services.flatMap(
-            service => service.Schedules || []
-          );
+          const schedules = services.flatMap(service => service.Schedules || []);
 
           let matchedSchedule = findMatchingSchedule(schedules, paymentPlan);
 
           if (!matchedSchedule) {
-            // DO NOT try to create the schedule
             throw new Error(
               `Access PaySuite: Schedule "Default Schedule" not found. Please create this schedule in APS dashboard before proceeding.`
             );
           }
 
-          // Use matchedSchedule.id for contract creation
           const scheduleId = matchedSchedule.ScheduleId;
 
           const customerPayload = {
             email: data.payment?.email || data.parents?.[0]?.parentEmail,
             title: "Mr",
-            customerRef: `BOOK-${booking.id}`,
-            firstName:
-              data.payment?.firstName || data.parents?.[0]?.parentFirstName,
-            surname:
-              data.payment?.lastName || data.parents?.[0]?.parentLastName,
-            line1: data.payment?.addressLine1 || "N/A",
-            postCode: data.payment?.postalCode || "N/A",
+            customerRef: `BOOK-${booking.id}-${Date.now()}`,
+            firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+            surname: data.payment?.lastName || data.parents?.[0]?.parentLastName,
+            line1: data.payment?.addressLine1 || "10 Downing Street",
+            postCode: data.payment?.postalCode || "SW1A 2AA",
             accountNumber: data.payment?.account_number,
             bankSortCode: data.payment?.branch_code,
             accountHolderName:
@@ -630,128 +842,169 @@ exports.createBooking = async (data, options) => {
           };
 
           const customerRes = await createAccessPaySuiteCustomer(customerPayload);
-          if (!customerRes.status)
-            throw new Error("Access PaySuite: Customer creation failed");
-
+          if (!customerRes.status) {
+            throw new Error(customerRes.message);   // ✅ gateway ka exact message
+          }
+          console.log("APS CREATE CUSTOMER RESPONSE:", customerRes);
           const customerId =
             customerRes.data?.CustomerId ||
             customerRes.data?.Id ||
             customerRes.data?.customerId ||
             customerRes.data?.id;
 
-          if (!customerId)
-            throw new Error("Access PaySuite: Customer ID missing");
+          if (!customerId) throw new Error("Access PaySuite: Customer ID missing");
 
-          const contractStartDate = calculateContractStartDate(18);
+          // ================= PRO-RATA CONTRACT =================
+          if (proRataTotal > 0) {
+            console.log("🔥 APS PRO RATA:", proRataTotal);
 
-          const contractPayload = {
+            const proRataContractStartDate = calculateContractStartDate(18);
+            const proRataContractPayload = {
+              scheduleName: matchedSchedule.Name,
+              start: proRataContractStartDate,
+              isGiftAid: false,
+              terminationType: paymentPlan.duration ? "Fixed term" : "Until further notice",
+              atTheEnd: "Switch to further notice",
+              InitialAmount: proRataTotal,
+            };
+            if (paymentPlan.duration) {
+              const start = new Date(proRataContractStartDate);
+              const end = new Date(start);
+              end.setMonth(end.getMonth() + Number(paymentPlan.duration));
+              proRataContractPayload.TerminationDate = end.toISOString().split("T")[0];
+            }
+
+            const proRataContractRes = await createContract(customerId, proRataContractPayload);
+            if (!proRataContractRes.status)
+              throw new Error("Access PaySuite: Pro-rata contract creation failed");
+
+            // Save PRO-RATA as separate BookingPayment row
+            await BookingPayment.create({
+              bookingId: booking.id,
+              paymentPlanId: booking.paymentPlanId,
+              studentId: firstStudentId,
+              paymentType: "accesspaysuite",
+              paymentCategory: "pro_rata",
+              firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName || "",
+              lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName || "",
+              email: data.payment?.email || data.parents?.[0]?.parentEmail || "",
+              amount: proRataTotal,
+              price: proRataTotal,
+              billingAddress: data.payment?.billingAddress || "",
+              account_number: data.payment?.account_number || "",
+              branch_code: data.payment?.branch_code || "",
+              account_holder_name: data.payment?.account_holder_name || "",
+              paymentStatus: "active",
+              currency: "GBP",
+              merchantRef: `PR-${booking.id}-${Date.now()}`,
+              description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"} (Pro-rata)`,
+              commerceType: "ECOM",
+              gatewayResponse: {
+                gateway: "accesspaysuite",
+                schedule: matchedSchedule,
+                customer: customerRes.data,
+                contract: proRataContractRes.data,
+              },
+              transactionMeta: { status: "active" },
+              goCardlessCustomer: null,
+              goCardlessBankAccount: null,
+              goCardlessBillingRequest: null,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              // transaction: t
+            });
+
+            console.log("✅ APS pro-rata row saved same as recurring");
+          }
+
+          // ================= RECURRING CONTRACT =================
+          // const recurringContractStartDate = calculateContractStartDate(18);
+          const recurringContractStartDate = calculateContractStartDate(18);
+          const recurringContractPayload = {
             scheduleName: matchedSchedule.Name,
-            start: contractStartDate,
+            start: recurringContractStartDate,
             isGiftAid: false,
-            terminationType: paymentPlan.duration
-              ? "Fixed term"
-              : "Until further notice",
+            terminationType: paymentPlan.duration ? "Fixed term" : "Until further notice",
             atTheEnd: "Switch to further notice",
           };
           if (paymentPlan.duration) {
-            const start = new Date(contractStartDate);
+            const start = new Date(recurringContractStartDate);
             const end = new Date(start);
             end.setMonth(end.getMonth() + Number(paymentPlan.duration));
-
-            contractPayload.TerminationDate = end.toISOString().split("T")[0];
+            recurringContractPayload.TerminationDate = end.toISOString().split("T")[0];
           }
 
-          const contractRes = await createContract(customerId, contractPayload);
-          if (!contractRes.status)
-            throw new Error("Access PaySuite: Contract creation failed");
+          console.log("APS Recurring Contract Payload:", recurringContractPayload);
+
+          const recurringContractRes = await createContract(customerId, recurringContractPayload);
+          if (!recurringContractRes.status)
+            throw new Error("Access PaySuite: Recurring contract creation failed");
 
           gatewayResponse = {
             gateway: "accesspaysuite",
             schedule: matchedSchedule,
             customer: customerRes.data,
-            contract: contractRes.data,
+            contract: recurringContractRes.data,
           };
 
           paymentStatusFromGateway = "active";
         }
 
         // Save BookingPayment
-        await BookingPayment.create(
-          {
-            bookingId: booking.id,
-            paymentPlanId: booking.paymentPlanId,
-            studentId: firstStudentId,
-            paymentType,
-            firstName: data.payment.firstName || data.parents?.[0]?.parentFirstName || "",
-            lastName: data.payment.lastName || data.parents?.[0]?.parentLastName || "",
-            email: data.payment.email || data.parents?.[0]?.parentEmail || "",
-            amount: payloadPrice,      // ✅ payload price
-            price: payloadPrice,       // ✅ payload price
-            billingAddress: data.payment.billingAddress || "",
-            cardHolderName: data.payment.cardHolderName || "",
-            cv2: data.payment.cv2 || "",
-            expiryDate: data.payment.expiryDate || "",
-            account_number: data.payment.account_number || "",
-            branch_code: data.payment.branch_code || "",
-            account_holder_name: data.payment.account_holder_name || "",
-            paymentStatus: paymentStatusFromGateway,
-            currency: gatewayResponse?.transaction?.currency || "GBP",
-            merchantRef: gatewayResponse?.transaction?.merchantRef || merchantRef,
-            description:
-              gatewayResponse?.transaction?.description ||
-              `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"}`,
-            commerceType: "ECOM",
-            gatewayResponse,
-            transactionMeta: {
-              status: gatewayResponse?.transaction?.status || "pending",
-            },
-            goCardlessCustomer: gatewayResponse?.goCardlessCustomer || null,
-            goCardlessBankAccount: gatewayResponse?.goCardlessBankAccount || null,
-            goCardlessBillingRequest: gatewayResponse?.goCardlessBillingRequest || null,
-            createdAt: new Date(),
-            updatedAt: new Date(),
+        await BookingPayment.create({
+          bookingId: booking.id,
+          paymentPlanId: booking.paymentPlanId,
+          studentId: firstStudentId,
+          paymentType,
+          paymentCategory: "recurring",
+          firstName:
+            data.payment.firstName || data.parents?.[0]?.parentFirstName || "",
+          lastName:
+            data.payment.lastName || data.parents?.[0]?.parentLastName || "",
+          email: data.payment.email || data.parents?.[0]?.parentEmail || "",
+          amount: recurringAmount, // plan + pro-rata
+          price: recurringAmount, // plan + pro-rata
+          billingAddress: data.payment.billingAddress || "",
+          account_number: data.payment.account_number || "",
+          branch_code: data.payment.branch_code || "",
+          account_holder_name: data.payment.account_holder_name || "",
+          paymentStatus: paymentStatusFromGateway,
+          currency: gatewayResponse?.transaction?.currency || "GBP",
+          merchantRef: gatewayResponse?.transaction?.merchantRef || merchantRef,
+          description:
+            gatewayResponse?.transaction?.description ||
+            `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"}`,
+          commerceType: "ECOM",
+          gatewayResponse,
+          transactionMeta: {
+            status: gatewayResponse?.transaction?.status || "pending",
           },
-          { transaction: t }
-        );
+          goCardlessCustomer: gatewayResponse?.goCardlessCustomer || null,
+          goCardlessBankAccount: gatewayResponse?.goCardlessBankAccount || null,
+          goCardlessBillingRequest:
+            gatewayResponse?.goCardlessBillingRequest || null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          // transaction: t
+        });
 
         if (paymentStatusFromGateway === "failed")
           throw new Error("Payment failed. Booking not created.");
 
         if (DEBUG) {
-          console.log("🔍 [DEBUG] Payment processed with status:", paymentStatusFromGateway);
+          console.log(
+            "🔍 [DEBUG] Payment processed with status:",
+            paymentStatusFromGateway,
+          );
         }
-      } catch (err) {
-        await t.rollback();
-        return { status: false, message: err.message || "Payment failed" };
+      } catch (error) {
+        if (!t.finished) await t.rollback();
+        return { status: false, message: error.message };
       }
     }
 
-    // Update Class Capacity
-    // Step 5: Update Class Capacity
-    const scheduleCountMap = {};
 
-    for (const student of data.students) {
-      scheduleCountMap[student.classScheduleId] =
-        (scheduleCountMap[student.classScheduleId] || 0) + 1;
-    }
 
-    for (const [classScheduleId, count] of Object.entries(scheduleCountMap)) {
-      const classSchedule = await ClassSchedule.findByPk(classScheduleId, { transaction: t });
-
-      if (!classSchedule) {
-        throw new Error("ClassSchedule not found");
-      }
-
-      if (classSchedule.capacity < count) {
-        throw new Error("Not enough capacity for class");
-      }
-
-      await classSchedule.update(
-        { capacity: classSchedule.capacity - count },
-        { transaction: t }
-      );
-    }
-    await t.commit();
     return {
       status: true,
       data: {
@@ -923,16 +1176,13 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
       const start = new Date(`${filters.dateBooked} 00:00:00`);
       const end = new Date(`${filters.dateBooked} 23:59:59`);
       whereBooking.createdAt = { [Op.between]: [start, end] };
-
     } else if (filters.dateFrom && filters.dateTo) {
       const start = new Date(`${filters.dateFrom} 00:00:00`);
       const end = new Date(`${filters.dateTo} 23:59:59`);
       whereBooking.createdAt = { [Op.between]: [start, end] };
-
     } else if (filters.dateFrom) {
       const start = new Date(`${filters.dateFrom} 00:00:00`);
       whereBooking.createdAt = { [Op.gte]: start };
-
     } else if (filters.dateTo) {
       const end = new Date(`${filters.dateTo} 23:59:59`);
       whereBooking.createdAt = { [Op.lte]: end };
@@ -993,8 +1243,15 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
         },
         {
           model: Admin,
-          as: "assignedAgent",  // 👈 alias for the assigned agent
-          attributes: ["id", "firstName", "lastName", "email", "roleId", "status"],
+          as: "assignedAgent", // 👈 alias for the assigned agent
+          attributes: [
+            "id",
+            "firstName",
+            "lastName",
+            "email",
+            "roleId",
+            "status",
+          ],
           required: false,
         },
       ],
@@ -1034,7 +1291,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
                 parentPhoneNumber: p.parentPhoneNumber,
                 relationToChild: p.relationToChild,
                 howDidYouHear: p.howDidYouHear,
-              })) || []
+              })) || [],
           ) || [];
 
         // Emergency contacts (take first one per student)
@@ -1048,8 +1305,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
           })) || [];
 
         // Venue & plan
-        const venue =
-          booking.students?.[0]?.classSchedule?.venue || null;
+        const venue = booking.students?.[0]?.classSchedule?.venue || null;
 
         const plan = booking.paymentPlan || null;
 
@@ -1059,17 +1315,17 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
         // PaymentData with parsed gatewayResponse & transactionMeta
         const parsedGatewayResponse = safeJsonParse(
           payment?.gatewayResponse,
-          "gatewayResponse"
+          "gatewayResponse",
         );
 
         const parsedTransactionMeta = safeJsonParse(
           payment?.transactionMeta,
-          "transactionMeta"
+          "transactionMeta",
         );
 
         const parsedGoCardlessBillingRequest = safeJsonParse(
           payment?.goCardlessBillingRequest,
-          "goCardlessBillingRequest"
+          "goCardlessBillingRequest",
         );
 
         const paymentData = payment
@@ -1115,7 +1371,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
           bookedByAdmin: booking.bookedByAdmin || null,
           assignedAgent: booking.assignedAgent || null, // 👈 agent info
         };
-      })
+      }),
     );
 
     const allBookingsForStats = [...parsedBookings]; // ✅ ADD THIS
@@ -1168,7 +1424,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
     if (filters.venueName) {
       const keyword = filters.venueName.toLowerCase();
       finalBookings = finalBookings.filter((b) =>
-        b.venue?.name?.toLowerCase().includes(keyword)
+        b.venue?.name?.toLowerCase().includes(keyword),
       );
       if (finalBookings.length === 0) {
         return {
@@ -1219,22 +1475,22 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
     const previousYearStart = new Date(now.getFullYear() - 1, 0, 1);
     const previousYearEnd = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59);
     const currentYearBookings = allBookingsForStats.filter(
-      b =>
+      (b) =>
         new Date(b.createdAt) >= currentYearStart &&
-        new Date(b.createdAt) <= currentYearEnd
+        new Date(b.createdAt) <= currentYearEnd,
     );
 
     const previousYearBookings = allBookingsForStats.filter(
-      b =>
+      (b) =>
         new Date(b.createdAt) >= previousYearStart &&
-        new Date(b.createdAt) <= previousYearEnd
+        new Date(b.createdAt) <= previousYearEnd,
     );
 
     // Stats
     const calculateStats = (bookings) => {
       const totalStudents = bookings.reduce(
         (acc, b) => acc + (b.students?.length || 0),
-        0
+        0,
       );
 
       const totalRevenue = bookings.reduce((acc, b) => {
@@ -1285,28 +1541,28 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
         totalStudents: currentStats.totalStudents,
         percentage: calculatePercentageChange(
           currentStats.totalStudents,
-          previousStats.totalStudents
+          previousStats.totalStudents,
         ),
       },
       totalRevenue: {
         totalRevenue: currentStats.totalRevenue,
         percentage: calculatePercentageChange(
           currentStats.totalRevenue,
-          previousStats.totalRevenue
+          previousStats.totalRevenue,
         ),
       },
       avgMonthlyFee: {
         avgMonthlyFee: currentStats.avgMonthlyFee,
         percentage: calculatePercentageChange(
           currentStats.avgMonthlyFee,
-          previousStats.avgMonthlyFee
+          previousStats.avgMonthlyFee,
         ),
       },
       avgLifeCycle: {
         avgLifeCycle: currentStats.avgLifeCycle,
         percentage: calculatePercentageChange(
           currentStats.avgLifeCycle,
-          previousStats.avgLifeCycle
+          previousStats.avgLifeCycle,
         ),
       },
     };
@@ -1322,7 +1578,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
     });
 
     const allowedVenues = Object.values(venueMapFiltered).sort((a, b) =>
-      (a.name || "").localeCompare(b.name || "")
+      (a.name || "").localeCompare(b.name || ""),
     );
 
     return {
@@ -1429,12 +1685,12 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
                   "CONCAT",
                   sequelize.col("students.studentFirstName"),
                   " ",
-                  sequelize.col("students.studentLastName")
-                )
+                  sequelize.col("students.studentLastName"),
+                ),
               ),
               {
                 [Op.like]: `%${keyword}%`,
-              }
+              },
             ),
           ],
         },
@@ -1577,7 +1833,7 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
               parentPhoneNumber: parent.parentPhoneNumber,
               relationToChild: parent.relationToChild,
               howDidYouHear: parent.howDidYouHear,
-            })) || []
+            })) || [],
         ) || [];
 
       // Emergency
@@ -1588,7 +1844,7 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
             emergencyLastName: em.emergencyLastName,
             emergencyPhoneNumber: em.emergencyPhoneNumber,
             emergencyRelation: em.emergencyRelation,
-          }))
+          })),
         )?.[0] || null;
 
       // Payment
@@ -1597,12 +1853,12 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
 
       parsedGatewayResponse = safeJsonParse(
         payment?.gatewayResponse,
-        "gatewayResponse"
+        "gatewayResponse",
       );
 
       parsedTransactionMeta = safeJsonParse(
         payment?.transactionMeta,
-        "transactionMeta"
+        "transactionMeta",
       );
 
       // Combine all payment info into a fully structured object
@@ -1788,8 +2044,7 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
         return acc;
       }, 0) / (prevTotalSales || 1);
 
-    const prevAvgMonthlyFee =
-      Math.round(prevAvgMonthlyFeeRaw * 100) / 100;
+    const prevAvgMonthlyFee = Math.round(prevAvgMonthlyFeeRaw * 100) / 100;
 
     const stats = {
       totalSales: {
@@ -1860,7 +2115,7 @@ exports.sendActiveMemberSaleEmailToParents = async ({ bookingId }) => {
     // 4️⃣ Email template
     const emailConfigResult = await getEmailConfig(
       "admin",
-      "send-email-membership"
+      "send-email-membership",
     );
     if (!emailConfigResult.status) {
       return { status: false, message: "Email config missing" };
@@ -1909,11 +2164,11 @@ exports.sendActiveMemberSaleEmailToParents = async ({ bookingId }) => {
         .replace(/{{appName}}/g, "Synco")
         .replace(
           /{{logoUrl}}/g,
-          "https://webstepdev.com/demo/syncoUploads/syncoLogo.png"
+          "https://webstepdev.com/demo/syncoUploads/syncoLogo.png",
         )
         .replace(
           /{{kidsPlaying}}/g,
-          "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png"
+          "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png",
         )
         .replace(/{{year}}/g, new Date().getFullYear());
 
@@ -1970,14 +2225,15 @@ exports.transferClass = async (data, options) => {
       // 🔴 SAME CLASS VALIDATION
       if (student.classScheduleId === item.classScheduleId) {
         throw new Error(
-          "This student is already enrolled in the selected class. Please choose a different class."
+          "This student is already enrolled in the selected class. Please choose a different class.",
         );
       }
 
       const newClass = await ClassSchedule.findByPk(item.classScheduleId, {
         transaction: t,
       });
-      if (!newClass) throw new Error(`Class ${item.classScheduleId} not found.`);
+      if (!newClass)
+        throw new Error(`Class ${item.classScheduleId} not found.`);
 
       classCapacityMap[item.classScheduleId] =
         (classCapacityMap[item.classScheduleId] || 0) + 1;
@@ -1989,10 +2245,12 @@ exports.transferClass = async (data, options) => {
 
     // 3️⃣ Capacity check (IMPORTANT)
     for (const classId in classCapacityMap) {
-      const classData = await ClassSchedule.findByPk(classId, { transaction: t });
+      const classData = await ClassSchedule.findByPk(classId, {
+        transaction: t,
+      });
       if (classData.capacity < classCapacityMap[classId]) {
         throw new Error(
-          `Not enough slots in "${classData.className}". Required: ${classCapacityMap[classId]}`
+          `Not enough slots in "${classData.className}". Required: ${classCapacityMap[classId]}`,
         );
       }
     }
@@ -2004,21 +2262,21 @@ exports.transferClass = async (data, options) => {
           classScheduleId: item.classScheduleId,
           updatedAt: new Date(),
         },
-        { transaction: t }
+        { transaction: t },
       );
 
       // Increase old class capacity
       if (item._oldClassScheduleId) {
         await ClassSchedule.increment(
           { capacity: 1 },
-          { where: { id: item._oldClassScheduleId }, transaction: t }
+          { where: { id: item._oldClassScheduleId }, transaction: t },
         );
       }
 
       // Decrease new class capacity
       await ClassSchedule.decrement(
         { capacity: 1 },
-        { where: { id: item.classScheduleId }, transaction: t }
+        { where: { id: item.classScheduleId }, transaction: t },
       );
 
       // Log transfer reason
@@ -2030,7 +2288,7 @@ exports.transferClass = async (data, options) => {
           transferReasonClass: item.transferReasonClass,
           createdBy: adminId,
         },
-        { transaction: t }
+        { transaction: t },
       );
     }
 
@@ -2632,15 +2890,12 @@ exports.addToWaitingListService = async (data, adminId) => {
         throw new Error(`Student ${s.studentId} not found in booking.`);
       }
 
-      const classSchedule = await ClassSchedule.findByPk(
-        s.classScheduleId,
-        { transaction: t }
-      );
+      const classSchedule = await ClassSchedule.findByPk(s.classScheduleId, {
+        transaction: t,
+      });
 
       if (!classSchedule) {
-        throw new Error(
-          `Class schedule ${s.classScheduleId} not found.`
-        );
+        throw new Error(`Class schedule ${s.classScheduleId} not found.`);
       }
     }
 
@@ -2649,11 +2904,8 @@ exports.addToWaitingListService = async (data, adminId) => {
       await BookingStudentMeta.update(
         {
           classScheduleId: s.classScheduleId,
-          additionalNote:
-            data.additionalNote,
-          preferredStartDate:
-            data.preferedStartDate ||
-            data.startDate,
+          additionalNote: data.additionalNote,
+          preferredStartDate: data.preferedStartDate || data.startDate,
         },
         {
           where: {
@@ -2661,15 +2913,12 @@ exports.addToWaitingListService = async (data, adminId) => {
             bookingTrialId: booking.id,
           },
           transaction: t,
-        }
+        },
       );
     }
 
     // 5️⃣ Update booking status ONLY
-    await booking.update(
-      { status: "waiting list" },
-      { transaction: t }
-    );
+    await booking.update({ status: "waiting list" }, { transaction: t });
 
     await t.commit();
 
@@ -2746,7 +2995,7 @@ exports.getWaitingList = async () => {
           parentPhoneNumber: p.parentPhoneNumber,
           relationToChild: p.relationToChild,
           howDidYouHear: p.howDidYouHear,
-        }))
+        })),
       );
 
       const emergencyContactRaw =
@@ -2850,7 +3099,7 @@ exports.getBookingsById = async (bookingId) => {
       if (student.classScheduleId) {
         const classSchedule = await ClassSchedule.findByPk(
           student.classScheduleId,
-          { attributes: ["venueId"] }
+          { attributes: ["venueId"] },
         );
 
         if (classSchedule?.venueId) {
@@ -2873,9 +3122,7 @@ exports.getBookingsById = async (bookingId) => {
 
     if (venueIds) {
       // 🔹 jisme capacity na ho
-      noCapacityClass = newClasses.filter(
-        (cls) => cls.capacity <= 0
-      );
+      noCapacityClass = newClasses.filter((cls) => cls.capacity <= 0);
     }
     // ✅ Parse booking as before
     const students =
@@ -2910,7 +3157,7 @@ exports.getBookingsById = async (bookingId) => {
             parentPhoneNumber: p.parentPhoneNumber,
             relationToChild: p.relationToChild,
             howDidYouHear: p.howDidYouHear,
-          })) || []
+          })) || [],
       ) || [];
 
     const emergency =
@@ -2922,12 +3169,11 @@ exports.getBookingsById = async (bookingId) => {
             emergencyLastName: e.emergencyLastName,
             emergencyPhoneNumber: e.emergencyPhoneNumber,
             emergencyRelation: e.emergencyRelation,
-          })) || []
+          })) || [],
       ) || [];
 
     // const venue = booking.classSchedule?.venue || null;
-    const venue =
-      booking.students?.[0]?.classSchedule?.venue || null;
+    const venue = booking.students?.[0]?.classSchedule?.venue || null;
     const plan = booking.paymentPlan || null;
 
     const payments =
@@ -2948,8 +3194,11 @@ exports.getBookingsById = async (bookingId) => {
           }
         })(),
         goCardlessBankAccount: (() => {
-          try { return JSON.parse(p.goCardlessBankAccount); }
-          catch { return p.goCardlessBankAccount; }
+          try {
+            return JSON.parse(p.goCardlessBankAccount);
+          } catch {
+            return p.goCardlessBankAccount;
+          }
         })(),
       })) || [];
 
@@ -3004,7 +3253,7 @@ exports.getBookingsById = async (bookingId) => {
 exports.retryBookingPayment = async (bookingId, newData) => {
   console.log(
     "🔹 [Service] Starting retryBookingPayment for bookingId:",
-    bookingId
+    bookingId,
   );
 
   const t = await sequelize.transaction();
@@ -3049,7 +3298,7 @@ exports.retryBookingPayment = async (bookingId, newData) => {
     const venue = await Venue.findByPk(booking.venueId, { transaction: t });
     const classSchedule = await ClassSchedule.findByPk(
       booking.classScheduleId,
-      { transaction: t }
+      { transaction: t },
     );
 
     const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -3096,17 +3345,15 @@ exports.retryBookingPayment = async (bookingId, newData) => {
 
         // ✅ Fetch GoCardless access token from AppConfig
         const gcAccessTokenConfig = await AppConfig.findOne({
-          where: { key: "GOCARDLESS_ACCESS_TOKEN" },
+          where: { key: "GC_HEAD_OFFICE_TOKEN" },
           transaction: t,
         });
 
         if (!gcAccessTokenConfig || !gcAccessTokenConfig.value) {
-          throw new Error(
-            "Missing GOCARDLESS_ACCESS_TOKEN in AppConfig table."
-          );
+          throw new Error("Missing GC_HEAD_OFFICE_TOKEN in AppConfig table.");
         }
 
-        const GOCARDLESS_ACCESS_TOKEN = gcAccessTokenConfig.value;
+        const GC_HEAD_OFFICE_TOKEN = gcAccessTokenConfig.value;
 
         // ✅ Make GoCardless API call
         const response = await axios.post(
@@ -3114,11 +3361,11 @@ exports.retryBookingPayment = async (bookingId, newData) => {
           gcPayload,
           {
             headers: {
-              Authorization: `Bearer ${GOCARDLESS_ACCESS_TOKEN}`, // ✅ from DB, not env
+              Authorization: `Bearer ${GC_HEAD_OFFICE_TOKEN}`, // ✅ from DB, not env
               "Content-Type": "application/json",
               "GoCardless-Version": "2015-07-06",
             },
-          }
+          },
         );
 
         gatewayResponse = response.data;
@@ -3147,7 +3394,7 @@ exports.retryBookingPayment = async (bookingId, newData) => {
 
         console.log(
           "🔹 [Service] Payment status mapped:",
-          paymentStatusFromGateway
+          paymentStatusFromGateway,
         );
       } else if (newData?.payment?.paymentType === "card") {
         console.log("🔹 [Service] Retrying via Pay360 card...");
@@ -3199,7 +3446,7 @@ exports.retryBookingPayment = async (bookingId, newData) => {
 
         // ✅ Encode Basic Auth Header
         const authHeader = Buffer.from(
-          `${PAY360_API_USERNAME}:${PAY360_API_PASSWORD}`
+          `${PAY360_API_USERNAME}:${PAY360_API_PASSWORD}`,
         ).toString("base64");
 
         const response = await axios.post(url, paymentPayload, {
@@ -3235,7 +3482,7 @@ exports.retryBookingPayment = async (bookingId, newData) => {
     } catch (err) {
       console.error(
         "❌ Payment gateway error:",
-        err.response?.data || err.message
+        err.response?.data || err.message,
       );
       paymentStatusFromGateway = "failed";
       gatewayResponse = err.response?.data || { error: err.message };
@@ -3284,11 +3531,11 @@ exports.retryBookingPayment = async (bookingId, newData) => {
         pan: newData.payment.pan || "",
         updatedAt: new Date(),
       },
-      { transaction: t }
+      { transaction: t },
     );
 
     console.log(
-      `✅ [Service] BookingPayment retry updated with status: ${paymentStatusFromGateway}`
+      `✅ [Service] BookingPayment retry updated with status: ${paymentStatusFromGateway}`,
     );
 
     await t.commit();
@@ -3387,7 +3634,7 @@ exports.getFailedPaymentsByBookingId = async (bookingId) => {
 exports.updateBookingWithStudents = async (
   bookingId,
   studentsPayload,
-  transaction
+  transaction,
 ) => {
   try {
     // 🔹 Fetch booking with associations
@@ -3442,7 +3689,7 @@ exports.updateBookingWithStudents = async (
       } else {
         studentRecord = await BookingStudentMeta.create(
           { bookingId, ...student },
-          { transaction }
+          { transaction },
         );
       }
 
@@ -3480,7 +3727,7 @@ exports.updateBookingWithStudents = async (
           let parentRecord;
           if (parent.id) {
             parentRecord = studentRecord.parents?.find(
-              (p) => p.id === parent.id
+              (p) => p.id === parent.id,
             );
 
             if (parentRecord) {
@@ -3501,7 +3748,7 @@ exports.updateBookingWithStudents = async (
           } else {
             parentRecord = await BookingParentMeta.create(
               { bookingStudentMetaId: studentRecord.id, ...parent },
-              { transaction }
+              { transaction },
             );
           }
 
@@ -3537,7 +3784,7 @@ exports.updateBookingWithStudents = async (
         for (const emergency of student.emergencyContacts) {
           if (emergency.id) {
             const emergencyRecord = studentRecord.emergencyContacts?.find(
-              (e) => e.id === emergency.id
+              (e) => e.id === emergency.id,
             );
 
             if (emergencyRecord) {
@@ -3556,7 +3803,7 @@ exports.updateBookingWithStudents = async (
           } else {
             await BookingEmergencyMeta.create(
               { bookingStudentMetaId: studentRecord.id, ...emergency },
-              { transaction }
+              { transaction },
             );
           }
         }
@@ -3586,7 +3833,7 @@ exports.updateBookingWithStudents = async (
             parentPhoneNumber: p.parentPhoneNumber,
             relationToChild: p.relationToChild,
             howDidYouHear: p.howDidYouHear,
-          })) || []
+          })) || [],
       ) || [];
 
     const emergencyContacts =
@@ -3598,7 +3845,7 @@ exports.updateBookingWithStudents = async (
             emergencyLastName: e.emergencyLastName,
             emergencyPhoneNumber: e.emergencyPhoneNumber,
             emergencyRelation: e.emergencyRelation,
-          })) || []
+          })) || [],
       ) || [];
 
     return {
@@ -3617,271 +3864,3 @@ exports.updateBookingWithStudents = async (
     return { status: false, message: error.message };
   }
 };
-
-// 🔹 Step 5: Process Payment if booking has a payment plan
-// if (booking.paymentPlanId && data.payment?.paymentType) {
-//   const paymentType = data.payment.paymentType; // "bank" or "card"
-//   console.log("Step 5: Start payment process, paymentType:", paymentType);
-
-//   let paymentStatusFromGateway = "pending";
-//   const firstStudentId = studentRecords[0]?.id;
-
-//   try {
-//     // Fetch payment plan & pricing
-//     const paymentPlan = await PaymentPlan.findByPk(booking.paymentPlanId, {
-//       transaction: t,
-//     });
-//     if (!paymentPlan) throw new Error("Invalid payment plan selected.");
-//     const price = paymentPlan.price || 0;
-
-//     // Fetch venue & classSchedule info
-//     const venue = await Venue.findByPk(data.venueId, { transaction: t });
-//     const classSchedule = await ClassSchedule.findByPk(
-//       data.classScheduleId,
-//       {
-//         transaction: t,
-//       }
-//     );
-
-//     const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
-//     let gatewayResponse = null;
-//     const amountInPence = Math.round(price * 100);
-
-//     let goCardlessCustomer;
-//     let goCardlessBankAccount;
-//     let goCardlessBillingRequest;
-
-//     if (paymentType === "bank") {
-//       // Step 1: Prepare payload for customer creation
-//       // const customerPayload = {
-//       //   email: data.payment.email || data.parents?.[0]?.parentEmail || "",
-//       //   given_name: data.payment.firstName || "",
-//       //   family_name: data.payment.lastName || "",
-//       //   address_line1: data.payment.addressLine1 || "",
-//       //   address_line2: data.payment.addressLine2 || "",
-//       //   city: data.payment.city || "",
-//       //   postal_code: data.payment.postalCode || "",
-//       //   country_code: data.payment.countryCode || "",
-//       //   region: data.payment.region || "",
-//       //   crm_id: `CUSTID-${Date.now()}-${Math.floor(
-//       //     1000 + Math.random() * 9000
-//       //   )}`,
-//       //   account_holder_name: data.payment.account_holder_name || "",
-//       //   account_number: data.payment.account_number || "",
-//       //   branch_code: data.payment.branch_code || "",
-//       //   bank_code: data.payment.bank_code || "",
-//       //   account_type: data.payment.account_type || "",
-//       //   iban: data.payment.iban || "",
-//       // };
-
-//       const customerPayload = {
-//         email: data.payment.email || data.parents?.[0]?.parentEmail || "",
-//         given_name: data.payment.firstName || "",
-//         family_name: data.payment.lastName || "",
-//         address_line1: data.payment.addressLine1 || "",
-//         city: data.payment.city || "",
-//         postal_code: data.payment.postalCode || "",
-//         country_code: data.payment.countryCode || "GB", // default to GB
-//         currency: data.payment.currency || "GBP",
-//         account_holder_name: data.payment.account_holder_name || "",
-//         account_number: data.payment.account_number || "",
-//         branch_code: data.payment.branch_code || "",
-//       };
-
-//       if (DEBUG) console.log("🛠 Generated payload:", customerPayload);
-
-//       // Step 2: Create customer + bank account
-//       const createCustomerRes = await createCustomer(customerPayload);
-//       if (!createCustomerRes.status) {
-//         throw new Error(
-//           createCustomerRes.message ||
-//           "Failed to create goCardless customer."
-//         );
-//       }
-
-//       // Step 3: Prepare payload for billing request
-//       const billingRequestPayload = {
-//         customerId: createCustomerRes.customer.id,
-//         description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-//           }`,
-//         amount: price,
-//         scheme: "faster_payments",
-//         currency: "GBP",
-//         reference: `TRX-${Date.now()}-${Math.floor(
-//           1000 + Math.random() * 9000
-//         )}`,
-//         mandateReference: `MD-${Date.now()}-${Math.floor(
-//           1000 + Math.random() * 9000
-//         )}`,
-//         metadata: {
-//           crm_id: customerPayload.crm_id,
-//         },
-//         fallbackEnabled: true,
-//       };
-
-//       if (DEBUG)
-//         console.log(
-//           "🛠 Generated billing request payload:",
-//           billingRequestPayload
-//         );
-
-//       // Step 4: Create billing request
-//       const createBillingRequestRes = await createBillingRequest(
-//         billingRequestPayload
-//       );
-//       if (!createBillingRequestRes.status) {
-//         await removeCustomer(createCustomerRes.customer.id);
-//         throw new Error(
-//           createBillingRequestRes.message ||
-//           "Failed to create billing request."
-//         );
-//       }
-
-//       goCardlessCustomer = createCustomerRes.customer;
-//       goCardlessBankAccount = createCustomerRes.bankAccount;
-//       goCardlessBillingRequest = createBillingRequestRes.billingRequest;
-//     } else if (paymentType === "card") {
-//       // 🔹 Card payment using Pay360
-//       if (
-//         !process.env.PAY360_INST_ID ||
-//         !process.env.PAY360_API_USERNAME ||
-//         !process.env.PAY360_API_PASSWORD
-//       )
-//         throw new Error("Pay360 credentials not set.");
-
-//       const paymentPayload = {
-//         transaction: {
-//           currency: "GBP",
-//           amount: price,
-//           merchantRef,
-//           description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-//             }`,
-//           commerceType: "ECOM",
-//         },
-//         paymentMethod: {
-//           card: {
-//             pan: data.payment.pan,
-//             expiryDate: data.payment.expiryDate,
-//             cardHolderName: data.payment.cardHolderName,
-//             cv2: data.payment.cv2,
-//           },
-//         },
-//       };
-
-//       const url = `https://api.mite.pay360.com/acceptor/rest/transactions/${process.env.PAY360_INST_ID}/payment`;
-//       const authHeader = Buffer.from(
-//         `${process.env.PAY360_API_USERNAME}:${process.env.PAY360_API_PASSWORD}`
-//       ).toString("base64");
-
-//       const response = await axios.post(url, paymentPayload, {
-//         headers: {
-//           "Content-Type": "application/json",
-//           Authorization: `Basic ${authHeader}`,
-//         },
-//       });
-
-//       gatewayResponse = response.data;
-//       // Map status dynamically
-//       const txnStatus = gatewayResponse?.transaction?.status?.toLowerCase();
-//       if (txnStatus === "success") {
-//         paymentStatusFromGateway = "paid";
-//       } else if (txnStatus === "pending") {
-//         paymentStatusFromGateway = "pending";
-//       } else if (txnStatus === "declined") {
-//         paymentStatusFromGateway = "failed";
-//       } else {
-//         paymentStatusFromGateway = txnStatus || "unknown";
-//       }
-//     }
-
-//     // 🔹 Save BookingPayment (always save, even if failed)
-//     await BookingPayment.create(
-//       {
-//         bookingId: booking.id,
-//         paymentPlanId: booking.paymentPlanId,
-//         studentId: firstStudentId,
-//         paymentType,
-//         firstName:
-//           data.payment.firstName ||
-//           data.parents?.[0]?.parentFirstName ||
-//           "",
-//         lastName:
-//           data.payment.lastName || data.parents?.[0]?.parentLastName || "",
-//         email: data.payment.email || data.parents?.[0]?.parentEmail || "",
-//         billingAddress: data.payment.billingAddress || "",
-//         cardHolderName: data.payment.cardHolderName || "",
-//         cv2: data.payment.cv2 || "",
-//         expiryDate: data.payment.expiryDate || "",
-//         pan: data.payment.pan || "",
-//         // referenceId: data.payment.referenceId || "",
-//         account_holder_name: data.payment.account_holder_name || "",
-//         paymentStatus: paymentStatusFromGateway,
-//         currency:
-//           gatewayResponse?.transaction?.currency ||
-//           gatewayResponse?.billing_requests?.currency ||
-//           "GBP",
-//         merchantRef:
-//           gatewayResponse?.transaction?.merchantRef || merchantRef,
-//         description:
-//           gatewayResponse?.transaction?.description ||
-//           `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
-//           }`,
-//         commerceType: "ECOM",
-//         gatewayResponse,
-//         transactionMeta: {
-//           status:
-//             gatewayResponse?.transaction?.status ||
-//             gatewayResponse?.billing_requests?.status ||
-//             "pending",
-//         },
-//         goCardlessCustomer,
-//         goCardlessBankAccount,
-//         goCardlessBillingRequest,
-//         createdAt: new Date(),
-//         updatedAt: new Date(),
-//       },
-//       { transaction: t }
-//     );
-
-//     console.log(
-//       `${paymentType.toUpperCase()} payment saved with status:`,
-//       paymentStatusFromGateway
-//     );
-
-//     // 🔹 Fail booking creation only if payment explicitly failed
-//     if (paymentStatusFromGateway === "failed") {
-//       throw new Error("Payment failed. Booking not created.");
-//     }
-//   } catch (err) {
-//     // 🔹 Proper error handling: only show readable message
-//     let errorMessage = "Payment failed";
-
-//     if (err.response?.data) {
-//       // Gateway returned an error
-//       if (typeof err.response.data === "string") {
-//         errorMessage = err.response.data;
-//       } else if (err.response.data.reasonMessage) {
-//         // Use reasonMessage from gateway response if available
-//         errorMessage = err.response.data.reasonMessage;
-//       } else if (err.response.data.error?.message) {
-//         // Use error.message if available
-//         errorMessage = err.response.data.error.message;
-//       } else {
-//         // Fallback: convert object to string safely
-//         errorMessage = Object.values(err.response.data).join(" | ");
-//       }
-//     } else if (err.message) {
-//       // Standard JS error
-//       errorMessage = err.message;
-//     }
-
-//     // Rollback transaction
-//     await t.rollback();
-
-//     // Return clean error message
-//     return {
-//       status: false,
-//       message: errorMessage,
-//     };
-//   }
-// }

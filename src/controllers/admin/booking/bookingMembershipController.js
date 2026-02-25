@@ -24,6 +24,7 @@ const {
 } = require("../../../utils/admin/notificationHelper");
 const PaymentPlan = require("../../../services/admin/payment/paymentPlan");
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
+const { getAllHolidaySessionExercises } = require("../holidayCamps/sessionPlan/holidaySessionExerciseController");
 
 const DEBUG = process.env.DEBUG === "true";
 const PANEL = "admin";
@@ -135,33 +136,7 @@ exports.createBooking = async (req, res) => {
     const venueName = venue?.venueName || venue?.name || "N/A";
     const facility = venue?.facility || "N/A";
 
-    // let paymentPlanType;
 
-    // if (paymentPlan.interval.toLowerCase() === "month") {
-    //   if (parseInt(paymentPlan.duration, 10) === 1) {
-    //     paymentPlanType = "1-month";
-    //   } else if (parseInt(paymentPlan.duration, 10) === 6) {
-    //     paymentPlanType = "6-month";
-    //   } else if (parseInt(paymentPlan.duration, 10) === 12) {
-    //     paymentPlanType = "12-month";
-    //   }
-    // } else if (paymentPlan.interval.toLowerCase() === "quarter") {
-    //   if (parseInt(paymentPlan.duration, 10) === 1) {
-    //     paymentPlanType = "1-quarter";
-    //   } else if (parseInt(paymentPlan.duration, 10) === 6) {
-    //     paymentPlanType = "6-quarter";
-    //   } else if (parseInt(paymentPlan.duration, 10) === 12) {
-    //     paymentPlanType = "12-quarter";
-    //   }
-    // } else if (paymentPlan.interval.toLowerCase() === "year") {
-    //   if (parseInt(paymentPlan.duration, 10) === 1) {
-    //     paymentPlanType = "1-year";
-    //   } else if (parseInt(paymentPlan.duration, 10) === 6) {
-    //     paymentPlanType = "6-year";
-    //   } else if (parseInt(paymentPlan.duration, 10) === 12) {
-    //     paymentPlanType = "12-year";
-    //   }
-    // }
 
     let paymentPlanType = null;
 
@@ -172,14 +147,26 @@ exports.createBooking = async (req, res) => {
       paymentPlan ||
       null;
 
+    const duration = normalizedPlan?.duration
+      ? parseInt(normalizedPlan.duration, 10)
+      : null;
+    // Extract title
+    const paymentPlanTitle = normalizedPlan?.title || "N/A"; // fallback
+    console.log("➡️ Payment Plan Title:", paymentPlanTitle);
+
+    console.log("➡️ duration =", duration);
+
     console.log("🧾 Normalized paymentPlan:", normalizedPlan);
-
     if (normalizedPlan?.interval && normalizedPlan?.duration) {
-      const interval = String(normalizedPlan.interval).toLowerCase();
-      const duration = parseInt(normalizedPlan.duration, 10);
+      let interval = String(normalizedPlan.interval).toLowerCase();
+      const planDuration = parseInt(normalizedPlan.duration, 10);
 
-      if (["month", "quarter", "year"].includes(interval) && duration > 0) {
-        paymentPlanType = `${duration}-${interval}`;
+      if (interval === "monthly") interval = "month";
+      if (interval === "quarterly") interval = "quarter";
+      if (interval === "yearly" || interval === "annually") interval = "year";
+
+      if (["month", "quarter", "year"].includes(interval) && planDuration > 0) {
+        paymentPlanType = `${planDuration}-${interval}`;
       }
     }
 
@@ -190,6 +177,13 @@ exports.createBooking = async (req, res) => {
 
     if (paymentPlanType) {
       console.log("✔️ paymentPlanType is truthy. Proceeding...");
+      let requiredTitle = "Book A Membership";
+
+      if (duration >= 7) {
+        requiredTitle = "Book A Membership (12months)";
+      }
+
+      console.log("➡️ requiredTitle =", requiredTitle);
 
       // 🔹 Step 3: Fetch email template (book-paid-trial)
       console.log("➡️ Fetching email config for 'book-paid-trial'...");
@@ -204,7 +198,10 @@ exports.createBooking = async (req, res) => {
 
       // 2️⃣ Get Custom Templates
       const allTemplates = await CustomTemplate.findAll({
-        where: { mode_of_communication: "email" },
+        where: {
+          mode_of_communication: "email",
+          title: requiredTitle,     // 👈 MAGIC LINE
+        },
         order: [["createdAt", "DESC"]],
       });
 
@@ -227,7 +224,8 @@ exports.createBooking = async (req, res) => {
       }
 
       if (!customTemplate || !customTemplate.content) {
-        throw new Error("Custom email template not found.");
+        console.log("⚠️ Template missing. Skipping email.");
+        return;   // 👈 email block se exit
       }
 
       // 3️⃣ Extract subject + html
@@ -288,10 +286,7 @@ exports.createBooking = async (req, res) => {
           where: { bookingTrialId: booking.id }
         });
 
-        if (!students.length) {
-          console.log("⚠️ No students found for booking.");
-          return;
-        }
+        if (!students.length) console.log("⚠️ No students found for booking.");
 
         // 2️⃣ Get parent data using studentIds
         // const studentIds = students.map(s => s.id);
@@ -306,14 +301,35 @@ exports.createBooking = async (req, res) => {
 
           if (firstParent?.parentEmail) {
             // 🔹 Fetch payment record
-            const bookingPayment = await BookingPayment.findOne({
-              where: {
-                bookingId: booking.id
-              },
-              order: [["createdAt", "DESC"]],
+            // 🔹 Fetch all payments for this booking
+            const payments = await BookingPayment.findAll({
+              where: { bookingId: booking.id },
             });
 
-            const finalPrice = bookingPayment?.price || "0.00";
+            // Initialize totals
+            let totalPrice = 0;      // Only pro_rata + recurring
+            let proRataPrice = 0;
+            let recurringPrice = 0;
+
+            payments.forEach(p => {
+              const price = parseFloat(p.price) || 0;
+
+              if (p.paymentCategory === "pro_rata") {
+                proRataPrice += price;
+                totalPrice += price;
+              } else if (p.paymentCategory === "recurring") {
+                recurringPrice += price;
+                totalPrice += price;
+              }
+            });
+
+            // Format to 2 decimals
+            totalPrice = totalPrice.toFixed(2);
+            proRataPrice = proRataPrice.toFixed(2);
+            recurringPrice = recurringPrice.toFixed(2);
+
+            console.log("💰 Payment totals (excluding starter pack):", { totalPrice, proRataPrice, recurringPrice });
+            // const finalPrice = bookingPayment?.price || "0.00";
             // Fetch all students once
             const allStudents = await BookingStudentMeta.findAll({
               where: { bookingTrialId: booking.id },
@@ -334,6 +350,7 @@ exports.createBooking = async (req, res) => {
               ? allStudents.map(s => s.classSchedule?.className || "N/A").join("<br/>")
               : "N/A";
 
+
             const timeHtml = allStudents.length
               ? allStudents.map(s =>
                 s.classSchedule
@@ -342,13 +359,10 @@ exports.createBooking = async (req, res) => {
               ).join("<br/>")
               : "N/A";
 
-            // const startDate = allStudents.length
-            //   ? allStudents.map(s => s.classSSchedule?.startDate || "").join("<br/>")
-            //   : "N/A";
-
-            // const endDate = allStudents.length
-            //   ? allStudents.map(s => s.classSchedule?.endDate || "").join("<br/>")
-            //   : "N/A";
+            // ✅ New: get day names
+            const dayHtml = allStudents.length
+              ? allStudents.map(s => s.classSchedule?.day || "N/A").join("<br/>")
+              : "N/A";
 
             let htmlBody = htmlTemplate
               .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`)
@@ -356,11 +370,13 @@ exports.createBooking = async (req, res) => {
               .replace(/{{facility}}/g, facility)
               .replace(/{{startDate}}/g, booking?.startDate || "")
               .replace(/{{studentsHtml}}/g, studentsHtml)
+              .replace(/{{title}}/g, paymentPlanTitle)
               .replace(/{{className}}/g, classNameHtml)
               .replace(/{{classTime}}/g, timeHtml)
-              // .replace(/{{startDate}}/g, startDate)
+              .replace(/{{day}}/g, dayHtml) // ✅ NEW variable
               // .replace(/{{endDate}}/g, endDate)
-              .replace(/{{price}}/g, finalPrice)
+              // ✅ Payment placeholders
+              .replace(/{{price}}/g, totalPrice)
               .replace(/{{time}}/g, timeHtml)
               .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
               .replace(/{{parentPassword}}/g, "Synco123")

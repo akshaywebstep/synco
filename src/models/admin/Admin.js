@@ -70,6 +70,22 @@ const Admin = sequelize.define(
       unique: true,
       comment: "Unique referral code for parent/admin",
     },
+    clientCode: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      defaultValue: null,
+    },
+
+    apiKey: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      defaultValue: null,
+    },
+    GC_FRANCHISE_TOKEN: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      defaultValue: null,
+    },
     // ✅ Soft delete column
     deletedAt: {
       type: DataTypes.DATE,

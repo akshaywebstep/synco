@@ -152,13 +152,6 @@ exports.getAllSessionPlanGroups = async ({
 exports.getSessionPlanGroupById = async (id, createdBy, adminId) => {
   try {
 
-    // if (!createdBy || isNaN(Number(createdBy))) {
-    //   return {
-    //     status: false,
-    //     message: "No valid parent or super admin found for this request.",
-    //     data: [],
-    //   };
-    // }
     const currentAdmin = await Admin.findByPk(adminId);
 
     let whereCondition = {};

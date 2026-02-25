@@ -67,10 +67,16 @@ const BookingPayment = sequelize.define(
     },
     // Add this inside your BookingPayment.define fields
     paymentType: {
-      type: DataTypes.ENUM("accesspaysuite", "card", "bank"),
+      type: DataTypes.ENUM("accesspaysuite", "card", "bank","stripe"),
       allowNull: false,
       defaultValue: "card", // optional: choose a default if needed
     },
+    paymentCategory: {
+      type: DataTypes.ENUM("starter_pack", "pro_rata", "recurring"),
+      allowNull: true, // ✅ nullable for old data
+      defaultValue: null,
+    },
+
 
     account_number: {
       type: DataTypes.STRING(20),
@@ -127,6 +133,7 @@ const BookingPayment = sequelize.define(
       type: DataTypes.JSON,
       allowNull: true,
     },
+    
   },
   {
     tableName: "booking_payments",

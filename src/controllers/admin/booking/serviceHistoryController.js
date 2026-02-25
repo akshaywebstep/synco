@@ -9,9 +9,12 @@ const {
   BookingPayment,
   BookingEmergencyMeta,
   ClassSchedule,
+  PaymentPlan,
+  Term,
   Venue,
   TemplateCategory,
   CustomTemplate,
+
 } = require("../../../models"); // direct import
 
 // const Admin = require("../../../services/admin/Admin");
@@ -295,6 +298,43 @@ exports.updateBooking = async (req, res) => {
     const booking = result.data || result;
     console.log("✅ Step 3: Booking updated successfully:", booking?.id || id);
 
+    // 🔹 Normalize paymentPlan
+    const normalizedPlan =
+      booking?.paymentPlan?.dataValues ||
+      booking?.paymentPlan?.plan ||
+      booking?.paymentPlan ||
+      null;
+
+    // Duration as integer
+    const duration = normalizedPlan?.duration
+      ? parseInt(normalizedPlan.duration, 10)
+      : null;
+
+    // Payment plan type (e.g., "3-month")
+    let paymentPlanType = null;
+    if (normalizedPlan) {
+      const interval = String(normalizedPlan.interval || "monthly").toLowerCase(); // default monthly
+      const dur = duration || 1; // fallback duration
+      if (["month", "quarter", "year"].includes(interval)) {
+        paymentPlanType = `${dur}-${interval}`;
+      } else if (interval === "monthly") {
+        paymentPlanType = `${dur}-month`;
+      } else if (interval === "quarterly") {
+        paymentPlanType = `${dur}-quarter`;
+      } else if (interval === "yearly" || interval === "annually") {
+        paymentPlanType = `${dur}-year`;
+      }
+    }
+
+    const paymentPlanTitle = normalizedPlan?.title || "N/A";
+
+    // Determine email title based on duration
+    let requiredTitle = "Book A Membership";
+    if (duration >= 7) {
+      requiredTitle = "Book A Membership (12months)";
+    }
+    console.log("➡️ requiredTitle =", requiredTitle);
+
     // Step 4: Email configuration fetch
     // ---------------- EMAIL SECTION (FIXED) ----------------
 
@@ -313,137 +353,145 @@ exports.updateBooking = async (req, res) => {
     console.log("📧 Using venue:", venueName, "Facility:", facility);
 
     // 🔹 Fetch template category
-    const templateCategory = await TemplateCategory.findOne({
-      where: { category: "Book A Membership" },
-    });
-
-    if (!templateCategory) {
-      console.warn("⚠️ Template category not found. Skipping email.");
-    } else {
-      const allTemplates = await CustomTemplate.findAll({
-        where: { mode_of_communication: "email" },
-        order: [["createdAt", "DESC"]],
+    if (paymentPlanType || booking.isConvertedToMembership) {
+      // 🔹 Fetch template category
+      const templateCategory = await TemplateCategory.findOne({
+        where: { category: "Book A Membership" },
       });
 
-      let customTemplate = null;
-      for (const template of allTemplates) {
-        try {
-          const categoryIds = JSON.parse(template.template_category_id || "[]");
-          if (Array.isArray(categoryIds) && categoryIds.includes(Number(templateCategory.id))) {
-            customTemplate = template;
-            break;
-          }
-        } catch (err) {
-          console.error("Invalid template_category_id format:", err.message);
-        }
-      }
-
-      if (!customTemplate || !customTemplate.content) {
-        console.warn("⚠️ Custom email template not found. Skipping email.");
+      if (!templateCategory) {
+        console.warn("⚠️ Template category not found. Skipping email.");
       } else {
-        // Parse template content
-        let contentObj = { subject: "Booking Update", htmlContent: "" };
-        try {
-          if (typeof customTemplate.content === "string") {
-            const parsed = JSON.parse(customTemplate.content);
-            if (parsed && typeof parsed === "object") {
-              contentObj.subject = parsed.subject || customTemplate.subject || "Booking Update";
-              contentObj.htmlContent = parsed.htmlContent || parsed.html || customTemplate.content || "";
-            } else {
-              contentObj.subject = customTemplate.subject || "Booking Update";
-              contentObj.htmlContent = customTemplate.content;
+        const allTemplates = await CustomTemplate.findAll({
+          where: { mode_of_communication: "email", title: requiredTitle },
+          order: [["createdAt", "DESC"]],
+        });
+
+        let customTemplate = null;
+        for (const template of allTemplates) {
+          try {
+            const categoryIds = JSON.parse(template.template_category_id || "[]");
+            if (Array.isArray(categoryIds) && categoryIds.includes(Number(templateCategory.id))) {
+              customTemplate = template;
+              break;
             }
-          } else if (typeof customTemplate.content === "object") {
-            contentObj.subject = customTemplate.content.subject || customTemplate.subject || "Booking Update";
-            contentObj.htmlContent = customTemplate.content.htmlContent || customTemplate.content.html || "";
+          } catch (err) {
+            console.error("Invalid template_category_id format:", err.message);
           }
-        } catch (err) {
-          console.error("Error parsing template content:", err.message);
-          contentObj.subject = customTemplate.subject || "Booking Update";
-          contentObj.htmlContent = typeof customTemplate.content === "string" ? customTemplate.content : "";
         }
 
-        let htmlTemplate = contentObj.htmlContent.replace(/<h1[^>]*>.*?<\/h1>/i, "");
-        const subject = contentObj.subject;
-
-        const { status: configStatus, emailConfig } =
-          await emailModel.getEmailConfig(PANEL, "book-paid-trial");
-
-        if (configStatus && htmlTemplate) {
-          console.log("✔️ Email template loaded successfully");
-
-          const students = await BookingStudentMeta.findAll({
-            where: { bookingTrialId: booking.id },
-            include: [{ model: ClassSchedule, as: "classSchedule" }],
-          });
-
-          if (!students.length) {
-            console.log("⚠️ No students found for booking.");
-          }
-
-          const parentMetas = await BookingParentMeta.findAll({
-            where: { studentId: students.map(s => s.id) },
-          });
-
-          if (!parentMetas.length) {
-            console.log("⚠️ No parents found for booking.");
-          }
-
-          const firstParent = parentMetas[0];
-          if (firstParent?.parentEmail) {
-            const bookingPayment = await BookingPayment.findOne({
-              where: { bookingId: booking.id },
-              order: [["createdAt", "DESC"]],
-            });
-
-            const finalPrice = bookingPayment?.price || "0.00";
-
-            const studentsHtml = students.length
-              ? students.map(s => `${s.studentFirstName} ${s.studentLastName}`).join("<br/>")
-              : "N/A";
-
-            const classNameHtml = students.length
-              ? students.map(s => s.classSchedule?.className || "N/A").join("<br/>")
-              : "N/A";
-
-            const timeHtml = students.length
-              ? students.map(s => s.classSchedule
-                ? `${s.classSchedule.startTime || ""} - ${s.classSchedule.endTime || ""}`
-                : "N/A"
-              ).join("<br/>")
-              : "N/A";
-
-            const htmlBody = htmlTemplate
-              .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`)
-              .replace(/{{venueName}}/g, venueName)
-              .replace(/{{facility}}/g, facility)
-              .replace(/{{startDate}}/g, booking?.startDate || "")
-              .replace(/{{studentsHtml}}/g, studentsHtml)
-              .replace(/{{className}}/g, classNameHtml)
-              .replace(/{{classTime}}/g, timeHtml)
-              .replace(/{{price}}/g, finalPrice)
-              .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
-              .replace(/{{parentPassword}}/g, "Synco123")
-              .replace(/{{appName}}/g, "Synco")
-              .replace(/{{year}}/g, new Date().getFullYear().toString())
-              .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
-              .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png");
-
-            await sendEmail(emailConfig, {
-              recipient: [{
-                name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`,
-                email: firstParent.parentEmail,
-              }],
-              subject,
-              htmlBody,
-            });
-
-            console.log("📧 Email sent to:", firstParent.parentEmail);
-          }
+        if (!customTemplate || !customTemplate.content) {
+          console.warn("⚠️ Custom email template not found. Skipping email.");
         } else {
-          console.warn("⚠️ Email config missing or template empty");
+          // Parse template content
+          let contentObj = { subject: "Booking Update", htmlContent: "" };
+          try {
+            if (typeof customTemplate.content === "string") {
+              const parsed = JSON.parse(customTemplate.content);
+              if (parsed && typeof parsed === "object") {
+                contentObj.subject = parsed.subject || customTemplate.subject || "Booking Update";
+                contentObj.htmlContent = parsed.htmlContent || parsed.html || customTemplate.content || "";
+              } else {
+                contentObj.subject = customTemplate.subject || "Booking Update";
+                contentObj.htmlContent = customTemplate.content;
+              }
+            } else if (typeof customTemplate.content === "object") {
+              contentObj.subject = customTemplate.content.subject || customTemplate.subject || "Booking Update";
+              contentObj.htmlContent = customTemplate.content.htmlContent || customTemplate.content.html || "";
+            }
+          } catch (err) {
+            console.error("Error parsing template content:", err.message);
+            contentObj.subject = customTemplate.subject || "Booking Update";
+            contentObj.htmlContent = typeof customTemplate.content === "string" ? customTemplate.content : "";
+          }
+
+          let htmlTemplate = contentObj.htmlContent.replace(/<h1[^>]*>.*?<\/h1>/i, "");
+          const subject = contentObj.subject;
+
+          const { status: configStatus, emailConfig } = await emailModel.getEmailConfig(PANEL, "book-paid-trial");
+
+          if (configStatus && htmlTemplate) {
+            console.log("✔️ Email template loaded successfully");
+
+            const students = await BookingStudentMeta.findAll({
+              where: { bookingTrialId: booking.id },
+              include: [{ model: ClassSchedule, as: "classSchedule" }],
+            });
+
+            const parentMetas = await BookingParentMeta.findAll({
+              where: { studentId: students.map(s => s.id) },
+            });
+
+            const firstParent = parentMetas[0];
+            if (firstParent?.parentEmail) {
+              // Payment totals
+              const payments = await BookingPayment.findAll({ where: { bookingId: booking.id } });
+              let totalPrice = 0, proRataPrice = 0, recurringPrice = 0;
+
+              payments.forEach(p => {
+                const price = parseFloat(p.price) || 0;
+                if (p.paymentCategory === "pro_rata") {
+                  proRataPrice += price; totalPrice += price;
+                } else if (p.paymentCategory === "recurring") {
+                  recurringPrice += price; totalPrice += price;
+                }
+              });
+
+              totalPrice = totalPrice.toFixed(2);
+              proRataPrice = proRataPrice.toFixed(2);
+              recurringPrice = recurringPrice.toFixed(2);
+
+              const studentsHtml = students.length
+                ? students.map(s => `${s.studentFirstName} ${s.studentLastName}`).join("<br/>")
+                : "N/A";
+
+              const classNameHtml = students.length
+                ? students.map(s => s.classSchedule?.className || "N/A").join("<br/>")
+                : "N/A";
+
+              const timeHtml = students.length
+                ? students.map(s =>
+                  s.classSchedule ? `${s.classSchedule.startTime || ""} - ${s.classSchedule.endTime || ""}` : "N/A"
+                ).join("<br/>")
+                : "N/A";
+
+              const dayHtml = students.length
+                ? students.map(s => s.classSchedule?.day || "N/A").join("<br/>")
+                : "N/A";
+
+              let htmlBody = htmlTemplate
+                .replace(/{{parentName}}/g, `${firstParent.parentFirstName} ${firstParent.parentLastName}`)
+                .replace(/{{venueName}}/g, venueName)
+                .replace(/{{facility}}/g, facility)
+                .replace(/{{startDate}}/g, booking?.startDate || "")
+                .replace(/{{studentsHtml}}/g, studentsHtml)
+                .replace(/{{title}}/g, paymentPlanTitle)
+                .replace(/{{className}}/g, classNameHtml)
+                .replace(/{{time}}/g, timeHtml)
+                .replace(/{{day}}/g, dayHtml)
+                .replace(/{{price}}/g, totalPrice)
+                .replace(/{{parentEmail}}/g, firstParent.parentEmail || "")
+                .replace(/{{parentPassword}}/g, "Synco123")
+                .replace(/{{appName}}/g, "Synco")
+                .replace(/{{year}}/g, new Date().getFullYear().toString())
+                .replace(/{{logoUrl}}/g, "https://webstepdev.com/demo/syncoUploads/syncoLogo.png")
+                .replace(/{{kidsPlaying}}/g, "https://webstepdev.com/demo/syncoUploads/kidsPlaying.png");
+
+              await sendEmail(emailConfig, {
+                recipient: [{ name: `${firstParent.parentFirstName} ${firstParent.parentLastName}`, email: firstParent.parentEmail }],
+                subject,
+                htmlBody,
+              });
+
+              console.log("📧 Email sent to:", firstParent.parentEmail);
+            }
+          } else {
+            console.warn("⚠️ Email config missing or template empty");
+          }
         }
       }
+    } else {
+      console.log("❌ paymentPlanType is falsy. Skipping email sending block.");
     }
     // 🔔 Booking converted notification
     if (booking?.isConvertedToMembership) {
