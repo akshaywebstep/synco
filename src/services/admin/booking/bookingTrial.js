@@ -1373,3 +1373,43 @@ exports.sendAllSMSToParents = async ({ bookingId }) => {
     return { status: false, message: error.message };
   }
 };
+
+// Get parent by ID
+exports.getParentById = async (id) => {
+  try {
+    const admin = await Admin.findOne({
+      where: { id },
+    });
+
+    if (!admin) {
+      return {
+        status: false,
+        message: "Parent not found by ID.",
+      };
+    }
+
+    const formattedData = {
+      id: admin.id,
+      parentFirstName: admin.firstName,
+      parentLastName: admin.lastName,
+      parentEmail: admin.email,
+      parentPhoneNumber: admin.phoneNumber,
+    };
+
+    return {
+      status: true,
+      message: "Parent found.",
+      data: formattedData,
+    };
+  } catch (error) {
+    console.error("❌ Sequelize Error in getParentById:", error);
+
+    return {
+      status: false,
+      message:
+        error?.parent?.sqlMessage ||
+        error?.message ||
+        "Error occurred while fetching parent.",
+    };
+  }
+};

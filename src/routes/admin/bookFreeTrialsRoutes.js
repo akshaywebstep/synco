@@ -10,6 +10,7 @@ const {
   sendSelectedTrialistEmail,
   assignBookings,
   sendBookingSMSToParents,
+  getParent,
 } = require("../../controllers/admin/booking/bookFreeTrialController");
 
 router.put(
@@ -82,6 +83,12 @@ router.get(
   authMiddleware,
   permissionMiddleware("comment", "view-listing"),
   listCommentsForFreeTrial
+);
+
+router.get(
+  "/get-parent/:id",
+  authMiddleware,
+  getParent
 );
 
 module.exports = router;

@@ -1403,3 +1403,39 @@ exports.sendSelectedTrialistEmail = async (req, res) => {
     return res.status(500).json({ status: false, message: "Server error" });
   }
 };
+
+exports.getParent = async (req, res) => {
+  const { id } = req.params;
+
+  if (DEBUG) console.log("👤 Fetching parent profile for ID:", id);
+
+  try {
+    const result = await BookingTrialService.getParentById(id);
+
+    if (!result.status || !result.data) {
+      if (DEBUG) console.log("❌ Parent not found with ID:", id);
+
+      return res.status(404).json({
+        status: false,
+        message: "Parent not found.",
+      });
+    }
+
+    const { data: parent } = result;
+
+    if (DEBUG) console.log("✅ Parent found:", parent);
+
+    return res.status(200).json({
+      status: true,
+      message: "Parent data fetched successfully.",
+      data: parent,
+    });
+  } catch (error) {
+    console.error("❌ Get Parent Error:", error);
+
+    return res.status(500).json({
+      status: false,
+      message: "Failed to fetch parent.",
+    });
+  }
+};
