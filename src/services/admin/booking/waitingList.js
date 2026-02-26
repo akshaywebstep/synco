@@ -2181,6 +2181,9 @@ exports.convertToMembership = async (data, options) => {
         let goCardlessCustomer = null;
         let goCardlessBankAccount = null;
         let goCardlessBillingRequest = null;
+        let recurringContractRes = null;
+        let recurringContractId = null;
+        let recurringDirectDebitRef = null;
         // const paymentType = isHQVenue ? "accesspaysuite" : "bank";
         const firstSchedule = await ClassSchedule.findByPk(studentRecords[0].classScheduleId);
         if (paymentType === "bank") {
@@ -2372,6 +2375,10 @@ exports.convertToMembership = async (data, options) => {
                 customer: customerRes.data,
                 contract: proRataContractRes.data,
               },
+              contractId: proRataContractRes?.data?.contract?.Id || proRataContractRes?.data?.Id,
+              directDebitRef:
+                proRataContractRes?.data?.contract?.DirectDebitRef ||
+                proRataContractRes?.data?.DirectDebitRef,
               transactionMeta: { status: "pending" },
               goCardlessCustomer: null,
               goCardlessBankAccount: null,
@@ -2402,9 +2409,16 @@ exports.convertToMembership = async (data, options) => {
             recurringContractPayload.TerminationDate = end.toISOString().split("T")[0];
           }
 
-          const recurringContractRes = await createContract(customerId, recurringContractPayload);
+          recurringContractRes = await createContract(customerId, recurringContractPayload);
           if (!recurringContractRes.status)
             throw new Error("Access PaySuite: Recurring contract creation failed");
+          recurringContractId =
+            recurringContractRes?.data?.contract?.Id ||
+            recurringContractRes?.data?.Id;
+
+          recurringDirectDebitRef =
+            recurringContractRes?.data?.contract?.DirectDebitRef ||
+            recurringContractRes?.data?.DirectDebitRef;
 
           gatewayResponse = {
             gateway: "accesspaysuite",
@@ -2413,7 +2427,7 @@ exports.convertToMembership = async (data, options) => {
             contract: recurringContractRes.data,
           };
 
-          paymentStatusFromGateway = "active";
+          paymentStatusFromGateway = "pending";
         }
 
         // Save BookingPayment
@@ -2441,6 +2455,8 @@ exports.convertToMembership = async (data, options) => {
             gatewayResponse?.transaction?.description ||
             `${venue?.name || "Venue"} - ${firstSchedule?.className || "Class"}`,
           commerceType: "ECOM",
+          contractId: paymentType === "accesspaysuite" ? recurringContractId : null,
+          directDebitRef: paymentType === "accesspaysuite" ? recurringDirectDebitRef : null,
           gatewayResponse,
           transactionMeta: {
             status: gatewayResponse?.transaction?.status || "pending",
