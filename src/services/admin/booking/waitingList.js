@@ -907,6 +907,10 @@ exports.createBooking = async (data, options) => {
     const parentPortalAdminId = options?.parentAdminId || null;
     const leadId = options?.leadId || null;
 
+    // ⭐⭐⭐ MOST IMPORTANT FIX
+    if (parentPortalAdminId) {
+      parentAdminId = parentPortalAdminId;
+    }
     let source = "website";
 
     if (parentPortalAdminId) {
@@ -929,7 +933,7 @@ exports.createBooking = async (data, options) => {
       console.log("🔍 [DEBUG] Extracted leadId:", leadId);
     }
 
-    if (data.parents?.length > 0 && source !== "parent") {
+    if (data.parents?.length > 0 && !parentAdminId) {
       const firstParent = data.parents[0];
       const email = firstParent.parentEmail?.trim()?.toLowerCase();
 

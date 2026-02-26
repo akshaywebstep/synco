@@ -109,6 +109,14 @@ exports.createBooking = async (req, res) => {
     }
 
     const leadId = req.params.leadId || null;
+    const parentAdminIdRaw =
+      req.params.parentAdminId ??
+      req.body.parentAdminId ??
+      null;
+
+    const parentAdminId = parentAdminIdRaw
+      ? parseInt(parentAdminIdRaw, 10)
+      : null;
 
     // 🔹 Step 1: Create Booking + Students + Parents (Service)
     const result = await BookingMembershipService.createBooking(
@@ -119,6 +127,7 @@ exports.createBooking = async (req, res) => {
       {
         source: req.source,
         adminId: req.admin?.id || null,
+        parentAdminId,
         leadId,
       }
     );

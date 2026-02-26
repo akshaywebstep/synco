@@ -24,7 +24,14 @@ const MODULE = "book-free-trial";
 exports.createBooking = async (req, res) => {
   if (DEBUG) console.log("📥 Received booking request");
   const formData = req.body;
-  const isParentPortalBooking = !!req.params.parentAdminId;
+  const parentAdminIdRaw =
+    req.params.parentAdminId ?? req.body.parentAdminId ?? null;
+
+  const parentAdminId = parentAdminIdRaw
+    ? parseInt(parentAdminIdRaw, 10)
+    : null;
+
+  const isParentPortalBooking = !!parentAdminId;
   if (
     isParentPortalBooking &&
     req.admin &&
@@ -275,8 +282,13 @@ exports.createBooking = async (req, res) => {
   try {
     if (DEBUG) console.log("🚀 Creating booking...");
     const leadId = req.params.leadId || null;
-    const parentAdminId = req.params.parentAdminId
-      ? parseInt(req.params.parentAdminId, 10)
+    const parentAdminIdRaw =
+      req.params.parentAdminId ??
+      req.body.parentAdminId ??
+      null;
+
+    const parentAdminId = parentAdminIdRaw
+      ? parseInt(parentAdminIdRaw, 10)
       : null;
     const result = await BookingTrialService.createBooking(formData, {
       adminId: req.admin?.id, // <-- pass adminId here

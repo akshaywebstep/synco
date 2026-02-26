@@ -192,11 +192,20 @@ exports.createBooking = async (req, res) => {
     if (DEBUG) console.log("🚀 Creating booking...");
 
     const leadId = req.params.leadId || null;
+    const parentAdminIdRaw =
+      req.params.parentAdminId ??
+      req.body.parentAdminId ??
+      null;
+
+    const parentAdminId = parentAdminIdRaw
+      ? parseInt(parentAdminIdRaw, 10)
+      : null;
 
     const result = await BookingTrialService.createBooking(formData, {
       source: req.source,
       adminId: req.admin?.id,
       adminFirstName: req.admin?.firstName || "Unknown",
+      parentAdminId,
       leadId,
     });
 
