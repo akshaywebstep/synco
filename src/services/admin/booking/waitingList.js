@@ -1822,17 +1822,28 @@ exports.removeWaitingList = async ({ bookingId, reason, notes }) => {
 
     // 2️⃣ Conditional updates based on bookingType
     if (booking.bookingType === "paid") {
-      // If booking was paid, reactivate membership
+
+      // ✅ fetch recurring payment for this booking
+      const recurringPayment = await BookingPayment.findOne({
+        where: {
+          bookingId: booking.id,
+          paymentCategory: "recurring",
+        },
+        order: [["createdAt", "DESC"]],
+      });
+
+      let nextStatus = "active";
+
+      // ✅ if recurring exists AND cancelled → keep booking cancelled
+      if (recurringPayment && recurringPayment.paymentStatus === "cancelled") {
+        nextStatus = "cancelled";
+      }
+
       await booking.update({
-        status: "active",
+        status: nextStatus,
         serviceType: "weekly class membership",
       });
-    } else if (booking.bookingType === "waiting list") {
-      // If booking was on waiting list, mark as removed
-      await booking.update({
-        status: "removed",
-        serviceType: "weekly class trial",
-      });
+
     } else {
       return {
         status: false,

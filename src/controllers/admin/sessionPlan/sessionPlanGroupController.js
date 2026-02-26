@@ -439,95 +439,6 @@ exports.duplicateSessionPlanGroup = async (req, res) => {
   }
 };
 
-/*
-exports.duplicateSessionPlanGroup = async (req, res) => {
-  try {
-    const { id } = req.params; // old group ID
-    const createdBy = req.admin?.id || req.user?.id;
-    if (!createdBy) return res.status(403).json({ status: false, message: "Unauthorized request" });
-
-    // Duplicate DB row without handling files yet
-    const result = await SessionPlanGroupService.duplicateSessionPlanGroup(id, createdBy);
-    if (!result.status) return res.status(404).json({ status: false, message: result.message });
-
-    const group = result.data; // new group DB row
-    const newGroupId = group.id;
-
-    // STEP 1: Save banner
-    const banner = await saveFileAsNew(group.banner, createdBy, newGroupId, "banner");
-
-    // STEP 2: Save per-level uploads + videos
-    const uploadFields = {};
-    for (const level of ["beginner", "intermediate", "advanced", "pro"]) {
-      // Upload
-      uploadFields[`${level}_upload`] = await saveFileAsNew(
-        group[`${level}_upload`],
-        createdBy,
-        newGroupId,
-        path.posix.join("upload", level)
-      );
-
-      // Video
-      uploadFields[`${level}_video`] = await saveFileAsNew(
-        group[`${level}_video`],
-        createdBy,
-        newGroupId,
-        path.posix.join("video", level)
-      );
-    }
-
-    // STEP 3: Update DB row with new file URLs
-    await SessionPlanGroupService.updateSessionPlanGroup(
-      newGroupId,
-      { banner, ...uploadFields },
-      createdBy
-    );
-    await createNotification(
-      req,
-      "Session Plan Group Duplicated",
-      `Session Plan Group '${group.groupName}' was duplicated by ${req?.admin?.firstName || "Admin"}.`,
-      "System"
-    );
-
-    await logActivity({
-      panel: PANEL,
-      module: MODULE,
-      adminId: createdBy,
-      action: "duplicate",
-      description: `Duplicated session plan group: ${group.groupName} (Old ID: ${id}, New ID: ${newGroupId})`,
-    });
-
-    // STEP 4: Build response
-    const responseData = {
-      id: group.id,
-      groupName: group.groupName,
-      player: group.player,
-      sortOrder: group.sortOrder || 0,
-      createdAt: group.createdAt,
-      updatedAt: group.updatedAt,
-      banner,
-      beginner_upload: uploadFields.beginner_upload,
-      intermediate_upload: uploadFields.intermediate_upload,
-      advanced_upload: uploadFields.advanced_upload,
-      pro_upload: uploadFields.pro_upload,
-      beginner_video: uploadFields.beginner_video,
-      intermediate_video: uploadFields.intermediate_video,
-      advanced_video: uploadFields.advanced_video,
-      pro_video: uploadFields.pro_video,
-      levels: group.levels,
-    };
-
-    return res.status(201).json({
-      status: true,
-      message: "Session Plan Group duplicated successfully.",
-      data: responseData,
-    });
-  } catch (error) {
-    console.error("Error in duplicateSessionPlanGroup:", error);
-    return res.status(500).json({ status: false, message: "Server error." });
-  }
-};
-*/
 
 exports.createSessionPlanGroup = async (req, res) => {
   try {
@@ -1349,15 +1260,15 @@ exports.getSessionPlanGroupDetails = async (req, res) => {
   try {
     const { id } = req.params;
     const createdBy = req.admin?.id || req.user?.id;
-    const adminId= req.admin?.id || null;
+    const adminId = req.admin?.id || null;
 
-   const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
     if (DEBUG)
       console.log("Fetching session plan group id:", id, "user:", createdBy);
 
-    const result = await SessionPlanGroupService.getSessionPlanGroupById(id,adminId, superAdminId);
+    const result = await SessionPlanGroupService.getSessionPlanGroupById(id, adminId, superAdminId);
 
     if (!result.status) {
       if (DEBUG) console.warn("Session plan group not found:", id);
@@ -1544,7 +1455,7 @@ exports.updateSessionPlanGroup = async (req, res) => {
     const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
     const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
     // STEP 1: Fetch existing group
-    const existingResult = await SessionPlanGroupService.getSessionPlanGroupById(id, adminId,superAdminId);
+    const existingResult = await SessionPlanGroupService.getSessionPlanGroupById(id, adminId, superAdminId);
     if (!existingResult.status || !existingResult.data) {
       return res.status(404).json({ status: false, message: "Session Plan Group not found" });
     }
@@ -1923,12 +1834,14 @@ exports.updateSessionPlanGroup = async (req, res) => {
 exports.deleteSessionPlanGroup = async (req, res) => {
   const { id } = req.params;
   const adminId = req.admin?.id; // ✅ track who deleted
+  const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+  const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
   if (DEBUG) console.log(`🗑️ Deleting Session Plan Group ID: ${id}`);
 
   try {
     // ✅ Check if group exists
-    const existingResult = await SessionPlanGroupService.getSessionPlanGroupById(id, adminId);
+    const existingResult = await SessionPlanGroupService.getSessionPlanGroupById(id, adminId, superAdminId);
 
     if (!existingResult.status || !existingResult.data) {
       await logActivity(

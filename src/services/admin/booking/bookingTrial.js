@@ -1313,7 +1313,11 @@ exports.sendAllSMSToParents = async ({ bookingId }) => {
       // 4️⃣ Validate phone format
       if (!phone.startsWith("+")) {
         console.warn("⚠️ Invalid phone format:", phone);
-        continue;
+
+        return {
+          status: false,
+          message: "Invalid phone number format. Phone must start with + and country code.",
+        };
       }
 
       // 5️⃣ Build professional message based on booking type & status

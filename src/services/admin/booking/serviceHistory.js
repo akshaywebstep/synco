@@ -280,7 +280,8 @@ exports.updateBooking = async (payload, adminId, id) => {
     }
 
     booking.bookingType = booking.paymentPlanId ? "paid" : "free";
-    booking.status = payload.status || booking.status || "active";
+    // booking.status = payload.status || booking.status || "active";
+    booking.status = "active";
     booking.trialDate = null;
     booking.bookedBy = adminId || booking.bookedBy;
 
@@ -333,6 +334,7 @@ exports.updateBooking = async (payload, adminId, id) => {
               age: student.age,
               gender: student.gender,
               medicalInformation: student.medicalInformation || null,
+              attendance: "not attended",   // ✅ ADD THIS
             },
             { transaction: t }
           );
@@ -350,6 +352,7 @@ exports.updateBooking = async (payload, adminId, id) => {
               age: student.age,
               gender: student.gender,
               medicalInformation: student.medicalInformation || null,
+              attendance: "not attended",   // ✅ ADD THIS
             },
             { transaction: t }
           );

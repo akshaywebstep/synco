@@ -2,11 +2,17 @@
 
 const { Booking, BookingStudentMeta, Venue, ClassSchedule } = require("../../../models");
 const { sequelize } = require("../../../models");
+const { Op } = require("sequelize");
 
 exports.getAttendanceRegister = async (classScheduleId) => {
   try {
     // 1️⃣ Fetch bookings via students.classScheduleId
     const bookings = await Booking.findAll({
+      where: {
+        status: {
+          [Op.notIn]: ["cancelled", "expired"],
+        },
+      },
       include: [
         {
           model: BookingStudentMeta,
@@ -154,8 +160,8 @@ exports.updateAttendanceStatus = async (studentId, attendance) => {
         attendance,
         bookingStatusUpdated:
           allAttended ? "Attended" :
-          allNotAttended ? "Not Attended" :
-          "No Change (Pending/Mixed)",
+            allNotAttended ? "Not Attended" :
+              "No Change (Pending/Mixed)",
       },
     };
 

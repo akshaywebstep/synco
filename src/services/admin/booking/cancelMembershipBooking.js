@@ -47,7 +47,14 @@ exports.createCancelBooking = async ({
     // Payment cancellation
     // --------------------------------------------------
 
-    const payment = await BookingPayment.findOne({ where: { bookingId }, transaction: t });
+    const payment = await BookingPayment.findOne({
+      where: {
+        bookingId,
+        paymentCategory: "recurring",
+      },
+      order: [["id", "DESC"]], // latest recurring
+      transaction: t,
+    });
 
     let paymentCancelled = false;
 
@@ -58,6 +65,14 @@ exports.createCancelBooking = async ({
     } else {
       DEBUG && console.log("💰 Payment type detected:", payment.paymentType);
 
+      /* ✅ ADD THIS BLOCK */
+      if (payment.paymentCategory !== "recurring") {
+        await t.rollback();
+        return {
+          status: false,
+          message: "Cancellation allowed only for recurring memberships.",
+        };
+      }
       if (payment.paymentType === "accesspaysuite") {
         let gatewayResponse = payment.gatewayResponse;
 
