@@ -53,31 +53,31 @@ exports.createStarterPack = async (data) => {
 exports.getAllStarterPack = async (superAdminId, adminId) => {
     try {
 
-        const currentAdmin = await Admin.findByPk(adminId);
+        // const currentAdmin = await Admin.findByPk(adminId);
 
-        let whereCondition = {};
+        // let whereCondition = {};
 
-        // ✅ If superAdminId is null → This is SuperAdmin
-        if (!currentAdmin.superAdminId) {
-            // get all child admins/franchisee
-            const childAdmins = await Admin.findAll({
-                where: { superAdminId: Number(adminId) },
-                attributes: ["id"],
-            });
+        // // ✅ If superAdminId is null → This is SuperAdmin
+        // if (!currentAdmin.superAdminId) {
+        //     // get all child admins/franchisee
+        //     const childAdmins = await Admin.findAll({
+        //         where: { superAdminId: Number(adminId) },
+        //         attributes: ["id"],
+        //     });
 
-            const childIds = childAdmins.map(a => a.id);
+        //     const childIds = childAdmins.map(a => a.id);
 
-            childIds.push(Number(adminId)); // include self
+        //     childIds.push(Number(adminId)); // include self
 
-            whereCondition.createdBy = childIds;
-        }
-        else {
-            // ✅ Normal Admin / Franchisee → only own data
-            whereCondition.createdBy = Number(adminId);
-        }
+        //     whereCondition.createdBy = childIds;
+        // }
+        // else {
+        //     // ✅ Normal Admin / Franchisee → only own data
+        //     whereCondition.createdBy = Number(adminId);
+        // }
 
         const starterPack = await StarterPack.findAll({
-            where: whereCondition,
+            // where: whereCondition,
             order: [["createdAt", "DESC"]],
         });
 
@@ -97,36 +97,36 @@ exports.getAllStarterPack = async (superAdminId, adminId) => {
 // ✅ Get by ID starter pack for current admin
 exports.getStarterPackById = async (id, superAdminId, adminId) => {
   try {
-    const currentAdmin = await Admin.findByPk(adminId);
+    // const currentAdmin = await Admin.findByPk(adminId);
 
-    if (!currentAdmin) {
-      return {
-        status: false,
-        message: "Admin not found.",
-      };
-    }
+    // if (!currentAdmin) {
+    //   return {
+    //     status: false,
+    //     message: "Admin not found.",
+    //   };
+    // }
 
     let whereCondition = {
       id: Number(id),
     };
 
-    // ✅ If Super Admin (no superAdminId)
-    if (!currentAdmin.superAdminId) {
-      // Get all child admins
-      const childAdmins = await Admin.findAll({
-        where: { superAdminId: Number(adminId) },
-        attributes: ["id"],
-      });
+    // // ✅ If Super Admin (no superAdminId)
+    // if (!currentAdmin.superAdminId) {
+    //   // Get all child admins
+    //   const childAdmins = await Admin.findAll({
+    //     where: { superAdminId: Number(adminId) },
+    //     attributes: ["id"],
+    //   });
 
-      const childIds = childAdmins.map((a) => a.id);
+    //   const childIds = childAdmins.map((a) => a.id);
 
-      childIds.push(Number(adminId)); // include self
+    //   childIds.push(Number(adminId)); // include self
 
-      whereCondition.createdBy = childIds;
-    } else {
-      // ✅ Normal Admin / Franchisee → only own data
-      whereCondition.createdBy = Number(adminId);
-    }
+    //   whereCondition.createdBy = childIds;
+    // } else {
+    //   // ✅ Normal Admin / Franchisee → only own data
+    //   whereCondition.createdBy = Number(adminId);
+    // }
 
     const starterPack = await StarterPack.findOne({
       where: whereCondition,
@@ -157,35 +157,35 @@ exports.getStarterPackById = async (id, superAdminId, adminId) => {
 // ✅ Update starter pack
 exports.updateStarterPack = async (id, data, superAdminId, adminId) => {
     try {
-        const currentAdmin = await Admin.findByPk(adminId);
+        // const currentAdmin = await Admin.findByPk(adminId);
 
-        if (!currentAdmin) {
-            return {
-                status: false,
-                message: "Admin not found.",
-            };
-        }
+        // if (!currentAdmin) {
+        //     return {
+        //         status: false,
+        //         message: "Admin not found.",
+        //     };
+        // }
 
         let whereCondition = {
             id: Number(id),
         };
 
         // ✅ Super Admin
-        if (!currentAdmin.superAdminId) {
-            const childAdmins = await Admin.findAll({
-                where: { superAdminId: Number(adminId) },
-                attributes: ["id"],
-            });
+        // if (!currentAdmin.superAdminId) {
+        //     const childAdmins = await Admin.findAll({
+        //         where: { superAdminId: Number(adminId) },
+        //         attributes: ["id"],
+        //     });
 
-            const childIds = childAdmins.map(a => a.id);
-            childIds.push(Number(adminId));
+        //     const childIds = childAdmins.map(a => a.id);
+        //     childIds.push(Number(adminId));
 
-            whereCondition.createdBy = childIds;
-        } 
-        // ✅ Normal Admin
-        else {
-            whereCondition.createdBy = Number(adminId);
-        }
+        //     whereCondition.createdBy = childIds;
+        // } 
+        // // ✅ Normal Admin
+        // else {
+        //     whereCondition.createdBy = Number(adminId);
+        // }
 
         const starterPack = await StarterPack.findOne({
             where: whereCondition,
@@ -217,35 +217,35 @@ exports.updateStarterPack = async (id, data, superAdminId, adminId) => {
 // ✅ Soft delete starter pack
 exports.deleteStarterPack = async (id, superAdminId, adminId) => {
     try {
-        const currentAdmin = await Admin.findByPk(adminId);
+        // const currentAdmin = await Admin.findByPk(adminId);
 
-        if (!currentAdmin) {
-            return {
-                status: false,
-                message: "Admin not found.",
-            };
-        }
+        // if (!currentAdmin) {
+        //     return {
+        //         status: false,
+        //         message: "Admin not found.",
+        //     };
+        // }
 
         let whereCondition = {
             id: Number(id),
         };
 
         // ✅ Super Admin
-        if (!currentAdmin.superAdminId) {
-            const childAdmins = await Admin.findAll({
-                where: { superAdminId: Number(adminId) },
-                attributes: ["id"],
-            });
+        // if (!currentAdmin.superAdminId) {
+        //     const childAdmins = await Admin.findAll({
+        //         where: { superAdminId: Number(adminId) },
+        //         attributes: ["id"],
+        //     });
 
-            const childIds = childAdmins.map(a => a.id);
-            childIds.push(Number(adminId));
+        //     const childIds = childAdmins.map(a => a.id);
+        //     childIds.push(Number(adminId));
 
-            whereCondition.createdBy = childIds;
-        } 
-        // ✅ Normal Admin
-        else {
-            whereCondition.createdBy = Number(adminId);
-        }
+        //     whereCondition.createdBy = childIds;
+        // } 
+        // // ✅ Normal Admin
+        // else {
+        //     whereCondition.createdBy = Number(adminId);
+        // }
 
         const starterPack = await StarterPack.findOne({
             where: whereCondition,

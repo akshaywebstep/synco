@@ -115,11 +115,11 @@ exports.getAllStarterPack = async (req, res) => {
         console.log(`📦 Getting all starter packs for admin ID: ${adminId}`);
 
     if (DEBUG) console.log("📥 Fetching all starter pack...");
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
-    const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
+    // const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.admin.id);
+    // const superAdminId = mainSuperAdminResult?.superAdmin.id ?? null;
 
     try {
-        const result = await StarterPack.getAllStarterPack(superAdminId, adminId); // ✅ filtered by admin
+        const result = await StarterPack.getAllStarterPack(); // ✅ filtered by admin
 
         if (!result.status) {
             if (DEBUG) console.log("⚠️ Fetch failed:", result.message);
@@ -170,14 +170,13 @@ exports.getStarterPackById = async (req, res) => {
     if (DEBUG)
         console.log(`📦 Getting starter pack ID ${id} for admin ID: ${adminId}`);
 
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
-    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+    // const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+    // const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
 
     try {
         const result = await StarterPack.getStarterPackById(
             id,
-            superAdminId,
-            adminId
+           
         );
 
         if (!result.status) {
@@ -234,15 +233,15 @@ exports.updateStarterPack = async (req, res) => {
         });
     }
 
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
-    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+    // const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+    // const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
 
     try {
         const result = await StarterPack.updateStarterPack(
             id,
             formData,
-            superAdminId,
-            adminId
+            // superAdminId,
+            // adminId
         );
 
         if (!result.status) {
@@ -292,14 +291,14 @@ exports.deleteStarterPack = async (req, res) => {
     if (DEBUG)
         console.log(`🗑️ Deleting starter pack ID ${id} by admin ${adminId}`);
 
-    const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
-    const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+    // const mainSuperAdminResult = await getMainSuperAdminOfAdmin(adminId);
+    // const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
 
     try {
         const result = await StarterPack.deleteStarterPack(
             id,
-            superAdminId,
-            adminId
+            // superAdminId,
+            // adminId
         );
 
         if (!result.status) {
