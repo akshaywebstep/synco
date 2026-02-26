@@ -183,63 +183,60 @@ exports.createBooking = async (req, res) => {
 
     console.log("➡️ Entered email sending block");
     console.log("paymentPlanType =", paymentPlanType);
-
+    let customTemplate = null;
     if (paymentPlanType) {
       console.log("✔️ paymentPlanType is truthy. Proceeding...");
+
+      // ⭐⭐⭐ EXACT FIX HERE ⭐⭐⭐
       let requiredTitle = "Book A Membership";
 
+      if (duration >= 7 && duration <= 12) {
+        requiredTitle = "Book A Membership (12months)";
+      }
 
-      if (duration >= 7) {
+      console.log("➡️ requiredTitle =", requiredTitle);
 
-        if (duration && duration !== 1) {
-          dabf57c35cafe2d760d6a28b40cd04dba154e24c
-          requiredTitle = "Book A Membership (12months)";
-        }
+      // 🔹 Step 3: Fetch email template (book-paid-trial)
+      console.log("➡️ Fetching email config for 'book-paid-trial'...");
+      // 1️⃣ Get template category
+      const templateCategory = await TemplateCategory.findOne({
+        where: { category: "Book A Membership" }, // 👈 yaha apna correct category name daalo
+      });
 
-        console.log("➡️ requiredTitle =", requiredTitle);
+      if (!templateCategory) {
+        throw new Error("Template category not found.");
+      }
 
-        // 🔹 Step 3: Fetch email template (book-paid-trial)
-        console.log("➡️ Fetching email config for 'book-paid-trial'...");
-        // 1️⃣ Get template category
-        const templateCategory = await TemplateCategory.findOne({
-          where: { category: "Book A Membership" }, // 👈 yaha apna correct category name daalo
-        });
+      // 2️⃣ Get Custom Templates
+      const allTemplates = await CustomTemplate.findAll({
+        where: {
+          mode_of_communication: "email",
+          title: requiredTitle,     // 👈 MAGIC LINE
+        },
+        order: [["createdAt", "DESC"]],
+      });
 
-        if (!templateCategory) {
-          throw new Error("Template category not found.");
-        }
 
-        // 2️⃣ Get Custom Templates
-        const allTemplates = await CustomTemplate.findAll({
-          where: {
-            mode_of_communication: "email",
-            title: requiredTitle,     // 👈 MAGIC LINE
-          },
-          order: [["createdAt", "DESC"]],
-        });
 
-        let customTemplate = null;
+      for (const template of allTemplates) {
+        try {
+          const categoryIds = JSON.parse(template.template_category_id || "[]");
 
-        for (const template of allTemplates) {
-          try {
-            const categoryIds = JSON.parse(template.template_category_id || "[]");
-
-            if (
-              Array.isArray(categoryIds) &&
-              categoryIds.includes(Number(templateCategory.id))
-            ) {
-              customTemplate = template;
-              break;
-            }
-          } catch (err) {
-            console.error("Invalid template_category_id format:", err.message);
+          if (
+            Array.isArray(categoryIds) &&
+            categoryIds.includes(Number(templateCategory.id))
+          ) {
+            customTemplate = template;
+            break;
           }
+        } catch (err) {
+          console.error("Invalid template_category_id format:", err.message);
         }
       }
 
+
       if (!customTemplate || !customTemplate.content) {
         console.log("⚠️ Template missing. Skipping email.");
-        return;   // 👈 email block se exit
       }
 
       // 3️⃣ Extract subject + html
@@ -391,7 +388,7 @@ exports.createBooking = async (req, res) => {
 
               // .replace(/{{endDate}}/g, endDate)
 
-              .replace(/{{endDate}}/g, endDate)
+              // .replace(/{{endDate}}/g, endDate)
 
               // ✅ Payment placeholders
               .replace(/{{price}}/g, totalPrice)

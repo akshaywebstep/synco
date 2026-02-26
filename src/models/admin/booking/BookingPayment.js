@@ -67,7 +67,7 @@ const BookingPayment = sequelize.define(
     },
     // Add this inside your BookingPayment.define fields
     paymentType: {
-      type: DataTypes.ENUM("accesspaysuite", "card", "bank","stripe"),
+      type: DataTypes.ENUM("accesspaysuite", "card", "bank", "stripe"),
       allowNull: false,
       defaultValue: "card", // optional: choose a default if needed
     },
@@ -111,6 +111,15 @@ const BookingPayment = sequelize.define(
       type: DataTypes.STRING(50),
       allowNull: true,
     },
+    // ✅ NEW APS columns
+    contractId: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
+    directDebitRef: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
     gatewayResponse: {
       type: DataTypes.JSON,
       allowNull: true,
@@ -133,7 +142,7 @@ const BookingPayment = sequelize.define(
       type: DataTypes.JSON,
       allowNull: true,
     },
-    
+
   },
   {
     tableName: "booking_payments",

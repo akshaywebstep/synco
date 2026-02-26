@@ -714,6 +714,9 @@ exports.createBooking = async (data, options) => {
         let goCardlessCustomer = null;
         let goCardlessBankAccount = null;
         let goCardlessBillingRequest = null;
+        let recurringContractRes = null;
+        let recurringContractId = null;
+        let recurringDirectDebitRef = null;
         // const paymentType = isHQVenue ? "accesspaysuite" : "bank";
 
         if (paymentType === "bank") {
@@ -805,6 +808,7 @@ exports.createBooking = async (data, options) => {
             goCardlessBankAccount,
             goCardlessBillingRequest,
           };
+          paymentStatusFromGateway = "pending"; 
         } else if (paymentType === "accesspaysuite") {
           if (DEBUG) console.log("🔁 Processing Access PaySuite recurring payment");
 
@@ -905,6 +909,10 @@ exports.createBooking = async (data, options) => {
                 customer: customerRes.data,
                 contract: proRataContractRes.data,
               },
+              contractId: proRataContractRes?.data?.contract?.Id || proRataContractRes?.data?.Id,
+              directDebitRef:
+                proRataContractRes?.data?.contract?.DirectDebitRef ||
+                proRataContractRes?.data?.DirectDebitRef,
               transactionMeta: { status: "active" },
               goCardlessCustomer: null,
               goCardlessBankAccount: null,
@@ -936,9 +944,16 @@ exports.createBooking = async (data, options) => {
 
           console.log("APS Recurring Contract Payload:", recurringContractPayload);
 
-          const recurringContractRes = await createContract(customerId, recurringContractPayload);
+          recurringContractRes = await createContract(customerId, recurringContractPayload);
           if (!recurringContractRes.status)
             throw new Error("Access PaySuite: Recurring contract creation failed");
+          recurringContractId =
+            recurringContractRes?.data?.contract?.Id ||
+            recurringContractRes?.data?.Id;
+
+          recurringDirectDebitRef =
+            recurringContractRes?.data?.contract?.DirectDebitRef ||
+            recurringContractRes?.data?.DirectDebitRef;
 
           gatewayResponse = {
             gateway: "accesspaysuite",
@@ -947,7 +962,7 @@ exports.createBooking = async (data, options) => {
             contract: recurringContractRes.data,
           };
 
-          paymentStatusFromGateway = "active";
+          paymentStatusFromGateway = "pending";
         }
 
         // Save BookingPayment
@@ -969,12 +984,14 @@ exports.createBooking = async (data, options) => {
           branch_code: data.payment.branch_code || "",
           account_holder_name: data.payment.account_holder_name || "",
           paymentStatus: paymentStatusFromGateway,
-          currency: gatewayResponse?.transaction?.currency || "GBP",
+          currency: "GBP",
           merchantRef: gatewayResponse?.transaction?.merchantRef || merchantRef,
           description:
             gatewayResponse?.transaction?.description ||
             `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"}`,
           commerceType: "ECOM",
+          contractId: paymentType === "accesspaysuite" ? recurringContractId : null,
+          directDebitRef: paymentType === "accesspaysuite" ? recurringDirectDebitRef : null,
           gatewayResponse,
           transactionMeta: {
             status: gatewayResponse?.transaction?.status || "pending",
