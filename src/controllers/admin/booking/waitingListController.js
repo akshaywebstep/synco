@@ -1337,7 +1337,7 @@ exports.convertToMembership = async (req, res) => {
     const facility = venue?.facility || "N/A";
 
     // 🔹 Fetch template category
-    if (paymentPlanType || booking.isConvertedToMembership) {
+    if (booking) {
       // 🔹 Fetch template category
       const templateCategory = await TemplateCategory.findOne({
         where: { category: "Book A Membership" },
