@@ -86,7 +86,12 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                         model: ClassSchedule,
                         as: "classSchedule",
                         required: false,
-                        include: [{ model: Venue, as: "venue", required: false }],
+                        // include: [{ model: Venue, as: "venue", required: false }],
+                    },
+                    {
+                        model: Venue,
+                        as: "venue",
+                        required: false,
                     },
                     { model: BookingPayment, as: "payments" },
                     {
@@ -299,6 +304,11 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
         const formattedBookings = bookings.map((bookingInstance) => {
             const booking = bookingInstance.get({ plain: true });
 
+            /* ✅ DEBUG START */
+            console.log("====== WEEKLY BOOKING DEBUG ======");
+            console.log("BOOKING ID:", booking.id);
+            console.log("RAW PAYMENTS FROM INCLUDE:", booking.payments);
+            console.log("==================================");
             /* ---------------- Students ---------------- */
             const students =
                 booking.students?.map((s) => ({
@@ -336,6 +346,7 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
             /* ---------------- Payments (FIXED) ---------------- */
             const payments =
                 (booking.payments || []).map(normalizeBookingPaymentFlat);
+
             return {
                 id: booking.id,
                 parentAdminId: booking.parentAdminId,
@@ -343,9 +354,10 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                 status: booking.status,
                 createdAt: booking.createdAt,
                 bookedByAdmin: booking.bookedByAdmin || null, // ✅ ADD THIS
+                venueId: booking.venueId || null, // ✅ NOW WORKS
+                attempt: booking.attempt || null,
+                venue: booking.venue || null, // ✅ NOW WORKS
                 source: booking.source || null,
-                classSchedule: booking.classSchedule || null,
-
                 paymentPlan: booking.paymentPlanId
                     ? paymentPlanMap[booking.paymentPlanId] || null
                     : null,
@@ -614,9 +626,6 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
 
                 return {
                     ...booking,
-                    // parents: Object.values(parentMap).map(p =>
-                    //     normalizeParent(p)
-                    // ),
                     parents: Object.values(parentMap).map(p =>
                         normalizeHolidayParent(p)
                     ),
@@ -649,7 +658,8 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
 
         const parentSignature = (p) => [
             normalize(p.parentEmail),
-            normalize(p.parentPhoneNumber),
+            // normalize(p.parentPhoneNumber),
+            normalize(p.parentPhoneNumber || p.phoneNumber),
             normalize(p.parentFirstName),
             normalize(p.parentLastName),
             normalize(p.relationChild),
@@ -662,37 +672,34 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
             normalize(e.emergencyFirstName),
         ].join("|");
 
+
+
         let allStudents = [];
         let allParents = [];
         let allEmergency = [];
+        /* ---------------- WEEKLY ---------------- */
+        formattedBookings.forEach(b => {
+            allStudents.push(...(b.students || []));
+            allParents.push(...(b.parents || []));
+            if (b.emergency) allEmergency.push(b.emergency);
+        });
 
-        /* Weekly */
-        // formattedBookings.forEach(b => {
-        //     allStudents.push(...(b.students || []));
-        //     allParents.push(...(b.parents || []));
-        //     if (b.emergency) allEmergency.push(b.emergency);
-        // });
+        /* ---------------- ONE TO ONE ---------------- */
+        formattedOneToOneLead.forEach(l => {
+            const b = l.booking || {};
+            allStudents.push(...(b.students || []));
+            allParents.push(...(b.parents || []));
+            if (b.emergency) allEmergency.push(b.emergency);
+        });
 
-        /* One to One */
-        // formattedOneToOneLead.forEach(l => {
-        //     allStudents.push(...(l.booking?.students || []));
-        //     allParents.push(...(l.booking?.parents || []));
-        //     if (l.booking?.emergency) allEmergency.push(l.booking.emergency);
-        // });
+        /* ---------------- BIRTHDAY ---------------- */
+        formattedBirthdayPartyLead.forEach(l => {
+            const b = l.booking || {};
+            allStudents.push(...(b.students || []));
+            allParents.push(...(b.parents || []));
+            if (b.emergency) allEmergency.push(b.emergency);
+        });
 
-        /* Birthday */
-        // formattedBirthdayPartyLead.forEach(l => {
-        //     allStudents.push(...(l.booking?.students || []));
-        //     allParents.push(...(l.booking?.parents || []));
-        //     if (l.booking?.emergency) allEmergency.push(l.booking.emergency);
-        // });
-
-        /* Holiday */
-        // formattedHolidayBooking.forEach(b => {
-        //     allStudents.push(...(b.students || []));
-        //     allParents.push(...(b.parents || []));
-        //     allEmergency.push(...(b.emergencyContacts || []));
-        // });
         formattedHolidayBooking.forEach(b => {
             const classInfo = b.holidayClassSchedules?.[0] || b.holidayClassSchedules || {};
 
@@ -784,25 +791,6 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                 : null,
 
         }));
-        // const holidayBookingsNormalized = formattedHolidayBooking.map(b => ({
-
-        //     id: b.id,
-        //     parentAdminId,
-        //     serviceType: "holiday camp",
-        //     bookedBy: b.bookedBy,
-        //     marketingChannel: b.marketingChannel,
-        //     status: b.status,
-        //     createdAt: b.createdAt,
-        //     // ✅ Holiday Camp & Dates
-        //     holidayCamp: normalizeHolidayCamp(b.holidayCamp),
-        //     classSchedule: b.holidayClassSchedules || [],
-        //     paymentPlan: b.holidayPaymentPlan || null,
-        //     students: b.students || [],
-        //     parents: b.parents || [],
-        //     emergency: (b.emergencyContacts || [])[0] || null,
-        //     payment: b.payment || null, // ✅ add this line
-
-        // }));
         const holidayBookingsNormalized = formattedHolidayBooking.map(b => {
             const classSchedule = Array.isArray(b.holidayClassSchedules)
                 ? b.holidayClassSchedules[0] || null
