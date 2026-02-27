@@ -227,16 +227,23 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                         include: [
                             { model: HolidayBookingParentMeta, as: "parents" },
                             { model: HolidayBookingEmergencyMeta, as: "emergencyContacts" },
+                            /* ⭐ ADD THIS */
+                            {
+                                model: HolidayClassSchedule,
+                                as: "holidayClassSchedules",
+                                include: [{ model: HolidayVenue, as: "venue" }],
+                            },
                         ],
+
                     },
                     { model: HolidayBookingPayment, as: "payment" },
                     { model: HolidayPaymentPlan, as: "holidayPaymentPlan" },
                     { model: HolidayVenue, as: "holidayVenue" },
-                    {
-                        model: HolidayClassSchedule,
-                        as: "holidayClassSchedules",
-                        include: [{ model: HolidayVenue, as: "venue" }],
-                    },
+                    // {
+                    //     model: HolidayClassSchedule,
+                    //     as: "holidayClassSchedules",
+                    //     include: [{ model: HolidayVenue, as: "venue" }],
+                    // },
                     { model: Discount, as: "discount" },
                     {
                         model: Admin,
@@ -721,16 +728,16 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
         });
 
         formattedHolidayBooking.forEach(b => {
-            const classInfo = b.holidayClassSchedules?.[0] || b.holidayClassSchedules || {};
-
             (b.students || []).forEach(student => {
+                const classInfo = student.classSchedule || {};
+
                 allStudents.push({
                     ...student,
-                    className: classInfo.className || null,
-                    capacity: classInfo.capacity || null,
-                    totalCapacity: classInfo.totalCapacity || null,
-                    startTime: classInfo.startTime || null,
-                    endTime: classInfo.endTime || null,
+                    // className: classInfo.className || null,
+                    // capacity: classInfo.capacity || null,
+                    // totalCapacity: classInfo.totalCapacity || null,
+                    // startTime: classInfo.startTime || null,
+                    // endTime: classInfo.endTime || null,
                 });
             });
 
@@ -826,9 +833,11 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                 createdAt: b.createdAt,
 
                 holidayCamp: normalizeHolidayCamp(b.holidayCamp),
+                venueId: b.venueId || null,
+                holidayVenue: b.holidayVenue || (classSchedule ? classSchedule.venue : null) || null,
 
                 // ✅ return single object (not array)
-                classSchedule: classSchedule,
+                // classSchedule: classSchedule,
 
                 paymentPlan: b.holidayPaymentPlan || null,
 
@@ -1187,16 +1196,23 @@ exports.getMyBookingsByParentAdminId = async (parentAdminId) => {
                         include: [
                             { model: HolidayBookingParentMeta, as: "parents" },
                             { model: HolidayBookingEmergencyMeta, as: "emergencyContacts" },
+                            /* ⭐⭐⭐ MOST IMPORTANT */
+                            {
+                                model: HolidayClassSchedule,
+                                as: "holidayClassSchedules",
+                                required: false,
+                                include: [{ model: HolidayVenue, as: "venue" }],
+                            },
                         ],
                     },
                     { model: HolidayBookingPayment, as: "payment" },
                     { model: HolidayPaymentPlan, as: "holidayPaymentPlan" },
                     { model: HolidayVenue, as: "holidayVenue" },
-                    {
-                        model: HolidayClassSchedule,
-                        as: "holidayClassSchedules",
-                        include: [{ model: HolidayVenue, as: "venue" }],
-                    },
+                    // {
+                    //     model: HolidayClassSchedule,
+                    //     as: "holidayClassSchedules",
+                    //     include: [{ model: HolidayVenue, as: "venue" }],
+                    // },
                     { model: Discount, as: "discount" },
                     {
                         model: Admin,
@@ -1681,9 +1697,11 @@ exports.getMyBookingsByParentAdminId = async (parentAdminId) => {
         });
 
         formattedHolidayBooking.forEach(b => {
-            const classInfo = b.holidayClassSchedules?.[0] || b.holidayClassSchedules || {};
+            const classSchedule = Array.isArray(b.holidayClassSchedules) || b.holidayClassSchedules || {};
 
             (b.students || []).forEach(student => {
+                const classInfo = student.classSchedule || {};
+
                 allStudents.push({
                     ...student,
                     className: classInfo.className || null,
@@ -1772,9 +1790,21 @@ exports.getMyBookingsByParentAdminId = async (parentAdminId) => {
 
         }));
         const holidayBookingsNormalized = formattedHolidayBooking.map(b => {
-            const classSchedule = Array.isArray(b.holidayClassSchedules)
-                ? b.holidayClassSchedules[0] || null
-                : b.holidayClassSchedules || null;
+
+            const schedulesMap = {};
+
+            (b.students || []).forEach(st => {
+                if (st.classSchedule) {
+                    schedulesMap[st.classSchedule.id] = st.classSchedule;
+                }
+            });
+
+            const holidayClassSchedules = Object.values(schedulesMap);
+
+            const classSchedule =
+                holidayClassSchedules.length > 0
+                    ? holidayClassSchedules[0]
+                    : null;
 
             return {
                 id: b.id,
@@ -1784,25 +1814,13 @@ exports.getMyBookingsByParentAdminId = async (parentAdminId) => {
                 marketingChannel: b.marketingChannel,
                 status: b.status,
                 createdAt: b.createdAt,
-
                 holidayCamp: normalizeHolidayCamp(b.holidayCamp),
-
-                // ✅ return single object (not array)
-                classSchedule: classSchedule,
-
+                holidayVenue: b.holidayVenue || null,
                 paymentPlan: b.holidayPaymentPlan || null,
-
-                // ✅ students enriched with class info
                 students: (b.students || []).map(student => ({
                     ...student,
-                    className: classSchedule?.className || null,
-                    capacity: classSchedule?.capacity || null,
-                    totalCapacity: classSchedule?.totalCapacity || null,
-                    startTime: classSchedule?.startTime || null,
-                    endTime: classSchedule?.endTime || null,
                 })),
 
-                // parents: b.parents || [],
                 parents: (b.parents || []).map(p => normalizeHolidayParent(p)),
                 emergency: (b.emergencyContacts || [])[0] || null,
                 payment: b.payment || null,
@@ -1823,7 +1841,10 @@ exports.getMyBookingsByParentAdminId = async (parentAdminId) => {
 
         combinedBookings.forEach((b) => {
             // ✅ cancelled first priority
-            if (b.status?.toLowerCase() === "cancelled","request_to_cancel") {
+            if (
+                b.status?.toLowerCase() === "cancelled" ||
+                b.status?.toLowerCase() === "request_to_cancel"
+            ) {
                 cancelledBookings.push(b);
                 return;
             }

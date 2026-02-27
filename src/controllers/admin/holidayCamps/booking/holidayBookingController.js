@@ -93,7 +93,7 @@ exports.createHolidayBooking = async (req, res) => {
 
     // ✅ Step 3: Validate student fields
     for (const [index, student] of formData.students.entries()) {
-      const requiredStudentFields = ["studentFirstName", "studentLastName", "dateOfBirth", "medicalInformation","classScheduleId"];
+      const requiredStudentFields = ["studentFirstName", "studentLastName", "dateOfBirth", "medicalInformation", "classScheduleId"];
 
       for (const field of requiredStudentFields) {
         if (!student[field] || student[field].toString().trim() === "") {
@@ -106,22 +106,25 @@ exports.createHolidayBooking = async (req, res) => {
     }
 
     // ✅ Step 4: Validate parent fields
-    for (const [index, parent] of formData.parents.entries()) {
-      const requiredParentFields = [
-        "parentFirstName",
-        "parentLastName",
-        "parentEmail",
-        "parentPhoneNumber",
-        "relationToChild",
-        "howDidYouHear",
-      ];
+    // ✅ Step 4: Validate parent fields
+    if (!formData.parentAdminId && Array.isArray(formData.parents)) {
+      for (const [index, parent] of formData.parents.entries()) {
+        const requiredParentFields = [
+          "parentFirstName",
+          "parentLastName",
+          "parentEmail",
+          "parentPhoneNumber",
+          "relationToChild",
+          "howDidYouHear",
+        ];
 
-      for (const field of requiredParentFields) {
-        if (!parent[field] || parent[field].toString().trim() === "") {
-          return res.status(400).json({
-            status: false,
-            message: `Parent ${index + 1} ${field} is required`,
-          });
+        for (const field of requiredParentFields) {
+          if (!parent[field] || parent[field].toString().trim() === "") {
+            return res.status(400).json({
+              status: false,
+              message: `Parent ${index + 1} ${field} is required`,
+            });
+          }
         }
       }
     }
@@ -640,7 +643,7 @@ exports.updateHolidayBooking = async (req, res) => {
     if (Array.isArray(formData.students)) {
       for (const [index, student] of formData.students.entries()) {
 
-        const requiredFields = ["studentFirstName", "studentLastName", "dateOfBirth", "medicalInformation","classScheduleId"];
+        const requiredFields = ["studentFirstName", "studentLastName", "dateOfBirth", "medicalInformation", "classScheduleId"];
 
         for (const field of requiredFields) {
           if (student[field] === "") {
@@ -878,7 +881,7 @@ exports.waitingListCreate = async (req, res) => {
 
     // ✅ Step 3: Validate student fields
     for (const [index, student] of formData.students.entries()) {
-      const requiredStudentFields = ["studentFirstName", "studentLastName", "dateOfBirth", "medicalInformation","classScheduleId"];
+      const requiredStudentFields = ["studentFirstName", "studentLastName", "dateOfBirth", "medicalInformation", "classScheduleId"];
 
       for (const field of requiredStudentFields) {
         if (!student[field] || student[field].toString().trim() === "") {
