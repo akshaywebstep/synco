@@ -156,11 +156,7 @@ exports.scheduleCancelMembership = async (req, res) => {
             });
         }
 
-        return res.status(200).json({
-            status: true,
-            message:
-                "Your request to cancel your membership has been received. Your membership will remain active until the end of the current billing period.",
-        });
+        return res.status(200).json(result);
     } catch (error) {
         console.error("❌ Parent cancel error:", error);
         return res.status(500).json({

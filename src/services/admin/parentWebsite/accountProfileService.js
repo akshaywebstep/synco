@@ -906,13 +906,9 @@ exports.createCancelBooking = async ({
         DEBUG && console.log("💰 Payment type:", payment.paymentType);
 
         if (payment.paymentType === "accesspaysuite") {
-            let gatewayResponse = payment.gatewayResponse;
 
-            if (typeof gatewayResponse === "string") {
-                gatewayResponse = JSON.parse(gatewayResponse);
-            }
+            const contractId = payment.contractId;
 
-            const contractId = gatewayResponse?.contract?.Id;
             if (!contractId) {
                 await t.rollback();
                 return {
@@ -925,18 +921,15 @@ exports.createCancelBooking = async ({
                 reason: cancelReason || "Membership cancelled",
             };
 
-            // cancel at end of billing cycle if no date
             if (cancelDate) {
                 apsCancelParams.cancelOn = cancelDate;
             }
 
             const apsResponse = await cancelContract(contractId, apsCancelParams);
+
             if (!apsResponse?.status) {
                 await t.rollback();
-                return {
-                    status: false,
-                    message: "Failed to cancel AccessPaySuite contract",
-                };
+                return apsResponse; // gateway message forward
             }
 
             await payment.update(
