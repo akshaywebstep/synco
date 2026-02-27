@@ -80,13 +80,18 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                         include: [
                             { model: BookingParentMeta, as: "parents", required: false },
                             { model: BookingEmergencyMeta, as: "emergencyContacts", required: false },
+                            /* ⭐ ADD THIS */
+                            {
+                                model: ClassSchedule,
+                                as: "classSchedule",
+                                required: false,
+                            },
                         ],
                     },
                     {
                         model: ClassSchedule,
                         as: "classSchedule",
                         required: false,
-                        // include: [{ model: Venue, as: "venue", required: false }],
                     },
                     {
                         model: Venue,
@@ -252,7 +257,7 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
             parentFirstName: p.parentFirstName,
             parentLastName: p.parentLastName,
             parentEmail: p.parentEmail,
-            phoneNumber: p.phoneNumber || p.parentPhoneNumber || null,
+            parentPhoneNumber: p.phoneNumber || p.parentPhoneNumber || null,
             relationChild: p.relationChild || p.relationToChild || null,
             howDidHear: p.howDidHear || p.howDidYouHear || null,
         });
@@ -320,6 +325,8 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
                     gender: s.gender,
                     medicalInformation: s.medicalInfo || s.medicalInformation || null,
                     attendance: s.attendance || s.attendance,
+                    /* ⭐ ADD THIS */
+                    classSchedule: s.classSchedule || null,
                 })) || [];
 
             /* ---------------- Parents ---------------- */
@@ -658,8 +665,7 @@ exports.getCombinedBookingsByParentAdminId = async (parentAdminId) => {
 
         const parentSignature = (p) => [
             normalize(p.parentEmail),
-            // normalize(p.parentPhoneNumber),
-            normalize(p.parentPhoneNumber || p.phoneNumber),
+            normalize(p.parentPhoneNumber),
             normalize(p.parentFirstName),
             normalize(p.parentLastName),
             normalize(p.relationChild),
