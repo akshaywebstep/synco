@@ -244,6 +244,9 @@ exports.getStudentByBookingId = async (bookingId) => {
               required: false,
               include: [{ model: Venue, as: "venue", required: false }],
             },
+            // ✅ ADD THIS
+            { model: Venue, as: "venue", required: false },
+
             { model: PaymentPlan, as: "paymentPlan", required: false },
             { model: BookingPayment, as: "payments", required: false },
           ],
@@ -324,6 +327,7 @@ exports.getStudentByBookingId = async (bookingId) => {
       }))
     );
 
+
     return {
       status: true,
       message: "Students retrieved successfully",
@@ -334,9 +338,9 @@ exports.getStudentByBookingId = async (bookingId) => {
           bookingId: booking?.bookingId,
           leadId: booking?.leadId,
           venueId: booking?.venueId,
-          classScheduleId: booking?.classScheduleId,
-          classSchedule: booking?.classSchedule || null,
+          Venue: booking?.venue || null,
           serviceType: booking?.serviceType,
+          attempt: booking?.attempt || 1,
           paymentPlanId: booking?.paymentPlanId,
           paymentPlan: booking?.paymentPlan || null,
           bookedBy: booking?.bookedBy,

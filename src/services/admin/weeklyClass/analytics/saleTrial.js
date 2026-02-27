@@ -94,19 +94,27 @@ function calculateTotalNewStudentsForPeriod(bookings, year, month) {
   return students.size;
 }
 
+
 // 2️⃣ MONTHLY REVENUE
 function calculateMonthlyRevenue(bookings, year, month) {
-  return bookings.reduce((sum, b) => {
+  const total = bookings.reduce((sum, b) => {
     if (
       b.bookingType === PAID_TYPE &&
       VALID_MEMBER_STATUSES.includes(b.status) &&
       moment(b.createdAt).year() === year &&
       moment(b.createdAt).month() === month
     ) {
-      sum += (Number(b.paymentPlan?.price) || 0) * (b.students?.length || 0);
+      const price = Number(b.paymentPlan?.price) || 0;
+      const students = b.students?.length || 0;
+
+      // ✅ round each addition (important for money)
+      sum += Number((price * students).toFixed(2));
     }
     return sum;
   }, 0);
+
+  // ✅ final rounding
+  return Number(total.toFixed(2));
 }
 
 // 3️⃣ AVERAGE MONTHLY FEE

@@ -1107,36 +1107,9 @@ exports.getBookingById = async (id, bookedBy, adminId) => {
       };
     }
 
-    // Fetch payment plans
-    // let paymentPlans = [];
-    // const venue = booking?.classSchedule?.venue;
     const firstStudent = booking.students?.[0] || null;
     const venue =
       firstStudent?.classSchedule?.venue || null;
-
-    // if (venue) {
-    //   let paymentPlanIds = [];
-
-    //   if (typeof venue.paymentPlanId === "string") {
-    //     try {
-    //       paymentPlanIds = JSON.parse(venue.paymentPlanId);
-    //     } catch {
-    //       console.warn("⚠️ Failed to parse venue.paymentPlanId");
-    //     }
-    //   } else if (Array.isArray(venue.paymentPlanId)) {
-    //     paymentPlanIds = venue.paymentPlanId;
-    //   }
-
-    //   paymentPlanIds = paymentPlanIds
-    //     .map((id) => parseInt(id, 10))
-    //     .filter(Boolean);
-
-    //   if (paymentPlanIds.length) {
-    //     paymentPlans = await PaymentPlan.findAll({
-    //       where: { id: paymentPlanIds },
-    //     });
-    //   }
-    // }
 
     // Final Response — no .toJSON() and no field picking
     return {
