@@ -31,11 +31,11 @@ const BookingParentMeta = sequelize.define(
     timestamps: true,
   }
 );
-// BookingParentMeta.associate = (models) => {
-//   BookingParentMeta.belongsTo(models.BookingStudentMeta, {
-//     foreignKey: "studentId",
-//     as: "student",
-//   });
-// };
+BookingParentMeta.associate = (models) => {
+  BookingParentMeta.belongsTo(models.BookingStudentMeta, {
+    foreignKey: "studentId",
+    as: "student",
+  });
+};
 
 module.exports = BookingParentMeta;

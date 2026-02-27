@@ -1352,41 +1352,58 @@ exports.sendAllSMSToParents = async ({ bookingId }) => {
 };
 
 // Get parent by ID
-exports.getParentById = async (id) => {
+exports.getParentById = async (parentAdminId) => {
   try {
-    const admin = await Admin.findOne({
-      where: { id },
+    // ✅ Admin basic info
+    const admin = await Admin.findByPk(parentAdminId, {
+      attributes: ["id", "firstName", "lastName", "email", "phoneNumber"],
     });
 
     if (!admin) {
-      return {
-        status: false,
-        message: "Parent not found by ID.",
-      };
+      return { status: false, message: "Parent not found" };
     }
 
-    const formattedData = {
-      id: admin.id,
-      parentFirstName: admin.firstName,
-      parentLastName: admin.lastName,
-      parentEmail: admin.email,
-      parentPhoneNumber: admin.phoneNumber,
-    };
+    // ✅ Fetch only 2 fields from parent meta
+    const booking = await Booking.findOne({
+      where: { parentAdminId },
+      attributes: ["id"],
+
+      include: [
+        {
+          model: BookingStudentMeta,
+          as: "students",
+          attributes: ["id"],
+          required: false,
+          include: [
+            {
+              model: BookingParentMeta,
+              as: "parents",
+              attributes: ["relationToChild", "howDidYouHear"],
+              required: false,
+            },
+          ],
+        },
+      ],
+    });
+    console.log(await Booking.count({ where: { parentAdminId } }));
+
+    const parentMeta = booking?.students?.[0]?.parents?.[0];
 
     return {
       status: true,
-      message: "Parent found.",
-      data: formattedData,
+      message: "Parent data fetched successfully.",
+      data: {
+        id: admin.id,
+        parentFirstName: admin.firstName,
+        parentLastName: admin.lastName,
+        parentEmail: admin.email,
+        parentPhoneNumber: admin.phoneNumber,
+        relationToChild: parentMeta?.relationToChild || null,
+        howDidYouHear: parentMeta?.howDidYouHear || null,
+      },
     };
   } catch (error) {
-    console.error("❌ Sequelize Error in getParentById:", error);
-
-    return {
-      status: false,
-      message:
-        error?.parent?.sqlMessage ||
-        error?.message ||
-        "Error occurred while fetching parent.",
-    };
+    console.error(error);
+    return { status: false, message: error.message };
   }
 };
