@@ -97,6 +97,7 @@ exports.createAdmin = async (req, res) => {
       role: roleId,
       password,
       postalCode,
+      gcFranchiseToken,
     } = formData;
 
     /* =======================
@@ -106,6 +107,15 @@ exports.createAdmin = async (req, res) => {
     const isCoach =
       roleResult?.status &&
       roleResult.data?.role?.toLowerCase() === "coach";
+    const isFranchisee =
+      roleResult?.status &&
+      roleResult.data?.role?.toLowerCase() === "franchisee";
+    if (isFranchisee && !gcFranchiseToken?.trim()) {
+      return res.status(400).json({
+        status: false,
+        message: "GC_FRANCHISE_TOKEN is required for franchisee",
+      });
+    }
 
     /* =======================
        EMAIL EXISTS CHECK
@@ -154,6 +164,10 @@ exports.createAdmin = async (req, res) => {
       resetOtpExpiry,
       status: true,
       qualifications: null,
+      // 👇 DB field same capital me
+      GC_FRANCHISE_TOKEN: isFranchisee
+        ? gcFranchiseToken.trim()
+        : null,
       createdByAdmin: req.admin?.id ?? null,
       superAdminId,
     });
@@ -809,6 +823,16 @@ exports.updateAdmin = async (req, res) => {
       city: formData.city || null,
       postalCode: formData.postalCode || null,
     };
+    // =======================
+    // GC_FRANCHISE_TOKEN (Optional Update)
+    // =======================
+    // =======================
+    // GC_FRANCHISE_TOKEN (Optional Update)
+    // =======================
+    if (formData.gcFranchiseToken !== undefined) {
+      updateData.GC_FRANCHISE_TOKEN =
+        formData.gcFranchiseToken?.trim() || null;
+    }
 
     if (formData.status) {
       const statusRaw = formData.status.toString().toLowerCase();

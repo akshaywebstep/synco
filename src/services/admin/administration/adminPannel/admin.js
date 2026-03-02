@@ -100,6 +100,9 @@ exports.getAdminById = async (id) => {
       where: { id },
       attributes: {
         exclude: ["password", "resetOtp", "resetOtpExpiry"],
+        include: [
+          ["GC_FRANCHISE_TOKEN", "gcFranchiseToken"], // 👈 alias
+        ],
       },
       include: [
         {
@@ -270,6 +273,9 @@ exports.getAllAdmins = async (
       },
       attributes: {
         exclude: ["password", "resetOtp", "resetOtpExpiry"],
+        include: [
+          ["GC_FRANCHISE_TOKEN", "gcFranchiseToken"], // 👈 alias
+        ],
       },
       include: [
         {
