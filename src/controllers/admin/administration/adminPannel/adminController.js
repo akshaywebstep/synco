@@ -76,7 +76,7 @@ const uploadFileAndGetUrl = async (
 
 const ADMIN_RESET_URL =
   process.env.ADMIN_RESET_URL ||
-  "https://grabbite.com/reset-password";
+  "https://synco-admin-portal.netlify.app/reset-password";
 
 /* =======================
    CREATE ADMIN
