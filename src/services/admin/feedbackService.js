@@ -10,6 +10,7 @@ const {
   HolidayClassSchedule,
   HolidayBooking,
   HolidayVenue,
+  HolidayBookingStudentMeta,
 } = require("../../models");
 const { Op } = require("sequelize");
 
@@ -217,6 +218,7 @@ exports.getAllFeedbacks = async (userId, role, superAdminId) => {
       "holiday camp",
     ]);
 
+
     const groupedFeedbacks = feedbacks.reduce((acc, feedback) => {
       const type = feedback.serviceType;
       if (validServiceTypes.has(type)) {
@@ -231,11 +233,47 @@ exports.getAllFeedbacks = async (userId, role, superAdminId) => {
       "birthday party": [],
       "holiday camp": [],
     });
+    let holidayClasses = [];
+
+    if (role === "Parents") {
+      const bookings = await HolidayBooking.findAll({
+        where: {
+          parentAdminId: Number(userId),
+        },
+        include: [
+          {
+            model: HolidayBookingStudentMeta,
+            as: "students",
+            include: [
+              {
+                model: HolidayClassSchedule,
+                as: "holidayClassSchedules",
+              },
+            ],
+          },
+        ],
+      });
+
+      holidayClasses = [
+        ...new Map(
+          bookings
+            .flatMap((booking) => booking.students || [])
+            .filter((student) => student.holidayClassSchedules)
+            .map((student) => [
+              student.holidayClassSchedules.id,
+              student.holidayClassSchedules,
+            ])
+        ).values(),
+      ];
+    }
 
     return {
       status: true,
       message: "All feedbacks retrieved successfully",
-      data: groupedFeedbacks,
+      data: {
+        ...groupedFeedbacks,
+        holidayClasses, // 👈 new key
+      },
     };
   } catch (error) {
     console.error("❌ getAllFeedbacks Service Error:", error);
