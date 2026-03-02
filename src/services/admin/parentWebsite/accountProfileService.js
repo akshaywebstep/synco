@@ -1763,6 +1763,7 @@ exports.getMyBookingsByParentAdminId = async (parentAdminId) => {
             status: l.status,
             createdAt: l.booking?.createdAt || null,
             coach: l.booking?.coach || null,
+            address: l.booking?.address || null,
             bookedByAdmin: l.lead?.createdByAdmin || null,
             partyDate: l.partyDate,
             paymentPlan: l.booking?.paymentPlan || null, // ✅ FIX

@@ -127,12 +127,14 @@ exports.createOnetoOneBooking = async (data) => {
     // -----------------------------
     // Parent Admin Handling (ADMIN ONLY)
     // -----------------------------
+    let existingParent = null;
+
     if (parentAdminId) {
-      // Use existing parent
-      const existingParent = await Admin.findByPk(parentAdminId, { transaction });
+      existingParent = await Admin.findByPk(parentAdminId, { transaction });
       if (!existingParent) {
         throw new Error(`Parent admin ID ${parentAdminId} not found`);
       }
+
     } else {
       // Create new parent
       if (!data.parents?.length) {
@@ -219,6 +221,8 @@ exports.createOnetoOneBooking = async (data) => {
 
     const firstStudent = students[0];
     if (firstStudent) {
+
+      // CASE 1: New Parent From Form
       if (data.parents?.length) {
         await Promise.all(
           data.parents.map((p) =>
@@ -238,6 +242,23 @@ exports.createOnetoOneBooking = async (data) => {
         );
       }
 
+      // CASE 2: Admin Portal (Existing Parent)
+      else if (existingParent) {
+        await OneToOneParent.create(
+          {
+            studentId: firstStudent.id,
+            parentFirstName: existingParent.firstName,
+            parentLastName: existingParent.lastName,
+            parentEmail: existingParent.email,
+            phoneNumber: existingParent.phoneNumber,
+            relationChild: "Parent",
+            howDidHear: "Admin Booking",
+          },
+          { transaction }
+        );
+      }
+
+      // Emergency (already correct)
       if (data.emergency) {
         await OneToOneEmergency.create(
           {
@@ -357,9 +378,10 @@ exports.createOnetoOneBooking = async (data) => {
         );
 
         if (configStatus && htmlTemplate) {
-          const firstParent = data.parents?.[0];
+          // const firstParent = data.parents?.[0];
+          const firstParent = data.parents?.[0] || existingParent;
 
-          if (firstParent?.parentEmail) {
+          if (firstParent?.parentEmail || firstParent?.email) {
             let studentsHtml = students
               .map(
                 (student) => `
@@ -403,6 +425,7 @@ exports.createOnetoOneBooking = async (data) => {
                 firstParent.parentEmail || ""
               )
               .replace(/{{parentPassword}}/g, "Synco123")
+              
               .replace(/{{appName}}/g, "Synco")
               .replace(
                 /{{year}}/g,

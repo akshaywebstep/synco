@@ -131,9 +131,11 @@ exports.createBirthdayPartyBooking = async (data) => {
         // -----------------------------
         // Parent Admin Handling (ADMIN ONLY)
         // -----------------------------
+        let existingParent = null;
+
         if (parentAdminId) {
-            // Use existing parent
-            const existingParent = await Admin.findByPk(parentAdminId, { transaction });
+            existingParent = await Admin.findByPk(parentAdminId, { transaction });
+
             if (!existingParent) {
                 throw new Error(`Parent admin ID ${parentAdminId} not found`);
             }
@@ -225,6 +227,8 @@ exports.createBirthdayPartyBooking = async (data) => {
         const firstStudent = students[0];
 
         if (firstStudent) {
+
+            // 🔹 CASE 1: Normal Flow (New Parent from form)
             if (data.parents?.length) {
                 await Promise.all(
                     data.parents.map((p) =>
@@ -244,14 +248,30 @@ exports.createBirthdayPartyBooking = async (data) => {
                 );
             }
 
+            // 🔹 CASE 2: Admin Portal Flow (Existing Parent)
+            else if (existingParent) {
+                await BirthdayPartyParent.create(
+                    {
+                        studentId: firstStudent.id,
+                        parentFirstName: existingParent.firstName,
+                        parentLastName: existingParent.lastName,
+                        parentEmail: existingParent.email,
+                        phoneNumber: existingParent.phoneNumber,
+                        relationChild: "Parent",
+                        howDidHear: "Admin Portal Booking",
+                    },
+                    { transaction }
+                );
+            }
+
+            // 🔥 ADD THIS BLOCK BACK
             if (data.emergency) {
                 await BirthdayPartyEmergency.create(
                     {
                         studentId: firstStudent.id,
                         emergencyFirstName: data.emergency.emergencyFirstName,
                         emergencyLastName: data.emergency.emergencyLastName,
-                        emergencyPhoneNumber:
-                            data.emergency.emergencyPhoneNumber,
+                        emergencyPhoneNumber: data.emergency.emergencyPhoneNumber,
                         emergencyRelation: data.emergency.emergencyRelation,
                     },
                     { transaction }
@@ -396,7 +416,8 @@ exports.createBirthdayPartyBooking = async (data) => {
                 );
 
                 if (configStatus && htmlTemplate) {
-                    const firstParent = data.parents?.[0];
+                    // const firstParent = data.parents?.[0];
+                    const firstParent = data.parents?.[0] || existingParent;
 
                     if (firstParent?.parentEmail) {
                         let studentsHtml = students
