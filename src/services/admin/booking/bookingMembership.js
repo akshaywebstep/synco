@@ -215,40 +215,6 @@ async function autoSyncFreezeBilling() {
 }
 // GBP → pence (GoCardless only)
 
-function countRemainingSessionsFromTerms(startDate, terms) {
-  const start = new Date(startDate);
-  let totalSessions = 0;
-
-  const safeTerms = terms || [];
-  safeTerms.forEach((term) => {
-    if (term.totalSessions) {
-      totalSessions += term.totalSessions;
-    } else if (term.sessionsMap) {
-      let sessions = term.sessionsMap;
-
-      // If it's a string (JSON from DB), parse it
-      if (typeof sessions === "string") {
-        try {
-          sessions = JSON.parse(sessions);
-        } catch (err) {
-          console.error("Failed to parse term.sessionsMap:", sessions);
-          sessions = [];
-        }
-      }
-
-      // Ensure it's an array before filtering
-      if (Array.isArray(sessions)) {
-        totalSessions += sessions.filter(
-          (s) => new Date(s.sessionDate) >= start,
-        ).length;
-      } else {
-        console.warn("term.sessionsMap is not an array:", sessions);
-      }
-    }
-  });
-
-  return totalSessions;
-}
 
 // 🟢 Helper: create a payment row
 async function createBookingPayment({
@@ -695,6 +661,8 @@ exports.createBooking = async (data, options) => {
 
         let totalPassedSessions = 0;
         let totalUpcomingSessions = 0;
+        let remainingLessons = 0;
+        let proRataAmount = 0;
 
         terms.forEach((term) => {
           let sessions = [];
@@ -719,14 +687,15 @@ exports.createBooking = async (data, options) => {
             }
           });
 
-          totalPassedSessions += passedSessions.length;
-          totalUpcomingSessions += upcomingSessions.length;
+          // totalPassedSessions += passedSessions.length;
+          // totalUpcomingSessions += upcomingSessions.length;
 
           console.log(`\n===== Term: ${term.termName} =====`);
           console.log("✅ Passed Sessions:", passedSessions);
           console.log("🕒 Upcoming Sessions:", upcomingSessions);
         });
-
+        totalPassedSessions = passedSessions.length;
+        totalUpcomingSessions = upcomingSessions.length;
         const monthlyClassCount = {};
 
         upcomingSessions.forEach((upcomingSession) => {
@@ -755,11 +724,46 @@ exports.createBooking = async (data, options) => {
           a.year === b.year ? a.month - b.month : a.year - b.year,
         );
 
+        const startDate = new Date(data.startDate);
+        startDate.setHours(0, 0, 0, 0);
+
+        const allSessions = upcomingSessions
+          .map(s => {
+            const d = new Date(s.sessionDate);
+            d.setHours(0, 0, 0, 0);
+            return d;
+          })
+          .sort((a, b) => a - b);
+
+        const selectedMonth = startDate.getMonth();
+        const selectedYear = startDate.getFullYear();
+
+        const monthSessions = allSessions.filter(
+          d => d.getMonth() === selectedMonth && d.getFullYear() === selectedYear
+        );
+
+        const remainingSessions = monthSessions.filter(d => d >= startDate);
+
+        remainingLessons = remainingSessions.length;
+        proRataAmount = remainingLessons * paymentPlan.priceLesson;
+
+        const firstSessionOfMonth = monthSessions[0];
+
+        if (firstSessionOfMonth && startDate.getTime() === firstSessionOfMonth.getTime()) {
+          remainingLessons = 0;
+          proRataAmount = 0;
+        }
+
+
         console.log("\n========== SUMMARY ==========");
         console.log("Total Passed Sessions:", totalPassedSessions);
         console.log("Total Upcoming Sessions:", totalUpcomingSessions);
         console.log(`monthlyClassCount - `, formattedMonthlyClassCount);
         console.log("================================");
+
+        if (!formattedMonthlyClassCount.length) {
+          throw new Error("No upcoming sessions found");
+        }
 
         const firstPaymentMonth = formattedMonthlyClassCount[0].month;
         const firstPaymentYear = formattedMonthlyClassCount[0].year;
@@ -771,12 +775,12 @@ exports.createBooking = async (data, options) => {
         );
 
         //  NEW PRO-RATA LOGIC
-        let proRataAmount = 0;
+        // let proRataAmount = 0;
 
-        if (totalPassedSessions > 0) {
-          // ek session ka price × passed sessions
-          proRataAmount = paymentPlan.priceLesson * totalPassedSessions;
-        }
+        // if (totalPassedSessions > 0) {
+        //   // ek session ka price × passed sessions
+        //   proRataAmount = paymentPlan.priceLesson * totalPassedSessions;
+        // }
 
         console.log("🔥 Calculated Pro-Rata:", proRataAmount);
 
@@ -901,14 +905,13 @@ exports.createBooking = async (data, options) => {
               );
             }
 
-            const firstMonthAmount =
-              backendProRata +
-              paymentPlan.priceLesson *
-                totalUpcomingSessions *
-                (data.totalStudents || 1);
+            // const firstMonthAmount = backendProRata;
+
+
+            const firstMonthAmount = proRataTotal;
 
             // 🔥 Create ONE-OFF payment (ALWAYS for first month)
-            if (!termNotStarted) {
+            if (firstMonthAmount > 0) {
               console.log("🔥 Term started → Creating ONE-OFF");
 
               const oneOffPaymentRes = await createOneOffPaymentGcViaApi({
@@ -980,6 +983,7 @@ exports.createBooking = async (data, options) => {
                 console.log("🔥 Remaining months:", remainingMonths);
               }
 
+              const startDate = createMandateRes.mandate.next_possible_charge_date;
               const subscriptionPayload = {
                 mandateId,
                 amount: gbpToPence(recurringAmount),
@@ -989,7 +993,8 @@ exports.createBooking = async (data, options) => {
                 dayOfMonth: 1,
                 count: remainingMonths,
                 name: `Recurring Plan - ${classSchedule.className}`,
-                startDate: data.startDate, // 👈 ye hona chahiye
+                start_date: startDate,
+                // startDate: data.startDate, // 👈 ye hona chahiye
                 // startDate: calculateContractStartDate(), // next month
                 retryIfPossible: true,
                 metadata: { bookingId: booking.id },
@@ -1571,11 +1576,11 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
             // ✅ student-wise class schedule
             classSchedule: s.classSchedule
               ? {
-                  id: s.classSchedule.id,
-                  className: s.classSchedule.className,
-                  startTime: s.classSchedule.startTime,
-                  endTime: s.classSchedule.endTime,
-                }
+                id: s.classSchedule.id,
+                className: s.classSchedule.className,
+                startTime: s.classSchedule.startTime,
+                endTime: s.classSchedule.endTime,
+              }
               : null,
           })) || [];
 
@@ -1629,30 +1634,30 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
 
         const paymentData = payment
           ? {
-              id: payment.id,
-              bookingId: payment.bookingId,
-              firstName: payment.firstName,
-              lastName: payment.lastName,
-              email: payment.email,
-              billingAddress: payment.billingAddress,
-              cardHolderName: payment.cardHolderName,
-              cv2: payment.cv2,
-              expiryDate: payment.expiryDate,
-              paymentType: payment.paymentType,
-              // pan: payment.pan,
-              paymentStatus: payment.paymentStatus,
-              referenceId: payment.referenceId,
-              currency: payment.currency,
-              merchantRef: payment.merchantRef,
-              description: payment.description,
-              commerceType: payment.commerceType,
-              createdAt: payment.createdAt,
-              updatedAt: payment.updatedAt,
-              goCardlessBillingRequest: parsedGoCardlessBillingRequest,
-              gatewayResponse: parsedGatewayResponse,
-              transactionMeta: parsedTransactionMeta,
-              totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
-            }
+            id: payment.id,
+            bookingId: payment.bookingId,
+            firstName: payment.firstName,
+            lastName: payment.lastName,
+            email: payment.email,
+            billingAddress: payment.billingAddress,
+            cardHolderName: payment.cardHolderName,
+            cv2: payment.cv2,
+            expiryDate: payment.expiryDate,
+            paymentType: payment.paymentType,
+            // pan: payment.pan,
+            paymentStatus: payment.paymentStatus,
+            referenceId: payment.referenceId,
+            currency: payment.currency,
+            merchantRef: payment.merchantRef,
+            description: payment.description,
+            commerceType: payment.commerceType,
+            createdAt: payment.createdAt,
+            updatedAt: payment.updatedAt,
+            goCardlessBillingRequest: parsedGoCardlessBillingRequest,
+            gatewayResponse: parsedGatewayResponse,
+            transactionMeta: parsedTransactionMeta,
+            totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
+          }
           : null;
 
         const { venue: _venue, ...bookingData } = booking.dataValues;
@@ -1809,7 +1814,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
             return (
               acc +
               ((plan.price + (plan.joiningFee || 0)) / plan.duration) *
-                studentsCount
+              studentsCount
             );
           }
           return acc;
@@ -2113,11 +2118,11 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
           // ✅ student-wise class schedule
           classSchedule: student.classSchedule
             ? {
-                id: student.classSchedule.id,
-                className: student.classSchedule.className,
-                startTime: student.classSchedule.startTime,
-                endTime: student.classSchedule.endTime,
-              }
+              id: student.classSchedule.id,
+              className: student.classSchedule.className,
+              startTime: student.classSchedule.startTime,
+              endTime: student.classSchedule.endTime,
+            }
             : null,
         })) || [];
 
@@ -2163,29 +2168,29 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
       // Combine all payment info into a fully structured object
       const paymentData = payment
         ? {
-            id: payment.id,
-            bookingId: payment.bookingId,
-            firstName: payment.firstName,
-            lastName: payment.lastName,
-            email: payment.email,
-            billingAddress: payment.billingAddress,
-            cardHolderName: payment.cardHolderName,
-            cv2: payment.cv2,
-            expiryDate: payment.expiryDate,
-            paymentType: payment.paymentType,
-            // pan: payment.pan,
-            paymentStatus: payment.paymentStatus,
-            referenceId: payment.referenceId,
-            currency: payment.currency,
-            merchantRef: payment.merchantRef,
-            description: payment.description,
-            commerceType: payment.commerceType,
-            createdAt: payment.createdAt,
-            updatedAt: payment.updatedAt,
-            gatewayResponse: parsedGatewayResponse, // fully parsed JSON
-            transactionMeta: parsedTransactionMeta, // fully parsed JSON
-            totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
-          }
+          id: payment.id,
+          bookingId: payment.bookingId,
+          firstName: payment.firstName,
+          lastName: payment.lastName,
+          email: payment.email,
+          billingAddress: payment.billingAddress,
+          cardHolderName: payment.cardHolderName,
+          cv2: payment.cv2,
+          expiryDate: payment.expiryDate,
+          paymentType: payment.paymentType,
+          // pan: payment.pan,
+          paymentStatus: payment.paymentStatus,
+          referenceId: payment.referenceId,
+          currency: payment.currency,
+          merchantRef: payment.merchantRef,
+          description: payment.description,
+          commerceType: payment.commerceType,
+          createdAt: payment.createdAt,
+          updatedAt: payment.updatedAt,
+          gatewayResponse: parsedGatewayResponse, // fully parsed JSON
+          transactionMeta: parsedTransactionMeta, // fully parsed JSON
+          totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
+        }
         : null;
 
       return {
@@ -2201,12 +2206,12 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
 
         bookedBy: booking.admin
           ? {
-              id: booking.admin.id,
-              firstName: booking.admin.firstName,
-              lastName: booking.admin.lastName,
-              email: booking.admin.email,
-              role: booking.admin.role,
-            }
+            id: booking.admin.id,
+            firstName: booking.admin.firstName,
+            lastName: booking.admin.lastName,
+            email: booking.admin.email,
+            role: booking.admin.role,
+          }
           : null,
 
         // totalStudents: students.length,
@@ -2217,13 +2222,13 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
 
         paymentPlanData: plan
           ? {
-              id: plan.id,
-              title: plan.title,
-              price: plan.price,
-              joiningFee: plan.joiningFee,
-              duration: plan.duration,
-              interval: plan.interval,
-            }
+            id: plan.id,
+            title: plan.title,
+            price: plan.price,
+            joiningFee: plan.joiningFee,
+            duration: plan.duration,
+            interval: plan.interval,
+          }
           : null,
 
         payment: paymentData,
@@ -2337,7 +2342,7 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
           return (
             acc +
             ((plan.price + (plan.joiningFee || 0)) / plan.duration) *
-              studentsCount
+            studentsCount
           );
         }
         return acc;
@@ -3302,11 +3307,11 @@ exports.getWaitingList = async () => {
 
       const emergency = emergencyContactRaw
         ? {
-            emergencyFirstName: emergencyContactRaw.emergencyFirstName,
-            emergencyLastName: emergencyContactRaw.emergencyLastName,
-            emergencyPhoneNumber: emergencyContactRaw.emergencyPhoneNumber,
-            emergencyRelation: emergencyContactRaw.emergencyRelation,
-          }
+          emergencyFirstName: emergencyContactRaw.emergencyFirstName,
+          emergencyLastName: emergencyContactRaw.emergencyLastName,
+          emergencyPhoneNumber: emergencyContactRaw.emergencyPhoneNumber,
+          emergencyRelation: emergencyContactRaw.emergencyRelation,
+        }
         : null;
 
       return {
@@ -3437,11 +3442,11 @@ exports.getBookingsById = async (bookingId) => {
         // ✅ student-wise class schedule
         classSchedule: s.classSchedule
           ? {
-              id: s.classSchedule.id,
-              className: s.classSchedule.className,
-              startTime: s.classSchedule.startTime,
-              endTime: s.classSchedule.endTime,
-            }
+            id: s.classSchedule.id,
+            className: s.classSchedule.className,
+            startTime: s.classSchedule.startTime,
+            endTime: s.classSchedule.endTime,
+          }
           : null,
       })) || [];
 
@@ -3523,13 +3528,13 @@ exports.getBookingsById = async (bookingId) => {
 
       paymentData: payment
         ? {
-            firstName: payment.firstName,
-            lastName: payment.lastName,
-            email: payment.email,
-            billingAddress: payment.billingAddress,
-            paymentStatus: payment.paymentStatus,
-            totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
-          }
+          firstName: payment.firstName,
+          lastName: payment.lastName,
+          email: payment.email,
+          billingAddress: payment.billingAddress,
+          paymentStatus: payment.paymentStatus,
+          totalCost: plan ? plan.price + (plan.joiningFee || 0) : 0,
+        }
         : null,
 
       bookedByAdmin: booking.bookedByAdmin || null,
@@ -3620,9 +3625,8 @@ exports.retryBookingPayment = async (bookingId, newData) => {
             payment_request: {
               amount: Math.round(price * 100), // in pence
               currency: "GBP",
-              description: `Booking retry for ${venue?.name || "Venue"} - ${
-                classSchedule?.className || "Class"
-              }`,
+              description: `Booking retry for ${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+                }`,
               metadata: {
                 bookingId: String(booking.id), // must be string
                 retry: "true", // must be string
@@ -3707,9 +3711,8 @@ exports.retryBookingPayment = async (bookingId, newData) => {
             currency: "GBP",
             amount: price,
             merchantRef,
-            description: `${venue?.name || "Venue"} - ${
-              classSchedule?.className || "Class"
-            }`,
+            description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+              }`,
             commerceType: "ECOM",
           },
           paymentMethod: { card: { pan, expiryDate, cardHolderName, cv2 } },
@@ -3821,9 +3824,8 @@ exports.retryBookingPayment = async (bookingId, newData) => {
           newData.payment.firstName || firstParent.parentFirstName || "Parent",
         lastName: newData.payment.lastName || firstParent.parentLastName || "",
         merchantRef,
-        description: `${venue?.name || "Venue"} - ${
-          classSchedule?.className || "Class"
-        }`,
+        description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"
+          }`,
         commerceType: "ECOM",
         email: newData.payment.email || firstParent.parentEmail || "",
         billingAddress: newData.payment.billingAddress || "",

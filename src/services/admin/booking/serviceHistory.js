@@ -676,6 +676,10 @@ exports.updateBooking = async (payload, adminId, id) => {
         console.log(`monthlyClassCount - `, formattedMonthlyClassCount);
         console.log("================================");
 
+        if (!formattedMonthlyClassCount.length) {
+          throw new Error("No upcoming sessions found for this class schedule");
+        }
+
         const firstPaymentMonth = formattedMonthlyClassCount[0].month;
         const firstPaymentYear = formattedMonthlyClassCount[0].year;
         const firstPaymentAmount =
@@ -686,20 +690,54 @@ exports.updateBooking = async (payload, adminId, id) => {
         );
 
         //  NEW PRO-RATA LOGIC
-        let proRataAmount = 0;
 
-        if (totalPassedSessions > 0) {
-          // ek session ka price × passed sessions
-          proRataAmount = paymentPlan.priceLesson * totalPassedSessions;
+
+        // if (totalPassedSessions > 0) {
+        //   // ek session ka price × passed sessions
+        //   proRataAmount = paymentPlan.priceLesson * totalPassedSessions;
+        // }
+
+        const startDate = new Date(payload.startDate || booking.startDate);
+        startDate.setHours(0, 0, 0, 0);
+
+        const allSessions = upcomingSessions
+          .map(s => {
+            const d = new Date(s.sessionDate);
+            d.setHours(0, 0, 0, 0);
+            return d;
+          })
+          .sort((a, b) => a - b);
+
+        const selectedMonth = startDate.getMonth();
+        const selectedYear = startDate.getFullYear();
+
+        const monthSessions = allSessions.filter(
+          d => d.getMonth() === selectedMonth && d.getFullYear() === selectedYear
+        );
+
+        const remainingSessions = monthSessions.filter(d => d >= startDate);
+
+        let remainingLessons = remainingSessions.length;
+
+        let proRataAmount = remainingLessons * paymentPlan.priceLesson;
+
+        const firstSessionOfMonth = monthSessions[0];
+
+        if (firstSessionOfMonth && startDate.getTime() === firstSessionOfMonth.getTime()) {
+          remainingLessons = 0;
+          proRataAmount = 0;
         }
-
         console.log("🔥 Calculated Pro-Rata:", proRataAmount);
 
-        const recurringAmount = firstPaymentAmount;
+        // const firstMonthAmount = backendProRata;
 
         const proRataTotal = Number(
           (proRataAmount * (payload.totalStudents || 1)).toFixed(2),
         );
+        const recurringAmount =
+          paymentPlan.priceLesson *
+          formattedMonthlyClassCount[0].classCount *
+          (payload.totalStudents || 1);
 
         // ✅ Step 2: frontend should send price only
         const expectedTotal = recurringAmount + proRataTotal;
@@ -806,8 +844,10 @@ exports.updateBooking = async (payload, adminId, id) => {
             // ================= Step 2: ONE-OFF for First Month =================
 
             // First month ka total amount calculate karo
-            const backendProRata = proRataAmount * (payload.totalStudents || 1);
-            const termNotStarted = totalPassedSessions === 0;
+            const backendProRata = Number(
+              (proRataAmount * (payload.totalStudents || 1)).toFixed(2)
+            );
+            const termNotStarted = passedSessions.length === 0;
             const frontendProRata = Number(payload.payment?.proRataAmount || 0);
 
             if (frontendProRata !== backendProRata) {
@@ -816,11 +856,13 @@ exports.updateBooking = async (payload, adminId, id) => {
               );
             }
 
-            const firstMonthAmount =
-              backendProRata +
-              paymentPlan.priceLesson *
-              totalUpcomingSessions *
-              (payload.totalStudents || 1);
+            // const firstMonthAmount =
+            //   backendProRata +
+            //   paymentPlan.priceLesson *
+            //   remainingLessons *
+            //   (payload.totalStudents || 1);
+
+            const firstMonthAmount = backendProRata;
 
             // 🔥 Create ONE-OFF payment (ALWAYS for first month)
             if (!termNotStarted) {
@@ -895,7 +937,7 @@ exports.updateBooking = async (payload, adminId, id) => {
                 remainingMonths = paymentPlan.duration - 1;
                 console.log("🔥 Remaining months:", remainingMonths);
               }
-
+              const startDate = createMandateRes.mandate.next_possible_charge_date;
               const subscriptionPayload = {
                 mandateId,
                 amount: gbpToPence(recurringAmount),
@@ -905,7 +947,8 @@ exports.updateBooking = async (payload, adminId, id) => {
                 dayOfMonth: 1,
                 count: remainingMonths,
                 name: `Recurring Plan - ${classSchedule.className}`,
-                startDate: payload.startDate, // 👈 ye hona chahiye
+                // startDate: payload.startDate, // 👈 ye hona chahiye
+                start_date: startDate,
                 // startDate: calculateContractStartDate(), // next month
                 retryIfPossible: true,
                 metadata: { bookingId: booking.id },
@@ -960,7 +1003,7 @@ exports.updateBooking = async (payload, adminId, id) => {
             }
           } catch (err) {
             // if (gcCustomer?.id)
-            await removeCustomer(gcCustomer.id, overrideToken);
+            // await removeCustomer(gcCustomer.id, overrideToken);
             throw new Error(`GoCardless Payment Error: ${err.message}`);
           }
         } else if (paymentType === "accesspaysuite") {

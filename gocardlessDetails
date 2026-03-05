@@ -201,7 +201,8 @@ Response ->
 
 
 // Webhook for payment updates
-https://webhook.site/#!/view/90c9326f-b54d-460a-8cee-eab78656ca29/3a14c713-8696-4de7-b399-07f876daa929/1
+https://api.grabbite.com/api/admin/webhooks/gocardless  -> akshaywebstep
+
 
 
 // CREATE SUBSCRIPTION
@@ -299,6 +300,31 @@ STEP B — Create Subscription From Next Month
 }
 
 ✔ Ye most clean method hai.
+
+
+Today (5 March)
+↓
+Subscription Created
+
+Payment: ❌ nahi
+
+---------------------------------
+
+1 April
+↓
+GoCardless creates Payment
+
+Webhook:
+payments.created
+
+---------------------------------
+
+3 April
+↓
+Bank confirms payment
+
+Webhook:
+payments.confirmed
 
 
 

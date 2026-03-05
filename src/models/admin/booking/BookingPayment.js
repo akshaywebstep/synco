@@ -165,6 +165,10 @@ const BookingPayment = sequelize.define(
       type: DataTypes.STRING(100),
       allowNull: true,
     },
+    goCardlessPaymentId: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
   },
   {
     tableName: "booking_payments",

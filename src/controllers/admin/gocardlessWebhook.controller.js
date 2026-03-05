@@ -1,7 +1,10 @@
 const webhookService = require("../../services/admin/gocardlessWebhook.service");
 
 exports.handleWebhook = async (req, res) => {
+
   try {
+
+    console.log("🔥 GoCardless Webhook Hit");
 
     const events = req.body.events;
 
@@ -13,19 +16,17 @@ exports.handleWebhook = async (req, res) => {
       await webhookService.processEvent(event);
     }
 
-    return res.status(200).json({
-      success: true,
-      message: "Webhook processed successfully"
-    });
+    return res.status(200).send("Webhook processed");
 
   } catch (error) {
 
-    console.error("Webhook Controller Error:", error);
+    console.error("Webhook Error:", error);
 
     return res.status(500).json({
-      success: false,
-      message: "Webhook processing failed"
+      success:false,
+      message:"Webhook failed"
     });
 
   }
+
 };
