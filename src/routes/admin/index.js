@@ -22,6 +22,8 @@ const {
   assignLeadToAgent,
 } = require("../../controllers/admin/recruitment/franchise/franchiseRecruitmentLeadController");
 
+const gocardlessWebhookRoutes = require("./gocardlessWebhook.routes");
+
 const multer = require("multer");
 const upload = multer();
 
@@ -264,6 +266,10 @@ router.use("/contract/", require("./coach/contractRoutes"));
 router.use("/student-course/", require("./coach/studentCourseRoutes"));
 router.use("/feedback/", require("./feedbackRoutes"));
 router.use("/referal/", require("./referal/referalRoutes"));
+
+
+// Webhook Routes for Gocardless
+router.use("/webhooks", gocardlessWebhookRoutes);
 
 // Send Text Routes
 // router.use("/send/", require("./sendTextAllBookingRoutes/sendTextRoutes"));

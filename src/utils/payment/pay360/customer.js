@@ -2,6 +2,12 @@ const { AppConfig } = require("../../../models"); // ✅ make sure this import i
 const DEBUG = process.env.DEBUG === "true";
 const GOCARDLESS_API = "https://api-sandbox.gocardless.com";
 const API_VERSION = "2015-07-06";
+const bcrypt = require("bcrypt");
+const crypto = require("crypto");
+function generateCrmId() {
+  const random = crypto.randomBytes(3).toString("hex").toUpperCase();
+  return `ABCD${random}`;
+}
 
 /**
  * Fetch GoCardless Access Token from AppConfig
@@ -20,7 +26,7 @@ async function getGoCardlessAccessToken() {
  * Build GoCardless request headers (AppConfig version)
  */
 async function buildHeaders(overrideToken = null) {
-  const accessToken = overrideToken || await getGoCardlessAccessToken();
+  const accessToken = overrideToken || (await getGoCardlessAccessToken());
 
   const headers = new Headers();
   headers.append("Content-Type", "application/json");
@@ -148,11 +154,13 @@ async function handleResponse(response) {
  * Create a GoCardless customer
  */
 
-
 /* ================= CUSTOMER ================= */
 
 async function createCustomer(payload, overrideToken = null) {
   try {
+    const crmId = generateCrmId(); // backend random generate
+
+    // Create customer
     const response = await fetch(`${GOCARDLESS_API}/customers`, {
       method: "POST",
       headers: await buildHeaders(overrideToken),
@@ -165,7 +173,7 @@ async function createCustomer(payload, overrideToken = null) {
           city: payload.city,
           postal_code: payload.postal_code,
           country_code: payload.country_code,
-          metadata: { crm_id: payload.crm_id },
+          metadata: { crm_id: crmId },
         },
       }),
     });
@@ -175,7 +183,8 @@ async function createCustomer(payload, overrideToken = null) {
 
     const customer = data.customers;
 
-    const bankRes = await createCustomerBankAccount({
+    // Create bank account
+    const bankRes = await createBankAccount({
       customer: customer.id,
       account_holder_name: payload.account_holder_name,
       account_number: payload.account_number,
@@ -184,26 +193,25 @@ async function createCustomer(payload, overrideToken = null) {
     });
 
     if (!bankRes.status) {
-      await removeCustomer(customer.id, overrideToken);
+      await removeCustomer(customer.id, overrideToken); // rollback if bank account fails
       return { status: false, message: bankRes.message };
     }
 
     return {
       status: true,
+      message: "Customer and bank account created successfully.",
       customer,
       bankAccount: bankRes.bankAccount,
+      customer_bank_accounts: bankRes.bankAccount,
     };
   } catch (err) {
     return { status: false, message: err.message };
   }
 }
 
+/* ---------------- Bank Account Helper ---------------- */
 
-/**
- * Create a GoCardless customer bank account
- */
-
-async function createCustomerBankAccount({
+async function createBankAccount({
   customer,
   account_holder_name,
   account_number,
@@ -212,7 +220,14 @@ async function createCustomerBankAccount({
   overrideToken = null,
 }) {
   try {
-    if (DEBUG) console.log("🔹 [Bank] Step 1: Preparing request...");
+    if (!customer)
+      return { status: false, message: "Customer ID is required." };
+    if (!account_holder_name || !account_number || !branch_code)
+      return {
+        status: false,
+        message:
+          "Account holder name, account number and branch code are required.",
+      };
 
     const body = {
       customer_bank_accounts: {
@@ -224,8 +239,6 @@ async function createCustomerBankAccount({
       },
     };
 
-    if (DEBUG) console.log("✅ Request body:", body);
-
     const response = await fetch(`${GOCARDLESS_API}/customer_bank_accounts`, {
       method: "POST",
       headers: await buildHeaders(overrideToken),
@@ -233,28 +246,34 @@ async function createCustomerBankAccount({
     });
 
     const { status, data, message, error } = await handleResponse(response);
-    if (!status) {
-      if (DEBUG) console.log("❌ Failed to create bank account:", message);
+    if (!status)
       return {
         status: false,
         message: message || "Failed to create bank account.",
         error,
       };
-    }
 
-    const bankAccount = data.customer_bank_accounts;
-    if (DEBUG) console.log("✅ Bank account created:", bankAccount);
+    const bankAccount = data?.customer_bank_accounts;
+    if (!bankAccount?.id)
+      return { status: false, message: "Invalid response from GoCardless." };
 
     return {
       status: true,
       message: "Bank account created successfully.",
-      bankAccount,
+      bankAccount: {
+        id: bankAccount.id,
+        bank_name: bankAccount.bank_name,
+        account_number_ending: bankAccount.account_number_ending,
+        currency: bankAccount.currency,
+        country_code: bankAccount.country_code,
+        enabled: bankAccount.enabled,
+        customer: bankAccount.links?.customer,
+      },
     };
   } catch (err) {
-    console.error("❌ Error creating bank account:", err.message);
     return {
       status: false,
-      message: "An unexpected error occurred while creating the bank account.",
+      message: "Unexpected error creating bank account.",
       error: err.message,
     };
   }
@@ -308,7 +327,12 @@ async function removeCustomer(customerId, overrideToken = null) {
   }
 }
 
-async function cancelBankMembership({ creditorId, accountNumber, branchCode, overrideToken = null }) {
+async function cancelBankMembership({
+  creditorId,
+  accountNumber,
+  branchCode,
+  overrideToken = null,
+}) {
   // Step 1: List creditor bank accounts for the creditor
   const response = await fetch(
     `${GOCARDLESS_API}/creditor_bank_accounts?creditor=${creditorId}`,
@@ -358,7 +382,10 @@ async function cancelBankMembership({ creditorId, accountNumber, branchCode, ove
   return { status: true, message: "Bank membership cancelled successfully" };
 }
 
-async function cancelGoCardlessBillingRequest(billingRequestId, overrideToken = null) {
+async function cancelGoCardlessBillingRequest(
+  billingRequestId,
+  overrideToken = null,
+) {
   try {
     if (!billingRequestId) {
       throw new Error("Missing billing_request ID");
@@ -401,6 +428,7 @@ async function cancelGoCardlessBillingRequest(billingRequestId, overrideToken = 
 
 module.exports = {
   createCustomer,
+  createBankAccount,
   removeCustomer,
   cancelBankMembership,
   cancelGoCardlessBillingRequest,

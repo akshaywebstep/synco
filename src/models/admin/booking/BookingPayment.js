@@ -67,7 +67,13 @@ const BookingPayment = sequelize.define(
     },
     // Add this inside your BookingPayment.define fields
     paymentType: {
-      type: DataTypes.ENUM("accesspaysuite", "card", "bank", "stripe"),
+      type: DataTypes.ENUM(
+        "accesspaysuite",
+        "card",
+        "bank",
+        "stripe",
+        "instant_bank_pay",
+      ),
       allowNull: false,
       defaultValue: "card", // optional: choose a default if needed
     },
@@ -76,7 +82,6 @@ const BookingPayment = sequelize.define(
       allowNull: true, // ✅ nullable for old data
       defaultValue: null,
     },
-
 
     account_number: {
       type: DataTypes.STRING(20),
@@ -89,7 +94,16 @@ const BookingPayment = sequelize.define(
 
     // Payment status
     paymentStatus: {
-      type: DataTypes.ENUM("cancelled", "pending", "paid", "failed", "active"),
+      type: DataTypes.ENUM(
+        "initiated",
+        "processing",
+        "requires_action",
+        "active",
+        "paid",
+        "failed",
+        "cancelled",
+        "contract_created",
+      ),
       defaultValue: "pending",
     },
 
@@ -142,12 +156,20 @@ const BookingPayment = sequelize.define(
       type: DataTypes.JSON,
       allowNull: true,
     },
+    goCardlessMandateId: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
 
+    goCardlessSubscriptionId: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
   },
   {
     tableName: "booking_payments",
     timestamps: true,
-  }
+  },
 );
 
 module.exports = BookingPayment;
