@@ -15,16 +15,28 @@ exports.processEvent = async (event) => {
     console.log("Webhook Event:", action);
 
     /*
-    1️⃣ Payment Created
-    */
+      1️⃣ Payment Created
+  */
     if (action === "created") {
 
+      // Parent payment find karo mandateId se
       const parentPayment = await BookingPayment.findOne({
         where: { goCardlessMandateId: mandateId }
       });
 
       if (!parentPayment) return;
 
+      // 🔹 IDENTITY CHECK: Agar paymentId already hai, duplicate na create ho
+      const existingPayment = await BookingPayment.findOne({
+        where: { goCardlessPaymentId: paymentId }
+      });
+
+      if (existingPayment) {
+        console.log(`Duplicate event ignored for goCardlessPaymentId: ${paymentId}`);
+        return; // ignore duplicate
+      }
+
+      // 🔹 Agar duplicate nahi hai, nayi row create karo
       await BookingPayment.create({
         bookingId: parentPayment.bookingId,
         paymentType: "bank",
@@ -37,8 +49,7 @@ exports.processEvent = async (event) => {
         goCardlessSubscriptionId: subscriptionId
       });
 
-      console.log("Recurring payment created");
-
+      console.log(`Recurring payment created for bookingId: ${parentPayment.bookingId}, paymentId: ${paymentId}`);
     }
 
     /*
