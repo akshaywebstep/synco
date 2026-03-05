@@ -260,6 +260,7 @@ async function createBookingPayment({
     goCardlessCustomer: gatewayResponse?.goCardlessCustomer || null,
     goCardlessBankAccount: gatewayResponse?.goCardlessBankAccount || null,
     goCardlessBillingRequest: gatewayResponse?.goCardlessBillingRequest || null,
+    goCardlessPaymentId,
     createdAt: new Date(),
     updatedAt: new Date(),
   });
@@ -956,6 +957,7 @@ exports.createBooking = async (data, options) => {
                   data.payment?.email || data.parents?.[0]?.parentEmail || "",
                 amount: firstMonthAmount,
                 goCardlessMandateId: mandateId,
+                goCardlessPaymentId: oneOffPaymentRes.gatewayResponse.payments.id,
                 paymentType: "bank",
                 paymentCategory: "pro_rata",
                 paymentStatus: paymentStatusFromGateway, // 🔥 ADD THIS

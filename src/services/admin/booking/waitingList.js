@@ -117,6 +117,7 @@ async function createBookingPayment({
     goCardlessCustomer: gatewayResponse?.goCardlessCustomer || null,
     goCardlessBankAccount: gatewayResponse?.goCardlessBankAccount || null,
     goCardlessBillingRequest: gatewayResponse?.goCardlessBillingRequest || null,
+    goCardlessPaymentId,
     createdAt: new Date(),
     updatedAt: new Date(),
   });
@@ -2437,6 +2438,7 @@ exports.convertToMembership = async (data, options) => {
                 paymentCategory: "pro_rata",
                 paymentStatus: paymentStatusFromGateway, // 🔥 ADD THIS
                 gatewayResponse: oneOffPaymentRes.gatewayResponse,
+                goCardlessPaymentId: oneOffPaymentRes.gatewayResponse.payments.id,
                 currency: "GBP",
               });
 

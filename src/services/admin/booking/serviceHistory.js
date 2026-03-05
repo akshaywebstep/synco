@@ -201,7 +201,7 @@ async function createBookingPayment({
       account_holder_name: parent?.account_holder_name || null,
       account_number: parent?.account_number || null,
       branch_code: parent?.branch_code || null,
-
+      goCardlessPaymentId,
       goCardlessCustomer: gatewayResponse?.goCardlessCustomer || null,
       goCardlessBankAccount: gatewayResponse?.goCardlessBankAccount || null,
       goCardlessBillingRequest:
@@ -941,6 +941,7 @@ exports.updateBooking = async (payload, adminId, id) => {
                 paymentCategory: "pro_rata",
                 paymentStatus: paymentStatusFromGateway, // 🔥 ADD THIS
                 gatewayResponse: oneOffPaymentRes.gatewayResponse,
+                goCardlessPaymentId: oneOffPaymentRes.gatewayResponse.payments.id,
                 currency: "GBP",
                 transaction: t
               });
