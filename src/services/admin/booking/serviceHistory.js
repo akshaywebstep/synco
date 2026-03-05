@@ -720,6 +720,32 @@ exports.updateBooking = async (payload, adminId, id) => {
         let remainingLessons = remainingSessions.length;
 
         let proRataAmount = remainingLessons * paymentPlan.priceLesson;
+        // 🔹 FRONTEND VALIDATION
+        const frontendProRata = Number(payload.payment?.proRataAmount || 0);
+        const frontendTotal = Number(payload.payment?.totalAmount || 0);
+
+        // Validate pro-rata
+        if (frontendProRata !== proRataTotal) {
+          throw new Error(
+            `Pro-rata mismatch: Frontend sent ${frontendProRata}, backend calculated ${proRataTotal}`
+          );
+        }
+
+        // Calculate recurring amount for first month
+        const recurringAmount =
+          paymentPlan.priceLesson *
+          formattedMonthlyClassCount[0].classCount *
+          (payload.totalStudents || 1);
+
+        // Validate total price (recurring + pro-rata)
+        const expectedTotal = recurringAmount + proRataTotal;
+        if (frontendTotal !== expectedTotal) {
+          throw new Error(
+            `Total price mismatch: Frontend sent ${frontendTotal}, backend calculated ${expectedTotal}`
+          );
+        }
+
+        console.log("✅ Frontend pro-rata and total price match backend calculation");
 
         const firstSessionOfMonth = monthSessions[0];
 
@@ -734,13 +760,14 @@ exports.updateBooking = async (payload, adminId, id) => {
         const proRataTotal = Number(
           (proRataAmount * (payload.totalStudents || 1)).toFixed(2),
         );
-        const recurringAmount =
-          paymentPlan.priceLesson *
-          formattedMonthlyClassCount[0].classCount *
-          (payload.totalStudents || 1);
 
-        // ✅ Step 2: frontend should send price only
-        const expectedTotal = recurringAmount + proRataTotal;
+        // const recurringAmount =
+        //   paymentPlan.priceLesson *
+        //   formattedMonthlyClassCount[0].classCount *
+        //   (payload.totalStudents || 1);
+
+        // // ✅ Step 2: frontend should send price only
+        // const expectedTotal = recurringAmount + proRataTotal;
 
         // console.log("FRONTEND PRICE:", frontendPrice);
         console.log("EXPECTED TOTAL:", expectedTotal);
