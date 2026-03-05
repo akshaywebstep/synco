@@ -13,7 +13,7 @@ const {
 const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
 const { cancelContract, } = require("../../../utils/payment/accessPaySuit/accesPaySuit");
-const { cancelGoCardlessBillingRequest, cancelBankMembership } = require("../../../utils/payment/pay360/customer");
+const { cancelGoCardlessBillingRequest, cancelGoCardlessSubscription } = require("../../../utils/payment/pay360/customer");
 const DEBUG = process.env.DEBUG === "true";
 
 const { Op } = require("sequelize");
@@ -73,7 +73,46 @@ exports.createCancelBooking = async ({
           message: "Cancellation allowed only for recurring memberships.",
         };
       }
-      if (payment.paymentType === "accesspaysuite") {
+      if (payment.paymentType === "bank") {
+        // -------------------------
+        // 1️⃣ First month / one-off
+        // -------------------------
+        if (payment.paymentCategory === "pro_rata") {
+          const billingRequestId = payment.goCardlessBillingRequest?.id;
+          if (!billingRequestId)
+            throw new Error("Missing GoCardless billing request ID for cancellation");
+
+          const billingCancelRes = await cancelGoCardlessBillingRequest(billingRequestId);
+          if (!billingCancelRes.status)
+            throw new Error("Failed to cancel one-off billing request");
+
+          await payment.update({ paymentStatus: "cancelled" }, { transaction: t });
+          paymentCancelled = true;
+        }
+
+        // -------------------------
+        // 2️⃣ Recurring subscription
+        // -------------------------
+        else if (payment.paymentCategory === "recurring") {
+          const subscriptionId = payment.goCardlessSubscriptionId;
+          if (!subscriptionId)
+            throw new Error("Missing GoCardless subscription ID for cancellation");
+
+          const subCancelRes = await cancelGoCardlessSubscription(subscriptionId);
+          if (!subCancelRes.status)
+            throw new Error(`Failed to cancel subscription: ${subCancelRes.message}`);
+
+          await payment.update({ paymentStatus: "cancelled" }, { transaction: t });
+          paymentCancelled = true;
+        }
+
+        // -------------------------
+        // 3️⃣ Unknown / unsupported
+        // -------------------------
+        else {
+          throw new Error(`Unsupported paymentCategory: ${payment.paymentCategory}`);
+        }
+      } else if (payment.paymentType === "accesspaysuite") {
         let gatewayResponse = payment.gatewayResponse;
 
         if (typeof gatewayResponse === "string") {
@@ -109,33 +148,6 @@ exports.createCancelBooking = async ({
           { transaction: t }
         );
 
-      } else if (payment.paymentType === "bank") {
-        let billingRequest = payment.goCardlessBillingRequest;
-
-        if (typeof billingRequest === "string") {
-          try {
-            billingRequest = JSON.parse(billingRequest);
-          } catch {
-            billingRequest = null;
-          }
-        }
-
-        DEBUG && console.log("🧾 Parsed GoCardless billing request:", billingRequest);
-
-        if (!billingRequest?.id) {
-          await t.rollback();
-          return { status: false, message: "Missing GoCardless billing request ID" };
-        }
-
-        const billingCancelRes = await cancelGoCardlessBillingRequest(billingRequest.id);
-
-        if (!billingCancelRes?.status) {
-          await t.rollback();
-          return { status: false, message: "GoCardless billing request cancellation failed" };
-        }
-
-        paymentCancelled = true;
-        await payment.update({ paymentStatus: "cancelled" }, { transaction: t });
       } else {
         await t.rollback();
         return { status: false, message: "Unsupported payment type" };

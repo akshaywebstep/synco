@@ -91,6 +91,7 @@ async function createBookingPayment({
   paymentStatus,
   goCardlessMandateId,
   goCardlessSubscriptionId,
+  goCardlessPaymentId,
   transaction,
 }) {
   return await BookingPayment.create({
@@ -2416,6 +2417,13 @@ exports.convertToMembership = async (data, options) => {
                   `Failed to create one-off payment: ${oneOffPaymentRes.message}`,
                 );
               }
+              const paymentId = oneOffPaymentRes.paymentId;
+              const paymentStatus = oneOffPaymentRes.paymentStatus;
+
+              if (!paymentId) {
+                throw new Error("Failed to get GoCardless payment ID");
+              }
+
 
               await createBookingPayment({
                 bookingId: booking.id,
@@ -2438,7 +2446,7 @@ exports.convertToMembership = async (data, options) => {
                 paymentCategory: "pro_rata",
                 paymentStatus: paymentStatusFromGateway, // 🔥 ADD THIS
                 gatewayResponse: oneOffPaymentRes.gatewayResponse,
-                goCardlessPaymentId: oneOffPaymentRes.gatewayResponse.payments.id,
+                 goCardlessPaymentId: paymentId,
                 currency: "GBP",
               });
 

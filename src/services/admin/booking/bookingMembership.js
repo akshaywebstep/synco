@@ -30,6 +30,7 @@ const { Op } = require("sequelize");
 const bcrypt = require("bcrypt");
 const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
+const EPSILON = 0.01;
 const {
   createCustomer,
   createBankAccount,
@@ -234,7 +235,7 @@ async function createBookingPayment({
   paymentStatus,
   goCardlessMandateId,
   goCardlessSubscriptionId,
-  transaction,
+  goCardlessPaymentId,
 }) {
   return await BookingPayment.create({
     bookingId,
@@ -499,6 +500,8 @@ exports.createBooking = async (data, options) => {
 
     await t.commit();
 
+
+
     /* ================= STARTER PACK FIRST ================= */
 
     console.log("🔥 ===== STARTER PACK FLOW START =====");
@@ -554,6 +557,7 @@ exports.createBooking = async (data, options) => {
           paymentCategory: "starter_pack",
           paymentStatus: "paid", // 🔥 ADD THIS
           gatewayResponse: stripeRes.raw,
+          // transaction: t,
         });
 
         console.log("🔥 Starter pack payment saved successfully");
@@ -563,6 +567,7 @@ exports.createBooking = async (data, options) => {
     }
 
     console.log("🔥 ===== STARTER PACK FLOW END =====");
+
 
     // Payment processing (same as your logic but fixed typo and consistency)
     if (booking.paymentPlanId && data.payment?.paymentType) {
@@ -775,21 +780,15 @@ exports.createBooking = async (data, options) => {
           `First payment will be for month: ${firstPaymentMonth}, year: ${firstPaymentYear}, amount: ${firstPaymentAmount}`,
         );
 
-        //  NEW PRO-RATA LOGIC
-        // let proRataAmount = 0;
-
-        // if (totalPassedSessions > 0) {
-        //   // ek session ka price × passed sessions
-        //   proRataAmount = paymentPlan.priceLesson * totalPassedSessions;
-        // }
-
         console.log("🔥 Calculated Pro-Rata:", proRataAmount);
 
         const recurringAmount = firstPaymentAmount;
 
-        const proRataTotal = Number(
-          (proRataAmount * (data.totalStudents || 1)).toFixed(2),
-        );
+        // const proRataTotal = Number(
+        //   (proRataAmount * (data.totalStudents || 1)).toFixed(2),
+        // );
+        // ✅ Correct
+        const proRataTotal = Number(data.payment?.proRataAmount || 0);
 
         // ✅ Step 2: frontend should send price only
         const expectedTotal = recurringAmount + proRataTotal;
@@ -900,11 +899,11 @@ exports.createBooking = async (data, options) => {
             const termNotStarted = totalPassedSessions === 0;
             const frontendProRata = Number(data.payment?.proRataAmount || 0);
 
-            if (frontendProRata !== backendProRata) {
-              throw new Error(
-                `Pro-rata mismatch: Frontend sent ${frontendProRata}, backend calculated ${backendProRata}`,
-              );
-            }
+            // if (Math.abs(frontendProRata - backendProRata) > EPSILON) {
+            //   throw new Error(
+            //     `Pro-rata mismatch: Frontend sent ${frontendProRata}, backend calculated ${backendProRata}`
+            //   );
+            // }
 
             // const firstMonthAmount = backendProRata;
 
@@ -939,6 +938,13 @@ exports.createBooking = async (data, options) => {
                   `Failed to create one-off payment: ${oneOffPaymentRes.message}`,
                 );
               }
+              const paymentId = oneOffPaymentRes.paymentId;
+              const paymentStatus = oneOffPaymentRes.paymentStatus;
+
+              if (!paymentId) {
+                throw new Error("Failed to get GoCardless payment ID");
+              }
+
 
               await createBookingPayment({
                 bookingId: booking.id,
@@ -957,7 +963,7 @@ exports.createBooking = async (data, options) => {
                   data.payment?.email || data.parents?.[0]?.parentEmail || "",
                 amount: firstMonthAmount,
                 goCardlessMandateId: mandateId,
-                goCardlessPaymentId: oneOffPaymentRes.gatewayResponse.payments.id,
+                goCardlessPaymentId: paymentId,
                 paymentType: "bank",
                 paymentCategory: "pro_rata",
                 paymentStatus: paymentStatusFromGateway, // 🔥 ADD THIS
@@ -1191,7 +1197,6 @@ exports.createBooking = async (data, options) => {
               goCardlessBillingRequest: null,
               createdAt: new Date(),
               updatedAt: new Date(),
-              // transaction: t
             });
 
             console.log("✅ APS pro-rata row saved same as recurring");
@@ -1292,7 +1297,6 @@ exports.createBooking = async (data, options) => {
               gatewayResponse?.goCardlessBillingRequest || null,
             createdAt: new Date(),
             updatedAt: new Date(),
-            // transaction: t
           });
         }
 

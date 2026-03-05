@@ -426,10 +426,44 @@ async function cancelGoCardlessBillingRequest(
   }
 }
 
+/**
+ * Cancel a GoCardless subscription
+ * @param {string} subscriptionId
+ * @param {string|null} overrideToken
+ * @returns {object} { status: boolean, message, data }
+ */
+async function cancelGoCardlessSubscription(subscriptionId, overrideToken = null) {
+  if (!subscriptionId) throw new Error("Missing subscription ID for cancellation");
+
+  try {
+    if (DEBUG) console.log("🏦 Cancelling GoCardless subscription:", subscriptionId);
+
+    const response = await fetch(`${GOCARDLESS_API}/subscriptions/${subscriptionId}/actions/cancel`, {
+      method: "POST",
+      headers: await buildHeaders(overrideToken),
+      body: JSON.stringify({ metadata: { reason: "Membership cancelled" } }),
+    });
+
+    const result = await handleResponse(response);
+
+    if (!result.status) {
+      console.error("❌ Subscription cancellation failed:", result.message);
+      return result;
+    }
+
+    if (DEBUG) console.log("✅ Subscription cancelled successfully:", result.data);
+    return { status: true, message: "Subscription cancelled successfully", data: result.data };
+  } catch (err) {
+    console.error("❌ Error cancelling subscription:", err.message);
+    return { status: false, message: err.message };
+  }
+}
+
 module.exports = {
   createCustomer,
   createBankAccount,
   removeCustomer,
   cancelBankMembership,
   cancelGoCardlessBillingRequest,
+  cancelGoCardlessSubscription
 };
