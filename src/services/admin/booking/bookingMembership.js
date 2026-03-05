@@ -957,7 +957,7 @@ exports.createBooking = async (data, options) => {
                 amount: firstMonthAmount,
                 goCardlessMandateId: mandateId,
                 paymentType: "bank",
-                paymentCategory: "first_month",
+                paymentCategory: "pro_rata",
                 paymentStatus: paymentStatusFromGateway, // 🔥 ADD THIS
                 gatewayResponse: oneOffPaymentRes.gatewayResponse,
                 currency: "GBP",
