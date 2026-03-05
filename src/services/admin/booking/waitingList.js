@@ -20,6 +20,19 @@ const {
 const { sequelize } = require("../../../models");
 const chargeStarterPack = require("../../../utils/payment/pay360/starterPackCharge");
 const {
+  createBillingRequest,
+  createPayment,
+  createMandate,
+  createSubscription,
+  createOneOffPaymentGc,
+  createOneOffPaymentGcViaApi,
+} = require("../../../utils/payment/pay360/payment");
+const {
+  createCustomer,
+  createBankAccount,
+  removeCustomer,
+} = require("../../../utils/payment/pay360/customer");
+const {
   createSchedule,
   getSchedules,
   createAccessPaySuiteCustomer,
@@ -29,7 +42,8 @@ const {
 const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
 const generateReferralCode = require("../../../utils/generateReferralCode");
-
+const gbpToPence = (amount) => Math.round(Number(amount) * 100);
+const DEBUG = process.env.DEBUG === "true";
 const bcrypt = require("bcrypt");
 const { Sequelize, Op } = require("sequelize");
 
@@ -44,45 +58,13 @@ function generateBookingId(length = 12) {
   return result;
 }
 
-function normalizeContractStartDate(requestedStartDate, matchedSchedule) {
-  const requested = new Date(requestedStartDate);
-  requested.setHours(0, 0, 0, 0);
-
-  // Rule 1: must be from tomorrow onwards
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(0, 0, 0, 0);
-
-  if (requested < tomorrow) {
-    throw new Error("Start date must be from tomorrow onwards");
-  }
-
-  // Rule 2: must respect schedule minimum start date (APS rule)
-  if (matchedSchedule?.Start) {
-    const scheduleStart = new Date(matchedSchedule.Start);
-    scheduleStart.setHours(0, 0, 0, 0);
-
-    if (requested < scheduleStart) {
-      throw new Error(
-        `Start date must be on or after ${matchedSchedule.Start.split("T")[0]}`
-      );
-    }
-  }
-
-  // APS expects YYYY-MM-DD
-  return requested.toISOString().split("T")[0];
-}
 function calculateContractStartDate(delayDays = 18) {
   const start = new Date();
   start.setDate(start.getDate() + delayDays);
   start.setHours(0, 0, 0, 0);
   return start.toISOString().split("T")[0];
 }
-function getNextBillingCycleDate() {
-  const today = new Date();
-  const next = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-  return next.toISOString().split("T")[0];
-}
+
 function findMatchingSchedule(schedules) {
   if (!Array.isArray(schedules)) return null;
 
@@ -90,57 +72,15 @@ function findMatchingSchedule(schedules) {
     (s) => s.Name && s.Name.trim().toLowerCase() === "default schedule",
   );
 }
-function countRemainingSessionsFromTerms(startDate, terms) {
-  const start = new Date(startDate);
-  let totalSessions = 0;
 
-  const safeTerms = terms || [];
-  safeTerms.forEach((term) => {
-    if (term.totalSessions) {
-      totalSessions += term.totalSessions;
-    } else if (term.sessionsMap) {
-      let sessions = term.sessionsMap;
-
-      // If it's a string (JSON from DB), parse it
-      if (typeof sessions === "string") {
-        try {
-          sessions = JSON.parse(sessions);
-        } catch (err) {
-          console.error("Failed to parse term.sessionsMap:", sessions);
-          sessions = [];
-        }
-      }
-
-      // Ensure it's an array before filtering
-      if (Array.isArray(sessions)) {
-        totalSessions += sessions.filter(
-          (s) => new Date(s.sessionDate) >= start
-        ).length;
-      } else {
-        console.warn("term.sessionsMap is not an array:", sessions);
-      }
-    }
-  });
-
-  return totalSessions;
-}
-async function calculateProRata({ paymentPlan, terms, startDate }) {
-  if (!paymentPlan || !terms) return 0;
-
-  const pricePerLesson = Number(paymentPlan.priceLesson || 0);
-  if (!pricePerLesson) return 0;
-
-  // Count remaining sessions across terms
-  const sessions = countRemainingSessionsFromTerms(startDate, terms);
-
-  // ✅ Multiply pricePerLesson * remaining sessions ONLY (no students here)
-  return Number((pricePerLesson * sessions).toFixed(2));
-}
 // 🟢 Helper: create a payment row
 async function createBookingPayment({
   bookingId,
   studentId,
   parent,
+  firstName,
+  lastName,
+  email,
   amount,
   paymentType,
   description,
@@ -148,39 +88,39 @@ async function createBookingPayment({
   gatewayResponse = null,
   currency = "GBP",
   merchantId = null,
+  paymentStatus,
+  goCardlessMandateId,
+  goCardlessSubscriptionId,
   transaction,
 }) {
-  return await BookingPayment.create(
-    {
-      bookingId,
-      studentId,
-      firstName: parent?.firstName || "",
-      lastName: parent?.lastName || "",
-      email: parent?.email || "",
-      amount,
-      price: amount,
-      paymentType,
-      description,
-      paymentCategory,
-      paymentStatus: gatewayResponse ? "active" : "pending",
-      currency,
-      merchantRef:
-        gatewayResponse?.transaction?.merchantRef || `TXN-${Date.now()}`,
-      gatewayResponse,
-      account_holder_name: parent.account_holder_name || null,
-      account_number: parent.account_number || null,
-      branch_code: parent.branch_code || null,
-      goCardlessCustomer: gatewayResponse?.goCardlessCustomer || null,
-      goCardlessBankAccount: gatewayResponse?.goCardlessBankAccount || null,
-      goCardlessBillingRequest:
-        gatewayResponse?.goCardlessBillingRequest || null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-    { transaction },
-  );
+  return await BookingPayment.create({
+    bookingId,
+    studentId,
+    firstName,
+    lastName,
+    email,
+    amount,
+    price: amount,
+    paymentType,
+    description,
+    paymentCategory,
+    paymentStatus, // ✅ NOW real status use hoga
+    currency,
+    merchantRef:
+      gatewayResponse?.transaction?.merchantRef || `TXN-${Date.now()}`,
+    gatewayResponse,
+    goCardlessMandateId, // ✅ SAVED
+    goCardlessSubscriptionId, // ✅ SAVED
+    account_holder_name: parent?.account_holder_name || null,
+    account_number: parent?.account_number || null,
+    branch_code: parent?.branch_code || null,
+    goCardlessCustomer: gatewayResponse?.goCardlessCustomer || null,
+    goCardlessBankAccount: gatewayResponse?.goCardlessBankAccount || null,
+    goCardlessBillingRequest: gatewayResponse?.goCardlessBillingRequest || null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
 }
-const DEBUG = process.env.DEBUG === "true";
 
 async function updateBookingStats() {
   const debugData = [];
