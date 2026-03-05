@@ -1,4 +1,4 @@
-const { BookingPayment } = require("../models");
+const { BookingPayment } = require("../../models");
 
 exports.processEvent = async (event) => {
 
