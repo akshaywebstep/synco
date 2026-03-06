@@ -404,13 +404,15 @@ exports.updateBooking = async (payload, adminId, id) => {
           );
         }
       }
+      // Commit if all good
+      await t.commit();
 
       /* ================= STARTER PACK FIRST ================= */
 
       console.log("🔥 ===== STARTER PACK FLOW START =====");
 
       const venueForStarter = await Venue.findByPk(payload.venueId, {
-        transaction: t
+        // transaction: t
       });
 
       console.log("🔥 booking venueId:", payload.venueId);
@@ -462,7 +464,7 @@ exports.updateBooking = async (payload, adminId, id) => {
             paymentCategory: "starter_pack",
             paymentStatus: "paid", // 🔥 ADD THIS
             gatewayResponse: stripeRes.raw,
-            transaction: t
+            // transaction: t
           });
 
           console.log("🔥 Starter pack payment saved successfully");
@@ -634,7 +636,7 @@ exports.updateBooking = async (payload, adminId, id) => {
           a.year === b.year ? a.month - b.month : a.year - b.year,
         );
 
-        const startDate = new Date(data.startDate);
+        const startDate = new Date(payload.startDate);
         startDate.setHours(0, 0, 0, 0);
 
         const allSessions = upcomingSessions
@@ -685,7 +687,7 @@ exports.updateBooking = async (payload, adminId, id) => {
         const recurringAmount = firstPaymentAmount;
 
 
-        const proRataTotal = Number(data?.payment?.proRataAmount ?? 0);
+        const proRataTotal = Number(payload?.payment?.proRataAmount ?? 0);
 
         // ✅ Step 2: frontend should send price only
         const expectedTotal = recurringAmount + proRataTotal;
@@ -834,12 +836,12 @@ exports.updateBooking = async (payload, adminId, id) => {
               await createBookingPayment({
                 bookingId: booking.id,
                 studentId: firstStudentId,
-                parent: data.parents?.[0],
+                parent: payload.parents?.[0],
                 firstName:
-                  data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+                  payload.payment?.firstName || payload.parents?.[0]?.parentFirstName,
                 lastName:
-                  data.payment?.lastName || data.parents?.[0]?.parentLastName,
-                email: data.payment?.email || data.parents?.[0]?.parentEmail,
+                  payload.payment?.lastName || payload.parents?.[0]?.parentLastName,
+                email: payload.payment?.email || payload.parents?.[0]?.parentEmail,
                 amount: firstMonthAmount,
                 goCardlessMandateId: mandateId,
                 goCardlessPaymentId: paymentRes.payment.id, // ✅ save payment id
@@ -926,7 +928,7 @@ exports.updateBooking = async (payload, adminId, id) => {
                   goCardlessBankAccount: gcBankAccount,
                   goCardlessSubscription: subscriptionRes.subscription,
                 },
-                transaction: t
+                // transaction: t
               });
 
               console.log("✅ Subscription created for remaining months");
@@ -1195,8 +1197,7 @@ exports.updateBooking = async (payload, adminId, id) => {
         return { status: false, message: error.message };
       }
     }
-    // Commit if all good
-    await t.commit();
+
 
     // 🔹 Step 5: Return updated booking
     return await Booking.findOne({
