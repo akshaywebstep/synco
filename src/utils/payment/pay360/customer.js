@@ -425,6 +425,78 @@ async function cancelGoCardlessBillingRequest(
     return { status: false, message: err.message };
   }
 }
+async function cancelGoCardlessPayment(paymentId, overrideToken = null) {
+  try {
+    if (!paymentId) {
+      throw new Error("Missing GoCardless payment ID");
+    }
+
+    if (DEBUG) {
+      console.log("🏦 Cancelling GoCardless payment:", paymentId);
+    }
+
+    const response = await fetch(
+      `${GOCARDLESS_API}/payments/${paymentId}/actions/cancel`,
+      {
+        method: "POST",
+        headers: await buildHeaders(overrideToken),
+      }
+    );
+
+    const text = await response.text();
+
+    if (!response.ok) {
+      console.error("❌ Payment cancellation failed:", text);
+      return { status: false, message: text };
+    }
+
+    const result = JSON.parse(text);
+
+    return { status: true, data: result };
+  } catch (err) {
+    console.error("❌ Error cancelling payment:", err.message);
+    return { status: false, message: err.message };
+  }
+}
+async function refundGoCardlessPayment(paymentId, overrideToken = null) {
+  try {
+    if (!paymentId) {
+      throw new Error("Missing GoCardless payment ID");
+    }
+
+    console.log("💸 Refunding GoCardless payment:", paymentId);
+
+    const response = await fetch(
+      `${GOCARDLESS_API}/refunds`,
+      {
+        method: "POST",
+        headers: await buildHeaders(overrideToken),
+        body: JSON.stringify({
+          refunds: {
+            payment: paymentId
+          }
+        })
+      }
+    );
+
+    const text = await response.text();
+
+    if (!response.ok) {
+      console.error("❌ Refund failed:", text);
+      return { status: false, message: text };
+    }
+
+    const result = JSON.parse(text);
+
+    console.log("✅ Refund successful:", result);
+
+    return { status: true, data: result };
+
+  } catch (err) {
+    console.error("❌ Refund error:", err.message);
+    return { status: false, message: err.message };
+  }
+}
 
 /**
  * Cancel a GoCardless subscription
@@ -465,5 +537,7 @@ module.exports = {
   removeCustomer,
   cancelBankMembership,
   cancelGoCardlessBillingRequest,
-  cancelGoCardlessSubscription
+  cancelGoCardlessPayment,
+  cancelGoCardlessSubscription,
+  refundGoCardlessPayment
 };

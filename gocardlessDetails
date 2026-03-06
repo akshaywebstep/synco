@@ -329,5 +329,19 @@ payments.confirmed
 
 
 
+pro_rata payment
+     ↓
+cancel / refund
+
+full_payment
+     ↓
+cancel / refund
+
+recurring
+     ↓
+cancel subscription
+
+
+
 
 
