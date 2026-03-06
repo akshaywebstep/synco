@@ -3581,113 +3581,100 @@ exports.getBookingsById = async (bookingId) => {
 };
 
 /**
- * Retry a failed booking payment
- * @param {number} bookingPaymentId - The ID of the failed BookingPayment
+ * Retry a failed BookingPayment
+ * @param {number} bookingPaymentId
+ * @returns {object} { status, message, retryPaymentId?, paymentStatus?, paymentUrl? }
  */
 exports.retryFailedPayment = async (bookingPaymentId) => {
   const t = await sequelize.transaction();
 
   try {
-    // Step 1: Fetch the failed payment
-    const failedPayment = await BookingPayment.findByPk(bookingPaymentId, { transaction: t });
-    if (!failedPayment) throw new Error("BookingPayment not found");
+    // Step 1: Fetch the original payment
+    const originalPayment = await BookingPayment.findByPk(bookingPaymentId, { transaction: t });
+    if (!originalPayment) throw new Error("BookingPayment not found");
 
-    if (failedPayment.paymentStatus === "paid") {
+    // Retry only if status is 'failed'
+    if (originalPayment.paymentStatus !== "failed") {
       await t.commit();
-      return { status: true, message: "Payment already paid. Nothing to retry." };
+      return {
+        status: false,
+        message: `Cannot retry payment. Current status is: ${originalPayment.paymentStatus}`
+      };
     }
 
-    console.log("🔹 Retrying failed payment ID:", failedPayment.id);
+    if (DEBUG) console.log("🔹 Retrying failed payment ID:", originalPayment.id);
 
-    // Step 2: Fetch booking for metadata
-    const booking = await Booking.findByPk(failedPayment.bookingId, { transaction: t });
+    // Step 2: Fetch related booking
+    const booking = await Booking.findByPk(originalPayment.bookingId, { transaction: t });
     if (!booking) throw new Error("Booking not found");
 
-    // Step 3: Retry via GoCardless (only bank for now)
+    // Step 3: Determine payment type
     let paymentStatusFromGateway = "pending";
     let gatewayResponse = null;
-    let transactionMeta = null;
+    let paymentUrl = null;
 
-    try {
-      const gcConfig = await AppConfig.findOne({ where: { key: "GC_HEAD_OFFICE_TOKEN" }, transaction: t });
-      if (!gcConfig?.value) throw new Error("GC_HEAD_OFFICE_TOKEN missing");
-      const GC_HEAD_OFFICE_TOKEN = gcConfig.value;
+    if (originalPayment.paymentType === "bank") {
+      // GoCardless retry
+      if (!originalPayment.goCardlessMandateId) throw new Error("Bank payment requires mandateId");
 
-      // Construct payload using failed payment data
-      const gcPayload = {
-        billing_requests: {
-          payment_request: {
-            amount: Math.round(failedPayment.amount * 100),
-            currency: "GBP",
-            description: failedPayment.description || "Retry booking payment",
-            metadata: {
-              bookingPaymentId: String(failedPayment.id),
-              retry: "true",
-              referenceId: failedPayment.referenceId,
-            },
-          },
-          mandate_request: {
-            currency: "GBP",
-            scheme: "bacs",
-            metadata: { bookingPaymentId: String(failedPayment.id) },
-          },
-          metadata: { test: `BR${Math.floor(Math.random() * 1000000)}` },
-          links: {},
-        },
-      };
-
-      console.log("📦 GoCardless retry payload:", gcPayload);
-
-      const response = await axios.post("https://api-sandbox.gocardless.com/billing_requests", gcPayload, {
-        headers: {
-          Authorization: `Bearer ${GC_HEAD_OFFICE_TOKEN}`,
-          "Content-Type": "application/json",
-          "GoCardless-Version": "2015-07-06",
-        },
+      const retryResult = await createOneOffPaymentGcViaApi({
+        mandateId: originalPayment.goCardlessMandateId,
+        amount: originalPayment.price, // use DB price column
+        description: originalPayment.description || "Retry failed payment",
       });
 
-      gatewayResponse = response.data;
-      const status = response.data?.billing_requests?.status?.toLowerCase() || "failed";
-      transactionMeta = { status };
+      if (!retryResult.status) throw new Error(retryResult.message || "GoCardless retry failed");
 
-      if (["submitted", "pending_submission", "pending"].includes(status)) paymentStatusFromGateway = "pending";
-      else if (["confirmed", "paid"].includes(status)) paymentStatusFromGateway = "paid";
-      else paymentStatusFromGateway = "failed";
+      gatewayResponse = retryResult.gatewayResponse || retryResult.payment;
+      paymentStatusFromGateway = retryResult.paymentStatus || "pending";
 
-    } catch (err) {
-      console.error("❌ GoCardless retry failed:", err.message);
-      paymentStatusFromGateway = "failed";
-      gatewayResponse = { error: err.message };
-      transactionMeta = { status: "failed" };
+    } else if (originalPayment.paymentType === "accesspaysuite") {
+      // AccessPaySuite retry placeholder
+      gatewayResponse = { message: "AccessPaySuite retry not implemented yet" };
+      paymentStatusFromGateway = "pending";
+      paymentUrl = null;
+
+    } else {
+      throw new Error(`Unsupported paymentType: ${originalPayment.paymentType}`);
     }
 
-    // Step 4: Create new BookingPayment row with retry info
+    // Step 4: Create new BookingPayment row
     const retryPayment = await BookingPayment.create({
-      bookingId: failedPayment.bookingId,
-      studentId: failedPayment.studentId,
-      paymentType: failedPayment.paymentType,
-      referenceId: failedPayment.referenceId,
+      bookingId: originalPayment.bookingId,
+      studentId: originalPayment.studentId,
+      paymentType: originalPayment.paymentType,
+      referenceId: originalPayment.referenceId,
       paymentStatus: paymentStatusFromGateway,
-      amount: failedPayment.amount,
-      firstName: failedPayment.firstName,
-      lastName: failedPayment.lastName,
-      email: failedPayment.email,
+      amount: originalPayment.amount,
+      price: originalPayment.price,
+      firstName: originalPayment.firstName,
+      lastName: originalPayment.lastName,
+      email: originalPayment.email,
       merchantRef: `TXN-${Math.floor(1000 + Math.random() * 9000)}`,
-      description: failedPayment.description,
+      description: originalPayment.description,
       gatewayResponse,
-      transactionMeta,
+      goCardlessMandateId: originalPayment.goCardlessMandateId || null,
+      goCardlessPaymentId: originalPayment.goCardlessPaymentId || null,
+      goCardlessCustomer: originalPayment.goCardlessCustomer || null,
+      goCardlessBankAccount: originalPayment.goCardlessBankAccount || null,
+      goCardlessBillingRequest: originalPayment.goCardlessBillingRequest || null,
+      contractId: originalPayment.contractId || null,
+      directDebitRef: originalPayment.directDebitRef || null,
+      transactionMeta: { status: paymentStatusFromGateway },
       createdAt: new Date(),
       updatedAt: new Date(),
     }, { transaction: t });
 
-    console.log("✅ Retry BookingPayment created with ID:", retryPayment.id);
+    if (DEBUG) console.log("✅ Retry BookingPayment created with ID:", retryPayment.id);
 
     await t.commit();
+
     return {
       status: true,
       message: `Retry completed with status: ${paymentStatusFromGateway}`,
       retryPaymentId: retryPayment.id,
       paymentStatus: paymentStatusFromGateway,
+      paymentUrl,
     };
 
   } catch (error) {

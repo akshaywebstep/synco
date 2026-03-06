@@ -87,7 +87,7 @@ router.get(
 );
 
 router.put(
-  "/retry/payment/:bookingId",
+  "/retry/payment/:bookingPaymentId", // ✅ changed from bookingId
   authMiddleware,
   permissionMiddleware("retry-payment", "update"),
   retryBookingPayment

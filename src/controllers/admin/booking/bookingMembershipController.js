@@ -2014,113 +2014,43 @@ exports.updateBooking = async (req, res) => {
 
 exports.retryBookingPayment = async (req, res) => {
   console.log("🔹 [Controller] Retry booking payment request received");
-  const { bookingId } = req.params;
+
+  const { bookingPaymentId } = req.params; // ✅ BookingPayment PK
   console.log(
-    "🔎 bookingId from req.params:",
-    bookingId,
+    "🔎 bookingPaymentId from req.params:",
+    bookingPaymentId,
     "type:",
-    typeof bookingId
+    typeof bookingPaymentId
   );
-  const formData = req.body;
 
   try {
-    console.log("🔹 [Controller] Looking up booking:", bookingId);
-    const booking = await Booking.findByPk(bookingId);
-    if (!booking) {
-      console.log("❌ [Controller] Booking not found");
+    console.log("🔹 [Controller] Fetching original BookingPayment...");
+    const paymentRow = await BookingPayment.findByPk(bookingPaymentId);
+    if (!paymentRow) {
+      console.log("❌ [Controller] BookingPayment not found");
       return res
         .status(404)
-        .json({ status: false, message: "Booking not found." });
+        .json({ status: false, message: "BookingPayment not found." });
     }
-    console.log("✅ [Controller] Booking found:", booking.id);
+    console.log("✅ [Controller] BookingPayment found:", paymentRow.id);
 
-    console.log("🔹 [Controller] Validating form data...");
-    const { isValid, error } = validateFormData(formData, {
-      requiredFields: ["payment"],
-    });
-    if (!isValid) {
-      console.log("❌ [Controller] Validation failed:", error);
-      await logActivity(req, PANEL, MODULE, "retry", error, false);
-      return res.status(400).json({ status: false, ...error });
-    }
-    console.log("✅ [Controller] Validation passed");
-
-    console.log("🔹 [Controller] Calling service retryBookingPayment...");
-    const result = await BookingMembershipService.retryBookingPayment(
-      bookingId,
-      formData
+    console.log("🔹 [Controller] Calling service retryFailedPayment...");
+    const result = await BookingMembershipService.retryFailedPayment(
+      bookingPaymentId
     );
     console.log("✅ [Controller] Service response:", result);
 
     if (!result.status) {
       console.log("❌ [Controller] Retry failed:", result.message);
-      await logActivity(req, PANEL, MODULE, "retry", result, false);
       return res.status(400).json({ status: false, message: result.message });
     }
-
-    console.log("🔹 [Controller] Fetching class & venue details...");
-    const classData = await ClassSchedule.findByPk(booking.classScheduleId);
-    const venue = await Venue.findByPk(booking.venueId);
-    const venueName = venue?.venueName || venue?.name || "N/A";
-    console.log("✅ [Controller] Class & venue loaded");
-
-    if (result.paymentStatus === "paid") {
-      console.log(
-        "🔹 [Controller] Payment successful, sending confirmation emails..."
-      );
-      const {
-        status: configStatus,
-        emailConfig,
-        htmlTemplate,
-        subject,
-      } = await emailModel.getEmailConfig(PANEL, "book-paid-trial");
-
-      if (configStatus && htmlTemplate) {
-        const studentId = result.studentId || booking.studentId; // 👈 FIX
-        if (!studentId) {
-          console.warn("⚠️ No studentId found, skipping parent email sending.");
-        } else {
-          const parentMetas = await BookingParentMeta.findAll({
-            where: { studentId },
-          });
-          console.log("✅ [Controller] ParentMetas found:", parentMetas.length);
-
-          for (const p of parentMetas) {
-            try {
-              let htmlBody = htmlTemplate;
-              // ... replace placeholders ...
-              console.log("📤 [Controller] Sending email to:", p.parentEmail);
-              await sendEmail(emailConfig, {
-                recipient: [
-                  {
-                    name: `${p.parentFirstName} ${p.parentLastName}`,
-                    email: p.parentEmail,
-                  },
-                ],
-                subject,
-                htmlBody,
-              });
-              console.log("✅ [Controller] Email sent to:", p.parentEmail);
-            } catch (err) {
-              console.error(
-                `❌ [Controller] Failed to send retry email to ${p.parentEmail}:`,
-                err.message
-              );
-            }
-          }
-        }
-      }
-    }
-
-    console.log("🔹 [Controller] Creating notification & logging activity...");
+    // Optional: notification & log
     await createNotification(
       req,
       "Booking Payment Retry",
-      `Booking "${classData?.className}" retried with status: ${result.paymentStatus}`,
+      `Booking payment retried with status: ${result.paymentStatus}`,
       "System"
     );
-    await logActivity(req, PANEL, MODULE, "retry", result, true);
-    console.log("✅ [Controller] Notification & log created");
 
     return res.status(200).json({
       status: true,
@@ -2129,14 +2059,6 @@ exports.retryBookingPayment = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ [Controller] Server error:", error.message);
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "retry",
-      { error: error.message },
-      false
-    );
     return res.status(500).json({ status: false, message: "Server error." });
   }
 };
