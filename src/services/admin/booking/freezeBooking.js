@@ -15,7 +15,7 @@ const {
 const { Op } = require("sequelize");
 
 const { freezeContract, reactivateContract } = require("../../../utils/payment/accessPaySuit/accesPaySuit");
-const { pauseGoCardlessSubscription } = require("../../../utils/payment/pay360/customer");
+const { pauseGoCardlessSubscription,resumeGoCardlessSubscription } = require("../../../utils/payment/pay360/customer");
 const DEBUG = process.env.DEBUG === "true";
 
 exports.createFreezeBooking = async ({
@@ -227,10 +227,14 @@ exports.reactivateBooking = async (bookingId, reactivateOn = null, additionalNot
       return { status: false, message: "Booking not found." };
     }
 
-    const bookingPayment = booking.payments?.[0];
+    // Select only recurring or full_payment category
+    const bookingPayment = booking.payments.find(p =>
+      p.paymentCategory === "recurring" || p.paymentCategory === "full_payment"
+    );
+
     if (!bookingPayment) {
       await t.rollback();
-      return { status: false, message: "Booking payment not found." };
+      return { status: false, message: "Booking payment not found for recurring/full_payment." };
     }
 
     // --------------------------------------------------
