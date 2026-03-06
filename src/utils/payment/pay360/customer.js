@@ -642,6 +642,51 @@ async function resumeGoCardlessSubscription({
   }
 }
 
+
+// Retry Payment gocardless
+/**
+ * Retry a GoCardless payment
+ * @param {string} paymentId - The GoCardless payment ID to retry
+ * @param {string|null} overrideToken - Optional token to override AppConfig
+ * @returns {object} { status: boolean, message, data }
+ */
+async function retryGoCardlessPayment(paymentId, overrideToken = null) {
+  try {
+    if (!paymentId) throw new Error("Missing GoCardless payment ID");
+
+    if (DEBUG) console.log("🔄 Retrying GoCardless payment:", paymentId);
+
+    const response = await fetch(
+      `${GOCARDLESS_API}/payments/${paymentId}/actions/retry`,
+      {
+        method: "POST",
+        headers: await buildHeaders(overrideToken),
+      }
+    );
+
+    const result = await handleResponse(response);
+
+    if (!result.status) {
+      console.error("❌ Payment retry failed:", result.message);
+      return result;
+    }
+
+    if (DEBUG) console.log("✅ Payment retry successful:", result.data);
+
+    return {
+      status: true,
+      message: "Payment retried successfully",
+      data: result.data,
+    };
+  } catch (err) {
+    console.error("❌ Retry payment error:", err.message);
+    return {
+      status: false,
+      message: err.message,
+    };
+  }
+}
+
 module.exports = {
   createCustomer,
   createBankAccount,
@@ -653,4 +698,5 @@ module.exports = {
   refundGoCardlessPayment,
   pauseGoCardlessSubscription,
   resumeGoCardlessSubscription,
+  retryGoCardlessPayment,
 };

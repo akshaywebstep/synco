@@ -97,6 +97,7 @@ const BookingPayment = sequelize.define(
       type: DataTypes.ENUM(
         "initiated",
         "processing",
+        "pending_submission",
         "requires_action",
         "active",
         "paid",

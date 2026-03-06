@@ -120,47 +120,7 @@ exports.createFreezeBooking = async (req, res) => {
   }
 };
 
-// ✅ List freeze bookings
-exports.listFreezeBookings = async (req, res) => {
-  const filters = req.query; // e.g., ?bookingId=123
 
-  if (DEBUG) console.log("🎯 List Freeze Bookings Filters:", filters);
-
-  try {
-    const result = await FreezeBookingService.listFreezeBookings(filters);
-
-    if (!result.status) {
-      await logActivity(req, PANEL, MODULE, "list", result.message, false);
-      return res.status(400).json({ status: false, message: result.message });
-    }
-
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "list",
-      { message: "Freeze bookings retrieved." },
-      true
-    );
-
-    return res.status(200).json({
-      status: true,
-      message: "Freeze bookings fetched successfully.",
-      data: result.data,
-    });
-  } catch (error) {
-    console.error("❌ Error listing freeze bookings:", error);
-    await logActivity(
-      req,
-      PANEL,
-      MODULE,
-      "list",
-      { error: error.message },
-      false
-    );
-    return res.status(500).json({ status: false, message: "Server error." });
-  }
-};
 
 exports.reactivateBooking = async (req, res) => {
   const payload = req.body;
@@ -264,6 +224,48 @@ exports.reactivateBooking = async (req, res) => {
       PANEL,
       MODULE,
       "reactivate",
+      { error: error.message },
+      false
+    );
+    return res.status(500).json({ status: false, message: "Server error." });
+  }
+};
+
+// ✅ List freeze bookings
+exports.listFreezeBookings = async (req, res) => {
+  const filters = req.query; // e.g., ?bookingId=123
+
+  if (DEBUG) console.log("🎯 List Freeze Bookings Filters:", filters);
+
+  try {
+    const result = await FreezeBookingService.listFreezeBookings(filters);
+
+    if (!result.status) {
+      await logActivity(req, PANEL, MODULE, "list", result.message, false);
+      return res.status(400).json({ status: false, message: result.message });
+    }
+
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
+      { message: "Freeze bookings retrieved." },
+      true
+    );
+
+    return res.status(200).json({
+      status: true,
+      message: "Freeze bookings fetched successfully.",
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ Error listing freeze bookings:", error);
+    await logActivity(
+      req,
+      PANEL,
+      MODULE,
+      "list",
       { error: error.message },
       false
     );
