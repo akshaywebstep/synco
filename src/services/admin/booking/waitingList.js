@@ -2423,6 +2423,48 @@ exports.convertToMembership = async (data, options) => {
 
               console.log("✅ First month ONE-OFF created via Direct Payment");
             }
+            // 🔥 FULL PAYMENT FOR 1 MONTH PLAN
+            if (paymentPlan.duration === 1) {
+
+              console.log("🔥 One month plan → creating single payment");
+
+              const amountInPence = Math.round(recurringAmount * 100);
+
+              const paymentRes = await createPayment(
+                {
+                  amount: amountInPence,
+                  currency: "GBP",
+                  mandateId: mandateId,
+                  description: `Full payment - ${classSchedule.className}`,
+                },
+                overrideToken
+              );
+
+              if (!paymentRes.status) {
+                throw new Error(`Payment failed: ${paymentRes.message}`);
+              }
+
+              await createBookingPayment({
+                bookingId: booking.id,
+                studentId: firstStudentId,
+                firstName:
+                  data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+                lastName:
+                  data.payment?.lastName || data.parents?.[0]?.parentLastName,
+                email:
+                  data.payment?.email || data.parents?.[0]?.parentEmail,
+                amount: recurringAmount,
+                paymentType: "bank",
+                paymentCategory: "full_payment",
+                paymentStatus: paymentRes.payment.status,
+                goCardlessMandateId: mandateId,
+                goCardlessPaymentId: paymentRes.payment.id,
+                gatewayResponse: paymentRes,
+                // transaction: t
+              });
+
+              console.log("✅ One month payment saved");
+            }
 
             // ================= Step 3: Subscription ONLY if duration > 1 =================
 

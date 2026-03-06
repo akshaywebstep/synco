@@ -470,7 +470,14 @@ exports.getClassById = async (classId, adminId, createdBy) => {
         // createdBy: Number(createdBy) // ✅ filter by admin/super admin
         createdBy: createdByIds
       },
-      include: [{ model: Venue, as: "venue", where: { createdBy: createdByIds } }], // ✅ ensure venue belongs to admin
+      include: [
+        {
+          model: Venue,
+          as: "venue",
+          where: { createdBy: createdByIds },
+          attributes: { include: ["starterPack"] } // ✅ ADD THIS
+        }
+      ] // ✅ ensure venue belongs to admin
     });
 
     if (!cls) {
