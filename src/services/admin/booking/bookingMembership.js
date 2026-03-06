@@ -784,11 +784,7 @@ exports.createBooking = async (data, options) => {
 
         const recurringAmount = firstPaymentAmount;
 
-        // const proRataTotal = Number(
-        //   (proRataAmount * (data.totalStudents || 1)).toFixed(2),
-        // );
-        // ✅ Correct
-        const proRataTotal = Number(data.payment?.proRataAmount || 0);
+        const proRataTotal = Number(data?.payment?.proRataAmount ?? 0);
 
         // ✅ Step 2: frontend should send price only
         const expectedTotal = recurringAmount + proRataTotal;
@@ -891,87 +887,69 @@ exports.createBooking = async (data, options) => {
             mandateId = createMandateRes.mandate.id;
             console.log("✅ GoCardless mandate created:", mandateId);
 
-            // ================= Step 2: Pro-Rata Payment =================
             // ================= Step 2: ONE-OFF for First Month =================
 
-            // First month ka total amount calculate karo
-            const backendProRata = proRataAmount * (data.totalStudents || 1);
             const termNotStarted = totalPassedSessions === 0;
-            const frontendProRata = Number(data.payment?.proRataAmount || 0);
-
-            // if (Math.abs(frontendProRata - backendProRata) > EPSILON) {
-            //   throw new Error(
-            //     `Pro-rata mismatch: Frontend sent ${frontendProRata}, backend calculated ${backendProRata}`
-            //   );
-            // }
-
-            // const firstMonthAmount = backendProRata;
-
+            // const frontendProRata = Number(data.payment?.proRataAmount || 0);
 
             const firstMonthAmount = proRataTotal;
 
-            // 🔥 Create ONE-OFF payment (ALWAYS for first month)
+
+            // 🔥 Create ONE-OFF payment using createBillingRequest
             if (firstMonthAmount > 0) {
-              console.log("🔥 Term started → Creating ONE-OFF");
+              console.log("🔥 Term started → Creating ONE-OFF via Direct Payment");
 
-              const oneOffPaymentRes = await createOneOffPaymentGcViaApi({
-                mandateId,
-                amount: firstMonthAmount,
+              const paymentPayload = {
+                amount: firstMonthAmount, // in pence
                 currency: "GBP",
-                description: `First month payment`,
-              });
-              if (
-                oneOffPaymentRes?.gatewayResponse?.payments?.status ===
-                "confirmed"
-              ) {
-                paymentStatusFromGateway = "paid";
-              }
+                mandateId: mandateId,      // ✅ correct key
+                description: `Pro-rata payment - ${classSchedule.className}`
+              };
 
-              if (
-                oneOffPaymentRes?.gatewayResponse?.payments?.status === "failed"
-              ) {
-                paymentStatusFromGateway = "failed";
-              }
+              console.log("💡 Creating Direct Payment with mandateId:", mandateId);
 
-              if (!oneOffPaymentRes.status) {
+
+              const amountInPence = Math.round(firstMonthAmount * 100);
+
+              console.log("💰 Amount in pence:", amountInPence);
+
+              const paymentRes = await createPayment(
+                {
+                  amount: amountInPence,
+                  currency: "GBP",
+                  mandateId: mandateId,
+                  description: `Pro-rata payment - ${classSchedule.className} | studentId: ${firstStudentId}`,
+                },
+                overrideToken
+              );
+
+              if (!paymentRes.status) {
                 throw new Error(
-                  `Failed to create one-off payment: ${oneOffPaymentRes.message}`,
+                  `Failed to create GoCardless payment: ${paymentRes.message}`
                 );
               }
-              const paymentId = oneOffPaymentRes.paymentId;
-              const paymentStatus = oneOffPaymentRes.paymentStatus;
 
-              if (!paymentId) {
-                throw new Error("Failed to get GoCardless payment ID");
-              }
-
-
+              // Save payment in your DB
               await createBookingPayment({
                 bookingId: booking.id,
                 studentId: firstStudentId,
                 parent: data.parents?.[0],
-                // ✅ ADD THESE
                 firstName:
-                  data.payment?.firstName ||
-                  data.parents?.[0]?.parentFirstName ||
-                  "",
+                  data.payment?.firstName || data.parents?.[0]?.parentFirstName,
                 lastName:
-                  data.payment?.lastName ||
-                  data.parents?.[0]?.parentLastName ||
-                  "",
-                email:
-                  data.payment?.email || data.parents?.[0]?.parentEmail || "",
+                  data.payment?.lastName || data.parents?.[0]?.parentLastName,
+                email: data.payment?.email || data.parents?.[0]?.parentEmail,
                 amount: firstMonthAmount,
                 goCardlessMandateId: mandateId,
-                goCardlessPaymentId: paymentId,
+                goCardlessPaymentId: paymentRes.payment.id, // ✅ save payment id
                 paymentType: "bank",
                 paymentCategory: "pro_rata",
-                paymentStatus: paymentStatusFromGateway, // 🔥 ADD THIS
-                gatewayResponse: oneOffPaymentRes.gatewayResponse,
+                paymentStatus: paymentRes.payment.status,
+                gatewayResponse: paymentRes,
                 currency: "GBP",
               });
 
-              console.log("✅ First month ONE-OFF created");
+              console.log("✅ First month ONE-OFF created via Direct Payment");
             }
 
             // ================= Step 3: Subscription ONLY if duration > 1 =================

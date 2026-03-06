@@ -75,95 +75,74 @@ async function handleResponse(response) {
 /**
  * Create a GoCardless Billing Request (Payment + Mandate + Bank Account)
  */
-async function createBillingRequest(payload, overrideToken = null) {
+async function createBillingRequest(
+  booking,
+  firstMonthAmount,
+  gcCustomer,
+  firstStudentId,
+  mandateId,
+  overrideToken = null
+) {
   try {
-    if (DEBUG) console.log("🔹 [Payment] Step 1: Preparing request body...");
-
     const accessToken = overrideToken || (await getGoCardlessAccessToken());
 
-    // ✅ Proper payload destructuring
-    const {
-      description,
-      amount,
-      currency = "GBP",
-      metadata = {},
-      customerId,
-      account_holder_name,
-      account_number,
-      branch_code,
-      country_code = "GB",
-      paymentType = "bacs", // ✅ default value
-    } = payload;
+    if (!booking?.id) throw new Error("booking is required");
+    if (!firstMonthAmount) throw new Error("firstMonthAmount is required");
+    if (!gcCustomer?.id) throw new Error("gcCustomer.id is required");
 
-    if (!customerId) throw new Error("customerId is required");
-    if (!amount) throw new Error("amount is required");
-    const isInstant = paymentType === "instant_bank_pay";
     const body = {
       billing_requests: {
         payment_request: {
-          description,
-          amount,
-          currency,
-          scheme: isInstant ? "faster_payments" : "bacs",
-          metadata,
+          description: `Pro-rata payment - ${booking.className || ""}`,
+          amount: Math.round(firstMonthAmount * 100), // pence
+          currency: "GBP",
+          scheme: "bacs",
+          metadata: {
+            bookingId: String(booking.id),
+            studentId: String(firstStudentId)
+          }
         },
         mandate_request: {
-          currency,
-          scheme: isInstant ? "faster_payments" : "bacs", // ✅ must match payment_request
+          currency: "GBP",
+          scheme: "bacs",
           verify: "recommended",
-          metadata,
-        },
-        links: { customer: customerId },
-        metadata,
-      },
-      ...(account_number && branch_code
-        ? {
-            customer_bank_accounts: {
-              account_holder_name,
-              account_number,
-              branch_code,
-              country_code,
-              links: { customer: customerId },
-            },
+          metadata: {
+            bookingId: String(booking.id),
+            studentId: String(firstStudentId)
           }
-        : {}),
+        },
+        links: {
+          customer: gcCustomer.id
+        }
+      }
     };
 
-    if (DEBUG) console.log("✅ Request body:", body);
-
-    if (DEBUG)
-      console.log("🔹 [Payment] Step 2: Sending request to GoCardless...");
+    if (DEBUG) console.log("✅ Billing request body:", body);
 
     const response = await fetch(`${GOCARDLESS_API}/billing_requests`, {
       method: "POST",
-      // headers: buildHeaders(accessToken),
       headers: await buildHeaders(accessToken),
-      body: JSON.stringify(body),
+      body: JSON.stringify(body)
     });
 
     const { status, data, message, error } = await handleResponse(response);
 
-    if (!status) {
-      return { status: false, message, error };
-    }
-
-    if (DEBUG) console.log("✅ Billing request created successfully:", data);
+    if (!status) return { status: false, message, error };
 
     return {
       status: true,
       message: "Billing request created successfully.",
-      billingRequest: data.billing_requests,
+      billingRequest: data.billing_requests
     };
   } catch (err) {
     console.error("❌ Error creating billing request:", err.message);
     return {
       status: false,
       message: "An unexpected error occurred while creating billing request.",
-      error: err.message,
+      error: err.message
     };
   }
 }
-
 // Create mandates
 async function createMandate({
   customerBankAccountId,
