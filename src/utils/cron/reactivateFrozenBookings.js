@@ -39,12 +39,13 @@ exports.reactivateFrozenBookingsCron = async () => {
             );
 
             if (!result.status) {
-                console.error(
-                    `❌ Failed to reactivate booking ${freeze.bookingId}:`,
-                    result.message
-                );
+                console.error(`❌ Failed to reactivate booking ${freeze.bookingId}:`, result.message);
             } else {
                 console.log(`✅ Booking ${freeze.bookingId} reactivated successfully`);
+                if (DEBUG) {
+                    console.log(`   ➤ Status set to 'active'`);
+                    console.log(`   ➤ Payment status updated`);
+                }
             }
         }
 

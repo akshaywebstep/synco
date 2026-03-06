@@ -1,5 +1,6 @@
 // 🕒 LOAD CRON JOBS (must be before listen)
 require("./cron/sessionStatus.cron");
+require("./utils/cron/scheduler");
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
