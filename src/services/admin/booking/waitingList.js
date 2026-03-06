@@ -1976,12 +1976,40 @@ exports.convertToMembership = async (data, options) => {
       }
     }
 
+    // Step 6: Update Class Capacity
+    const scheduleMap = {};
+
+    for (const s of studentRecords) {
+      scheduleMap[s.classScheduleId] =
+        (scheduleMap[s.classScheduleId] || 0) + 1;
+    }
+
+    for (const scheduleId of Object.keys(scheduleMap)) {
+      const count = scheduleMap[scheduleId];
+
+      const classSchedule = await ClassSchedule.findByPk(scheduleId, {
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!classSchedule) throw new Error(`Schedule ${scheduleId} not found`);
+
+      if (classSchedule.capacity < count)
+        throw new Error(`Not enough capacity for schedule ${scheduleId}`);
+
+      await classSchedule.update(
+        { capacity: classSchedule.capacity - count },
+        { transaction: t }
+      );
+    }
+    await t.commit();
+
     // Step 5: Payment Handling (GoCardless / AccessPaysuite)
     /* ================= STARTER PACK FIRST ================= */
 
     console.log("🔥 ===== STARTER PACK FLOW START =====");
 
-    const venueForStarter = await Venue.findByPk(data.venueId, { transaction: t });
+    const venueForStarter = await Venue.findByPk(data.venueId);
 
     console.log("🔥 booking venueId:", data.venueId);
     console.log("🔥 venue found:", !!venueForStarter);
@@ -2002,7 +2030,7 @@ exports.convertToMembership = async (data, options) => {
 
       const starterPack = await StarterPack.findOne({
         where: { enabled: true },
-        transaction: t,
+        // transaction: t,
       });
 
       if (starterPack && Number(starterPack.price) > 0) {
@@ -2021,16 +2049,19 @@ exports.convertToMembership = async (data, options) => {
         await createBookingPayment({
           bookingId: booking.id,
           studentId: studentRecords[0]?.id,
+          // ✅ ADD THESE
+          firstName:
+            data.payment?.firstName || data.parents?.[0]?.parentFirstName || "",
+          lastName:
+            data.payment?.lastName || data.parents?.[0]?.parentLastName || "",
+          email: data.payment?.email || data.parents?.[0]?.parentEmail || "",
           parent,
           amount: starterPack.price,
           paymentType: "stripe",
           paymentCategory: "starter_pack",
-          transactionMeta: {
-            paymentIntentId: stripeRes.paymentIntentId,
-            status: stripeRes.raw?.status,
-          },
+          paymentStatus: "paid", // 🔥 ADD THIS
           gatewayResponse: stripeRes.raw,
-          transaction: t,
+          // transaction: t,
         });
 
         console.log("✅ Starter pack payment saved");
@@ -2406,14 +2437,17 @@ exports.convertToMembership = async (data, options) => {
                 bookingId: booking.id,
                 studentId: firstStudentId,
                 parent: data.parents?.[0],
+
                 firstName:
-                  data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+                  data.payment?.firstName || data.parents?.[0]?.parentFirstName || "",
+
                 lastName:
-                  data.payment?.lastName || data.parents?.[0]?.parentLastName,
-                email: data.payment?.email || data.parents?.[0]?.parentEmail,
+                  data.payment?.lastName || data.parents?.[0]?.parentLastName || "",
+
+                email:
+                  data.payment?.email || data.parents?.[0]?.parentEmail || "",
+
                 amount: firstMonthAmount,
-                goCardlessMandateId: mandateId,
-                goCardlessPaymentId: paymentRes.payment.id, // ✅ save payment id
                 paymentType: "bank",
                 paymentCategory: "pro_rata",
                 paymentStatus: paymentRes.payment.status,
@@ -2808,33 +2842,7 @@ exports.convertToMembership = async (data, options) => {
         return { status: false, message: error.message };
       }
     }
-    // Step 6: Update Class Capacity
-    const scheduleMap = {};
 
-    for (const s of studentRecords) {
-      scheduleMap[s.classScheduleId] =
-        (scheduleMap[s.classScheduleId] || 0) + 1;
-    }
-
-    for (const scheduleId of Object.keys(scheduleMap)) {
-      const count = scheduleMap[scheduleId];
-
-      const classSchedule = await ClassSchedule.findByPk(scheduleId, {
-        transaction: t,
-        lock: t.LOCK.UPDATE,
-      });
-
-      if (!classSchedule) throw new Error(`Schedule ${scheduleId} not found`);
-
-      if (classSchedule.capacity < count)
-        throw new Error(`Not enough capacity for schedule ${scheduleId}`);
-
-      await classSchedule.update(
-        { capacity: classSchedule.capacity - count },
-        { transaction: t }
-      );
-    }
-    await t.commit();
     return {
       status: true,
       data: {
