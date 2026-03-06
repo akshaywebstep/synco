@@ -952,7 +952,7 @@ exports.createBooking = async (data, options) => {
               console.log("✅ First month ONE-OFF created via Direct Payment");
             }
             // 🔥 FULL PAYMENT FOR 1 MONTH PLAN
-            if (paymentPlan.duration === 1) {
+            if (paymentPlan.duration === 1 && (!data.payment?.proRataAmount || data.payment.proRataAmount === 0)) {
 
               console.log("🔥 One month plan → creating single payment");
 

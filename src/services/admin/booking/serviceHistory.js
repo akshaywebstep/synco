@@ -855,7 +855,9 @@ exports.updateBooking = async (payload, adminId, id) => {
               console.log("✅ First month ONE-OFF created via Direct Payment");
             }
             // 🔥 FULL PAYMENT FOR 1 MONTH PLAN
-            if (paymentPlan.duration === 1) {
+            // if (paymentPlan.duration === 1) {
+               if (paymentPlan.duration === 1 && (!payload.payment?.proRataAmount || payload.payment.proRataAmount === 0)) {
+
 
               console.log("🔥 One month plan → creating single payment");
 
