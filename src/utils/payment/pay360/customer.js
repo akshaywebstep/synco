@@ -594,6 +594,54 @@ async function pauseGoCardlessSubscription({
   }
 }
 
+// Resume a GoCardless subscription
+async function resumeGoCardlessSubscription({
+  subscriptionId,
+  overrideToken = null
+}) {
+  try {
+    if (!subscriptionId) {
+      throw new Error("Missing GoCardless subscription ID");
+    }
+
+    if (DEBUG) {
+      console.log("▶️ Resuming GoCardless subscription:", subscriptionId);
+    }
+
+    const response = await fetch(
+      `${GOCARDLESS_API}/subscriptions/${subscriptionId}/actions/resume`,
+      {
+        method: "POST",
+        headers: await buildHeaders(overrideToken)
+      }
+    );
+
+    const result = await handleResponse(response);
+
+    if (!result.status) {
+      console.error("❌ Subscription resume failed:", result.message);
+      return result;
+    }
+
+    if (DEBUG) {
+      console.log("✅ Subscription resumed successfully:", result.data);
+    }
+
+    return {
+      status: true,
+      message: "Subscription resumed successfully",
+      data: result.data
+    };
+
+  } catch (err) {
+    console.error("❌ Resume subscription error:", err.message);
+    return {
+      status: false,
+      message: err.message
+    };
+  }
+}
+
 module.exports = {
   createCustomer,
   createBankAccount,
@@ -604,4 +652,5 @@ module.exports = {
   cancelGoCardlessSubscription,
   refundGoCardlessPayment,
   pauseGoCardlessSubscription,
+  resumeGoCardlessSubscription,
 };
