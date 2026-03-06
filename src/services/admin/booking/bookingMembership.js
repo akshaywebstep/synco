@@ -944,7 +944,6 @@ exports.createBooking = async (data, options) => {
                 goCardlessPaymentId: paymentRes.payment.id, // ✅ save payment id
                 paymentType: "bank",
                 paymentCategory: "pro_rata",
-                // paymentStatus: paymentRes.payment.status,
                 paymentStatus: paymentRes.payment.status,
                 gatewayResponse: paymentRes,
                 currency: "GBP",

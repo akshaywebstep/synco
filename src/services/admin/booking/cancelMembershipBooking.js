@@ -83,77 +83,74 @@ exports.createCancelBooking = async ({
       // GoCardless (BANK)
       // ==================================================
 
-      if (
-        payment.paymentCategory === "pro_rata" ||
-        payment.paymentCategory === "full_payment"
-      ) {
+      if (payment.paymentType === "bank") {
 
-        const paymentId = payment.goCardlessPaymentId;
+        // ONE OFF PAYMENTS
+        if (
+          payment.paymentCategory === "pro_rata" ||
+          payment.paymentCategory === "full_payment"
+        ) {
 
-        if (!paymentId)
-          throw new Error("Missing GoCardless payment ID");
+          const paymentId = payment.goCardlessPaymentId;
 
-        const status = payment.paymentStatus;
+          if (!paymentId)
+            throw new Error("Missing GoCardless payment ID");
 
-        console.log("💳 Payment status:", status);
+          const status = payment.paymentStatus;
 
-        // ---------------------------
-        // PAYMENT NOT YET CHARGED
-        // ---------------------------
+          console.log("💳 Payment status:", status);
 
-        if (status === "pending_submission" || status === "submitted") {
+          if (status === "pending_submission" || status === "submitted") {
 
-          console.log("⚠️ Cancelling payment before charge");
+            const cancelRes = await cancelGoCardlessPayment(paymentId);
 
-          const cancelRes =
-            await cancelGoCardlessPayment(paymentId);
+            if (!cancelRes.status)
+              throw new Error("Failed to cancel GoCardless payment");
 
-          if (!cancelRes.status)
-            throw new Error("Failed to cancel GoCardless payment");
+            await payment.update(
+              { paymentStatus: "cancelled" },
+              { transaction: t }
+            );
+          }
+
+          else if (status === "paid" || status === "confirmed") {
+
+            const refundRes =
+              await refundGoCardlessPayment(paymentId);
+
+            if (!refundRes.status)
+              throw new Error("Failed to refund GoCardless payment");
+
+            await payment.update(
+              { paymentStatus: "refunded" },
+              { transaction: t }
+            );
+          }
+
+          paymentCancelled = true;
+        }
+
+        // RECURRING SUBSCRIPTION
+        else if (payment.paymentCategory === "recurring") {
+
+          const subscriptionId = payment.goCardlessSubscriptionId;
+
+          if (!subscriptionId)
+            throw new Error("Missing GoCardless subscription ID");
+
+          const subCancelRes =
+            await cancelGoCardlessSubscription(subscriptionId);
+
+          if (!subCancelRes.status)
+            throw new Error("Failed to cancel subscription");
 
           await payment.update(
             { paymentStatus: "cancelled" },
             { transaction: t }
           );
+
+          paymentCancelled = true;
         }
-
-        // ---------------------------
-        // PAYMENT ALREADY CHARGED
-        // ---------------------------
-
-        else if (status === "paid" || status === "confirmed") {
-
-          console.log("💸 Refunding charged payment");
-
-          const refundRes =
-            await refundGoCardlessPayment(paymentId);
-
-          if (!refundRes.status)
-            throw new Error("Failed to refund GoCardless payment");
-
-          await payment.update(
-            { paymentStatus: "refunded" },
-            { transaction: t }
-          );
-        }
-
-        else {
-
-          console.log("⚠️ Unknown status, cancelling");
-
-          const cancelRes =
-            await cancelGoCardlessPayment(paymentId);
-
-          if (!cancelRes.status)
-            throw new Error("Failed to cancel payment");
-
-          await payment.update(
-            { paymentStatus: "cancelled" },
-            { transaction: t }
-          );
-        }
-
-        paymentCancelled = true;
       }
 
       // ==================================================

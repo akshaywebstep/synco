@@ -343,5 +343,23 @@ cancel subscription
 
 
 
+//  freeze  booking
+Visual Timeline
+Case 1
+1 Apr  → plan start
+10 Apr → freeze
+10 May → resume
+
+sessions: 8
+Case 2
+1 Apr → plan start
+5 Apr → session 1
+8 Apr → session 2
+15 Apr → freeze
+15 May → resume
+
+sessions remaining: 6
+
+
 
 

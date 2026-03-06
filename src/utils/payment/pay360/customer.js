@@ -530,6 +530,69 @@ async function cancelGoCardlessSubscription(subscriptionId, overrideToken = null
     return { status: false, message: err.message };
   }
 }
+// Freeze (pause) a GoCardless subscription for a specified duration with reason
+async function pauseGoCardlessSubscription({
+  subscriptionId,
+  freezeDurationMonths,
+  reasonForFreezing,
+  overrideToken = null
+}) {
+  try {
+    if (!subscriptionId) {
+      throw new Error("Missing GoCardless subscription ID");
+    }
+
+    const pauseCycles = Number(freezeDurationMonths) || 1;
+
+    if (DEBUG) {
+      console.log("⏸ Pausing GoCardless subscription:", {
+        subscriptionId,
+        pauseCycles,
+        reasonForFreezing
+      });
+    }
+
+    const response = await fetch(
+      `${GOCARDLESS_API}/subscriptions/${subscriptionId}/actions/pause`,
+      {
+        method: "POST",
+        headers: await buildHeaders(overrideToken),
+        body: JSON.stringify({
+          subscriptions: {
+            pause_cycles: pauseCycles,
+            metadata: {
+              reason: reasonForFreezing || "Membership freeze"
+            }
+          }
+        })
+      }
+    );
+
+    const result = await handleResponse(response);
+
+    if (!result.status) {
+      console.error("❌ Subscription pause failed:", result.message);
+      return result;
+    }
+
+    if (DEBUG) {
+      console.log("✅ Subscription paused successfully:", result.data);
+    }
+
+    return {
+      status: true,
+      message: "Subscription paused successfully",
+      data: result.data
+    };
+
+  } catch (err) {
+    console.error("❌ Pause subscription error:", err.message);
+    return {
+      status: false,
+      message: err.message
+    };
+  }
+}
 
 module.exports = {
   createCustomer,
@@ -539,5 +602,6 @@ module.exports = {
   cancelGoCardlessBillingRequest,
   cancelGoCardlessPayment,
   cancelGoCardlessSubscription,
-  refundGoCardlessPayment
+  refundGoCardlessPayment,
+  pauseGoCardlessSubscription,
 };
