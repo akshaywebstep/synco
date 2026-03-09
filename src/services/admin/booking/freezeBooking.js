@@ -39,7 +39,7 @@ exports.createFreezeBooking = async ({
       where: {
         bookingId,
         paymentCategory: {
-          [Op.in]: ["recurring", "one_off"]
+          [Op.in]: ["recurring", "one_off", "full_payment"]
         }
       },
       transaction: t,
@@ -82,7 +82,10 @@ exports.createFreezeBooking = async ({
     }
 
     // 🔹 5. Freeze in Access PaySuite (ONLY if APS)
-    if (bookingPayment.paymentCategory === "recurring") {
+    if (
+      bookingPayment.paymentType === "accesspaysuite" &&
+      ["recurring", "full_payment"].includes(bookingPayment.paymentCategory)
+    ) {
 
       if (bookingPayment.paymentType === "accesspaysuite") {
 
@@ -108,6 +111,23 @@ exports.createFreezeBooking = async ({
           return {
             status: false,
             message: "AccessPaySuite contract ID missing.",
+          };
+        }
+
+        const apsPayments = await BookingPayment.findAll({
+          where: {
+            bookingId,
+            paymentType: "accesspaysuite",
+            paymentStatus: "paid"  // ✅ only paid
+          },
+          transaction: t
+        });
+
+        if (!apsPayments || apsPayments.length === 0) {
+          await t.rollback();
+          return {
+            status: false,
+            message: "Freeze not allowed until first APS payment is successful."
           };
         }
 
@@ -306,11 +326,32 @@ exports.reactivateBooking = async (bookingId, reactivateOn = null, additionalNot
     // 6. ACCESSPAYSUITE REACTIVATION
     // ==================================================
     if (paymentType === "accesspaysuite") {
+
       if (!contractId) {
         await t.rollback();
         return { status: false, message: "Contract ID not found." };
       }
 
+      // 🔹 SAFEGUARD: check APS payments in DB
+      const apsPayments = await BookingPayment.findAll({
+        where: {
+          bookingId,
+          paymentType: "accesspaysuite",
+          paymentStatus: "paid" // must have at least one successful payment
+        },
+        transaction: t
+      });
+
+      if (!apsPayments || apsPayments.length === 0) {
+        await t.rollback();
+        return {
+          status: false,
+          message:
+            "Cannot reactivate booking until first APS payment is successfully collected."
+        };
+      }
+
+      // 🔹 Proceed to APS reactivation
       const apsResult = await reactivateContract(contractId, {
         reactivateOn,
         note: additionalNote || "",
@@ -321,6 +362,7 @@ exports.reactivateBooking = async (bookingId, reactivateOn = null, additionalNot
         return { status: false, message: apsResult.message };
       }
 
+      // 🔹 Update BookingPayment with APS response
       await bookingPayment.update(
         {
           paymentStatus: "active",

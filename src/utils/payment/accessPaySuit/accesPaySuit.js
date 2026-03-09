@@ -233,6 +233,7 @@ async function cancelContract(contractId, queryParams = {}) {
 }
 
 // 5. Freeze Contract (temporary pause)
+// We cannot Freeze a contract before  it's created
 // ================================
 async function freezeContract(contractId, freezeData) {
   const { clientCode } = await getCredentials();
