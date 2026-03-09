@@ -125,11 +125,10 @@ exports.createFreezeBooking = async ({
           .split("T")[0];
 
         const apsFreezeResponse = await freezeContract(contractId, {
-          FreezeFrom: freezeFrom,
-          FreezeTo: freezeTo,
-          Reason: reasonForFreezing || "Membership freeze",
+          from: freezeFrom,
+          to: freezeTo,
+          comment: reasonForFreezing || "Membership freeze",
         });
-
         if (!apsFreezeResponse?.status) {
           await t.rollback();
           return {

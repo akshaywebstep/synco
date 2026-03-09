@@ -71,8 +71,35 @@ function findMatchingSchedule(schedules) {
   if (!Array.isArray(schedules)) return null;
 
   return schedules.find(
-    (s) => s.Name && s.Name.trim().toLowerCase() === "default schedule",
+    (s) => s.Name && s.Name.trim().toLowerCase() === "monthly",
   );
+}
+
+function getNextMonthFirstDate() {
+  const now = new Date();
+
+  const year = now.getFullYear();
+  const month = now.getMonth();
+
+  const nextMonthFirst = new Date(year, month + 1, 1);
+
+  const diffDays = Math.ceil(
+    (nextMonthFirst - now) / (1000 * 60 * 60 * 24)
+  );
+
+  // APS needs buffer (~10 days)
+  if (diffDays < 10) {
+    return formatDateLocal(new Date(year, month + 2, 1));
+  }
+
+  return formatDateLocal(nextMonthFirst);
+}
+function formatDateLocal(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 // 🟢 Helper: create a payment row
@@ -2648,21 +2675,26 @@ exports.convertToMembership = async (data, options) => {
            =====================================
           */
 
-          const startDate = calculateContractStartDate(18);
+          // const startDate = calculateContractStartDate(18);
+          const apsStartDate = getNextMonthFirstDate();
 
           const contractPayload = {
             ScheduleId: matchedSchedule.ScheduleId,
-            Start: startDate,
+            Amount: recurringAmount,
+            Start: apsStartDate,
             TerminationType: paymentPlan.duration ? "Fixed term" : "Until further notice",
           };
 
           if (paymentPlan.duration) {
-            const start = new Date(startDate);
-            const end = new Date(start);
+            const start = new Date(apsStartDate);
 
-            end.setMonth(end.getMonth() + Number(paymentPlan.duration));
+            const end = new Date(
+              start.getFullYear(),
+              start.getMonth() + Number(paymentPlan.duration),
+              1 // always 1st day
+            );
 
-            contractPayload.TerminationDate = end.toISOString().split("T")[0];
+            contractPayload.TerminationDate = formatDateLocal(end);
           }
 
           // Debug log

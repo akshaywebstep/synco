@@ -70,6 +70,32 @@ function calculateContractStartDate(delayDays = 18) {
   start.setHours(0, 0, 0, 0);
   return start.toISOString().split("T")[0];
 }
+function getNextMonthFirstDate() {
+  const now = new Date();
+
+  const year = now.getFullYear();
+  const month = now.getMonth();
+
+  const nextMonthFirst = new Date(year, month + 1, 1);
+
+  const diffDays = Math.ceil(
+    (nextMonthFirst - now) / (1000 * 60 * 60 * 24)
+  );
+
+  // APS needs buffer (~10 days)
+  if (diffDays < 10) {
+    return formatDateLocal(new Date(year, month + 2, 1));
+  }
+
+  return formatDateLocal(nextMonthFirst);
+}
+function formatDateLocal(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
 
 
 
@@ -77,7 +103,7 @@ function findMatchingSchedule(schedules) {
   if (!Array.isArray(schedules)) return null;
 
   return schedules.find(
-    (s) => s.Name && s.Name.trim().toLowerCase() === "default schedule",
+    (s) => s.Name && s.Name.trim().toLowerCase() === "monthly",
   );
 }
 
@@ -1048,22 +1074,28 @@ exports.updateBooking = async (payload, adminId, id) => {
            =====================================
           */
 
-          const startDate = calculateContractStartDate(18);
+          // const startDate = calculateContractStartDate(18);
+          const apsStartDate = getNextMonthFirstDate();
 
           const contractPayload = {
             ScheduleId: matchedSchedule.ScheduleId,
-            Start: startDate,
+            Amount: recurringAmount,
+            Start: apsStartDate,
             TerminationType: paymentPlan.duration ? "Fixed term" : "Until further notice",
           };
 
           if (paymentPlan.duration) {
-            const start = new Date(startDate);
-            const end = new Date(start);
+            const start = new Date(apsStartDate);
 
-            end.setMonth(end.getMonth() + Number(paymentPlan.duration));
+            const end = new Date(
+              start.getFullYear(),
+              start.getMonth() + Number(paymentPlan.duration),
+              1 // always 1st day
+            );
 
-            contractPayload.TerminationDate = end.toISOString().split("T")[0];
+            contractPayload.TerminationDate = formatDateLocal(end);
           }
+
 
           // Debug log
           console.log(
@@ -1096,7 +1128,8 @@ exports.updateBooking = async (payload, adminId, id) => {
 
             const proRataRes = await createContractPayment(contractId, {
               amount: proRataTotal,
-              date: startDate,
+              // date: startDate,
+              date: apsStartDate,
               description: `Pro-Rata - ${classSchedule.className}`,
               reference: `PR-${booking.id}-${Date.now()}`,
             });
@@ -1135,7 +1168,8 @@ exports.updateBooking = async (payload, adminId, id) => {
 
             const fullRes = await createContractPayment(contractId, {
               amount: recurringAmount,
-              date: startDate,
+              // date: startDate,
+              date: apsStartDate,
               description: `Full payment - ${classSchedule.className}`,
               reference: `FULL-${booking.id}-${Date.now()}`,
             });
