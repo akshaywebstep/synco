@@ -82,37 +82,56 @@ function generateBookingId(length = 12) {
   }
   return result;
 }
-function calculateContractStartDate(delayDays = 18) {
-  const start = new Date();
-  start.setDate(start.getDate() + delayDays);
-  start.setHours(0, 0, 0, 0);
-  return start.toISOString().split("T")[0];
-}
-function getNextMonthFirstDate() {
-  const now = new Date();
 
-  const year = now.getFullYear();
-  const month = now.getMonth();
-
-  const nextMonthFirst = new Date(year, month + 1, 1);
-
-  const diffDays = Math.ceil(
-    (nextMonthFirst - now) / (1000 * 60 * 60 * 24)
-  );
-
-  // APS needs buffer (~10 days)
-  if (diffDays < 10) {
-    return formatDateLocal(new Date(year, month + 2, 1));
-  }
-
-  return formatDateLocal(nextMonthFirst);
-}
+// ================= DATE HELPERS =================
 function formatDateLocal(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}T00:00:00.000`; // APS required format
+}
 
-  return `${year}-${month}-${day}`;
+function addWorkingDays(startDate, days) {
+  const result = new Date(startDate);
+  let addedDays = 0;
+  while (addedDays < days) {
+    result.setDate(result.getDate() + 1);
+    const day = result.getDay();
+    if (day !== 0 && day !== 6) addedDays++; // skip weekends
+  }
+  return result;
+}
+
+
+// For APS monthly schedule with DaysOfMonth = 1
+// ================= FIXED APS NEXT PAYMENT DATE =================
+function getAPSNextPaymentDateFixed(monthOffset = 0) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const earliestDate = addWorkingDays(today, 10);
+
+  let year = earliestDate.getFullYear();
+  let month = earliestDate.getMonth();
+
+  // Move to next month if earliestDate is after 1st
+  if (earliestDate.getDate() > 1) {
+    month += 1;
+    if (month > 11) {
+      month = 0;
+      year += 1;
+    }
+  }
+
+  // Apply monthOffset for recurring months
+  month += monthOffset;
+  if (month > 11) {
+    year += Math.floor(month / 12);
+    month = month % 12;
+  }
+
+  const startDate = new Date(year, month, 1); // always 1st
+  return formatDateLocal(startDate); // APS format YYYY-MM-DDT00:00:00.000
 }
 
 
@@ -798,6 +817,13 @@ exports.createBooking = async (data, options) => {
 
         const firstPaymentMonth = formattedMonthlyClassCount[0].month;
         const firstPaymentYear = formattedMonthlyClassCount[0].year;
+
+        // 🔹 First Payment Date dynamically calculated
+        const firstPaymentDate = new Date(firstPaymentYear, firstPaymentMonth - 1, 1); // 1st day of month
+        const formattedFirstPaymentDate = formatDateLocal(firstPaymentDate);
+
+        console.log("🔥 firstPaymentDate:", formattedFirstPaymentDate);
+
         const firstPaymentAmount =
           paymentPlan.priceLesson * formattedMonthlyClassCount[0].classCount;
 
@@ -1170,25 +1196,19 @@ exports.createBooking = async (data, options) => {
            =====================================
           */
 
-          // const startDate = calculateContractStartDate(18);
-          const apsStartDate = getNextMonthFirstDate();
-
+          // ✅ Dynamic contract start date
+          const apsStartDate = getAPSNextPaymentDateFixed(0); // monthOffset = 0
+          if (DEBUG) console.log("🔥 APS Contract Start Date (1st of month):", apsStartDate);
           const contractPayload = {
             ScheduleId: matchedSchedule.ScheduleId,
-            Amount: recurringAmount, // ✅ correct field
+            Amount: recurringAmount,
             Start: apsStartDate,
             TerminationType: paymentPlan.duration ? "Fixed term" : "Until further notice",
           };
 
           if (paymentPlan.duration) {
             const start = new Date(apsStartDate);
-
-            const end = new Date(
-              start.getFullYear(),
-              start.getMonth() + Number(paymentPlan.duration),
-              1 // always 1st day
-            );
-
+            const end = new Date(start.getFullYear(), start.getMonth() + Number(paymentPlan.duration), 1);
             contractPayload.TerminationDate = formatDateLocal(end);
           }
 
@@ -1197,7 +1217,6 @@ exports.createBooking = async (data, options) => {
             "APS Contract Payload:",
             JSON.stringify(contractPayload, null, 2)
           );
-
           const contractRes = await createContract(customerId, contractPayload);
 
           if (!contractRes.status) {
@@ -1309,13 +1328,12 @@ exports.createBooking = async (data, options) => {
               : paymentPlan.duration;
 
             for (let i = 0; i < recurringMonths; i++) {
-
-              const paymentDate = new Date(startDate);
-              paymentDate.setMonth(paymentDate.getMonth() + i + 1);
+              // ✅ Always 1st of month
+              const paymentDate = getAPSNextPaymentDateFixed(i + 1);
 
               const paymentRes = await createContractPayment(contractId, {
                 amount: recurringAmount,
-                date: paymentDate.toISOString().split("T")[0],
+                date: paymentDate, // APS requires YYYY-MM-01
                 description: `Month ${i + 1} - ${classSchedule.className}`,
                 reference: `REC-${booking.id}-${i}-${Date.now()}`
               });
@@ -1346,7 +1364,6 @@ exports.createBooking = async (data, options) => {
                 createdAt: new Date(),
                 updatedAt: new Date(),
               });
-
             }
 
             if (DEBUG) console.log("✅ APS All recurring payments created");

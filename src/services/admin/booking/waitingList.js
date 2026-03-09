@@ -75,31 +75,56 @@ function findMatchingSchedule(schedules) {
   );
 }
 
-function getNextMonthFirstDate() {
-  const now = new Date();
 
-  const year = now.getFullYear();
-  const month = now.getMonth();
-
-  const nextMonthFirst = new Date(year, month + 1, 1);
-
-  const diffDays = Math.ceil(
-    (nextMonthFirst - now) / (1000 * 60 * 60 * 24)
-  );
-
-  // APS needs buffer (~10 days)
-  if (diffDays < 10) {
-    return formatDateLocal(new Date(year, month + 2, 1));
-  }
-
-  return formatDateLocal(nextMonthFirst);
-}
+// ================= DATE HELPERS =================
 function formatDateLocal(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}T00:00:00.000`; // APS required format
+}
 
-  return `${year}-${month}-${day}`;
+function addWorkingDays(startDate, days) {
+  const result = new Date(startDate);
+  let addedDays = 0;
+  while (addedDays < days) {
+    result.setDate(result.getDate() + 1);
+    const day = result.getDay();
+    if (day !== 0 && day !== 6) addedDays++; // skip weekends
+  }
+  return result;
+}
+
+
+// For APS monthly schedule with DaysOfMonth = 1
+// ================= FIXED APS NEXT PAYMENT DATE =================
+function getAPSNextPaymentDateFixed(monthOffset = 0) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const earliestDate = addWorkingDays(today, 10);
+
+  let year = earliestDate.getFullYear();
+  let month = earliestDate.getMonth();
+
+  // Move to next month if earliestDate is after 1st
+  if (earliestDate.getDate() > 1) {
+    month += 1;
+    if (month > 11) {
+      month = 0;
+      year += 1;
+    }
+  }
+
+  // Apply monthOffset for recurring months
+  month += monthOffset;
+  if (month > 11) {
+    year += Math.floor(month / 12);
+    month = month % 12;
+  }
+
+  const startDate = new Date(year, month, 1); // always 1st
+  return formatDateLocal(startDate); // APS format YYYY-MM-DDT00:00:00.000
 }
 
 // 🟢 Helper: create a payment row
@@ -2675,9 +2700,8 @@ exports.convertToMembership = async (data, options) => {
            =====================================
           */
 
-          // const startDate = calculateContractStartDate(18);
-          const apsStartDate = getNextMonthFirstDate();
-
+          const apsStartDate = getAPSNextPaymentDateFixed(0); // monthOffset = 0
+          if (DEBUG) console.log("🔥 APS Contract Start Date (1st of month):", apsStartDate);
           const contractPayload = {
             ScheduleId: matchedSchedule.ScheduleId,
             Amount: recurringAmount,
@@ -2687,15 +2711,15 @@ exports.convertToMembership = async (data, options) => {
 
           if (paymentPlan.duration) {
             const start = new Date(apsStartDate);
-
-            const end = new Date(
-              start.getFullYear(),
-              start.getMonth() + Number(paymentPlan.duration),
-              1 // always 1st day
-            );
-
+            const end = new Date(start.getFullYear(), start.getMonth() + Number(paymentPlan.duration), 1);
             contractPayload.TerminationDate = formatDateLocal(end);
           }
+
+          // Debug log
+          console.log(
+            "APS Contract Payload:",
+            JSON.stringify(contractPayload, null, 2)
+          );
 
           // Debug log
           console.log(
