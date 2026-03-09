@@ -1,0 +1,109 @@
+1️⃣ Customer create
+
+
+
+
+2️⃣ Schedule create
+3️⃣ Contract create
+4️⃣ Direct debit setup
+5️⃣ One-off payment
+6️⃣ Freeze membership
+7️⃣ Reactivate membership
+8️⃣ Cancel membership
+9️⃣ Webhook handling
+
+1 Month plan
+Customer
+   ↓
+Contract (AD-HOC schedule)
+   ↓
+One-off payment
+3 / 6 / 12 Month
+Customer
+   ↓
+Contract (Recurring schedule)
+   ↓
+Auto payments
+
+{
+    "venueId": 46,
+    "startDate": "2026-03-15",
+    "totalStudents": 1,
+    "students": [
+        {
+            "studentFirstName": "Ravi",
+            "studentLastName": "kumar",
+            "dateOfBirth": "2023-03-01",
+            "age": 3,
+            "gender": "male",
+            "medicalInformation": "none",
+            "selectedClassId": null,
+            "selectedClassData": null,
+            "classScheduleId": 72
+        }
+    ],
+    "parents": [
+        {
+            "parentFirstName": "Ahitan",
+            "parentLastName": "ji",
+            "parentEmail": "raviahitan@gmail.com",
+            "parentPhoneNumber": "7862378687",
+            "relationToChild": "Father",
+            "howDidYouHear": "Instagram"
+        }
+    ],
+    "starterPack": 49.99,
+    "emergency": {
+        "sameAsAbove": true,
+        "emergencyFirstName": "Ahitan",
+        "emergencyLastName": "Akshay",
+        "emergencyPhoneNumber": "7862378687",
+        "emergencyRelation": "Father"
+    },
+    "paymentPlanId": 58,
+    "payment": {
+        "paymentType": "accesspaysuite",
+        "firstName": "Ahitan",
+        "lastName": "Ji",
+        "email": "akshaywebstep@gmail.com",
+        "account_number": "55779911",
+        "branch_code": "200000",
+        "account_holder_name": "Ahitan Ji",
+        "authorise": true,
+        "price": 1000,
+        "proRataAmount": 0
+    }
+}
+
+
+
+
+1 Month plan -> isme bi agr usne kuj session skio akr diye to uska pro-rata charge hoga or usko one off payment karna padega only
+Customer
+   ↓
+Contract (AD-HOC schedule)
+   ↓
+One-off payment
+
+
+
+3 / 6 / 12 Month  -> or agr kisi plan booking karte time kuch session skip karna chahta hai to jo agr suppose 3 mnth plan tha usme usne 8 toal session the  to usne 2 session skip kar diye ryt fir jo 3 mnth ka plan tha bo ab 2 ka reh gya  mera mtlb ab ji contract bangea bio 2 mnth ke liye bange par jo first mnth session skip kiya tha uska pro-rata charge hoga to customer ko 2 mnth ke liye contract bangea or usme pro-rata charge add hoga or bo one off payment hoga understand same follow for 6,12 mnth plan bhi
+Customer
+   ↓
+Contract (Recurring schedule)
+   ↓
+Auto payments
+
+
+
+Customer
+↓
+Mandate
+↓
+Contract
+↓
+Recurring Payments
+↓
+BACS Run
+↓
+Bank Debit

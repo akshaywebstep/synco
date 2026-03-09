@@ -4,7 +4,11 @@ const axios = require("axios");
 const { AppConfig } = require("../../../models");
 
 const DEBUG = process.env.DEBUG === "true";
-const BASE_URL = "https://playpen.accesspaysuite.com"; // change to prod if needed
+
+const BASE_URL =
+  process.env.APS_BASE_URL || "https://playpen.accesspaysuite.com/api/v3";
+
+// https://api.accesspaysuite.com/api/v3 for production label url
 
 // ================================
 // Fetch credentials (cached)
@@ -46,7 +50,7 @@ async function buildHeaders() {
 
   return {
     "Content-Type": "application/json",
-    apiKey: apiKey, // ✅ MUST be apiKey header
+    apiKey: apiKey,
   };
 }
 
@@ -54,23 +58,39 @@ async function buildHeaders() {
 // Handle API responses safely
 // ================================
 async function handleResponse(res) {
-  const rawText = await res.text(); // ✅ read ONCE
+  let raw;
+
+  try {
+    raw = await res.text();
+  } catch {
+    raw = null;
+  }
 
   let data;
+
   try {
-    data = rawText ? JSON.parse(rawText) : null;
+    data = raw ? JSON.parse(raw) : null;
   } catch {
-    data = rawText;
+    data = raw;
   }
 
   if (!res.ok) {
-    if (DEBUG) {
-      console.error("API ERROR:", res.status, data);
-    }
-    return { status: false, error: data };
+    return {
+      status: false,
+      message:
+        data?.Detail ||
+        data?.Message ||
+        data?.Errors?.[0]?.Message ||
+        raw ||
+        `APS Error ${res.status}`,
+      error: data,
+    };
   }
 
-  return { status: true, data };
+  return {
+    status: true,
+    data,
+  };
 }
 function sanitizeBankDetails(accountNumber, sortCode) {
   const cleanAccount = String(accountNumber).replace(/\D/g, "");
@@ -86,10 +106,9 @@ function sanitizeBankDetails(accountNumber, sortCode) {
 
   return {
     accountNumber: cleanAccount,
-    bankSortCode: cleanSort,
+    sortCode: cleanSort,
   };
 }
-
 
 // ================================
 // 1. Create Schedule
@@ -98,10 +117,7 @@ async function createSchedule(scheduleData) {
   const { clientCode } = await getCredentials();
   const headers = await buildHeaders();
 
-  const url = `${BASE_URL}/api/v3/client/${clientCode}/schedules`;
-
-  if (DEBUG)
-    console.log("Creating schedule with JSON body:", url, scheduleData);
+  const url = `${BASE_URL}/client/${clientCode}/schedules`;
 
   const res = await fetch(url, {
     method: "POST",
@@ -121,7 +137,7 @@ async function getSchedules() {
     const headers = await buildHeaders();
 
     const response = await axios.get(
-      `${BASE_URL}/api/v3/client/${clientCode}/schedules`,
+      `${BASE_URL}/client/${clientCode}/schedules`,
       { headers },
     );
 
@@ -162,201 +178,56 @@ async function getSchedules() {
   }
 }
 
-// async function createAccessPaySuiteCustomer(queryParams) {
-//   const { clientCode } = await getCredentials();
-//   const headers = await buildHeaders();
-
-//   const queryString = new URLSearchParams(queryParams).toString();
-//   const url = `${BASE_URL}/api/v3/client/${clientCode}/customer?${queryString}`;
-
-//   if (DEBUG) console.log("Creating customer URL:", url);
-
-//   const res = await fetch(url, {
-//     method: "POST",
-//     headers,
-//   });
-
-//   return handleResponse(res);
-// }
-
 // ================================
 // 3. Create Contract (query params)
 // ================================
-// async function createContract(customerId, queryParams) {
-//   const { clientCode } = await getCredentials();
-//   const headers = await buildHeaders();
-
-//   const queryString = new URLSearchParams(queryParams).toString();
-//   const url = `${BASE_URL}/api/v3/client/${clientCode}/customer/${customerId}/contract?${queryString}`;
-
-//   if (DEBUG) console.log("Creating contract URL:", url);
-
-//   const res = await fetch(url, {
-//     method: "POST",
-//     headers,
-//   });
-
-//   const responseData = await res.json();
-
-//   // ✅ APS validation error handling
-//   if (!res.ok && responseData?.Detail) {
-//     const detail = responseData.Detail;
-
-//     // Try to extract date from APS message (DD/MM/YYYY)
-//     const match = detail.match(/(\d{2}\/\d{2}\/\d{4})/);
-
-//     if (match) {
-//       const earliestDateStr = match[1]; // 12/01/2026
-//       const [day, month, year] = earliestDateStr.split("/");
-//       const earliestDate = new Date(`${year}-${month}-${day}`);
-
-//       const today = new Date();
-//       today.setHours(0, 0, 0, 0);
-
-//       const daysAfter = calculateDaysDifference(today, earliestDate);
-
-//       throw new Error(
-//         `Start date is too early. Please select a date at least ${daysAfter} day(s) from today (${earliestDateStr}).`
-//       );
-//     }
-
-//     // Fallback APS message
-//     throw new Error(detail);
-//   }
-
-//   return {
-//     status: true,
-//     data: responseData,
-//   };
-// }
 
 async function createAccessPaySuiteCustomer(queryParams) {
   const { clientCode } = await getCredentials();
   const headers = await buildHeaders();
 
-  const queryString = new URLSearchParams(queryParams).toString();
-  const url = `${BASE_URL}/api/v3/client/${clientCode}/customer?${queryString}`;
+  const url = `${BASE_URL}/client/${clientCode}/customer?${new URLSearchParams(queryParams)}`;
 
-  console.log("APS CUSTOMER URL:", url);
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+  });
 
-  const res = await fetch(url, { method: "POST", headers });
-
-  const raw = await res.text();
-
-  let data;
-  try { data = raw ? JSON.parse(raw) : raw; }
-  catch { data = raw; }
-
-  if (!res.ok) {
-    console.log("APS RAW ERROR:", data);
-
-    return {
-      status: false,
-      message:
-        data?.Errors?.[0]?.Message ||
-        data?.Detail ||
-        data?.Message ||
-        raw,     // ✅ EXACT gateway text
-    };
-  }
-
-  return { status: true, data };
+  return handleResponse(res);
 }
-
-// async function createContract(customerId, queryParams) {
-//   const { clientCode } = await getCredentials();
-//   const headers = await buildHeaders();
-
-//   const queryString = new URLSearchParams(queryParams).toString();
-//   const url = `${BASE_URL}/api/v3/client/${clientCode}/customer/${customerId}/contract?${queryString}`;
-
-//   if (DEBUG) console.log("Creating contract URL:", url);
-
-//   const res = await fetch(url, {
-//     method: "POST",
-//     headers,
-//   });
-
-//   const responseData = await res.json();
-
-//   // Generic APS error handling only
-//   if (!res.ok) {
-//     throw new Error(
-//       responseData?.Detail ||
-//       responseData?.Message ||
-//       "Access PaySuite: Contract creation failed"
-//     );
-//   }
-
-//   return {
-//     status: true,
-//     data: responseData,
-//   };
-// }
 
 // ================================
 // 4. Cancel Contract (query params)
 // ================================
 
-async function createContract(customerId, queryParams) {
-  try {
-    const { clientCode } = await getCredentials();
-    const headers = await buildHeaders();
+async function createContract(customerId, payload) {
+  const { clientCode } = await getCredentials();
+  const headers = await buildHeaders();
 
-    const queryString = new URLSearchParams(queryParams).toString();
-    const url = `${BASE_URL}/api/v3/client/${clientCode}/customer/${customerId}/contract?${queryString}`;
+  const url = `${BASE_URL}/client/${clientCode}/customer/${customerId}/contract`;
 
-    if (DEBUG) console.log("Creating contract URL:", url);
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      ...headers,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-    });
-
-    const responseData = await res.json();
-
-    if (!res.ok) {
-      // Extract error message from known keys or fallback generic
-      const errorMessage =
-        responseData?.Detail ||
-        responseData?.Message ||
-        "Access PaySuite: Contract creation failed";
-
-      return {
-        status: false,
-        message: errorMessage,
-      };
-    }
-
-    return {
-      status: true,
-      data: responseData,
-    };
-  } catch (error) {
-    // Network or unexpected error
-    return {
-      status: false,
-      message: error.message || "Unexpected error occurred",
-    };
-  }
+  return handleResponse(res);
 }
 
 async function cancelContract(contractId, queryParams = {}) {
   const { clientCode } = await getCredentials();
   const headers = await buildHeaders();
 
-  const queryString = new URLSearchParams(queryParams).toString();
-  const url = `${BASE_URL}/api/v3/client/${clientCode}/contract/${contractId}/cancel?${queryString}`;
-  {
-    headers;
-  }
-  if (DEBUG) console.log("Cancelling contract:", url);
+  const url = `${BASE_URL}/client/${clientCode}/contract/${contractId}/cancel?${new URLSearchParams(queryParams)}`;
 
   const res = await fetch(url, {
     method: "POST",
     headers,
   });
-  if (DEBUG) console.log("Cancelling contract response:", res);
 
   return handleResponse(res);
 }
@@ -364,216 +235,139 @@ async function cancelContract(contractId, queryParams = {}) {
 // 5. Freeze Contract (temporary pause)
 // ================================
 async function freezeContract(contractId, freezeData) {
-  try {
-    const { clientCode } = await getCredentials();
-    const headers = await buildHeaders();
+  const { clientCode } = await getCredentials();
+  const headers = await buildHeaders();
 
-    const url = `${BASE_URL}/api/v3/client/${clientCode}/contract/${contractId}/patch/freeze`;
+  const url = `${BASE_URL}/client/${clientCode}/contract/${contractId}/patch/freeze`;
 
-    if (DEBUG) {
-      console.log("🔒 Freezing contract");
-      console.log("Contract ID:", contractId);
-      console.log("Freeze payload:", JSON.stringify(freezeData));
-      console.log("Freeze URL:", url);
-    }
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(freezeData),
+  });
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(freezeData),
-    });
-
-    const rawText = await res.text();
-    let data;
-
-    try {
-      data = rawText ? JSON.parse(rawText) : null;
-    } catch {
-      data = rawText;
-    }
-
-    /* ❌ APS Error Handling */
-    if (!res.ok) {
-      let errorMessage =
-        data?.Detail ||
-        data?.Message ||
-        "Unable to freeze membership at this time.";
-
-      // 🎯 APS specific error mapping
-      if (
-        res.status === 400 &&
-        (data?.Detail?.includes("No previous version") || data?.ErrorCode === 4)
-      ) {
-        errorMessage =
-          "This membership has not started yet. You can freeze the membership only after the contract becomes active.";
-      }
-
-      if (DEBUG) {
-        console.error("❌ APS Freeze Error:", res.status, data);
-      }
-
-      return {
-        status: false,
-        message: errorMessage,
-      };
-    }
-
-    // ✅ Success
-    return {
-      status: true,
-      message: "Membership frozen successfully.",
-      data,
-    };
-  } catch (error) {
-    console.error("❌ freezeContract Exception:", error);
-
-    return {
-      status: false,
-      message:
-        error.message || "Unexpected error occurred while freezing membership.",
-    };
-  }
+  return handleResponse(res);
 }
 // ================================
 // 6. Reactivate Contract (unfreeze/reactivate membership)
 // ================================
 async function reactivateContract(contractId, reactivateData) {
-  try {
-    const { clientCode } = await getCredentials();
-    const headers = await buildHeaders();
+  const { clientCode } = await getCredentials();
+  const headers = await buildHeaders();
 
-    const url = `${BASE_URL}/api/v3/client/${clientCode}/contract/${contractId}/reactivate`;
+  const url = `${BASE_URL}/client/${clientCode}/contract/${contractId}/reactivate`;
 
-    if (DEBUG) {
-      console.log("🔓 Reactivating contract");
-      console.log("Contract ID:", contractId);
-      console.log("Reactivate payload:", JSON.stringify(reactivateData));
-      console.log("Reactivate URL:", url);
-    }
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(reactivateData),
+  });
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(reactivateData),
-    });
-
-    const rawText = await res.text();
-    let data;
-
-    try {
-      data = rawText ? JSON.parse(rawText) : null;
-    } catch {
-      data = rawText;
-    }
-
-    if (!res.ok) {
-      let errorMessage =
-        data?.Detail ||
-        data?.Message ||
-        "Unable to reactivate membership at this time.";
-
-      if (DEBUG) {
-        console.error("❌ APS Reactivate Error:", res.status, data);
-      }
-
-      return {
-        status: false,
-        message: errorMessage,
-      };
-    }
-
-    // ✅ Success
-    return {
-      status: true,
-      message: "Membership reactivated successfully.",
-      data,
-    };
-  } catch (error) {
-    console.error("❌ reactivateContract Exception:", error);
-
-    return {
-      status: false,
-      message:
-        error.message ||
-        "Unexpected error occurred while reactivating membership.",
-    };
-  }
+  return handleResponse(res);
 }
 
 // ================================
 // 7. ONE OFF PAYMENT (PRO-RATA)
 // ================================
-// ================================
-// 7. ONE OFF PAYMENT (PRO-RATA)
-// ================================
-async function createOneOffPayment(customerId, paymentData) {
-  try {
-    const { clientCode } = await getCredentials();
-    const headers = await buildHeaders();
+async function createOneOffPayment(contractId, paymentData) {
+  const { clientCode } = await getCredentials();
+  const headers = await buildHeaders();
 
-    const params = {
-      amount: paymentData.amount,
-      description: paymentData.description,
-      reference: paymentData.reference,
-    };
+  const url = `${BASE_URL}/client/${clientCode}/contract/${contractId}/payment`;
 
-    // add collectionDate if exists
-    if (paymentData.collectionDate) params.collectionDate = paymentData.collectionDate;
+  const payload = {
+    Amount: paymentData.amount,
+    Description: paymentData.description,
+    Date: paymentData.date,
+    Reference: paymentData.reference,
+  };
 
-    const queryString = new URLSearchParams(params).toString();
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
 
-    const url = `${BASE_URL}/api/v3/client/${clientCode}/customer/${customerId}/payment`;
-
-    // 🔹 ADD THIS LOG HERE, fetch se pehle
-    console.log("💰 Creating one-off payment for customerId:", customerId, "payload:", params);
-
-    if (DEBUG) console.log("💰 Creating one-off payment:", url);
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(params), // <- body me JSON send karo
-    });
-
-    const raw = await res.text();
-
-    let data;
-    try {
-      data = raw ? JSON.parse(raw) : null;
-    } catch {
-      data = raw;
-    }
-
-    if (!res.ok) {
-      console.log("❌ APS ONE-OFF ERROR STATUS:", res.status);
-      console.log("❌ APS ONE-OFF ERROR BODY:", data);
-
-      return {
-        status: false,
-        message:
-          data?.Detail ||
-          data?.Message ||
-          data?.Errors ||
-          JSON.stringify(data) ||
-          "One-off payment failed",
-      };
-    }
-
-    return {
-      status: true,
-      data,
-    };
-  } catch (err) {
-    return {
-      status: false,
-      message: err.message,
-    };
-  }
+  return handleResponse(res);
 }
-// ================================
-// Full Flow: Schedule → Customer → Contract
-// ================================
 
+async function createContractPayment(contractId, paymentData) {
+  const { clientCode } = await getCredentials();
+  const headers = await buildHeaders();
+
+  const url = `${BASE_URL}/client/${clientCode}/contract/${contractId}/payment`;
+
+  const payload = {
+    Amount: paymentData.amount,
+    Description: paymentData.description,
+    Date: paymentData.date,
+    Reference: paymentData.reference,
+  };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  return handleResponse(res);
+}
+
+async function createCustomerPayment(customerId, paymentData) {
+  const { clientCode } = await getCredentials();
+  const headers = await buildHeaders();
+
+  const url = `${BASE_URL}/client/${clientCode}/customer/${customerId}/payment`;
+
+  const payload = {
+    Amount: paymentData.amount,
+    Description: paymentData.description,
+    Date: paymentData.date,
+    Reference: paymentData.reference,
+  };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  return handleResponse(res);
+}
+
+
+// ================================
+// 8. Cancel Direct Debit
+// ================================
+async function cancelDirectDebit(contractId) {
+  const { clientCode } = await getCredentials();
+  const headers = await buildHeaders();
+
+  const url = `${BASE_URL}/client/${clientCode}/contract/${contractId}/cancel`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+  });
+  return handleResponse(res);
+}
+
+// ================================
+// 9. Archive Contract
+// ================================
+async function archiveContract(contractId) {
+  const { clientCode } = await getCredentials();
+  const headers = await buildHeaders();
+
+  const url = `${BASE_URL}/client/${clientCode}/contract/${contractId}/archive`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+  });
+
+  return handleResponse(res);
+}
 // ================================
 // Exports
 // ================================
@@ -586,33 +380,10 @@ module.exports = {
   freezeContract,
   reactivateContract,
   createOneOffPayment,
+  createCustomerPayment,
+  createContractPayment,
+  cancelDirectDebit,
+  archiveContract,
 };
 
-// {
-//   "schedule": {
-//     "scheduleName": "Monthly Gym Membership",
-//     "frequency": "Monthly",
-//     "amount": 50.00,
-//     "interval": 1,
-//     "startDate": "2026-12-01T00:00:00.000"
-//   },
-//   "customer": {
-//     "email": "akshaywebstep@gmail.com",
-//     "title": "Mr",
-//     "customerRef": "555555",
-//     "firstName": "Akshay",
-//     "surname": "Kumar",
-//     "line1": "1 Tebbit Mews",
-//     "postCode": "GL52 2NF",
-//     "accountNumber": "76846396",
-//     "bankSortCode": "364589",
-//     "accountHolderName": "Mr Akshay Kumar"
-//   },
-//   "contract": {
-//     "scheduleName": "Monthly Gym Membership",
-//     "start": "2026-12-01T00:00:00.000",
-//     "isGiftAid": false,
-//     "terminationType": "Until further notice",
-//     "atTheEnd": "Switch to further notice"
-//   }
-// }
+

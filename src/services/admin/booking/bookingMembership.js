@@ -22,6 +22,8 @@ const {
   createAccessPaySuiteCustomer,
   createContract,
   createOneOffPayment,
+  createCustomerPayment,
+  createContractPayment,
 } = require("../../../utils/payment/accessPaySuit/accesPaySuit");
 const generateReferralCode = require("../../../utils/generateReferralCode");
 const chargeStarterPack = require("../../../utils/payment/pay360/starterPackCharge");
@@ -48,8 +50,6 @@ const {
 const gbpToPence = (amount) => Math.round(Number(amount) * 100);
 const DEBUG = process.env.DEBUG === "true";
 
-
-
 function safeJsonParse(value, label = "JSON") {
   if (!value) return {};
 
@@ -74,7 +74,6 @@ function safeJsonParse(value, label = "JSON") {
   }
 }
 
-
 function generateBookingId(length = 12) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let result = "";
@@ -90,7 +89,6 @@ function calculateContractStartDate(delayDays = 18) {
   return start.toISOString().split("T")[0];
 }
 
-
 function findMatchingSchedule(schedules) {
   if (!Array.isArray(schedules)) return null;
 
@@ -98,7 +96,6 @@ function findMatchingSchedule(schedules) {
     (s) => s.Name && s.Name.trim().toLowerCase() === "default schedule",
   );
 }
-
 
 async function autoSyncFreezeBilling() {
   const logs = [];
@@ -215,7 +212,6 @@ async function autoSyncFreezeBilling() {
   }
 }
 // GBP → pence (GoCardless only)
-
 
 // 🟢 Helper: create a payment row
 async function createBookingPayment({
@@ -500,8 +496,6 @@ exports.createBooking = async (data, options) => {
 
     await t.commit();
 
-
-
     /* ================= STARTER PACK FIRST ================= */
 
     console.log("🔥 ===== STARTER PACK FLOW START =====");
@@ -568,15 +562,16 @@ exports.createBooking = async (data, options) => {
 
     console.log("🔥 ===== STARTER PACK FLOW END =====");
 
-
     // Payment processing (same as your logic but fixed typo and consistency)
     if (booking.paymentPlanId && data.payment?.paymentType) {
       const venue = await Venue.findByPk(data.venueId);
       const venueOwnerAdmin = await Admin.findByPk(venue.createdBy);
       const overrideToken = venueOwnerAdmin?.GC_FRANCHISE_TOKEN || null;
-      // Always use GoCardless
       // No switching
-      const paymentType = "bank";
+      const paymentType = data.payment?.paymentType || "bank";
+      if (DEBUG) {
+        console.log("Step 5: Start payment process, paymentType:", paymentType);
+      }
       // const isHQVenue = !overrideToken;
       if (DEBUG)
         console.log("Step 5: Start payment process, paymentType:", paymentType);
@@ -734,7 +729,7 @@ exports.createBooking = async (data, options) => {
         startDate.setHours(0, 0, 0, 0);
 
         const allSessions = upcomingSessions
-          .map(s => {
+          .map((s) => {
             const d = new Date(s.sessionDate);
             d.setHours(0, 0, 0, 0);
             return d;
@@ -745,21 +740,24 @@ exports.createBooking = async (data, options) => {
         const selectedYear = startDate.getFullYear();
 
         const monthSessions = allSessions.filter(
-          d => d.getMonth() === selectedMonth && d.getFullYear() === selectedYear
+          (d) =>
+            d.getMonth() === selectedMonth && d.getFullYear() === selectedYear,
         );
 
-        const remainingSessions = monthSessions.filter(d => d >= startDate);
+        const remainingSessions = monthSessions.filter((d) => d >= startDate);
 
         remainingLessons = remainingSessions.length;
         proRataAmount = remainingLessons * paymentPlan.priceLesson;
 
         const firstSessionOfMonth = monthSessions[0];
 
-        if (firstSessionOfMonth && startDate.getTime() === firstSessionOfMonth.getTime()) {
+        if (
+          firstSessionOfMonth &&
+          startDate.getTime() === firstSessionOfMonth.getTime()
+        ) {
           remainingLessons = 0;
           proRataAmount = 0;
         }
-
 
         console.log("\n========== SUMMARY ==========");
         console.log("Total Passed Sessions:", totalPassedSessions);
@@ -894,20 +892,23 @@ exports.createBooking = async (data, options) => {
 
             const firstMonthAmount = proRataTotal;
 
-
             // 🔥 Create ONE-OFF payment using createBillingRequest
             if (firstMonthAmount > 0) {
-              console.log("🔥 Term started → Creating ONE-OFF via Direct Payment");
+              console.log(
+                "🔥 Term started → Creating ONE-OFF via Direct Payment",
+              );
 
               const paymentPayload = {
                 amount: firstMonthAmount, // in pence
                 currency: "GBP",
-                mandateId: mandateId,      // ✅ correct key
-                description: `Pro-rata payment - ${classSchedule.className}`
+                mandateId: mandateId, // ✅ correct key
+                description: `Pro-rata payment - ${classSchedule.className}`,
               };
 
-              console.log("💡 Creating Direct Payment with mandateId:", mandateId);
-
+              console.log(
+                "💡 Creating Direct Payment with mandateId:",
+                mandateId,
+              );
 
               const amountInPence = Math.round(firstMonthAmount * 100);
 
@@ -920,12 +921,13 @@ exports.createBooking = async (data, options) => {
                   mandateId: mandateId,
                   description: `Pro-rata payment - ${classSchedule.className} | studentId: ${firstStudentId}`,
                 },
-                overrideToken
+                overrideToken,
               );
+              const merchantRef = paymentRes?.data?.Id;
 
               if (!paymentRes.status) {
                 throw new Error(
-                  `Failed to create GoCardless payment: ${paymentRes.message}`
+                  `Failed to create GoCardless payment: ${paymentRes.message}`,
                 );
               }
 
@@ -940,6 +942,7 @@ exports.createBooking = async (data, options) => {
                   data.payment?.lastName || data.parents?.[0]?.parentLastName,
                 email: data.payment?.email || data.parents?.[0]?.parentEmail,
                 amount: firstMonthAmount,
+                merchantRef: merchantRef,
                 goCardlessMandateId: mandateId,
                 goCardlessPaymentId: paymentRes.payment.id, // ✅ save payment id
                 paymentType: "bank",
@@ -952,8 +955,10 @@ exports.createBooking = async (data, options) => {
               console.log("✅ First month ONE-OFF created via Direct Payment");
             }
             // 🔥 FULL PAYMENT FOR 1 MONTH PLAN
-            if (paymentPlan.duration === 1 && (!data.payment?.proRataAmount || data.payment.proRataAmount === 0)) {
-
+            if (
+              paymentPlan.duration === 1 &&
+              (!data.payment?.proRataAmount || data.payment.proRataAmount === 0)
+            ) {
               console.log("🔥 One month plan → creating single payment");
 
               const amountInPence = Math.round(recurringAmount * 100);
@@ -965,9 +970,9 @@ exports.createBooking = async (data, options) => {
                   mandateId: mandateId,
                   description: `Full payment - ${classSchedule.className}`,
                 },
-                overrideToken
+                overrideToken,
               );
-
+              const merchantRef = paymentRes?.data?.Id;
               if (!paymentRes.status) {
                 throw new Error(`Payment failed: ${paymentRes.message}`);
               }
@@ -979,8 +984,8 @@ exports.createBooking = async (data, options) => {
                   data.payment?.firstName || data.parents?.[0]?.parentFirstName,
                 lastName:
                   data.payment?.lastName || data.parents?.[0]?.parentLastName,
-                email:
-                  data.payment?.email || data.parents?.[0]?.parentEmail,
+                email: data.payment?.email || data.parents?.[0]?.parentEmail,
+                merchantRef: merchantRef,
                 amount: recurringAmount,
                 paymentType: "bank",
                 paymentCategory: "full_payment",
@@ -988,7 +993,7 @@ exports.createBooking = async (data, options) => {
                 goCardlessMandateId: mandateId,
                 goCardlessPaymentId: paymentRes.payment.id,
                 gatewayResponse: paymentRes,
-                transaction: t
+                transaction: t,
               });
 
               console.log("✅ One month payment saved");
@@ -1011,7 +1016,8 @@ exports.createBooking = async (data, options) => {
                 console.log("🔥 Remaining months:", remainingMonths);
               }
 
-              const startDate = createMandateRes.mandate.next_possible_charge_date;
+              const startDate =
+                createMandateRes.mandate.next_possible_charge_date;
               const subscriptionPayload = {
                 mandateId,
                 amount: gbpToPence(recurringAmount),
@@ -1080,244 +1086,263 @@ exports.createBooking = async (data, options) => {
             throw new Error(`GoCardless Payment Error: ${err.message}`);
           }
         } else if (paymentType === "accesspaysuite") {
-          if (DEBUG)
-            console.log("🔁 Processing Access PaySuite recurring payment");
+          if (DEBUG) console.log("🔁 Processing Access PaySuite payment");
 
+          // 1️⃣ GET SCHEDULE
           const schedulesRes = await getSchedules();
-          if (!schedulesRes.status) {
-            throw new Error("Access PaySuite: Failed to fetch schedules");
-          }
+
+          if (!schedulesRes.status)
+            throw new Error("Failed to fetch APS schedules");
 
           const services = schedulesRes.data?.Services || [];
-          const schedules = services.flatMap(
-            (service) => service.Schedules || [],
-          );
+          const schedules = services.flatMap((s) => s.Schedules || []);
 
-          let matchedSchedule = findMatchingSchedule(schedules, paymentPlan);
+          const matchedSchedule = findMatchingSchedule(schedules, paymentPlan);
 
-          if (!matchedSchedule) {
-            throw new Error(
-              `Access PaySuite: Schedule "Default Schedule" not found. Please create this schedule in APS dashboard before proceeding.`,
-            );
-          }
+          if (!matchedSchedule)
+            throw new Error("AccessPaySuite schedule not found");
 
-          const scheduleId = matchedSchedule.ScheduleId;
+          /*
+          =====================================
+          2️⃣ CREATE CUSTOMER
+          =====================================
+           */
 
           const customerPayload = {
             email: data.payment?.email || data.parents?.[0]?.parentEmail,
             title: "Mr",
-            customerRef: `BOOK-${booking.id}-${Date.now()}`,
+            customerRef: `CUS-${booking.id}-${Date.now()}`,
             firstName:
               data.payment?.firstName || data.parents?.[0]?.parentFirstName,
             surname:
               data.payment?.lastName || data.parents?.[0]?.parentLastName,
-            line1: data.payment?.addressLine1 || "10 Downing Street",
-            postCode: data.payment?.postalCode || "SW1A 2AA",
             accountNumber: data.payment?.account_number,
             bankSortCode: data.payment?.branch_code,
             accountHolderName:
               data.payment?.account_holder_name ||
               `${data.parents?.[0]?.parentFirstName} ${data.parents?.[0]?.parentLastName}`,
+            line1: data.payment?.address_line1 || "Test Address",
+            town: data.payment?.city || "London",
+            postcode: data.payment?.postcode || "SW1A1AA",
+            country: "GB",
           };
 
           const customerRes =
             await createAccessPaySuiteCustomer(customerPayload);
-          if (!customerRes.status) {
-            throw new Error(customerRes.message); // ✅ gateway ka exact message
-          }
-          console.log("APS CREATE CUSTOMER RESPONSE:", customerRes);
+
+          if (!customerRes.status) throw new Error(customerRes.message);
+
           const customerId =
-            customerRes.data?.CustomerId ||
-            customerRes.data?.Id ||
-            customerRes.data?.customerId ||
-            customerRes.data?.id;
+            customerRes.data?.CustomerId || customerRes.data?.Id;
 
-          if (!customerId)
-            throw new Error("Access PaySuite: Customer ID missing");
+          if (!customerId) throw new Error("APS: Customer ID missing");
 
-          // ================= PRO-RATA CONTRACT =================
+          /*
+          =====================================
+          3️⃣ CREATE CONTRACT
+           =====================================
+          */
+
+          const startDate = calculateContractStartDate(18);
+
+          const contractPayload = {
+            ScheduleId: matchedSchedule.ScheduleId,
+            Start: startDate,
+            TerminationType: paymentPlan.duration ? "Fixed term" : "Until further notice",
+          };
+
+          if (paymentPlan.duration) {
+            const start = new Date(startDate);
+            const end = new Date(start);
+
+            end.setMonth(end.getMonth() + Number(paymentPlan.duration));
+
+            contractPayload.TerminationDate = end.toISOString().split("T")[0];
+          }
+
+          // Debug log
+          console.log(
+            "APS Contract Payload:",
+            JSON.stringify(contractPayload, null, 2)
+          );
+
+          const contractRes = await createContract(customerId, contractPayload);
+
+          if (!contractRes.status) {
+            console.log("APS Error Response:", contractRes);
+            throw new Error(contractRes.message || "APS Contract creation failed");
+          }
+
+          const contractId =
+            contractRes.data?.contract?.Id || contractRes.data?.Id;
+
+          const directDebitRef =
+            contractRes.data?.contract?.DirectDebitRef ||
+            contractRes.data?.DirectDebitRef;
+
+          /*
+          =====================================
+          4️⃣ PRO-RATA PAYMENT
+          =====================================
+          */
+
           if (proRataTotal > 0) {
-            console.log("🔥 APS PRO RATA:", proRataTotal);
+            if (DEBUG) console.log("🔥 APS PRO-RATA:", proRataTotal);
 
-            const proRataContractStartDate = calculateContractStartDate(18);
-            const proRataContractPayload = {
-              scheduleName: matchedSchedule.Name,
-              start: proRataContractStartDate,
-              isGiftAid: false,
-              terminationType: paymentPlan.duration
-                ? "Fixed term"
-                : "Until further notice",
-              atTheEnd: "Switch to further notice",
-              InitialAmount: proRataTotal,
-            };
-            if (paymentPlan.duration) {
-              const start = new Date(proRataContractStartDate);
-              const end = new Date(start);
-              end.setMonth(end.getMonth() + Number(paymentPlan.duration));
-              proRataContractPayload.TerminationDate = end
-                .toISOString()
-                .split("T")[0];
-            }
+            const proRataRes = await createContractPayment(contractId, {
+              amount: proRataTotal,
+              date: startDate,
+              description: `Pro-Rata - ${classSchedule.className}`,
+              reference: `PR-${booking.id}-${Date.now()}`,
+            });
 
-            const proRataContractRes = await createContract(
-              customerId,
-              proRataContractPayload,
-            );
-            if (proRataContractRes?.status) {
-              paymentStatusFromGateway = "contract_created";
-            }
-            if (!proRataContractRes.status)
-              throw new Error(
-                "Access PaySuite: Pro-rata contract creation failed",
-              );
+            if (!proRataRes.status) throw new Error(proRataRes.message);
 
-            // Save PRO-RATA as separate BookingPayment row
             await BookingPayment.create({
               bookingId: booking.id,
               paymentPlanId: booking.paymentPlanId,
               studentId: firstStudentId,
+              firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+              lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName,
+              email: data.payment?.email || data.parents?.[0]?.parentEmail,
+              merchantRef: proRataRes?.data?.Id,
+              price: proRataTotal,
               paymentType: "accesspaysuite",
               paymentCategory: "pro_rata",
-              firstName:
-                data.payment?.firstName ||
-                data.parents?.[0]?.parentFirstName ||
-                "",
-              lastName:
-                data.payment?.lastName ||
-                data.parents?.[0]?.parentLastName ||
-                "",
-              email:
-                data.payment?.email || data.parents?.[0]?.parentEmail || "",
               amount: proRataTotal,
-              price: proRataTotal,
-              billingAddress: data.payment?.billingAddress || "",
-              account_number: data.payment?.account_number || "",
-              branch_code: data.payment?.branch_code || "",
-              account_holder_name: data.payment?.account_holder_name || "",
-              paymentStatus: paymentStatusFromGateway, // ✅ FINAL STATUS
               currency: "GBP",
-              merchantRef: `PR-${booking.id}-${Date.now()}`,
-              description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"} (Pro-rata)`,
-              commerceType: "ECOM",
-              gatewayResponse: {
-                gateway: "accesspaysuite",
-                schedule: matchedSchedule,
-                customer: customerRes.data,
-                contract: proRataContractRes.data,
-              },
-              contractId:
-                proRataContractRes?.data?.contract?.Id ||
-                proRataContractRes?.data?.Id,
-              directDebitRef:
-                proRataContractRes?.data?.contract?.DirectDebitRef ||
-                proRataContractRes?.data?.DirectDebitRef,
-              transactionMeta: { status: "active" },
-              goCardlessCustomer: null,
-              goCardlessBankAccount: null,
-              goCardlessBillingRequest: null,
+              paymentStatus: "pending",
+              contractId,
+              directDebitRef,
+              gatewayResponse: proRataRes.data,
               createdAt: new Date(),
               updatedAt: new Date(),
             });
-
-            console.log("✅ APS pro-rata row saved same as recurring");
           }
 
-          // ================= RECURRING CONTRACT =================
-          const recurringContractStartDate = calculateContractStartDate(18);
-          const recurringContractPayload = {
-            scheduleName: matchedSchedule.Name,
-            start: recurringContractStartDate,
-            isGiftAid: false,
-            terminationType: paymentPlan.duration
-              ? "Fixed term"
-              : "Until further notice",
-            atTheEnd: "Switch to further notice",
-          };
-          if (paymentPlan.duration) {
-            const start = new Date(recurringContractStartDate);
-            const end = new Date(start);
-            end.setMonth(end.getMonth() + Number(paymentPlan.duration));
-            recurringContractPayload.TerminationDate = end
-              .toISOString()
-              .split("T")[0];
+          /*
+          =====================================
+          5️⃣ ONE MONTH PLAN
+          =====================================
+          */
+
+          if (paymentPlan.duration === 1 && proRataTotal === 0) {
+
+            const fullRes = await createContractPayment(contractId, {
+              amount: recurringAmount,
+              date: startDate,
+              description: `Full payment - ${classSchedule.className}`,
+              reference: `FULL-${booking.id}-${Date.now()}`,
+            });
+
+            if (!fullRes.status) throw new Error(fullRes.message);
+
+            await BookingPayment.create({
+              bookingId: booking.id,
+              paymentPlanId: booking.paymentPlanId,
+              studentId: firstStudentId,
+              firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+              lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName,
+              email: data.payment?.email || data.parents?.[0]?.parentEmail,
+
+              merchantRef: fullRes?.data?.Id,
+
+              price: recurringAmount,
+              paymentType: "accesspaysuite",
+              paymentCategory: "full_payment",
+              amount: recurringAmount,
+              currency: "GBP",
+              paymentStatus: "pending",
+
+              contractId,
+              directDebitRef,
+              gatewayResponse: fullRes.data,
+
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
           }
 
-          console.log(
-            "APS Recurring Contract Payload:",
-            recurringContractPayload,
-          );
+          /*
+          =====================================
+         6️⃣ RECURRING MEMBERSHIP
+         =====================================
+          */
+          if (paymentPlan.duration > 1) {
 
-          recurringContractRes = await createContract(
-            customerId,
-            recurringContractPayload,
-          );
-          if (!recurringContractRes.status)
-            throw new Error(
-              "Access PaySuite: Recurring contract creation failed",
-            );
-          recurringContractId =
-            recurringContractRes?.data?.contract?.Id ||
-            recurringContractRes?.data?.Id;
+            const recurringMonths = proRataTotal > 0
+              ? paymentPlan.duration - 1
+              : paymentPlan.duration;
 
-          recurringDirectDebitRef =
-            recurringContractRes?.data?.contract?.DirectDebitRef ||
-            recurringContractRes?.data?.DirectDebitRef;
+            for (let i = 0; i < recurringMonths; i++) {
 
-          gatewayResponse = {
-            gateway: "accesspaysuite",
-            schedule: matchedSchedule,
-            customer: customerRes.data,
-            contract: recurringContractRes.data,
-          };
+              const paymentDate = new Date(startDate);
+              paymentDate.setMonth(paymentDate.getMonth() + i + 1);
 
-          paymentStatusFromGateway = "pending";
-        }
+              const paymentRes = await createContractPayment(contractId, {
+                amount: recurringAmount,
+                date: paymentDate.toISOString().split("T")[0],
+                description: `Month ${i + 1} - ${classSchedule.className}`,
+                reference: `REC-${booking.id}-${i}-${Date.now()}`
+              });
 
-        // Save BookingPayment
-        if (paymentType !== "bank") {
-          await BookingPayment.create({
-            bookingId: booking.id,
-            paymentPlanId: booking.paymentPlanId,
-            studentId: firstStudentId,
-            paymentType,
-            paymentCategory: "recurring",
-            firstName:
-              data.payment.firstName ||
-              data.parents?.[0]?.parentFirstName ||
-              "",
-            lastName:
-              data.payment.lastName || data.parents?.[0]?.parentLastName || "",
-            email: data.payment.email || data.parents?.[0]?.parentEmail || "",
-            amount: recurringAmount, // plan + pro-rata
-            price: recurringAmount, // plan + pro-rata
-            billingAddress: data.payment.billingAddress || "",
-            account_number: data.payment.account_number || "",
-            branch_code: data.payment.branch_code || "",
-            account_holder_name: data.payment.account_holder_name || "",
-            paymentStatus: paymentStatusFromGateway,
-            currency: "GBP",
-            merchantRef:
-              gatewayResponse?.transaction?.merchantRef || merchantRef,
-            description:
-              gatewayResponse?.transaction?.description ||
-              `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"}`,
-            commerceType: "ECOM",
-            contractId:
-              paymentType === "accesspaysuite" ? recurringContractId : null,
-            directDebitRef:
-              paymentType === "accesspaysuite" ? recurringDirectDebitRef : null,
-            gatewayResponse,
-            transactionMeta: {
-              status: gatewayResponse?.transaction?.status || "pending",
-            },
-            goCardlessCustomer: gatewayResponse?.goCardlessCustomer || null,
-            goCardlessBankAccount:
-              gatewayResponse?.goCardlessBankAccount || null,
-            goCardlessBillingRequest:
-              gatewayResponse?.goCardlessBillingRequest || null,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
+              if (!paymentRes.status) throw new Error(paymentRes.message);
+
+              await BookingPayment.create({
+                bookingId: booking.id,
+                paymentPlanId: booking.paymentPlanId,
+                studentId: firstStudentId,
+                firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+                lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName,
+                email: data.payment?.email || data.parents?.[0]?.parentEmail,
+
+                price: recurringAmount,
+                amount: recurringAmount,
+                currency: "GBP",
+
+                paymentType: "accesspaysuite",
+                paymentCategory: "recurring",
+                paymentStatus: "pending",
+
+                contractId,
+                directDebitRef,
+                merchantRef: paymentRes?.data?.Id,
+                gatewayResponse: paymentRes.data,
+
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              });
+
+            }
+
+            if (DEBUG) console.log("✅ APS All recurring payments created");
+          }
+
+          // if (paymentPlan.duration > 1) {
+          //   await BookingPayment.create({
+          //     bookingId: booking.id,
+          //     paymentPlanId: booking.paymentPlanId,
+          //     studentId: firstStudentId,
+          //     firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+          //     lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName,
+          //     email: data.payment?.email || data.parents?.[0]?.parentEmail,
+
+          //     price: recurringAmount,
+
+          //     paymentType: "accesspaysuite",
+          //     paymentCategory: "recurring",
+          //     amount: recurringAmount,
+          //     currency: "GBP",
+          //     paymentStatus: "pending",
+          //     contractId,
+          //     directDebitRef,
+          //     gatewayResponse: contractRes.data,
+          //     createdAt: new Date(),
+          //     updatedAt: new Date(),
+          //   });
+
+          //   if (DEBUG) console.log("✅ APS Recurring membership saved");
+          // }
         }
 
         if (paymentStatusFromGateway === "failed")
@@ -3590,7 +3615,9 @@ exports.retryFailedPayment = async (bookingPaymentId) => {
 
   try {
     // Step 1: Fetch the original payment
-    const originalPayment = await BookingPayment.findByPk(bookingPaymentId, { transaction: t });
+    const originalPayment = await BookingPayment.findByPk(bookingPaymentId, {
+      transaction: t,
+    });
     if (!originalPayment) throw new Error("BookingPayment not found");
 
     // Retry only if status is 'failed'
@@ -3598,14 +3625,17 @@ exports.retryFailedPayment = async (bookingPaymentId) => {
       await t.commit();
       return {
         status: false,
-        message: `Cannot retry payment. Current status is: ${originalPayment.paymentStatus}`
+        message: `Cannot retry payment. Current status is: ${originalPayment.paymentStatus}`,
       };
     }
 
-    if (DEBUG) console.log("🔹 Retrying failed payment ID:", originalPayment.id);
+    if (DEBUG)
+      console.log("🔹 Retrying failed payment ID:", originalPayment.id);
 
     // Step 2: Fetch related booking
-    const booking = await Booking.findByPk(originalPayment.bookingId, { transaction: t });
+    const booking = await Booking.findByPk(originalPayment.bookingId, {
+      transaction: t,
+    });
     if (!booking) throw new Error("Booking not found");
 
     // Step 3: Determine payment type
@@ -3615,7 +3645,8 @@ exports.retryFailedPayment = async (bookingPaymentId) => {
 
     if (originalPayment.paymentType === "bank") {
       // GoCardless retry
-      if (!originalPayment.goCardlessMandateId) throw new Error("Bank payment requires mandateId");
+      if (!originalPayment.goCardlessMandateId)
+        throw new Error("Bank payment requires mandateId");
 
       const retryResult = await createOneOffPaymentGcViaApi({
         mandateId: originalPayment.goCardlessMandateId,
@@ -3623,49 +3654,55 @@ exports.retryFailedPayment = async (bookingPaymentId) => {
         description: originalPayment.description || "Retry failed payment",
       });
 
-      if (!retryResult.status) throw new Error(retryResult.message || "GoCardless retry failed");
+      if (!retryResult.status)
+        throw new Error(retryResult.message || "GoCardless retry failed");
 
       gatewayResponse = retryResult.gatewayResponse || retryResult.payment;
       paymentStatusFromGateway = retryResult.paymentStatus || "pending";
-
     } else if (originalPayment.paymentType === "accesspaysuite") {
       // AccessPaySuite retry placeholder
       gatewayResponse = { message: "AccessPaySuite retry not implemented yet" };
       paymentStatusFromGateway = "pending";
       paymentUrl = null;
-
     } else {
-      throw new Error(`Unsupported paymentType: ${originalPayment.paymentType}`);
+      throw new Error(
+        `Unsupported paymentType: ${originalPayment.paymentType}`,
+      );
     }
 
     // Step 4: Create new BookingPayment row
-    const retryPayment = await BookingPayment.create({
-      bookingId: originalPayment.bookingId,
-      studentId: originalPayment.studentId,
-      paymentType: originalPayment.paymentType,
-      referenceId: originalPayment.referenceId,
-      paymentStatus: paymentStatusFromGateway,
-      amount: originalPayment.amount,
-      price: originalPayment.price,
-      firstName: originalPayment.firstName,
-      lastName: originalPayment.lastName,
-      email: originalPayment.email,
-      merchantRef: `TXN-${Math.floor(1000 + Math.random() * 9000)}`,
-      description: originalPayment.description,
-      gatewayResponse,
-      goCardlessMandateId: originalPayment.goCardlessMandateId || null,
-      goCardlessPaymentId: originalPayment.goCardlessPaymentId || null,
-      goCardlessCustomer: originalPayment.goCardlessCustomer || null,
-      goCardlessBankAccount: originalPayment.goCardlessBankAccount || null,
-      goCardlessBillingRequest: originalPayment.goCardlessBillingRequest || null,
-      contractId: originalPayment.contractId || null,
-      directDebitRef: originalPayment.directDebitRef || null,
-      transactionMeta: { status: paymentStatusFromGateway },
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }, { transaction: t });
+    const retryPayment = await BookingPayment.create(
+      {
+        bookingId: originalPayment.bookingId,
+        studentId: originalPayment.studentId,
+        paymentType: originalPayment.paymentType,
+        referenceId: originalPayment.referenceId,
+        paymentStatus: paymentStatusFromGateway,
+        amount: originalPayment.amount,
+        price: originalPayment.price,
+        firstName: originalPayment.firstName,
+        lastName: originalPayment.lastName,
+        email: originalPayment.email,
+        merchantRef: `TXN-${Math.floor(1000 + Math.random() * 9000)}`,
+        description: originalPayment.description,
+        gatewayResponse,
+        goCardlessMandateId: originalPayment.goCardlessMandateId || null,
+        goCardlessPaymentId: originalPayment.goCardlessPaymentId || null,
+        goCardlessCustomer: originalPayment.goCardlessCustomer || null,
+        goCardlessBankAccount: originalPayment.goCardlessBankAccount || null,
+        goCardlessBillingRequest:
+          originalPayment.goCardlessBillingRequest || null,
+        contractId: originalPayment.contractId || null,
+        directDebitRef: originalPayment.directDebitRef || null,
+        transactionMeta: { status: paymentStatusFromGateway },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      { transaction: t },
+    );
 
-    if (DEBUG) console.log("✅ Retry BookingPayment created with ID:", retryPayment.id);
+    if (DEBUG)
+      console.log("✅ Retry BookingPayment created with ID:", retryPayment.id);
 
     await t.commit();
 
@@ -3676,7 +3713,6 @@ exports.retryFailedPayment = async (bookingPaymentId) => {
       paymentStatus: paymentStatusFromGateway,
       paymentUrl,
     };
-
   } catch (error) {
     console.error("❌ retryFailedPayment error:", error.message);
     await t.rollback();

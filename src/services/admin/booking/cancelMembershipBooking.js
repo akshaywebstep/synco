@@ -12,7 +12,7 @@ const {
 } = require("../../../models");
 const { getEmailConfig } = require("../../email");
 const sendEmail = require("../../../utils/email/sendEmail");
-const { cancelContract, } = require("../../../utils/payment/accessPaySuit/accesPaySuit");
+const { cancelContract, cancelDirectDebit, archiveContract, } = require("../../../utils/payment/accessPaySuit/accesPaySuit");
 const {
   cancelGoCardlessPayment,
   cancelGoCardlessSubscription,
@@ -71,6 +71,9 @@ exports.createCancelBooking = async ({
     }
 
     let paymentCancelled = false;
+
+    let apsContractHandled = false;
+    let apsContractId = null;
 
     // --------------------------------------------------
     // LOOP ALL PAYMENTS
@@ -158,6 +161,7 @@ exports.createCancelBooking = async ({
       // ==================================================
 
       else if (payment.paymentType === "accesspaysuite") {
+
         let gatewayResponse = payment.gatewayResponse;
 
         if (typeof gatewayResponse === "string") {
@@ -169,35 +173,83 @@ exports.createCancelBooking = async ({
           payment.contractId;
 
         if (!contractId)
-          throw new Error(
-            "Missing AccessPaySuite contract ID"
-          );
+          throw new Error("Missing AccessPaySuite contract ID");
 
-        const apsCancelParams = {
-          reason: cancelReason || "Membership cancelled",
-        };
+        apsContractId = contractId;
 
-        if (cancellationType === "scheduled" && cancelDate) {
-          apsCancelParams.cancelOn = cancelDate;
+        const status = payment.paymentStatus;
+
+        // --------------------------------------------------
+        // PAID PAYMENT → DO NOTHING
+        // --------------------------------------------------
+
+        if (status === "paid" || status === "confirmed") {
+
+          console.log("✅ Payment already paid, skipping cancel");
+
+          continue;
         }
 
-        const apsResponse = await cancelContract(
-          contractId,
-          apsCancelParams
-        );
+        // --------------------------------------------------
+        // PENDING PAYMENT → CANCEL IN DB
+        // --------------------------------------------------
 
-        if (!apsResponse?.status) {
-          throw new Error(
-            "Failed to cancel AccessPaySuite contract"
+        if (
+          status === "pending" ||
+          status === "pending_submission" ||
+          status === "submitted"
+        ) {
+
+          await payment.update(
+            { paymentStatus: "cancelled" },
+            { transaction: t }
           );
+
+          paymentCancelled = true;
         }
 
-        await payment.update(
-          { paymentStatus: "cancelled" },
-          { transaction: t }
-        );
+        // --------------------------------------------------
+        // CONTRACT CANCEL (ONLY ONCE)
+        // --------------------------------------------------
 
-        paymentCancelled = true;
+        if (!apsContractHandled) {
+
+          console.log("APS Contract:", contractId);
+
+          const ddCancel = await cancelDirectDebit(contractId);
+
+          if (!ddCancel?.status)
+            throw new Error("Failed to cancel Direct Debit");
+
+          console.log("Direct Debit cancelled");
+
+          const apsCancelParams = {
+            reason: cancelReason || "Membership cancelled",
+          };
+
+          if (cancellationType === "scheduled" && cancelDate) {
+            apsCancelParams.cancelOn = cancelDate;
+          }
+
+          const apsCancelResponse = await cancelContract(
+            contractId,
+            apsCancelParams
+          );
+
+          if (!apsCancelResponse?.status)
+            throw new Error("Failed to cancel AccessPaySuite contract");
+
+          console.log("Contract cancelled");
+
+          const archiveRes = await archiveContract(contractId);
+
+          if (!archiveRes?.status)
+            throw new Error("Failed to archive contract");
+
+          console.log("Contract archived");
+
+          apsContractHandled = true;
+        }
       }
 
       else {

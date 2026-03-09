@@ -15,7 +15,7 @@ const {
 const { Op } = require("sequelize");
 
 const { freezeContract, reactivateContract } = require("../../../utils/payment/accessPaySuit/accesPaySuit");
-const { pauseGoCardlessSubscription,resumeGoCardlessSubscription } = require("../../../utils/payment/pay360/customer");
+const { pauseGoCardlessSubscription, resumeGoCardlessSubscription } = require("../../../utils/payment/pay360/customer");
 const DEBUG = process.env.DEBUG === "true";
 
 exports.createFreezeBooking = async ({
@@ -83,34 +83,31 @@ exports.createFreezeBooking = async ({
 
     // 🔹 5. Freeze in Access PaySuite (ONLY if APS)
     if (bookingPayment.paymentCategory === "recurring") {
+
       if (bookingPayment.paymentType === "accesspaysuite") {
+
         let gatewayResponse = bookingPayment.gatewayResponse;
 
-        // ✅ Handle both normal JSON object and escaped JSON string
+        // Parse gatewayResponse safely
         try {
           if (typeof gatewayResponse === "string") {
             gatewayResponse = JSON.parse(gatewayResponse);
-
-            // If it was double-escaped (like your example), parse again
-            if (typeof gatewayResponse === "string" && gatewayResponse.startsWith("{")) {
-              gatewayResponse = JSON.parse(gatewayResponse);
-            }
           }
         } catch (err) {
-          console.warn("⚠️ Failed to parse gatewayResponse, using as-is:", err);
+          console.warn("⚠️ gatewayResponse parse failed:", err);
         }
 
-        // ✅ Resolve contractId correctly
+        // Resolve contractId
         const contractId =
-          bookingPayment.contractId || // direct column
-          gatewayResponse?.contract?.Id || // APS v1 style
-          gatewayResponse?.contract?.id; // APS v2 style
+          bookingPayment.contractId ||
+          gatewayResponse?.contract?.Id ||
+          gatewayResponse?.contract?.id;
 
         if (!contractId) {
           await t.rollback();
           return {
             status: false,
-            message: "APS contract ID missing for this booking.",
+            message: "AccessPaySuite contract ID missing.",
           };
         }
 
@@ -118,10 +115,19 @@ exports.createFreezeBooking = async ({
           console.log("🔒 Freezing APS contract:", contractId);
         }
 
+        // APS expects YYYY-MM-DD
+        const freezeFrom = new Date(freezeStartDate)
+          .toISOString()
+          .split("T")[0];
+
+        const freezeTo = reactivateOn
+          .toISOString()
+          .split("T")[0];
+
         const apsFreezeResponse = await freezeContract(contractId, {
-          from: freezeStartDate,
-          to: reactivateOn,
-          comment: reasonForFreezing || "Membership freeze",
+          FreezeFrom: freezeFrom,
+          FreezeTo: freezeTo,
+          Reason: reasonForFreezing || "Membership freeze",
         });
 
         if (!apsFreezeResponse?.status) {
@@ -130,12 +136,12 @@ exports.createFreezeBooking = async ({
             status: false,
             message:
               apsFreezeResponse?.message ||
-              "Failed to freeze membership in Access PaySuite.",
+              "Failed to freeze contract in AccessPaySuite.",
           };
         }
 
         if (DEBUG) {
-          console.log("✅ APS freeze successful for contract:", contractId);
+          console.log("✅ APS contract frozen successfully:", contractId);
         }
       }
       // 🔹 5B. Freeze in GoCardless (ONLY if bank)

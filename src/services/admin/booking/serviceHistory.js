@@ -30,7 +30,9 @@ const {
   getSchedules,
   createAccessPaySuiteCustomer,
   createContract,
-  createOneOffPayment
+  createOneOffPayment,
+  createCustomerPayment,
+  createContractPayment,
 } = require("../../../utils/payment/accessPaySuit/accesPaySuit");
 const {
   createCustomer,
@@ -483,7 +485,10 @@ exports.updateBooking = async (payload, adminId, id) => {
       const overrideToken = venueOwnerAdmin?.GC_FRANCHISE_TOKEN || null;
       // Always use GoCardless
       // No switching
-      const paymentType = "bank";
+      const paymentType = payload.payment?.paymentType || "bank";
+      if (DEBUG) {
+        console.log("Step 5: Start payment process, paymentType:", paymentType);
+      }
       // const isHQVenue = !overrideToken;
       if (DEBUG)
         console.log("Step 5: Start payment process, paymentType:", paymentType);
@@ -760,7 +765,8 @@ exports.updateBooking = async (payload, adminId, id) => {
             const createMandateRes = await createMandate(
               {
                 customerBankAccountId: gcBankAccount.id,
-                contract: { bookingId: booking.bookingId }, // number or string works now
+                // contract: { bookingId: booking.bookingId }, // number or string works now
+                contract: { bookingId: booking.id }, // ✅ MUST HAVE booking.id for metadata
                 scheme: "bacs",
               },
               overrideToken,
@@ -856,7 +862,7 @@ exports.updateBooking = async (payload, adminId, id) => {
             }
             // 🔥 FULL PAYMENT FOR 1 MONTH PLAN
             // if (paymentPlan.duration === 1) {
-               if (paymentPlan.duration === 1 && (!payload.payment?.proRataAmount || payload.payment.proRataAmount === 0)) {
+            if (paymentPlan.duration === 1 && (!payload.payment?.proRataAmount || payload.payment.proRataAmount === 0)) {
 
 
               console.log("🔥 One month plan → creating single payment");
@@ -985,246 +991,263 @@ exports.updateBooking = async (payload, adminId, id) => {
             throw new Error(`GoCardless Payment Error: ${err.message}`);
           }
         } else if (paymentType === "accesspaysuite") {
-          if (DEBUG)
-            console.log("🔁 Processing Access PaySuite recurring payment");
+          if (DEBUG) console.log("🔁 Processing Access PaySuite payment");
 
+          // 1️⃣ GET SCHEDULE
           const schedulesRes = await getSchedules();
-          if (!schedulesRes.status) {
-            throw new Error("Access PaySuite: Failed to fetch schedules");
-          }
+
+          if (!schedulesRes.status)
+            throw new Error("Failed to fetch APS schedules");
 
           const services = schedulesRes.data?.Services || [];
-          const schedules = services.flatMap(
-            (service) => service.Schedules || [],
-          );
+          const schedules = services.flatMap((s) => s.Schedules || []);
 
-          let matchedSchedule = findMatchingSchedule(schedules, paymentPlan);
+          const matchedSchedule = findMatchingSchedule(schedules, paymentPlan);
 
-          if (!matchedSchedule) {
-            throw new Error(
-              `Access PaySuite: Schedule "Default Schedule" not found. Please create this schedule in APS dashboard before proceeding.`,
-            );
-          }
+          if (!matchedSchedule)
+            throw new Error("AccessPaySuite schedule not found");
 
-          const scheduleId = matchedSchedule.ScheduleId;
+          /*
+          =====================================
+          2️⃣ CREATE CUSTOMER
+          =====================================
+           */
 
           const customerPayload = {
             email: payload.payment?.email || payload.parents?.[0]?.parentEmail,
             title: "Mr",
-            customerRef: `BOOK-${booking.id}-${Date.now()}`,
+            customerRef: `CUS-${booking.id}-${Date.now()}`,
             firstName:
               payload.payment?.firstName || payload.parents?.[0]?.parentFirstName,
             surname:
               payload.payment?.lastName || payload.parents?.[0]?.parentLastName,
-            line1: payload.payment?.addressLine1 || "10 Downing Street",
-            postCode: payload.payment?.postalCode || "SW1A 2AA",
             accountNumber: payload.payment?.account_number,
             bankSortCode: payload.payment?.branch_code,
             accountHolderName:
               payload.payment?.account_holder_name ||
               `${payload.parents?.[0]?.parentFirstName} ${payload.parents?.[0]?.parentLastName}`,
+            line1: payload.payment?.address_line1 || "Test Address",
+            town: payload.payment?.city || "London",
+            postcode: payload.payment?.postcode || "SW1A1AA",
+            country: "GB",
           };
 
           const customerRes =
             await createAccessPaySuiteCustomer(customerPayload);
-          if (!customerRes.status) {
-            throw new Error(customerRes.message); // ✅ gateway ka exact message
-          }
-          console.log("APS CREATE CUSTOMER RESPONSE:", customerRes);
+
+          if (!customerRes.status) throw new Error(customerRes.message);
+
           const customerId =
-            customerRes.data?.CustomerId ||
-            customerRes.data?.Id ||
-            customerRes.data?.customerId ||
-            customerRes.data?.id;
+            customerRes.data?.CustomerId || customerRes.data?.Id;
 
-          if (!customerId)
-            throw new Error("Access PaySuite: Customer ID missing");
+          if (!customerId) throw new Error("APS: Customer ID missing");
 
-          // ================= PRO-RATA CONTRACT =================
+          /*
+          =====================================
+          3️⃣ CREATE CONTRACT
+           =====================================
+          */
+
+          const startDate = calculateContractStartDate(18);
+
+          const contractPayload = {
+            ScheduleId: matchedSchedule.ScheduleId,
+            Start: startDate,
+            TerminationType: paymentPlan.duration ? "Fixed term" : "Until further notice",
+          };
+
+          if (paymentPlan.duration) {
+            const start = new Date(startDate);
+            const end = new Date(start);
+
+            end.setMonth(end.getMonth() + Number(paymentPlan.duration));
+
+            contractPayload.TerminationDate = end.toISOString().split("T")[0];
+          }
+
+          // Debug log
+          console.log(
+            "APS Contract Payload:",
+            JSON.stringify(contractPayload, null, 2)
+          );
+
+          const contractRes = await createContract(customerId, contractPayload);
+
+          if (!contractRes.status) {
+            console.log("APS Error Response:", contractRes);
+            throw new Error(contractRes.message || "APS Contract creation failed");
+          }
+
+          const contractId =
+            contractRes.data?.contract?.Id || contractRes.data?.Id;
+
+          const directDebitRef =
+            contractRes.data?.contract?.DirectDebitRef ||
+            contractRes.data?.DirectDebitRef;
+
+          /*
+          =====================================
+          4️⃣ PRO-RATA PAYMENT
+          =====================================
+          */
+
           if (proRataTotal > 0) {
-            console.log("🔥 APS PRO RATA:", proRataTotal);
+            if (DEBUG) console.log("🔥 APS PRO-RATA:", proRataTotal);
 
-            const proRataContractStartDate = calculateContractStartDate(18);
-            const proRataContractPayload = {
-              scheduleName: matchedSchedule.Name,
-              start: proRataContractStartDate,
-              isGiftAid: false,
-              terminationType: paymentPlan.duration
-                ? "Fixed term"
-                : "Until further notice",
-              atTheEnd: "Switch to further notice",
-              InitialAmount: proRataTotal,
-            };
-            if (paymentPlan.duration) {
-              const start = new Date(proRataContractStartDate);
-              const end = new Date(start);
-              end.setMonth(end.getMonth() + Number(paymentPlan.duration));
-              proRataContractPayload.TerminationDate = end
-                .toISOString()
-                .split("T")[0];
-            }
+            const proRataRes = await createContractPayment(contractId, {
+              amount: proRataTotal,
+              date: startDate,
+              description: `Pro-Rata - ${classSchedule.className}`,
+              reference: `PR-${booking.id}-${Date.now()}`,
+            });
 
-            const proRataContractRes = await createContract(
-              customerId,
-              proRataContractPayload,
-            );
-            if (proRataContractRes?.status) {
-              paymentStatusFromGateway = "contract_created";
-            }
-            if (!proRataContractRes.status)
-              throw new Error(
-                "Access PaySuite: Pro-rata contract creation failed",
-              );
+            if (!proRataRes.status) throw new Error(proRataRes.message);
 
-            // Save PRO-RATA as separate BookingPayment row
             await BookingPayment.create({
               bookingId: booking.id,
               paymentPlanId: booking.paymentPlanId,
               studentId: firstStudentId,
+              firstName: payload.payment?.firstName || payload.parents?.[0]?.parentFirstName,
+              lastName: payload.payment?.lastName || payload.parents?.[0]?.parentLastName,
+              email: payload.payment?.email || payload.parents?.[0]?.parentEmail,
+              merchantRef: proRataRes?.data?.Id,
+              price: proRataTotal,
               paymentType: "accesspaysuite",
               paymentCategory: "pro_rata",
-              firstName:
-                payload.payment?.firstName ||
-                payload.parents?.[0]?.parentFirstName ||
-                "",
-              lastName:
-                payload.payment?.lastName ||
-                payload.parents?.[0]?.parentLastName ||
-                "",
-              email:
-                payload.payment?.email || payload.parents?.[0]?.parentEmail || "",
               amount: proRataTotal,
-              price: proRataTotal,
-              billingAddress: payload.payment?.billingAddress || "",
-              account_number: payload.payment?.account_number || "",
-              branch_code: payload.payment?.branch_code || "",
-              account_holder_name: payload.payment?.account_holder_name || "",
-              paymentStatus: paymentStatusFromGateway, // ✅ FINAL STATUS
               currency: "GBP",
-              merchantRef: `PR-${booking.id}-${Date.now()}`,
-              description: `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"} (Pro-rata)`,
-              commerceType: "ECOM",
-              gatewayResponse: {
-                gateway: "accesspaysuite",
-                schedule: matchedSchedule,
-                customer: customerRes.data,
-                contract: proRataContractRes.data,
-              },
-              contractId:
-                proRataContractRes?.data?.contract?.Id ||
-                proRataContractRes?.data?.Id,
-              directDebitRef:
-                proRataContractRes?.data?.contract?.DirectDebitRef ||
-                proRataContractRes?.data?.DirectDebitRef,
-              transactionMeta: { status: "active" },
-              goCardlessCustomer: null,
-              goCardlessBankAccount: null,
-              goCardlessBillingRequest: null,
+              paymentStatus: "pending",
+              contractId,
+              directDebitRef,
+              gatewayResponse: proRataRes.data,
               createdAt: new Date(),
               updatedAt: new Date(),
-              // transaction: t
+            });
+          }
+
+          /*
+          =====================================
+          5️⃣ ONE MONTH PLAN
+          =====================================
+          */
+
+          if (paymentPlan.duration === 1 && proRataTotal === 0) {
+
+            const fullRes = await createContractPayment(contractId, {
+              amount: recurringAmount,
+              date: startDate,
+              description: `Full payment - ${classSchedule.className}`,
+              reference: `FULL-${booking.id}-${Date.now()}`,
             });
 
-            console.log("✅ APS pro-rata row saved same as recurring");
+            if (!fullRes.status) throw new Error(fullRes.message);
+
+            await BookingPayment.create({
+              bookingId: booking.id,
+              paymentPlanId: booking.paymentPlanId,
+              studentId: firstStudentId,
+              firstName: payload.payment?.firstName || payload.parents?.[0]?.parentFirstName,
+              lastName: payload.payment?.lastName || payload.parents?.[0]?.parentLastName,
+              email: payload.payment?.email || payload.parents?.[0]?.parentEmail,
+
+              merchantRef: fullRes?.data?.Id,
+
+              price: recurringAmount,
+              paymentType: "accesspaysuite",
+              paymentCategory: "full_payment",
+              amount: recurringAmount,
+              currency: "GBP",
+              paymentStatus: "pending",
+
+              contractId,
+              directDebitRef,
+              gatewayResponse: fullRes.data,
+
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
           }
 
-          // ================= RECURRING CONTRACT =================
-          const recurringContractStartDate = calculateContractStartDate(18);
-          const recurringContractPayload = {
-            scheduleName: matchedSchedule.Name,
-            start: recurringContractStartDate,
-            isGiftAid: false,
-            terminationType: paymentPlan.duration
-              ? "Fixed term"
-              : "Until further notice",
-            atTheEnd: "Switch to further notice",
-          };
-          if (paymentPlan.duration) {
-            const start = new Date(recurringContractStartDate);
-            const end = new Date(start);
-            end.setMonth(end.getMonth() + Number(paymentPlan.duration));
-            recurringContractPayload.TerminationDate = end
-              .toISOString()
-              .split("T")[0];
+          /*
+          =====================================
+         6️⃣ RECURRING MEMBERSHIP
+         =====================================
+          */
+          if (paymentPlan.duration > 1) {
+
+            const recurringMonths = proRataTotal > 0
+              ? paymentPlan.duration - 1
+              : paymentPlan.duration;
+
+            for (let i = 0; i < recurringMonths; i++) {
+
+              const paymentDate = new Date(startDate);
+              paymentDate.setMonth(paymentDate.getMonth() + i + 1);
+
+              const paymentRes = await createContractPayment(contractId, {
+                amount: recurringAmount,
+                date: paymentDate.toISOString().split("T")[0],
+                description: `Month ${i + 1} - ${classSchedule.className}`,
+                reference: `REC-${booking.id}-${i}-${Date.now()}`
+              });
+
+              if (!paymentRes.status) throw new Error(paymentRes.message);
+
+              await BookingPayment.create({
+                bookingId: booking.id,
+                paymentPlanId: booking.paymentPlanId,
+                studentId: firstStudentId,
+                firstName: payload.payment?.firstName || payload.parents?.[0]?.parentFirstName,
+                lastName: payload.payment?.lastName || payload.parents?.[0]?.parentLastName,
+                email: payload.payment?.email || payload.parents?.[0]?.parentEmail,
+
+                price: recurringAmount,
+                amount: recurringAmount,
+                currency: "GBP",
+
+                paymentType: "accesspaysuite",
+                paymentCategory: "recurring",
+                paymentStatus: "pending",
+
+                contractId,
+                directDebitRef,
+                merchantRef: paymentRes?.data?.Id,
+                gatewayResponse: paymentRes.data,
+
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              });
+
+            }
+
+            if (DEBUG) console.log("✅ APS All recurring payments created");
           }
 
-          console.log(
-            "APS Recurring Contract Payload:",
-            recurringContractPayload,
-          );
+          // if (paymentPlan.duration > 1) {
+          //   await BookingPayment.create({
+          //     bookingId: booking.id,
+          //     paymentPlanId: booking.paymentPlanId,
+          //     studentId: firstStudentId,
+          //     firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+          //     lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName,
+          //     email: data.payment?.email || data.parents?.[0]?.parentEmail,
 
-          recurringContractRes = await createContract(
-            customerId,
-            recurringContractPayload,
-          );
-          if (!recurringContractRes.status)
-            throw new Error(
-              "Access PaySuite: Recurring contract creation failed",
-            );
-          recurringContractId =
-            recurringContractRes?.data?.contract?.Id ||
-            recurringContractRes?.data?.Id;
+          //     price: recurringAmount,
 
-          recurringDirectDebitRef =
-            recurringContractRes?.data?.contract?.DirectDebitRef ||
-            recurringContractRes?.data?.DirectDebitRef;
+          //     paymentType: "accesspaysuite",
+          //     paymentCategory: "recurring",
+          //     amount: recurringAmount,
+          //     currency: "GBP",
+          //     paymentStatus: "pending",
+          //     contractId,
+          //     directDebitRef,
+          //     gatewayResponse: contractRes.data,
+          //     createdAt: new Date(),
+          //     updatedAt: new Date(),
+          //   });
 
-          gatewayResponse = {
-            gateway: "accesspaysuite",
-            schedule: matchedSchedule,
-            customer: customerRes.data,
-            contract: recurringContractRes.data,
-          };
-
-          paymentStatusFromGateway = "pending";
-        }
-
-        // Save BookingPayment
-        if (paymentType !== "bank") {
-          await BookingPayment.create({
-            bookingId: booking.id,
-            paymentPlanId: booking.paymentPlanId,
-            studentId: firstStudentId,
-            paymentType,
-            paymentCategory: "recurring",
-            firstName:
-              payload.payment.firstName ||
-              payload.parents?.[0]?.parentFirstName ||
-              "",
-            lastName:
-              payload.payment.lastName || payload.parents?.[0]?.parentLastName || "",
-            email: payload.payment.email || payload.parents?.[0]?.parentEmail || "",
-            amount: recurringAmount, // plan + pro-rata
-            price: recurringAmount, // plan + pro-rata
-            billingAddress: payload.payment.billingAddress || "",
-            account_number: payload.payment.account_number || "",
-            branch_code: payload.payment.branch_code || "",
-            account_holder_name: payload.payment.account_holder_name || "",
-            paymentStatus: paymentStatusFromGateway,
-            currency: "GBP",
-            merchantRef:
-              gatewayResponse?.transaction?.merchantRef || merchantRef,
-            description:
-              gatewayResponse?.transaction?.description ||
-              `${venue?.name || "Venue"} - ${classSchedule?.className || "Class"}`,
-            commerceType: "ECOM",
-            contractId:
-              paymentType === "accesspaysuite" ? recurringContractId : null,
-            directDebitRef:
-              paymentType === "accesspaysuite" ? recurringDirectDebitRef : null,
-            gatewayResponse,
-            transactionMeta: {
-              status: gatewayResponse?.transaction?.status || "pending",
-            },
-            goCardlessCustomer: gatewayResponse?.goCardlessCustomer || null,
-            goCardlessBankAccount:
-              gatewayResponse?.goCardlessBankAccount || null,
-            goCardlessBillingRequest:
-              gatewayResponse?.goCardlessBillingRequest || null,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            // transaction: t
-          });
+          //   if (DEBUG) console.log("✅ APS Recurring membership saved");
+          // }
         }
 
         if (paymentStatusFromGateway === "failed")
