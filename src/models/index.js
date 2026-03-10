@@ -134,9 +134,12 @@ const models = {
   MusicPlayer: require("./admin/coaches/MusicPlayer"),
   Course: require("./admin/coaches/Course"),
   Contracts: require("./admin/coaches/Contracts"),
+  CoachContract: require("./admin/coaches/CoachContract"),
   StudentCourse: require("./admin/coaches/StudentCourse"),
   Referral: require("./admin/referrals/Referral"),
   ContactUs: require("./admin/contactUs/ContactUs"),
+
+  CourseResult: require("./admin/coaches/CourseResult"),
 };
 
 // =================== Apply Model-Level Associations =================== //
@@ -249,8 +252,12 @@ const {
   StudentCourse,
   Referral,
   ContactUs,
+  CoachContract,
+  CourseResult,
 } = models;
 
+// Venue → Admin
+Venue.belongsTo(Admin, { foreignKey: "createdBy", as: "admins" });
 // Many-to-Many
 Term.belongsToMany(SessionPlanGroup, {
   through: "term_session_plan_groups",
@@ -722,4 +729,6 @@ module.exports = {
   StudentCourse,
   Referral,
   ContactUs,
+  CoachContract,
+  CourseResult,
 };

@@ -1,6 +1,7 @@
 const {
   Course,
   Admin,
+  CourseResult ,
 } = require("../../../models");
 const DEBUG = process.env.DEBUG === "true";
 const mm = require('music-metadata');
@@ -338,6 +339,30 @@ exports.deleteCourse = async (courseId, deletedBy) => {
         error?.parent?.sqlMessage ||
         error?.message ||
         "Failed to delete course.",
+    };
+  }
+};
+
+exports.submitCourse = async (data) => {
+  try {
+
+    const result = await CourseResult.create(data);
+
+    return {
+      status: true,
+      message: "Course result stored successfully.",
+      data: result,
+    };
+
+  } catch (error) {
+    console.error("❌ Sequelize Error in submitCourse:", error);
+
+    return {
+      status: false,
+      message:
+        error?.parent?.sqlMessage ||
+        error?.message ||
+        "Failed to store course result.",
     };
   }
 };

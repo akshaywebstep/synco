@@ -260,12 +260,11 @@ exports.login = async (req, res) => {
   }
 };
 
-// ✅ Verify token validity
 // ✅ Verify token validity and also return permissions
 exports.verifyLogin = async (req, res) => {
   try {
     // ✅ Support both Admin & Parent
-    const user = req.admin || req.parent;
+    const user = req.admin || req.parent || req.coach; // populated by middleware
 
     if (!user || !user.email) {
       return res.status(401).json({
@@ -555,7 +554,7 @@ exports.forgetPassword = async (req, res) => {
 
     // ✅ Allow only Admin or Parents
     const roleName = admin.role?.role;
-    if (!["Admin", "Parents","Super Admin","Coach"].includes(roleName)) {
+    if (!["Admin", "Parents", "Super Admin", "Coach"].includes(roleName)) {
       return res.status(403).json({
         message: "Password reset is not allowed for this account type.",
       });
@@ -598,11 +597,13 @@ exports.forgetPassword = async (req, res) => {
     }
 
     // 🌐 Redirect based on role
-    const redirectUrl =
-      roleName === "Parents"
-        ? "https://parent-dashboard-synco2.netlify.app/"
-        : "https://synco-admin-portal.netlify.app/admin-login";
-
+    if (roleName === "Parents") {
+      redirectUrl = "https://parent-dashboard-synco2.netlify.app/auth/login";
+    } else if (roleName === "Coach") {
+      redirectUrl = "https://coach-dashboard.netlify.app/coach-login";
+    } else {
+      redirectUrl = "https://synco-admin-portal.netlify.app/admin-login";
+    }
     const resetUrl = `${redirectUrl}?token=${resetToken}&email=${encodeURIComponent(
       admin.email
     )}`;
@@ -635,7 +636,7 @@ exports.forgetPassword = async (req, res) => {
 
     const htmlBody = replacePlaceholders(
       htmlTemplate ||
-        `<p>Hello {{name}},</p>
+      `<p>Hello {{name}},</p>
          <p>You requested a password reset for your {{role}} account.</p>
          <p><a href="{{resetUrl}}">Reset Password</a></p>
          <p>Valid until {{expiry}}</p>`

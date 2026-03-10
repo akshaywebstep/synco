@@ -10,6 +10,7 @@ const {
   SessionExercise,
   Admin,
   StarterPack,
+  AdminRole,
 } = require("../../../models");
 
 const { Op, Sequelize } = require("sequelize");
@@ -475,9 +476,26 @@ exports.getClassById = async (classId, adminId, createdBy) => {
           model: Venue,
           as: "venue",
           where: { createdBy: createdByIds },
-          attributes: { include: ["starterPack"] } // ✅ ADD THIS
+
+          attributes: { include: ["starterPack"] }, // ✅ starterPack same as before
+
+          include: [
+            {
+              model: Admin,
+              as: "admins", // Venue.createdBy → Admin.id
+              attributes: ["id", "firstName","lastName", "email", "roleId"],
+
+              include: [
+                {
+                  model: AdminRole,
+                  as: "role",
+                  attributes: ["id", "role"]
+                }
+              ]
+            }
+          ]
         }
-      ] // ✅ ensure venue belongs to admin
+      ]
     });
 
     if (!cls) {

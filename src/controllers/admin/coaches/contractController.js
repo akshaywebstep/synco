@@ -3,7 +3,7 @@ const fs = require("fs");
 const axios = require("axios");
 
 const { validateFormData } = require("../../../utils/validateFormData");
- 
+
 const urlToBase64 = require("../../../utils/urlToBase64");
 const contractService = require("../../../services/admin/coaches/contractService");
 
@@ -663,6 +663,110 @@ exports.convertUrlToBase = async (req, res) => {
         return res.status(500).json({
             status: false,
             message: "Internal server error"
+        });
+    }
+};
+
+
+/**
+ * Get All Contracts for caoch
+ */
+exports.getAllCoachesContracts = async (req, res) => {
+    try {
+        // Resolve super admin for access control
+        const mainSuperAdminResult = await getMainSuperAdminOfAdmin(req.coach?.id);
+        const superAdminId = mainSuperAdminResult?.superAdmin?.id ?? null;
+        if (DEBUG) console.log(`🧩 SuperAdminId resolved as: ${superAdminId}`);
+        // -----------------------------
+        // 1️⃣ Fetch from DB
+        // -----------------------------
+        const result = await contractService.getAllCoachesContracts(superAdminId, req.coach.id,);
+
+        // -----------------------------
+        // 2️⃣ Log Activity
+        // -----------------------------
+        await logActivity(req, PANEL, MODULE, "view", result, result.status);
+
+        if (!result.status) {
+            return res.status(500).json(result);
+        }
+
+        // -----------------------------
+        // 3️⃣ Parse tags properly
+        // -----------------------------
+        const contracts = result.data.map((contract) => ({
+            ...contract.toJSON(),
+            tags:
+                typeof contract.tags === "string"
+                    ? JSON.parse(contract.tags)
+                    : contract.tags,
+        }));
+
+        if (DEBUG) console.log("📤 Contracts:", contracts);
+
+        return res.status(200).json({
+            status: true,
+            message: "Contracts fetched successfully",
+            data: contracts,
+        });
+
+    } catch (error) {
+        console.error("❌ getAllContracts Error:", error);
+
+        await logActivity(
+            req,
+            PANEL,
+            MODULE,
+            "view",
+            error.message,
+            false
+        );
+
+        return res.status(500).json({
+            status: false,
+            message: error.message || "Server error while fetching contracts",
+        });
+    }
+};
+
+/**
+ * Assign Contract to Coach
+ */
+
+exports.assignContractToCoach = async (req, res) => {
+    try {
+
+        const coachId = req.coach?.id;
+        const { contractId } = req.body;
+
+        if (!coachId) {
+            return res.status(401).json({
+                status: false,
+                message: "Coach not authenticated"
+            });
+        }
+
+        if (!contractId) {
+            return res.status(400).json({
+                status: false,
+                message: "Contract ID is required"
+            });
+        }
+
+        const result = await contractService.assignContractToCoach(
+            coachId,
+            contractId
+        );
+
+        return res.status(result.status ? 200 : 400).json(result);
+
+    } catch (error) {
+
+        console.error("❌ assignContractToCoach Error:", error);
+
+        return res.status(500).json({
+            status: false,
+            message: error.message || "Server error"
         });
     }
 };

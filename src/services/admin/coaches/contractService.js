@@ -1,4 +1,4 @@
-const { Contracts, Admin } = require("../../../models");
+const { Contracts, CoachContract, Admin } = require("../../../models");
 const { Op } = require("sequelize");
 const path = require("path");
 const fs = require("fs");
@@ -334,6 +334,147 @@ exports.downloadContractPdf = async (
         return {
             status: false,
             message: error.message || "Failed to download contract PDF.",
+        };
+    }
+};
+
+
+/**
+ * Get  Contract for coach
+ */
+exports.getAllCoachesContracts = async (adminId, superAdminId) => {
+    try {
+
+        if (!adminId || isNaN(Number(adminId))) {
+            return {
+                status: false,
+                message: "No valid admin ID found for this request.",
+                data: [],
+            };
+        }
+
+        const whereCondition = {};
+        let allowedAdminIds = [];
+
+        // -----------------------------
+        // Admin scope logic
+        // -----------------------------
+        if (superAdminId && superAdminId === adminId) {
+
+            const managedAdmins = await Admin.findAll({
+                where: { superAdminId },
+                attributes: ["id"],
+            });
+
+            const adminIds = managedAdmins.map((a) => a.id);
+            adminIds.push(superAdminId);
+
+            allowedAdminIds = adminIds;
+
+            whereCondition.createdBy = { [Op.in]: adminIds };
+
+        } else if (superAdminId && adminId) {
+
+            allowedAdminIds = [adminId, superAdminId];
+            whereCondition.createdBy = { [Op.in]: allowedAdminIds };
+
+        } else {
+
+            allowedAdminIds = [adminId];
+            whereCondition.createdBy = adminId;
+        }
+
+        // -----------------------------
+        // 🔹 Contract Type Filter
+        // -----------------------------
+        whereCondition.contractType = "Head Coach";
+
+        // -----------------------------
+        // Fetch contracts
+        // -----------------------------
+        const contracts = await Contracts.findAll({
+            where: whereCondition,
+            order: [["createdAt", "DESC"]],
+        });
+
+        return {
+            status: true,
+            message: "Contracts fetched successfully.",
+            data: contracts,
+        };
+
+    } catch (error) {
+
+        console.error("❌ Sequelize Error in getAllContracts:", error);
+
+        return {
+            status: false,
+            message:
+                error?.parent?.sqlMessage ||
+                error?.message ||
+                "Failed to fetch contracts.",
+            data: [],
+        };
+    }
+};
+
+
+/**
+ * Assign contract to coach (create CoachContract entry)
+ */
+
+exports.assignContractToCoach = async (coachId, contractTemplateId) => {
+    try {
+
+        // check contract template exists
+        const contract = await Contracts.findByPk(contractTemplateId);
+
+        if (!contract) {
+            return {
+                status: false,
+                message: "Contract template not found"
+            };
+        }
+
+        // check already assigned
+        const existing = await CoachContract.findOne({
+            where: {
+                coachId,
+                contractTemplateId
+            }
+        });
+
+        if (existing) {
+            return {
+                status: false,
+                message: "Contract already assigned to this coach"
+            };
+        }
+
+        // create new assignment
+        const newAssignment = await CoachContract.create({
+            coachId,
+            contractTemplateId,
+            status: "signed",
+            signedAt: new Date()  
+        });
+
+        return {
+            status: true,
+            message: "Contract signed successfully",
+            data: newAssignment
+        };
+
+    } catch (error) {
+
+        console.error("❌ Sequelize Error in assignContractToCoach:", error);
+
+        return {
+            status: false,
+            message:
+                error?.parent?.sqlMessage ||
+                error?.message ||
+                "Failed to assign contract to coach.",
         };
     }
 };

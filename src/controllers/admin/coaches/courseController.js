@@ -506,3 +506,33 @@ exports.deleteCourse = async (req, res) => {
     });
   }
 };
+
+exports.submitCourseController = async (req, res) => {
+  try {
+
+    const { courseId, score, passed, answers } = req.body;
+
+    const result = await courseService.submitCourse({
+      courseId,
+      adminId: req.admin.id,
+      score,
+      passed,
+      answers,
+      completedAt: new Date(),
+    });
+
+    if (!result.status) {
+      return res.status(400).json(result);
+    }
+
+    return res.status(201).json(result);
+
+  } catch (error) {
+    console.error("❌ Controller Error:", error);
+
+    return res.status(500).json({
+      status: false,
+      message: "Server error occurred",
+    });
+  }
+};
