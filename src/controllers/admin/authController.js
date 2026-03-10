@@ -600,8 +600,8 @@ exports.forgetPassword = async (req, res) => {
     // 🌐 Redirect based on role
     const redirectUrl =
       roleName === "Parents"
-        ? "https://grabbite.com/parent-login"
-        : "https://synco-admin-frontend.netlify.app/admin-login";
+        ? "https://parent-dashboard-synco2.netlify.app/"
+        : "https://synco-admin-portal.netlify.app/admin-login";
 
     const resetUrl = `${redirectUrl}?token=${resetToken}&email=${encodeURIComponent(
       admin.email
