@@ -104,6 +104,7 @@ const BookingPayment = sequelize.define(
         "failed",
         "cancelled",
         "contract_created",
+        "confirmed"
       ),
       defaultValue: "pending",
     },
