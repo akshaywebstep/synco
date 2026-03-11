@@ -271,6 +271,7 @@ router.use("/referal/", require("./referal/referalRoutes"));
 
 // Webhook Routes for Gocardless
 router.use("/webhooks", gocardlessWebhookRoutes);
+router.use("/webhooks", accessPaysuiteWebhookRoutes);
 
 // Send Text Routes
 // router.use("/send/", require("./sendTextAllBookingRoutes/sendTextRoutes"));
