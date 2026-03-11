@@ -23,6 +23,7 @@ const {
 } = require("../../controllers/admin/recruitment/franchise/franchiseRecruitmentLeadController");
 
 const gocardlessWebhookRoutes = require("./gocardlessWebhook.routes");
+const accessPaysuiteWebhookRoutes = require("./accessPaysuiteWebhook.routes");
 
 const multer = require("multer");
 const upload = multer();

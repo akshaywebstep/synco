@@ -2,6 +2,7 @@ const path = require("path");
 const fs = require("fs");
 const { validateFormData } = require("../../../utils/validateFormData");
 const courseService = require("../../../services/admin/coaches/courseService.js");
+const { Course } = require("../../../models");
 
 const { logActivity } = require("../../../utils/admin/activityLogger");
 const { createNotification } = require("../../../utils/admin/notificationHelper");
@@ -510,11 +511,49 @@ exports.deleteCourse = async (req, res) => {
 exports.submitCourseController = async (req, res) => {
   try {
 
-    const { courseId, score, passed, answers } = req.body;
+    const { courseId, answers } = req.body;
+
+    if (!courseId || !answers) {
+      return res.status(400).json({
+        status: false,
+        message: "courseId and answers are required",
+      });
+    }
+
+    const course = await Course.findByPk(courseId);
+
+    let questions = course.questions;
+
+    if (typeof questions === "string") {
+      questions = JSON.parse(questions);
+    }
+
+    if (typeof questions === "string") {
+      questions = JSON.parse(questions);
+    }
+
+    if (!Array.isArray(questions)) {
+      return res.status(400).json({
+        status: false,
+        message: "Invalid questions format"
+      });
+    }
+
+    let correct = 0;
+
+    questions.forEach((q, index) => {
+      if (answers[index] === q.answer) {
+        correct++;
+      }
+    });
+
+    const score = Math.round((correct / questions.length) * 100);
+
+    const passed = score >= course.passingConditionValue;
 
     const result = await courseService.submitCourse({
       courseId,
-      adminId: req.admin.id,
+      adminId: req.coach.id,
       score,
       passed,
       answers,
@@ -525,7 +564,12 @@ exports.submitCourseController = async (req, res) => {
       return res.status(400).json(result);
     }
 
-    return res.status(201).json(result);
+    return res.status(201).json({
+      status: true,
+      message: "Course submitted successfully",
+      score,
+      passed,
+    });
 
   } catch (error) {
     console.error("❌ Controller Error:", error);

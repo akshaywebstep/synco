@@ -1,6 +1,7 @@
 const { validateFormData } = require("../../../utils/validateFormData");
 // const {BookingTrialService, sequelize}  = require("../../../services/admin/booking/serviceHistory");
 const BookingTrialService = require("../../../services/admin/booking/serviceHistory");
+const accountProfileService = require("../../../services/admin/booking/serviceHistory");
 const {
   sequelize,
   Booking,
@@ -825,4 +826,98 @@ exports.getAccountProfile = async (req, res) => {
     );
     return res.status(500).json({ status: false, message: "Server error." });
   }
+};
+
+
+exports.getAccountInformation = async (req, res) => {
+    try {
+        // ✅ Authenticated parent from middleware
+        const parentAdminId = req.params.parentAdminId;
+
+        if (!parentAdminId) {
+            await logActivity(
+                req,
+                PANEL,
+                MODULE,
+                "list",
+                { reason: "Parent not found in request" },
+                false
+            );
+
+            return res.status(401).json({
+                status: false,
+                panel: PANEL,
+                module: MODULE,
+                message: "Unauthorized. Parent not found.",
+            });
+        }
+
+        const result =
+            await accountProfileService.getAccountInformation(
+                parentAdminId
+            );
+
+        if (!result?.status) {
+            await logActivity(
+                req,
+                PANEL,
+                MODULE,
+                "list",
+                { reason: result?.message || "No bookings found" },
+                false
+            );
+
+            return res.status(404).json({
+                status: false,
+                panel: PANEL,
+                module: MODULE,
+                message: result?.message || "Bookings not found.",
+            });
+        }
+
+        // ✅ SUCCESS LOG
+        await logActivity(
+            req,
+            PANEL,
+            MODULE,
+            "list",
+            {
+                totalBookings: result?.data?.combinedBookings?.length || 0,
+            },
+            true
+        );
+
+        return res.status(200).json({
+            status: true,
+            panel: PANEL,
+            module: MODULE,
+            message: result.message,
+            data: result.data,
+        });
+    } catch (error) {
+        if (DEBUG) {
+            console.error(
+                `❌ [${PANEL.toUpperCase()}][${MODULE.toUpperCase()}]`,
+                error
+            );
+        }
+
+        // ❌ ERROR LOG
+        await logActivity(
+            req,
+            PANEL,
+            MODULE,
+            "list",
+            { error: error.message },
+            false
+        );
+
+        return res.status(500).json({
+            status: false,
+            panel: PANEL,
+            module: MODULE,
+            message: "Internal server error",
+            error: DEBUG ? error.message : undefined,
+        });
+    }
 };

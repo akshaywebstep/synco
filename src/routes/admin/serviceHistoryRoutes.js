@@ -8,6 +8,7 @@ const {
     getAccountProfile,
     updateBooking,
     updateBookingStudents,
+    getAccountInformation,
 } = require("../../controllers/admin/booking/serviceHistoryController");
 
 // router.get("/selected/:id", authMiddleware, getSelectedBookFreeTrials);
@@ -17,6 +18,14 @@ router.get(
     permissionMiddleware("service-history", "view-listing"),
     getAccountProfile
 );
+
+router.get(
+    "/account-information/:parentAdminId",
+    authMiddleware,
+    permissionMiddleware("service-history", "view-listing"),
+    getAccountInformation
+);
+
 router.put(
     "/trial-to-membership/:id",
     authMiddleware,
