@@ -163,32 +163,33 @@ exports.createFreezeBooking = async ({
           console.log("✅ APS contract frozen successfully:", contractId);
         }
       }
-      // 🔹 5B. Freeze in GoCardless (ONLY if bank)
-      else if (bookingPayment.paymentType === "bank") {
 
-        const subscriptionId = bookingPayment.goCardlessSubscriptionId;
+    }
+    // 🔹 5B. Freeze in GoCardless (ONLY if bank)
+    else if (bookingPayment.paymentType === "bank") {
 
-        if (!subscriptionId) {
-          await t.rollback();
-          return {
-            status: false,
-            message: "GoCardless subscription ID missing."
-          };
-        }
+      const subscriptionId = bookingPayment.goCardlessSubscriptionId;
 
-        const gcPauseResponse = await pauseGoCardlessSubscription({
-          subscriptionId,
-          freezeDurationMonths,
-          reasonForFreezing
-        });
+      if (!subscriptionId) {
+        await t.rollback();
+        return {
+          status: false,
+          message: "GoCardless subscription ID missing."
+        };
+      }
 
-        if (!gcPauseResponse?.status) {
-          await t.rollback();
-          return {
-            status: false,
-            message: gcPauseResponse.message
-          };
-        }
+      const gcPauseResponse = await pauseGoCardlessSubscription({
+        subscriptionId,
+        freezeDurationMonths,
+        reasonForFreezing
+      });
+
+      if (!gcPauseResponse?.status) {
+        await t.rollback();
+        return {
+          status: false,
+          message: gcPauseResponse.message
+        };
       }
     }
 
