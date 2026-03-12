@@ -2945,12 +2945,13 @@ exports.convertToMembership = async (data, options) => {
 
             for (let i = 0; i < recurringMonths; i++) {
 
-              const paymentDate = new Date(startDate);
-              paymentDate.setMonth(paymentDate.getMonth() + i + 1);
+             
+              // ✅ Always 1st of month
+              const paymentDate = getAPSNextPaymentDateFixed(i + 1);
 
               const paymentRes = await createContractPayment(contractId, {
                 amount: recurringAmount,
-                date: paymentDate.toISOString().split("T")[0],
+                date: paymentDate,
                 description: `Month ${i + 1} - ${classSchedule.className}`,
                 reference: `REC-${booking.id}-${i}-${Date.now()}`
               });

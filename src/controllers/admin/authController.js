@@ -602,7 +602,7 @@ exports.forgetPassword = async (req, res) => {
     } else if (roleName === "Coach") {
       redirectUrl = "https://coach-dashboard.netlify.app/coach-login";
     } else {
-      redirectUrl = "https://synco-admin-portal.netlify.app/admin-login";
+      redirectUrl = "https://synco-portal.netlify.app/admin-login";
     }
     const resetUrl = `${redirectUrl}?token=${resetToken}&email=${encodeURIComponent(
       admin.email
