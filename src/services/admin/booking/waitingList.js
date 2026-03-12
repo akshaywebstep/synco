@@ -2858,7 +2858,7 @@ exports.convertToMembership = async (data, options) => {
 
             const proRataRes = await createContractPayment(contractId, {
               amount: proRataTotal,
-              date: startDate,
+              date: apsStartDate,
               description: `Pro-Rata - ${classSchedule.className}`,
               reference: `PR-${booking.id}-${Date.now()}`,
             });
