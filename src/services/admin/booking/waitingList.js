@@ -176,6 +176,30 @@ async function createBookingPayment({
     updatedAt: new Date(),
   });
 }
+function validateUKBankDetails(accountNumber, sortCode) {
+  if (!accountNumber || !/^\d{8}$/.test(accountNumber)) {
+    return {
+      status: false,
+      message: "Invalid account number. It must be exactly 8 digits."
+    };
+  }
+
+  // remove dashes if user sends 12-34-56
+  const cleanedSortCode = sortCode ? sortCode.replace(/-/g, "") : "";
+
+  if (!cleanedSortCode || !/^\d{6}$/.test(cleanedSortCode)) {
+    return {
+      status: false,
+      message: "Invalid sort code. It must be exactly 6 digits."
+    };
+  }
+
+  return {
+    status: true,
+    accountNumber,
+    sortCode: cleanedSortCode
+  };
+}
 
 
 async function updateBookingStats() {
@@ -1879,6 +1903,30 @@ exports.removeWaitingList = async ({ bookingId, reason, notes }) => {
 
 
 exports.convertToMembership = async (data, options) => {
+  // 🔐 BANK DETAILS VALIDATION (PAYLOAD LEVEL)
+
+  if (
+    data.payment?.paymentType === "bank" ||
+    data.payment?.paymentType === "accesspaysuite"
+  ) {
+    const accountNumber = data.payment?.account_number;
+    const sortCode = data.payment?.branch_code;
+
+    const validation = validateUKBankDetails(accountNumber, sortCode);
+
+    if (!validation.status) {
+      return {
+        status: false,
+        message: validation.message,
+      };
+    }
+
+    // normalize values
+    data.payment.account_number = validation.accountNumber;
+    data.payment.branch_code = validation.sortCode;
+
+    console.log("✅ Bank details validated from payload");
+  }
   const t = await sequelize.transaction();
   try {
     const adminId = options?.adminId || null;

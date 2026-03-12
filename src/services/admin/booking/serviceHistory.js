@@ -278,12 +278,54 @@ function applyTimeBasedDiscount(price, bookingCreatedAt) {
   // After that → no discount
   return price;
 }
+function validateUKBankDetails(accountNumber, sortCode) {
+  if (!accountNumber || !/^\d{8}$/.test(accountNumber)) {
+    return {
+      status: false,
+      message: "Invalid account number. It must be exactly 8 digits."
+    };
+  }
+
+  // remove dashes if user sends 12-34-56
+  const cleanedSortCode = sortCode ? sortCode.replace(/-/g, "") : "";
+
+  if (!cleanedSortCode || !/^\d{6}$/.test(cleanedSortCode)) {
+    return {
+      status: false,
+      message: "Invalid sort code. It must be exactly 6 digits."
+    };
+  }
+
+  return {
+    status: true,
+    accountNumber,
+    sortCode: cleanedSortCode
+  };
+}
+
 
 exports.updateBooking = async (payload, adminId, id) => {
   const t = await sequelize.transaction();
   try {
     if (!id) throw new Error("Booking ID is required.");
+    // 🔹 BANK VALIDATION BEFORE BOOKING UPDATE
+    if (
+      payload.payment?.paymentType === "bank" ||
+      payload.payment?.paymentType === "accesspaysuite"
+    ) {
+      const accountNumber = payload.payment?.account_number;
+      const sortCode = payload.payment?.branch_code;
 
+      const validation = validateUKBankDetails(accountNumber, sortCode);
+
+      if (!validation.status) {
+        throw new Error(validation.message);
+      }
+
+      // cleaned values store
+      payload.payment.account_number = validation.accountNumber;
+      payload.payment.branch_code = validation.sortCode;
+    }
     // 🔹 Step 1: Fetch existing booking
     const booking = await Booking.findOne({
       where: { id },

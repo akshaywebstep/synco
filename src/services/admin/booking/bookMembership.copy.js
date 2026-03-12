@@ -142,30 +142,6 @@ function findMatchingSchedule(schedules) {
     (s) => s.Name && s.Name.trim().toLowerCase() === "monthly",
   );
 }
-function validateUKBankDetails(accountNumber, sortCode) {
-  if (!accountNumber || !/^\d{8}$/.test(accountNumber)) {
-    return {
-      status: false,
-      message: "Invalid account number. It must be exactly 8 digits."
-    };
-  }
-
-  // remove dashes if user sends 12-34-56
-  const cleanedSortCode = sortCode ? sortCode.replace(/-/g, "") : "";
-
-  if (!cleanedSortCode || !/^\d{6}$/.test(cleanedSortCode)) {
-    return {
-      status: false,
-      message: "Invalid sort code. It must be exactly 6 digits."
-    };
-  }
-
-  return {
-    status: true,
-    accountNumber,
-    sortCode: cleanedSortCode
-  };
-}
 
 async function autoSyncFreezeBilling() {
   const logs = [];
@@ -281,8 +257,22 @@ async function autoSyncFreezeBilling() {
     };
   }
 }
-// GBP → pence (GoCardless only)
-
+async function fetchAndLockClassSchedule(scheduleId, transaction, retries = 3) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const schedule = await ClassSchedule.findByPk(scheduleId, {
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (!schedule) throw new Error(`Schedule ${scheduleId} not found`);
+      return schedule;
+    } catch (err) {
+      if (attempt === retries) throw err;
+      console.log(`⚠️ Lock attempt ${attempt} failed, retrying...`);
+      await new Promise(r => setTimeout(r, 50 * attempt)); // small delay
+    }
+  }
+}
 // 🟢 Helper: create a payment row
 async function createBookingPayment({
   bookingId,
@@ -302,6 +292,7 @@ async function createBookingPayment({
   goCardlessMandateId,
   goCardlessSubscriptionId,
   goCardlessPaymentId,
+  transaction
 }) {
   return await BookingPayment.create({
     bookingId,
@@ -314,13 +305,13 @@ async function createBookingPayment({
     paymentType,
     description,
     paymentCategory,
-    paymentStatus, // ✅ NOW real status use hoga
+    paymentStatus,
     currency,
     merchantRef:
       gatewayResponse?.transaction?.merchantRef || `TXN-${Date.now()}`,
     gatewayResponse,
-    goCardlessMandateId, // ✅ SAVED
-    goCardlessSubscriptionId, // ✅ SAVED
+    goCardlessMandateId,
+    goCardlessSubscriptionId,
     account_holder_name: parent?.account_holder_name || null,
     account_number: parent?.account_number || null,
     branch_code: parent?.branch_code || null,
@@ -330,114 +321,448 @@ async function createBookingPayment({
     goCardlessPaymentId,
     createdAt: new Date(),
     updatedAt: new Date(),
-  });
+  }
+    // { transaction }
+  );
 }
 
-exports.createBooking = async (data, options) => {
-  const t = await sequelize.transaction();
+/**
+ * Process Stripe Starter Pack Payment
+ * @param {Object} data - booking data from frontend
+ * @param {Object} booking - Booking instance (Sequelize)
+ * @param {Object} firstStudent - First student object
+ * @returns {Object} - { status: true } if success, { status: false, message } if failed
+ */
+async function processStarterPackPayment(data, booking, firstStudent, transaction) {
   try {
+    const venueForStarter = await Venue.findByPk(data.venueId);
 
-    let parentAdminId = null;
-    const adminId = options?.adminId || null;
-    const parentPortalAdminId = options?.parentAdminId || null;
-
-    let source = "open"; // default = website
-
-    // Parent portal MUST win
-    if (parentPortalAdminId) {
-      source = "parent";
-    } else if (adminId) {
-      source = "admin";
-    }
-    const leadId = options?.leadId || null;
-
-    if (DEBUG) {
-      console.log("🔍 [DEBUG] Extracted adminId:", adminId);
-      console.log("🔍 [DEBUG] Extracted source:", source);
-      console.log("🔍 [DEBUG] Extracted leadId:", leadId);
+    if (!venueForStarter?.starterPack) {
+      console.log("⚠️ Starter pack not enabled for this venue");
+      return { status: true }; // nothing to do
     }
 
-    if (source === "parent") {
-      // 👪 Parent portal → already logged in
-      parentAdminId = parentPortalAdminId;
-    } else if (data.parents?.length > 0) {
-      const firstParent = data.parents[0];
-      const email = firstParent.parentEmail?.trim()?.toLowerCase();
+    const parent = data.parents?.[0];
+    if (!parent) throw new Error("Parent required for starter pack");
 
-      if (!email) throw new Error("Parent email is required");
+    const starterPackAmount = Number(data.starterPack || 0);
+    if (starterPackAmount <= 0) {
+      console.log("⚠️ Starter pack amount invalid or 0");
+      return { status: true };
+    }
 
-      const parentRole = await AdminRole.findOne({
-        where: { role: "Parents" },
-        transaction: t,
+    console.log("🔥 Charging Stripe Starter Pack:", starterPackAmount);
+
+    const stripeRes = await chargeStarterPack({
+      name: `${parent.parentFirstName} ${parent.parentLastName}`,
+      email: parent.parentEmail,
+      starterPack: { price: starterPackAmount },
+    });
+
+    if (!stripeRes?.status) {
+      console.log("❌ Stripe payment failed:", stripeRes?.message);
+      throw new Error(stripeRes?.message || "Starter pack payment failed");
+    }
+
+    console.log("✅ Stripe payment successful. Saving BookingPayment...");
+
+    // Save payment in DB
+    await createBookingPayment({
+      bookingId: booking.id,
+      studentId: firstStudent?.id,
+      firstName: data.payment?.firstName || parent.parentFirstName || "",
+      lastName: data.payment?.lastName || parent.parentLastName || "",
+      email: data.payment?.email || parent.parentEmail || "",
+      parent,
+      amount: starterPackAmount,
+      paymentType: "stripe",
+      paymentCategory: "starter_pack",
+      paymentStatus: "paid",
+      gatewayResponse: stripeRes.raw,
+      transaction
+      // transaction will be handled by outer caller
+    });
+
+    console.log("✅ Starter pack payment saved successfully");
+    return { status: true };
+  } catch (error) {
+    console.error("🔥 Stripe Starter Pack Error:", error.message);
+    return { status: false, message: error.message };
+  }
+}
+
+function validateUKBankDetails(accountNumber, sortCode) {
+  if (!accountNumber || !/^\d{8}$/.test(accountNumber)) {
+    return {
+      status: false,
+      message: "Invalid account number. It must be exactly 8 digits."
+    };
+  }
+
+  // remove dashes if user sends 12-34-56
+  const cleanedSortCode = sortCode ? sortCode.replace(/-/g, "") : "";
+
+  if (!cleanedSortCode || !/^\d{6}$/.test(cleanedSortCode)) {
+    return {
+      status: false,
+      message: "Invalid sort code. It must be exactly 6 digits."
+    };
+  }
+
+  return {
+    status: true,
+    accountNumber,
+    sortCode: cleanedSortCode
+  };
+}
+
+/**
+ * Process Membership Payment (GoCardless / APS)
+ * @param {Object} data - booking & payment info from frontend
+ * @param {Object} booking - Booking instance
+ * @param {Object} firstStudent - First student object
+ * @param {Object} transaction - Sequelize transaction
+ * @returns {Object} - { status: true } if success, { status: false, message } if failed
+ */
+async function processMembershipPayment(data, booking, firstStudent) {
+  try {
+    const paymentType = data.payment?.paymentType || "bank";
+    const paymentPlan = await PaymentPlan.findByPk(booking.paymentPlanId);
+    if (!paymentPlan) throw new Error("Payment Plan not found for this booking.");
+    // fetch effective classScheduleId from first student
+    let effectiveScheduleId = firstStudent?.classScheduleId;
+    if (!effectiveScheduleId) throw new Error("Cannot determine classScheduleId");
+
+    const classSchedule = await ClassSchedule.findByPk(effectiveScheduleId);
+    console.log("🔍 Fetched ClassSchedule:", classSchedule);
+    if (!classSchedule) throw new Error(`ClassSchedule not found for ID: ${effectiveScheduleId}`);
+
+    // parse termIds
+    let termIds = [];
+    if (Array.isArray(classSchedule.termIds)) termIds = classSchedule.termIds;
+    else if (typeof classSchedule.termIds === "string") {
+      try { termIds = JSON.parse(classSchedule.termIds); } catch { termIds = []; }
+    }
+    console.log("🔍 Parsed termIds:", termIds);
+    const terms = await Term.findAll({ where: { id: termIds || [] } });
+    if (!terms.length) {
+      throw new Error("No terms found for this class schedule");
+    }
+    // const today = new Date(); today.setHours(0, 0, 0, 0);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const passedSessions = [], upcomingSessions = [];
+
+
+    terms.forEach((term) => {
+
+      let sessions = [];
+
+      if (typeof term.sessionsMap === "string") {
+        try {
+          sessions = JSON.parse(term.sessionsMap);
+        } catch (err) {
+          console.error("Failed to parse sessionsMap:", term.sessionsMap);
+          sessions = [];
+        }
+      }
+
+      sessions.forEach((session) => {
+
+        const sessionDate = new Date(session.sessionDate);
+        sessionDate.setHours(0, 0, 0, 0);
+
+        if (sessionDate < today) {
+          passedSessions.push(session);
+        } else {
+          upcomingSessions.push(session);
+        }
+
       });
 
-      const hashedPassword = await bcrypt.hash("Synco123", 10);
+    });
+    const totalPassedSessions = passedSessions.length;
+    const totalUpcomingSessions = upcomingSessions.length;
 
-      if (source === "admin") {
-        // 👨‍💼 ADMIN → ALWAYS create new parent
-        // 👨‍💼 ADMIN → Check duplicate email first
-        const existingAdmin = await Admin.findOne({
-          where: { email },
-          transaction: t,
+    console.log("Total Passed Sessions:", totalPassedSessions);
+    console.log("Total Upcoming Sessions:", totalUpcomingSessions);
+
+    // calculate monthlyClassCount
+    const monthlyClassCount = {};
+
+    upcomingSessions.forEach((upcomingSession) => {
+
+      const date = new Date(upcomingSession.sessionDate);
+
+      const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+
+      const key = year + "-" + (month < 10 ? "0" + month : month);
+
+      if (!monthlyClassCount[key]) {
+        monthlyClassCount[key] = {
+          year: year,
+          month: month,
+          classCount: 0,
+        };
+      }
+
+      monthlyClassCount[key].classCount++;
+
+    });
+
+    const formattedMonthlyClassCount = Object.values(monthlyClassCount)
+      .sort((a, b) => a.year === b.year ? a.month - b.month : a.year - b.year);
+    const startDate = new Date(data.startDate || upcomingSessions[0]?.sessionDate);
+
+    if (isNaN(startDate)) {
+      throw new Error("Invalid start date");
+    }
+
+    const allSessions = upcomingSessions.map(s => { const d = new Date(s.sessionDate); d.setHours(0, 0, 0, 0); return d; }).sort((a, b) => a - b);
+    const monthSessions = allSessions.filter(d => d.getMonth() === startDate.getMonth() && d.getFullYear() === startDate.getFullYear());
+    const remainingSessions = monthSessions.filter(d => d >= startDate);
+    // const remainingLessons = remainingSessions.length;
+    let remainingLessons = remainingSessions.length;
+
+    let proRataAmount = remainingLessons * paymentPlan.priceLesson;
+
+    const firstSessionOfMonth = monthSessions[0];
+
+    if (firstSessionOfMonth && startDate.getTime() === firstSessionOfMonth.getTime()) {
+      remainingLessons = 0;
+      proRataAmount = 0;
+    }
+    const venue = await Venue.findByPk(data.venueId);
+    const venueOwnerAdmin = await Admin.findByPk(venue.createdBy);
+    const overrideToken = venueOwnerAdmin?.GC_FRANCHISE_TOKEN || null;
+
+    const recurringAmount =
+      paymentPlan.priceLesson * (formattedMonthlyClassCount[0]?.classCount || 0);
+    // const proRataTotal = Number(data.payment?.proRataAmount || 0);
+    const proRataTotal = proRataAmount;
+
+    const firstStudentId = firstStudent?.id;
+
+
+
+    if (paymentType === "bank") {
+
+      // ------------------- GoCardless -------------------
+      let gcCustomer = null, gcBankAccount = null, mandateId = null;
+
+      // 1️⃣ Create Customer + Bank Account
+      const customerPayload = {
+        email: data.payment?.email || data.parents?.[0]?.parentEmail || "",
+        given_name: data.payment.firstName || data.parents?.[0]?.parentFirstName,
+        family_name: data.payment.lastName || data.parents?.[0]?.parentLastName,
+        address_line1: data.payment.addressLine1 || "",
+        city: data.payment.city || "",
+        postal_code: data.payment.postalCode || "",
+        country_code: data.payment.countryCode || "GB",
+        account_holder_name: data.payment.account_holder_name || "",
+        account_number: data.payment.account_number || "",
+        branch_code: data.payment.branch_code || "",
+      };
+
+      const createCustomerRes = await createCustomer(customerPayload, overrideToken);
+      if (!createCustomerRes?.status || !createCustomerRes?.customer) {
+        throw new Error(`Failed to create GoCardless customer: ${createCustomerRes?.message || "No customer returned"}`);
+      }
+
+      gcCustomer = createCustomerRes.customer;
+      gcBankAccount = createCustomerRes.bankAccount;
+      if (!gcBankAccount?.id) throw new Error("GoCardless bank account creation failed");
+      mandateId = (await createMandate({ customerBankAccountId: gcBankAccount.id, contract: { bookingId: booking.bookingId }, scheme: "bacs" }, overrideToken))?.mandate?.id;
+      if (!mandateId) throw new Error("GoCardless mandate creation failed");
+
+      // 2️⃣ First month / pro-rata payment
+      if (proRataTotal > 0) {
+        const paymentRes = await createPayment({
+          amount: Math.round(proRataTotal * 100),
+          currency: "GBP",
+          mandateId,
+          description: `Pro-rata payment`,
+        }, overrideToken);
+
+        if (!paymentRes.status) throw new Error(`GoCardless Pro-rata Payment Failed: ${paymentRes.message}`);
+
+        await createBookingPayment({
+          bookingId: booking.id,
+          studentId: firstStudentId,
+          parent: data.parents?.[0],
+          firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+          lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName,
+          email: data.payment?.email || data.parents?.[0]?.parentEmail,
+          amount: proRataTotal,
+          paymentType: "bank",
+          paymentCategory: "pro_rata",
+          paymentStatus: paymentRes.payment.status,
+          goCardlessMandateId: mandateId,
+          goCardlessPaymentId: paymentRes.payment.id,
+          gatewayResponse: paymentRes,
+          transaction,
+        });
+      }
+
+      // 3️⃣ Recurring subscription
+      if (paymentPlan.duration > 1) {
+        const subscriptionRes = await createSubscription({
+          mandateId,
+          amount: Math.round(recurringAmount * 100),
+          currency: "GBP",
+          interval: 1,
+          intervalUnit: "monthly",
+          dayOfMonth: 1,
+          count: paymentPlan.duration,
+          name: `Recurring Plan - ${booking.bookingId}`,
+          start_date: new Date(), // adjust logic if needed
+          retryIfPossible: true,
+          metadata: { bookingId: booking.id },
+        }, overrideToken);
+
+        if (!subscriptionRes.status) throw new Error(subscriptionRes.message);
+
+        await createBookingPayment({
+          bookingId: booking.id,
+          studentId: firstStudentId,
+          parent: data.parents?.[0],
+          firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+          lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName,
+          email: data.payment?.email || data.parents?.[0]?.parentEmail,
+          amount: recurringAmount,
+          paymentType: "bank",
+          paymentCategory: "recurring",
+          paymentStatus: "processing",
+          goCardlessMandateId: mandateId,
+          goCardlessSubscriptionId: subscriptionRes.subscription.id,
+          gatewayResponse: { gcCustomer, gcBankAccount, subscription: subscriptionRes.subscription },
+          transaction,
+        });
+      }
+    } else if (paymentType === "accesspaysuite") {
+      if (DEBUG) console.log("🔁 Processing Access PaySuite payment");
+
+      // 1️⃣ GET SCHEDULE
+      const schedulesRes = await getSchedules();
+
+      if (!schedulesRes.status)
+        throw new Error("Failed to fetch APS schedules");
+
+      const services = schedulesRes.data?.Services || [];
+      const schedules = services.flatMap((s) => s.Schedules || []);
+
+      const matchedSchedule = findMatchingSchedule(schedules, paymentPlan);
+
+      if (!matchedSchedule)
+        throw new Error("AccessPaySuite schedule not found");
+
+      // ------------------- APS Payment -------------------
+      const customerPayload = {
+        email: data.payment?.email || data.parents?.[0]?.parentEmail,
+        title: "Mr",
+        customerRef: `CUS-${booking.id}-${Date.now()}`,
+        firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+        surname: data.payment?.lastName || data.parents?.[0]?.parentLastName,
+        accountNumber: data.payment?.account_number,
+        bankSortCode: data.payment?.branch_code,
+        accountHolderName: data.payment?.account_holder_name || `${data.parents?.[0]?.parentFirstName} ${data.parents?.[0]?.parentLastName}`,
+        line1: data.payment?.address_line1 || "Test Address",
+        town: data.payment?.city || "London",
+        postcode: data.payment?.postcode || "SW1A1AA",
+        country: "GB",
+      };
+
+      const customerRes = await createAccessPaySuiteCustomer(customerPayload);
+      if (!customerRes.status) throw new Error(customerRes.message);
+      const customerId = customerRes.data?.CustomerId || customerRes.data?.Id;
+
+      const contractPayload = {
+        ScheduleId: matchedSchedule.ScheduleId,
+        Amount: recurringAmount,
+        Start: getAPSNextPaymentDateFixed(0),
+        TerminationType: paymentPlan.duration ? "Fixed term" : "Until further notice",
+      };
+
+      const contractRes = await createContract(customerId, contractPayload);
+      if (!contractRes.status) throw new Error(contractRes.message || "APS Contract creation failed");
+
+      const contractId = contractRes.data?.contract?.Id || contractRes.data?.Id;
+
+      // 1️⃣ Pro-rata
+      if (proRataTotal > 0) {
+        const proRataRes = await createContractPayment(contractId, {
+          amount: proRataTotal,
+          date: getAPSNextPaymentDateFixed(0),
+          description: `Pro-rata`,
+          reference: `PR-${booking.id}-${Date.now()}`,
         });
 
-        if (existingAdmin) {
-          throw new Error("Parent with this email already exists.");
-        }
+        if (!proRataRes.status) throw new Error(proRataRes.message);
 
-        const admin = await Admin.create(
-          {
-            firstName: firstParent.parentFirstName || "Parent",
-            lastName: firstParent.parentLastName || "",
-            phoneNumber: firstParent.parentPhoneNumber || "",
-            email,
-            password: hashedPassword,
-            roleId: parentRole.id,
-            status: "active",
-            referralCode: generateReferralCode(),
-          },
-          { transaction: t },
-        );
-
-        parentAdminId = admin.id;
-      } else {
-        // 🌐 WEBSITE → findOrCreate
-        const [admin, isCreated] = await Admin.findOrCreate({
-          where: { email },
-          defaults: {
-            firstName: firstParent.parentFirstName || "Parent",
-            lastName: firstParent.parentLastName || "",
-            phoneNumber: firstParent.parentPhoneNumber || "",
-            email,
-            password: hashedPassword,
-            roleId: parentRole.id,
-            status: "active",
-            // ✅ ADD THIS
-            referralCode: generateReferralCode(),
-          },
-          transaction: t,
+        await BookingPayment.create({
+          bookingId: booking.id,
+          paymentPlanId: booking.paymentPlanId,
+          studentId: firstStudentId,
+          firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+          lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName,
+          email: data.payment?.email || data.parents?.[0]?.parentEmail,
+          merchantRef: proRataRes.data?.Id,
+          price: proRataTotal,
+          paymentType: "accesspaysuite",
+          paymentCategory: "pro_rata",
+          amount: proRataTotal,
+          currency: "GBP",
+          paymentStatus: "pending",
+          contractId,
+          gatewayResponse: proRataRes.data,
+          // transaction,
         });
-        // 🛡️ Safety net (old parent but referralCode missing)
-        if (!isCreated && !admin.referralCode) {
-          admin.referralCode = generateReferralCode();
-          await admin.save({ transaction: t });
-        }
+      }
 
-        parentAdminId = admin.id;
+      // 2️⃣ Recurring months
+      if (paymentPlan.duration > 1) {
+        for (let i = 0; i < paymentPlan.duration; i++) {
+          const paymentDate = getAPSNextPaymentDateFixed(i);
+          const paymentRes = await createContractPayment(contractId, {
+            amount: recurringAmount,
+            date: paymentDate,
+            description: `Month ${i + 1}`,
+            reference: `REC-${booking.id}-${i}-${Date.now()}`
+          });
+
+          if (!paymentRes.status) throw new Error(paymentRes.message);
+
+          await BookingPayment.create({
+            bookingId: booking.id,
+            paymentPlanId: booking.paymentPlanId,
+            studentId: firstStudentId,
+            firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+            lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName,
+            email: data.payment?.email || data.parents?.[0]?.parentEmail,
+            price: recurringAmount,
+            amount: recurringAmount,
+            currency: "GBP",
+            paymentType: "accesspaysuite",
+            paymentCategory: "recurring",
+            paymentStatus: "pending",
+            contractId,
+            merchantRef: paymentRes?.data?.Id,
+            gatewayResponse: paymentRes.data,
+            // transaction,
+          });
+        }
       }
     }
 
-    // 🔹 Determine bookedBy & source values
-    let bookedBy = null;
-    let bookingSource = null;
-
-    if (source === "admin") {
-      bookedBy = adminId; // ✅ admin who booked
-      bookingSource = null;
-    } else {
-      bookedBy = null;
-      bookingSource = "website";
-    }
+    return { status: true };
+  } catch (err) {
+    console.error("🔥 Membership Payment Error:", err.message);
+    return { status: false, message: err.message };
+  }
+}
+exports.createBooking = async (data, options) => {
+  const t = await sequelize.transaction();
+  try {
     // 🔹 BANK VALIDATION BEFORE BOOKING
     if (
       data.payment?.paymentType === "bank" ||
@@ -455,1004 +780,166 @@ exports.createBooking = async (data, options) => {
       data.payment.account_number = validation.accountNumber;
       data.payment.branch_code = validation.sortCode;
     }
+    let parentAdminId = null;
+    const adminId = options?.adminId || null;
+    const parentPortalAdminId = options?.parentAdminId || null;
+    let source = parentPortalAdminId ? "parent" : adminId ? "admin" : "open";
+    const leadId = options?.leadId || null;
 
-    // Create Booking
-    const booking = await Booking.create(
-      {
-        venueId: data.venueId,
-        // parentAdminId: parentAdminId,
-        parentAdminId,
-        bookingId: generateBookingId(12),
-        leadId,
-        totalStudents: data.totalStudents,
-        classScheduleId: data.classScheduleId,
-        startDate: data.startDate || null,
-        serviceType: "weekly class membership",
-        bookingType: data.paymentPlanId ? "paid" : "free",
-        paymentPlanId: data.paymentPlanId || null,
-        status: data.status || "active",
-        bookedBy, // ✅ admin or null
-        source: bookingSource, // ✅ website or null
-        // bookedBy: source === "open" ? bookedByAdminId : adminId,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      { transaction: t },
-    );
-    if (DEBUG) {
-      console.log("✅ FINAL BOOKING VALUES", {
-        parentAdminId,
-        bookedBy,
-        source: bookingSource,
-      });
-    }
+    // 🔹 1️⃣ Parent/Admin creation
+    if (source === "parent") {
+      parentAdminId = parentPortalAdminId;
+    } else if (data.parents?.length > 0) {
+      const firstParent = data.parents[0];
+      const email = firstParent.parentEmail?.trim()?.toLowerCase();
+      if (!email) throw new Error("Parent email required");
 
-    // Create Students
-    const studentRecords = [];
-    for (const student of data.students || []) {
-      const studentMeta = await BookingStudentMeta.create(
-        {
-          bookingTrialId: booking.id, // renamed from bookingTrialId to bookingId
-          classScheduleId: student.classScheduleId, // ✅ safe
-          studentFirstName: student.studentFirstName,
-          studentLastName: student.studentLastName,
-          dateOfBirth: student.dateOfBirth,
-          age: student.age,
-          gender: student.gender,
-          medicalInformation: student.medicalInformation,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        { transaction: t },
-      );
-      studentRecords.push(studentMeta);
-    }
+      const parentRole = await AdminRole.findOne({ where: { role: "Parents" }, transaction: t });
+      const hashedPassword = await bcrypt.hash("Synco123", 10);
 
-    // Create Parents
-    if (data.parents?.length && studentRecords.length) {
-      const firstStudent = studentRecords[0];
-
-      for (const parent of data.parents) {
-        const email = parent.parentEmail?.trim()?.toLowerCase();
-        if (!email) throw new Error("Parent email is required.");
-
-        await BookingParentMeta.create(
-          {
-            studentId: firstStudent.id,
-            parentFirstName: parent.parentFirstName,
-            parentLastName: parent.parentLastName,
-            parentEmail: email,
-            parentPhoneNumber: parent.parentPhoneNumber,
-            relationToChild: parent.relationToChild,
-            howDidYouHear: parent.howDidYouHear,
-            createdAt: new Date(),
-            updatedAt: new Date(),
+      if (source === "admin") {
+        const existingAdmin = await Admin.findOne({ where: { email }, transaction: t });
+        if (existingAdmin) throw new Error("Parent with this email already exists.");
+        const admin = await Admin.create({
+          firstName: firstParent.parentFirstName || "Parent",
+          lastName: firstParent.parentLastName || "",
+          email,
+          phoneNumber: firstParent.parentPhoneNumber || "",
+          password: hashedPassword,
+          roleId: parentRole.id,
+          status: "active",
+          referralCode: generateReferralCode(),
+        }, { transaction: t });
+        parentAdminId = admin.id;
+      } else {
+        const [admin, isCreated] = await Admin.findOrCreate({
+          where: { email },
+          defaults: {
+            firstName: firstParent.parentFirstName || "Parent",
+            lastName: firstParent.parentLastName || "",
+            email,
+            phoneNumber: firstParent.parentPhoneNumber || "",
+            password: hashedPassword,
+            roleId: parentRole.id,
+            status: "active",
+            referralCode: generateReferralCode(),
           },
-          { transaction: t },
-        );
+          transaction: t,
+        });
+        if (!isCreated && !admin.referralCode) {
+          admin.referralCode = generateReferralCode();
+          await admin.save({ transaction: t });
+        }
+        parentAdminId = admin.id;
       }
     }
 
-    // Emergency Contact
-    if (
-      data.emergency?.emergencyFirstName &&
-      data.emergency?.emergencyPhoneNumber &&
-      studentRecords.length
-    ) {
-      const firstStudent = studentRecords[0];
-      await BookingEmergencyMeta.create(
-        {
-          studentId: firstStudent.id,
-          emergencyFirstName: data.emergency.emergencyFirstName,
-          emergencyLastName: data.emergency.emergencyLastName,
-          emergencyPhoneNumber: data.emergency.emergencyPhoneNumber,
-          emergencyRelation: data.emergency.emergencyRelation,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        { transaction: t },
-      );
-    }
+    // 🔹 2️⃣ Booking creation
+    const bookedBy = source === "admin" ? adminId : null;
+    const bookingSource = source === "open" ? "website" : null;
 
-    // Update Class Capacity
-    // Step 6: Update Class Capacity
+    const booking = await Booking.create({
+      venueId: data.venueId,
+      parentAdminId,
+      bookingId: generateBookingId(12),
+      leadId,
+      totalStudents: data.totalStudents,
+      classScheduleId: data.classScheduleId,
+      startDate: data.startDate || null,
+      serviceType: "weekly class membership",
+      bookingType: data.paymentPlanId ? "paid" : "free",
+      paymentPlanId: data.paymentPlanId || null,
+      status: data.status || "active",
+      bookedBy,
+      source: bookingSource,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }, { transaction: t });
+
+    // 🔹 3️⃣ Students creation
+    const studentRecords = [];
+    for (const student of data.students || []) {
+      const studentMeta = await BookingStudentMeta.create({
+        bookingTrialId: booking.id,
+        classScheduleId: student.classScheduleId,
+        studentFirstName: student.studentFirstName,
+        studentLastName: student.studentLastName,
+        dateOfBirth: student.dateOfBirth,
+        age: student.age,
+        gender: student.gender,
+        medicalInformation: student.medicalInformation,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }, { transaction: t });
+      studentRecords.push(studentMeta);
+    }
+    // 🔹 4️⃣ Lock & update ClassSchedule
     const scheduleMap = {};
-
-    for (const s of studentRecords) {
-      scheduleMap[s.classScheduleId] =
-        (scheduleMap[s.classScheduleId] || 0) + 1;
-    }
+    for (const s of studentRecords) scheduleMap[s.classScheduleId] = (scheduleMap[s.classScheduleId] || 0) + 1;
 
     for (const scheduleId of Object.keys(scheduleMap)) {
       const count = scheduleMap[scheduleId];
-
-      const classSchedule = await ClassSchedule.findByPk(scheduleId, {
-        transaction: t,
-        lock: t.LOCK.UPDATE,
-      });
-
-      if (!classSchedule) throw new Error(`Schedule ${scheduleId} not found`);
-
+      const classSchedule = await fetchAndLockClassSchedule(scheduleId, t);
       if (classSchedule.capacity < count)
         throw new Error(`Not enough capacity for schedule ${scheduleId}`);
-
-      await classSchedule.update(
-        { capacity: classSchedule.capacity - count },
-        { transaction: t },
-      );
+      await classSchedule.update({ capacity: classSchedule.capacity - count }, { transaction: t });
     }
 
+    // 🔹 5️⃣ Parent & Emergency Meta
+    if (data.parents?.length && studentRecords.length) {
+      const firstStudent = studentRecords[0];
+      for (const parent of data.parents) {
+        await BookingParentMeta.create({
+          studentId: firstStudent.id,
+          parentFirstName: parent.parentFirstName,
+          parentLastName: parent.parentLastName,
+          parentEmail: parent.parentEmail,
+          parentPhoneNumber: parent.parentPhoneNumber,
+          relationToChild: parent.relationToChild,
+          howDidYouHear: parent.howDidYouHear,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }, { transaction: t });
+      }
+    }
+    if (data.emergency?.emergencyFirstName && data.emergency?.emergencyPhoneNumber && studentRecords.length) {
+      const firstStudent = studentRecords[0];
+      await BookingEmergencyMeta.create({
+        studentId: firstStudent.id,
+        emergencyFirstName: data.emergency.emergencyFirstName,
+        emergencyLastName: data.emergency.emergencyLastName,
+        emergencyPhoneNumber: data.emergency.emergencyPhoneNumber,
+        emergencyRelation: data.emergency.emergencyRelation,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }, { transaction: t });
+    }
     await t.commit();
 
-    /* ================= STARTER PACK FIRST ================= */
-
-    console.log("🔥 ===== STARTER PACK FLOW START =====");
-
-    const venueForStarter = await Venue.findByPk(data.venueId);
-
-    console.log("🔥 booking venueId:", data.venueId);
-    console.log("🔥 venue found:", !!venueForStarter);
-    console.log("🔥 starterPack flag:", venueForStarter?.starterPack);
-
-    if (venueForStarter?.starterPack) {
-      console.log("🔥 Starter pack enabled for venue");
-
-      const parent = data.parents?.[0];
-      if (!parent) {
-        console.log("❌ Parent missing");
-        throw new Error("Parent required for starter pack");
-      }
-
-      // ✅ Use frontend price directly
-      const starterPackAmount = Number(data.starterPack || 0);
-
-      if (starterPackAmount > 0) {
-        console.log("🔥 Starter Pack Amount from frontend:", starterPackAmount);
-
-        console.log("🔥 Calling chargeStarterPack...");
-        const stripeRes = await chargeStarterPack({
-          name: `${parent.parentFirstName} ${parent.parentLastName}`,
-          email: parent.parentEmail,
-          starterPack: { price: starterPackAmount }, // pass dynamic price
-        });
-
-        console.log("🔥 Stripe Response:", stripeRes);
-
-        if (!stripeRes?.status) {
-          console.log("❌ Stripe returned failure:", stripeRes?.message);
-          throw new Error(stripeRes?.message || "Starter pack payment failed");
-        }
-
-        console.log("🔥 Stripe success, saving BookingPayment...");
-        await createBookingPayment({
-          bookingId: booking.id,
-          studentId: studentRecords[0]?.id,
-          // ✅ ADD THESE
-          firstName:
-            data.payment?.firstName || data.parents?.[0]?.parentFirstName || "",
-          lastName:
-            data.payment?.lastName || data.parents?.[0]?.parentLastName || "",
-          email: data.payment?.email || data.parents?.[0]?.parentEmail || "",
-          parent,
-          amount: starterPackAmount, // **dynamic from frontend**
-          paymentType: "stripe",
-          paymentCategory: "starter_pack",
-          paymentStatus: "paid", // 🔥 ADD THIS
-          gatewayResponse: stripeRes.raw,
-          // transaction: t,
-        });
-
-        console.log("🔥 Starter pack payment saved successfully");
-      } else {
-        console.log("⚠️ Starter pack amount invalid or 0");
-      }
-    }
-
-    console.log("🔥 ===== STARTER PACK FLOW END =====");
-
-    // Payment processing (same as your logic but fixed typo and consistency)
-    if (booking.paymentPlanId && data.payment?.paymentType) {
-      const venue = await Venue.findByPk(data.venueId);
-      const venueOwnerAdmin = await Admin.findByPk(venue.createdBy);
-      const overrideToken = venueOwnerAdmin?.GC_FRANCHISE_TOKEN || null;
-      // No switching
-      const paymentType = data.payment?.paymentType || "bank";
-      if (DEBUG) {
-        console.log("Step 5: Start payment process, paymentType:", paymentType);
-      }
-      // const isHQVenue = !overrideToken;
-      if (DEBUG)
-        console.log("Step 5: Start payment process, paymentType:", paymentType);
-
-      let paymentStatusFromGateway = "pending";
-      const firstStudentId = studentRecords[0]?.id;
-
+    // 🔹 6️⃣ PAYMENT (Stripe / GoCardless / APS)
+    // ✅ Run **before commit**
+    // ✅ Starter Pack Payment (try-catch alag)
+    if (data.venueId) {
       try {
-        const paymentPlan = booking.paymentPlanId
-          ? await PaymentPlan.findByPk(booking.paymentPlanId, {})
-          : null;
-
-        // fetch this paymentPlanId duration and interval firstly
-        if (!paymentPlan) {
-          throw new Error("Payment Plan not found for this booking.");
-        }
-
-        // 🔹 Step 2: Extract duration & interval
-        const planDuration = Number(paymentPlan.duration || 0); // e.g., 1, 3, 6, 12
-        const planInterval = paymentPlan.interval || "Month"; // usually "month"
-
-        // 🔹 Step 3: Check type of plan
-        const isShortTerm = planDuration === 1 && planInterval === "Month";
-        const isMembership = !isShortTerm;
-
-        // 🔹 Step 4: Optional logging for debugging
-        if (DEBUG) {
-          console.log("PaymentPlan fetched:", paymentPlan.id);
-          console.log("Duration:", planDuration, "Interval:", planInterval);
-          console.log("Is short-term plan:", isShortTerm);
-          console.log("Is membership plan:", isMembership);
-        }
-
-        // ✅ Fetch effective classScheduleId from first student
-        let effectiveScheduleId = null;
-
-        // Check if data.students array exists and has at least 1 student
-        if (Array.isArray(data.students) && data.students.length > 0) {
-          effectiveScheduleId = data.students[0].classScheduleId;
-        }
-
-        if (!effectiveScheduleId) {
-          throw new Error("Cannot determine classScheduleId: No student found");
-        }
-
-        // Fetch the ClassSchedule
-        const classSchedule = await ClassSchedule.findByPk(effectiveScheduleId);
-
-        if (!classSchedule) {
-          throw new Error(
-            `ClassSchedule not found for ID: ${effectiveScheduleId}`,
-          );
-        }
-
-        // Safely parse termIds (DB has JSON array string)
-        let termIds = [];
-        if (Array.isArray(classSchedule.termIds)) {
-          termIds = classSchedule.termIds;
-        } else if (typeof classSchedule.termIds === "string") {
-          try {
-            termIds = JSON.parse(classSchedule.termIds);
-          } catch (err) {
-            console.error(
-              "Failed to parse classSchedule.termIds:",
-              classSchedule.termIds,
-            );
-            termIds = [];
-          }
-        }
-
-        // Fetch Terms
-        const terms = await Term.findAll({
-          where: { id: termIds || [] },
-        });
-
-        // Console all terms
-        console.log("Fetched Terms for ClassSchedule:");
-        console.log(JSON.stringify(terms, null, 2)); // Proper formatted output
-        console.log("================================");
-
-        console.log("========== TERMS SESSION CHECK ==========");
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const passedSessions = [];
-        const upcomingSessions = [];
-
-        let totalPassedSessions = 0;
-        let totalUpcomingSessions = 0;
-        let remainingLessons = 0;
-        let proRataAmount = 0;
-
-        terms.forEach((term) => {
-          let sessions = [];
-
-          if (typeof term.sessionsMap === "string") {
-            try {
-              sessions = JSON.parse(term.sessionsMap);
-            } catch (err) {
-              console.error("Failed to parse sessionsMap:", term.sessionsMap);
-              sessions = [];
-            }
-          }
-
-          sessions.forEach((session) => {
-            const sessionDate = new Date(session.sessionDate);
-            sessionDate.setHours(0, 0, 0, 0);
-
-            if (sessionDate < today) {
-              passedSessions.push(session);
-            } else {
-              upcomingSessions.push(session);
-            }
-          });
-
-          // totalPassedSessions += passedSessions.length;
-          // totalUpcomingSessions += upcomingSessions.length;
-
-          console.log(`\n===== Term: ${term.termName} =====`);
-          console.log("✅ Passed Sessions:", passedSessions);
-          console.log("🕒 Upcoming Sessions:", upcomingSessions);
-        });
-        totalPassedSessions = passedSessions.length;
-        totalUpcomingSessions = upcomingSessions.length;
-        const monthlyClassCount = {};
-
-        upcomingSessions.forEach((upcomingSession) => {
-          const date = new Date(upcomingSession.sessionDate);
-
-          const year = date.getFullYear();
-          const month = date.getMonth() + 1;
-
-          const key = year + "-" + (month < 10 ? "0" + month : month);
-
-          if (!monthlyClassCount[key]) {
-            monthlyClassCount[key] = {
-              year: year,
-              month: month,
-              classCount: 0,
-            };
-          }
-
-          monthlyClassCount[key].classCount++;
-        });
-
-        // ✅ Convert to array + sort by year then month
-        const formattedMonthlyClassCount = Object.values(
-          monthlyClassCount,
-        ).sort((a, b) =>
-          a.year === b.year ? a.month - b.month : a.year - b.year,
-        );
-
-        const startDate = new Date(data.startDate);
-        startDate.setHours(0, 0, 0, 0);
-
-        const allSessions = upcomingSessions
-          .map((s) => {
-            const d = new Date(s.sessionDate);
-            d.setHours(0, 0, 0, 0);
-            return d;
-          })
-          .sort((a, b) => a - b);
-
-        const selectedMonth = startDate.getMonth();
-        const selectedYear = startDate.getFullYear();
-
-        const monthSessions = allSessions.filter(
-          (d) =>
-            d.getMonth() === selectedMonth && d.getFullYear() === selectedYear,
-        );
-
-        const remainingSessions = monthSessions.filter((d) => d >= startDate);
-
-        remainingLessons = remainingSessions.length;
-        proRataAmount = remainingLessons * paymentPlan.priceLesson;
-
-        const firstSessionOfMonth = monthSessions[0];
-
-        if (
-          firstSessionOfMonth &&
-          startDate.getTime() === firstSessionOfMonth.getTime()
-        ) {
-          remainingLessons = 0;
-          proRataAmount = 0;
-        }
-
-        console.log("\n========== SUMMARY ==========");
-        console.log("Total Passed Sessions:", totalPassedSessions);
-        console.log("Total Upcoming Sessions:", totalUpcomingSessions);
-        console.log(`monthlyClassCount - `, formattedMonthlyClassCount);
-        console.log("================================");
-
-        if (!formattedMonthlyClassCount.length) {
-          throw new Error("No upcoming sessions found");
-        }
-
-        const firstPaymentMonth = formattedMonthlyClassCount[0].month;
-        const firstPaymentYear = formattedMonthlyClassCount[0].year;
-
-        // 🔹 First Payment Date dynamically calculated
-        const firstPaymentDate = new Date(firstPaymentYear, firstPaymentMonth - 1, 1); // 1st day of month
-        const formattedFirstPaymentDate = formatDateLocal(firstPaymentDate);
-
-        console.log("🔥 firstPaymentDate:", formattedFirstPaymentDate);
-
-        const firstPaymentAmount =
-          paymentPlan.priceLesson * formattedMonthlyClassCount[0].classCount;
-
-        console.log(
-          `First payment will be for month: ${firstPaymentMonth}, year: ${firstPaymentYear}, amount: ${firstPaymentAmount}`,
-        );
-
-        console.log("🔥 Calculated Pro-Rata:", proRataAmount);
-
-        const recurringAmount = firstPaymentAmount;
-
-        const proRataTotal = Number(data?.payment?.proRataAmount ?? 0);
-
-        // ✅ Step 2: frontend should send price only
-        const expectedTotal = recurringAmount + proRataTotal;
-
-        // console.log("FRONTEND PRICE:", frontendPrice);
-        console.log("EXPECTED TOTAL:", expectedTotal);
-        console.log("Recurring:", recurringAmount);
-        console.log("ProRata:", proRataTotal);
-        console.log("✅ Frontend total matches backend calculation");
-
-        const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
-
-        let gatewayResponse = null;
-        let goCardlessCustomer = null;
-        let goCardlessBankAccount = null;
-        let goCardlessBillingRequest = null;
-        let recurringContractRes = null;
-        let recurringContractId = null;
-        let recurringDirectDebitRef = null;
-
-        if (paymentType === "bank") {
-          let gcCustomer = null;
-          let gcBankAccount = null;
-          let mandateId = null;
-
-          try {
-            // ================= Step 1: Create Customer + Bank Account =================
-            const customerPayload = {
-              email: data.payment.email || data.parents?.[0]?.parentEmail || "",
-              given_name:
-                data.payment.firstName || data.parents?.[0]?.parentFirstName,
-              family_name:
-                data.payment.lastName || data.parents?.[0]?.parentLastName,
-              address_line1: data.payment.addressLine1 || "",
-              city: data.payment.city || "",
-              postal_code: data.payment.postalCode || "",
-              country_code: data.payment.countryCode || "GB",
-              account_holder_name: data.payment.account_holder_name || "",
-              account_number: data.payment.account_number || "",
-              branch_code: data.payment.branch_code || "",
-            };
-
-            const createCustomerRes = await createCustomer(
-              customerPayload,
-              overrideToken,
-            );
-            console.log(
-              "🔹 Using GoCardless token (first 10 chars):",
-              overrideToken || "None",
-            );
-            if (!createCustomerRes?.status || !createCustomerRes?.customer) {
-              throw new Error(
-                `Failed to create GoCardless customer: ${createCustomerRes?.message || "No customer returned"}`,
-              );
-            }
-
-            gcCustomer = createCustomerRes.customer;
-
-            if (!createCustomerRes?.bankAccount) {
-              throw new Error("GoCardless bank account creation failed");
-            }
-
-            gcBankAccount = createCustomerRes.bankAccount;
-            if (!gcBankAccount?.id) {
-              throw new Error(
-                "GoCardless bank account creation failed: ID missing",
-              );
-            }
-
-            const createMandateRes = await createMandate(
-              {
-                customerBankAccountId: gcBankAccount.id,
-                contract: { bookingId: booking.bookingId }, // number or string works now
-                scheme: "bacs",
-              },
-              overrideToken,
-            );
-            if (createMandateRes?.mandate?.status === "pending_submission") {
-              paymentStatusFromGateway = "processing";
-            }
-
-            if (createMandateRes?.mandate?.status === "submitted") {
-              paymentStatusFromGateway = "contract_created";
-            }
-
-            if (createMandateRes?.mandate?.status === "active") {
-              paymentStatusFromGateway = "active";
-            }
-
-            if (createMandateRes?.mandate?.status === "failed") {
-              paymentStatusFromGateway = "failed";
-            }
-
-            if (!createMandateRes?.status || !createMandateRes?.mandate?.id) {
-              throw new Error(
-                `Failed to create GoCardless mandate: ${createMandateRes?.message || "No mandate returned"}`,
-              );
-            }
-
-            mandateId = createMandateRes.mandate.id;
-            console.log("✅ GoCardless mandate created:", mandateId);
-
-            // ================= Step 2: ONE-OFF for First Month =================
-
-            const termNotStarted = totalPassedSessions === 0;
-            // const frontendProRata = Number(data.payment?.proRataAmount || 0);
-
-            const firstMonthAmount = proRataTotal;
-
-            // 🔥 Create ONE-OFF payment using createBillingRequest
-            if (firstMonthAmount > 0) {
-              console.log(
-                "🔥 Term started → Creating ONE-OFF via Direct Payment",
-              );
-
-              const paymentPayload = {
-                amount: firstMonthAmount, // in pence
-                currency: "GBP",
-                mandateId: mandateId, // ✅ correct key
-                description: `Pro-rata payment - ${classSchedule.className}`,
-              };
-
-              console.log(
-                "💡 Creating Direct Payment with mandateId:",
-                mandateId,
-              );
-
-              const amountInPence = Math.round(firstMonthAmount * 100);
-
-              console.log("💰 Amount in pence:", amountInPence);
-
-              const paymentRes = await createPayment(
-                {
-                  amount: amountInPence,
-                  currency: "GBP",
-                  mandateId: mandateId,
-                  description: `Pro-rata payment - ${classSchedule.className} | studentId: ${firstStudentId}`,
-                },
-                overrideToken,
-              );
-              const merchantRef = paymentRes?.data?.Id;
-
-              if (!paymentRes.status) {
-                throw new Error(
-                  `Failed to create GoCardless payment: ${paymentRes.message}`,
-                );
-              }
-
-              // Save payment in your DB
-              await createBookingPayment({
-                bookingId: booking.id,
-                studentId: firstStudentId,
-                parent: data.parents?.[0],
-                firstName:
-                  data.payment?.firstName || data.parents?.[0]?.parentFirstName,
-                lastName:
-                  data.payment?.lastName || data.parents?.[0]?.parentLastName,
-                email: data.payment?.email || data.parents?.[0]?.parentEmail,
-                amount: firstMonthAmount,
-                merchantRef: merchantRef,
-                goCardlessMandateId: mandateId,
-                goCardlessPaymentId: paymentRes.payment.id, // ✅ save payment id
-                paymentType: "bank",
-                paymentCategory: "pro_rata",
-                paymentStatus: paymentRes.payment.status,
-                gatewayResponse: paymentRes,
-                currency: "GBP",
-              });
-
-              console.log("✅ First month ONE-OFF created via Direct Payment");
-            }
-            // 🔥 FULL PAYMENT FOR 1 MONTH PLAN
-            if (
-              paymentPlan.duration === 1 &&
-              (!data.payment?.proRataAmount || data.payment.proRataAmount === 0)
-            ) {
-              console.log("🔥 One month plan → creating single payment");
-
-              const amountInPence = Math.round(recurringAmount * 100);
-
-              const paymentRes = await createPayment(
-                {
-                  amount: amountInPence,
-                  currency: "GBP",
-                  mandateId: mandateId,
-                  description: `Full payment - ${classSchedule.className}`,
-                },
-                overrideToken,
-              );
-              const merchantRef = paymentRes?.data?.Id;
-              if (!paymentRes.status) {
-                throw new Error(`Payment failed: ${paymentRes.message}`);
-              }
-
-              await createBookingPayment({
-                bookingId: booking.id,
-                studentId: firstStudentId,
-                firstName:
-                  data.payment?.firstName || data.parents?.[0]?.parentFirstName,
-                lastName:
-                  data.payment?.lastName || data.parents?.[0]?.parentLastName,
-                email: data.payment?.email || data.parents?.[0]?.parentEmail,
-                merchantRef: merchantRef,
-                amount: recurringAmount,
-                paymentType: "bank",
-                paymentCategory: "full_payment",
-                paymentStatus: paymentRes.payment.status,
-                goCardlessMandateId: mandateId,
-                goCardlessPaymentId: paymentRes.payment.id,
-                gatewayResponse: paymentRes,
-                transaction: t,
-              });
-
-              console.log("✅ One month payment saved");
-            }
-
-            // ================= Step 3: Subscription ONLY if duration > 1 =================
-
-            if (paymentPlan.duration > 1) {
-              console.log("🔥 Creating subscription for remaining months");
-
-              let remainingMonths;
-
-              if (termNotStarted) {
-                // Term abhi start nahi hua
-                remainingMonths = paymentPlan.duration;
-                console.log("🔥 Full subscription:", remainingMonths);
-              } else {
-                // Term already started
-                remainingMonths = paymentPlan.duration - 1;
-                console.log("🔥 Remaining months:", remainingMonths);
-              }
-
-              const startDate =
-                createMandateRes.mandate.next_possible_charge_date;
-              const subscriptionPayload = {
-                mandateId,
-                amount: gbpToPence(recurringAmount),
-                currency: "GBP",
-                interval: 1,
-                intervalUnit: "monthly",
-                dayOfMonth: 1,
-                count: remainingMonths,
-                name: `Recurring Plan - ${classSchedule.className}`,
-                start_date: startDate,
-                // startDate: data.startDate, // 👈 ye hona chahiye
-                // startDate: calculateContractStartDate(), // next month
-                retryIfPossible: true,
-                metadata: { bookingId: booking.id },
-              };
-
-              const subscriptionRes = await createSubscription(
-                subscriptionPayload,
-                overrideToken,
-              );
-
-              if (!subscriptionRes.status)
-                throw new Error(subscriptionRes.message);
-              console.log(
-                "Subscription ID going to DB:",
-                subscriptionRes.subscription.id,
-              );
-              await createBookingPayment({
-                bookingId: booking.id,
-                studentId: firstStudentId,
-                parent: data.parents?.[0],
-                // ✅ ADD THESE
-                firstName:
-                  data.payment?.firstName ||
-                  data.parents?.[0]?.parentFirstName ||
-                  "",
-                lastName:
-                  data.payment?.lastName ||
-                  data.parents?.[0]?.parentLastName ||
-                  "",
-                email:
-                  data.payment?.email || data.parents?.[0]?.parentEmail || "",
-                amount: recurringAmount,
-                paymentType: "bank",
-                paymentCategory: "recurring",
-                paymentStatus: paymentStatusFromGateway, // ✅ MUST ADD
-                // ✅ ADD THESE TWO
-                goCardlessMandateId: mandateId || null,
-
-                goCardlessSubscriptionId:
-                  subscriptionRes.subscription.id || null,
-                gatewayResponse: {
-                  goCardlessCustomer: gcCustomer,
-                  goCardlessBankAccount: gcBankAccount,
-                  goCardlessSubscription: subscriptionRes.subscription,
-                },
-              });
-
-              console.log("✅ Subscription created for remaining months");
-            } else {
-              console.log("🔥 Duration = 1 → No subscription created");
-            }
-          } catch (err) {
-            // if (gcCustomer?.id)
-            //   await removeCustomer(gcCustomer.id, overrideToken);
-            throw new Error(`GoCardless Payment Error: ${err.message}`);
-          }
-        } else if (paymentType === "accesspaysuite") {
-          if (DEBUG) console.log("🔁 Processing Access PaySuite payment");
-
-          // 1️⃣ GET SCHEDULE
-          const schedulesRes = await getSchedules();
-
-          if (!schedulesRes.status)
-            throw new Error("Failed to fetch APS schedules");
-
-          const services = schedulesRes.data?.Services || [];
-          const schedules = services.flatMap((s) => s.Schedules || []);
-
-          const matchedSchedule = findMatchingSchedule(schedules, paymentPlan);
-
-          if (!matchedSchedule)
-            throw new Error("AccessPaySuite schedule not found");
-
-          /*
-          =====================================
-          2️⃣ CREATE CUSTOMER
-          =====================================
-           */
-
-          const customerPayload = {
-            email: data.payment?.email || data.parents?.[0]?.parentEmail,
-            title: "Mr",
-            customerRef: `CUS-${booking.id}-${Date.now()}`,
-            firstName:
-              data.payment?.firstName || data.parents?.[0]?.parentFirstName,
-            surname:
-              data.payment?.lastName || data.parents?.[0]?.parentLastName,
-            accountNumber: data.payment?.account_number,
-            bankSortCode: data.payment?.branch_code,
-            accountHolderName:
-              data.payment?.account_holder_name ||
-              `${data.parents?.[0]?.parentFirstName} ${data.parents?.[0]?.parentLastName}`,
-            line1: data.payment?.address_line1 || "Test Address",
-            town: data.payment?.city || "London",
-            postcode: data.payment?.postcode || "SW1A1AA",
-            country: "GB",
-          };
-
-          const customerRes =
-            await createAccessPaySuiteCustomer(customerPayload);
-
-          if (!customerRes.status) throw new Error(customerRes.message);
-
-          const customerId =
-            customerRes.data?.CustomerId || customerRes.data?.Id;
-
-          if (!customerId) throw new Error("APS: Customer ID missing");
-
-          /*
-          =====================================
-          3️⃣ CREATE CONTRACT
-           =====================================
-          */
-
-          // ✅ Dynamic contract start date
-          const apsStartDate = getAPSNextPaymentDateFixed(0); // monthOffset = 0
-          if (DEBUG) console.log("🔥 APS Contract Start Date (1st of month):", apsStartDate);
-          const contractPayload = {
-            ScheduleId: matchedSchedule.ScheduleId,
-            Amount: recurringAmount,
-            Start: apsStartDate,
-            TerminationType: paymentPlan.duration ? "Fixed term" : "Until further notice",
-          };
-
-          if (paymentPlan.duration) {
-            const start = new Date(apsStartDate);
-            const end = new Date(start.getFullYear(), start.getMonth() + Number(paymentPlan.duration), 1);
-            contractPayload.TerminationDate = formatDateLocal(end);
-          }
-
-          // Debug log
-          console.log(
-            "APS Contract Payload:",
-            JSON.stringify(contractPayload, null, 2)
-          );
-          const contractRes = await createContract(customerId, contractPayload);
-
-          if (!contractRes.status) {
-            console.log("APS Error Response:", contractRes);
-            throw new Error(contractRes.message || "APS Contract creation failed");
-          }
-
-          const contractId =
-            contractRes.data?.contract?.Id || contractRes.data?.Id;
-
-          const directDebitRef =
-            contractRes.data?.contract?.DirectDebitRef ||
-            contractRes.data?.DirectDebitRef;
-
-          /*
-          =====================================
-          4️⃣ PRO-RATA PAYMENT
-          =====================================
-          */
-
-          if (proRataTotal > 0) {
-            if (DEBUG) console.log("🔥 APS PRO-RATA:", proRataTotal);
-
-            const proRataRes = await createContractPayment(contractId, {
-              amount: proRataTotal,
-              // date: startDate,
-              date: apsStartDate,
-              description: `Pro-Rata - ${classSchedule.className}`,
-              reference: `PR-${booking.id}-${Date.now()}`,
-            });
-
-            if (!proRataRes.status) throw new Error(proRataRes.message);
-
-            await BookingPayment.create({
-              bookingId: booking.id,
-              paymentPlanId: booking.paymentPlanId,
-              studentId: firstStudentId,
-              firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
-              lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName,
-              email: data.payment?.email || data.parents?.[0]?.parentEmail,
-              merchantRef: proRataRes?.data?.Id,
-              price: proRataTotal,
-              paymentType: "accesspaysuite",
-              paymentCategory: "pro_rata",
-              amount: proRataTotal,
-              currency: "GBP",
-              paymentStatus: "pending",
-              contractId,
-              directDebitRef,
-              gatewayResponse: proRataRes.data,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            });
-          }
-
-          /*
-          =====================================
-          5️⃣ ONE MONTH PLAN
-          =====================================
-          */
-
-          if (paymentPlan.duration === 1 && proRataTotal === 0) {
-
-            const fullRes = await createContractPayment(contractId, {
-              amount: recurringAmount,
-              // date: startDate,
-              date: apsStartDate,
-              description: `Full payment - ${classSchedule.className}`,
-              reference: `FULL-${booking.id}-${Date.now()}`,
-            });
-
-            if (!fullRes.status) throw new Error(fullRes.message);
-
-            await BookingPayment.create({
-              bookingId: booking.id,
-              paymentPlanId: booking.paymentPlanId,
-              studentId: firstStudentId,
-              firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
-              lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName,
-              email: data.payment?.email || data.parents?.[0]?.parentEmail,
-
-              merchantRef: fullRes?.data?.Id,
-
-              price: recurringAmount,
-              paymentType: "accesspaysuite",
-              paymentCategory: "full_payment",
-              amount: recurringAmount,
-              currency: "GBP",
-              paymentStatus: "pending",
-
-              contractId,
-              directDebitRef,
-              gatewayResponse: fullRes.data,
-
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            });
-          }
-
-          /*
-          =====================================
-         6️⃣ RECURRING MEMBERSHIP
-         =====================================
-          */
-          if (paymentPlan.duration > 1) {
-
-            const recurringMonths = proRataTotal > 0
-              ? paymentPlan.duration - 1
-              : paymentPlan.duration;
-
-            for (let i = 0; i < recurringMonths; i++) {
-              // ✅ Always 1st of month
-              const paymentDate = getAPSNextPaymentDateFixed(i + 1);
-
-              const paymentRes = await createContractPayment(contractId, {
-                amount: recurringAmount,
-                date: paymentDate, // APS requires YYYY-MM-01
-                description: `Month ${i + 1} - ${classSchedule.className}`,
-                reference: `REC-${booking.id}-${i}-${Date.now()}`
-              });
-
-              if (!paymentRes.status) throw new Error(paymentRes.message);
-
-              await BookingPayment.create({
-                bookingId: booking.id,
-                paymentPlanId: booking.paymentPlanId,
-                studentId: firstStudentId,
-                firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
-                lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName,
-                email: data.payment?.email || data.parents?.[0]?.parentEmail,
-
-                price: recurringAmount,
-                amount: recurringAmount,
-                currency: "GBP",
-
-                paymentType: "accesspaysuite",
-                paymentCategory: "recurring",
-                paymentStatus: "pending",
-
-                contractId,
-                directDebitRef,
-                merchantRef: paymentRes?.data?.Id,
-                gatewayResponse: paymentRes.data,
-
-                createdAt: new Date(),
-                updatedAt: new Date(),
-              });
-            }
-
-            if (DEBUG) console.log("✅ APS All recurring payments created");
-          }
-
-          // if (paymentPlan.duration > 1) {
-          //   await BookingPayment.create({
-          //     bookingId: booking.id,
-          //     paymentPlanId: booking.paymentPlanId,
-          //     studentId: firstStudentId,
-          //     firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
-          //     lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName,
-          //     email: data.payment?.email || data.parents?.[0]?.parentEmail,
-
-          //     price: recurringAmount,
-
-          //     paymentType: "accesspaysuite",
-          //     paymentCategory: "recurring",
-          //     amount: recurringAmount,
-          //     currency: "GBP",
-          //     paymentStatus: "pending",
-          //     contractId,
-          //     directDebitRef,
-          //     gatewayResponse: contractRes.data,
-          //     createdAt: new Date(),
-          //     updatedAt: new Date(),
-          //   });
-
-          //   if (DEBUG) console.log("✅ APS Recurring membership saved");
-          // }
-        }
-
-        if (paymentStatusFromGateway === "failed")
-          throw new Error("Payment failed. Booking not created.");
-
-        if (DEBUG) {
-          console.log(
-            "🔍 [DEBUG] Payment processed with status:",
-            paymentStatusFromGateway,
-          );
-        }
-      } catch (error) {
-        if (!t.finished) await t.rollback();
-        return { status: false, message: error.message };
+        // await processStarterPackPayment(data, booking, studentRecords[0]);
+        // await processStarterPackPayment(data, booking, studentRecords[0], t);
+        await processStarterPackPayment(data, booking, studentRecords[0]);
+      } catch (err) {
+        console.error("⚠️ Starter Pack Payment Failed, continuing booking:", err.message);
       }
     }
+    if (booking.paymentPlanId && data.payment?.paymentType) {
+      const paymentResult = await processMembershipPayment(data, booking, studentRecords[0]);
+      // const paymentResult = await processMembershipPayment(data, booking, studentRecords[0], t);
+      if (!paymentResult.status) throw new Error(paymentResult.message);
+    }
+    console.log("🔍 Starting Membership Payment...");
+    console.log("🔍 firstStudent object:", studentRecords[0]);
+
+
+    // 🔹 7️⃣ COMMIT transaction **last**
     // await t.commit();
+
     return {
       status: true,
       data: {
@@ -1464,10 +951,1120 @@ exports.createBooking = async (data, options) => {
       },
     };
   } catch (error) {
-    await t.rollback();
+    if (!t.finished) await t.rollback();
     return { status: false, message: error.message };
   }
 };
+
+
+// exports.createBooking = async (data, options) => {
+//   const t = await sequelize.transaction();
+//   try {
+//     let parentAdminId = null;
+//     const adminId = options?.adminId || null;
+//     const parentPortalAdminId = options?.parentAdminId || null;
+
+//     let source = "open"; // default = website
+
+//     // Parent portal MUST win
+//     if (parentPortalAdminId) {
+//       source = "parent";
+//     } else if (adminId) {
+//       source = "admin";
+//     }
+//     const leadId = options?.leadId || null;
+
+//     if (DEBUG) {
+//       console.log("🔍 [DEBUG] Extracted adminId:", adminId);
+//       console.log("🔍 [DEBUG] Extracted source:", source);
+//       console.log("🔍 [DEBUG] Extracted leadId:", leadId);
+//     }
+
+//     if (source === "parent") {
+//       // 👪 Parent portal → already logged in
+//       parentAdminId = parentPortalAdminId;
+//     } else if (data.parents?.length > 0) {
+//       const firstParent = data.parents[0];
+//       const email = firstParent.parentEmail?.trim()?.toLowerCase();
+
+//       if (!email) throw new Error("Parent email is required");
+
+//       const parentRole = await AdminRole.findOne({
+//         where: { role: "Parents" },
+//         transaction: t,
+//       });
+
+//       const hashedPassword = await bcrypt.hash("Synco123", 10);
+
+//       if (source === "admin") {
+//         // 👨‍💼 ADMIN → ALWAYS create new parent
+//         // 👨‍💼 ADMIN → Check duplicate email first
+//         const existingAdmin = await Admin.findOne({
+//           where: { email },
+//           transaction: t,
+//         });
+
+//         if (existingAdmin) {
+//           throw new Error("Parent with this email already exists.");
+//         }
+
+//         const admin = await Admin.create(
+//           {
+//             firstName: firstParent.parentFirstName || "Parent",
+//             lastName: firstParent.parentLastName || "",
+//             phoneNumber: firstParent.parentPhoneNumber || "",
+//             email,
+//             password: hashedPassword,
+//             roleId: parentRole.id,
+//             status: "active",
+//             referralCode: generateReferralCode(),
+//           },
+//           { transaction: t },
+//         );
+
+//         parentAdminId = admin.id;
+//       } else {
+//         // 🌐 WEBSITE → findOrCreate
+//         const [admin, isCreated] = await Admin.findOrCreate({
+//           where: { email },
+//           defaults: {
+//             firstName: firstParent.parentFirstName || "Parent",
+//             lastName: firstParent.parentLastName || "",
+//             phoneNumber: firstParent.parentPhoneNumber || "",
+//             email,
+//             password: hashedPassword,
+//             roleId: parentRole.id,
+//             status: "active",
+//             // ✅ ADD THIS
+//             referralCode: generateReferralCode(),
+//           },
+//           transaction: t,
+//         });
+//         // 🛡️ Safety net (old parent but referralCode missing)
+//         if (!isCreated && !admin.referralCode) {
+//           admin.referralCode = generateReferralCode();
+//           await admin.save({ transaction: t });
+//         }
+
+//         parentAdminId = admin.id;
+//       }
+//     }
+
+//     // 🔹 Determine bookedBy & source values
+//     let bookedBy = null;
+//     let bookingSource = null;
+
+//     if (source === "admin") {
+//       bookedBy = adminId; // ✅ admin who booked
+//       bookingSource = null;
+//     } else {
+//       bookedBy = null;
+//       bookingSource = "website";
+//     }
+
+//     // Create Booking
+//     const booking = await Booking.create(
+//       {
+//         venueId: data.venueId,
+//         // parentAdminId: parentAdminId,
+//         parentAdminId,
+//         bookingId: generateBookingId(12),
+//         leadId,
+//         totalStudents: data.totalStudents,
+//         classScheduleId: data.classScheduleId,
+//         startDate: data.startDate || null,
+//         serviceType: "weekly class membership",
+//         bookingType: data.paymentPlanId ? "paid" : "free",
+//         paymentPlanId: data.paymentPlanId || null,
+//         status: data.status || "active",
+//         bookedBy, // ✅ admin or null
+//         source: bookingSource, // ✅ website or null
+//         // bookedBy: source === "open" ? bookedByAdminId : adminId,
+//         createdAt: new Date(),
+//         updatedAt: new Date(),
+//       },
+//       { transaction: t },
+//     );
+//     if (DEBUG) {
+//       console.log("✅ FINAL BOOKING VALUES", {
+//         parentAdminId,
+//         bookedBy,
+//         source: bookingSource,
+//       });
+//     }
+
+//     // Create Students
+//     const studentRecords = [];
+//     for (const student of data.students || []) {
+//       const studentMeta = await BookingStudentMeta.create(
+//         {
+//           bookingTrialId: booking.id, // renamed from bookingTrialId to bookingId
+//           classScheduleId: student.classScheduleId, // ✅ safe
+//           studentFirstName: student.studentFirstName,
+//           studentLastName: student.studentLastName,
+//           dateOfBirth: student.dateOfBirth,
+//           age: student.age,
+//           gender: student.gender,
+//           medicalInformation: student.medicalInformation,
+//           createdAt: new Date(),
+//           updatedAt: new Date(),
+//         },
+//         { transaction: t },
+//       );
+//       studentRecords.push(studentMeta);
+//     }
+//     // Step 6: Update Class Capacity
+//     const scheduleMap = {};
+
+//     for (const s of studentRecords) {
+//       scheduleMap[s.classScheduleId] = (scheduleMap[s.classScheduleId] || 0) + 1;
+//     }
+
+//     for (const scheduleId of Object.keys(scheduleMap)) {
+//       const count = scheduleMap[scheduleId]; // 1
+
+//       const classSchedule = await fetchAndLockClassSchedule(scheduleId, t);
+//       if (classSchedule.capacity < count)
+//         throw new Error(`Not enough capacity for schedule ${scheduleId}`);
+//       await classSchedule.update(
+//         { capacity: classSchedule.capacity - count },
+//         { transaction: t },
+//       );
+//     }
+//     // Create Parents
+//     if (data.parents?.length && studentRecords.length) {
+//       const firstStudent = studentRecords[0];
+
+//       for (const parent of data.parents) {
+//         const email = parent.parentEmail?.trim()?.toLowerCase();
+//         if (!email) throw new Error("Parent email is required.");
+
+//         await BookingParentMeta.create(
+//           {
+//             studentId: firstStudent.id,
+//             parentFirstName: parent.parentFirstName,
+//             parentLastName: parent.parentLastName,
+//             parentEmail: email,
+//             parentPhoneNumber: parent.parentPhoneNumber,
+//             relationToChild: parent.relationToChild,
+//             howDidYouHear: parent.howDidYouHear,
+//             createdAt: new Date(),
+//             updatedAt: new Date(),
+//           },
+//           { transaction: t },
+//         );
+//       }
+//     }
+
+//     // Emergency Contact
+//     if (
+//       data.emergency?.emergencyFirstName &&
+//       data.emergency?.emergencyPhoneNumber &&
+//       studentRecords.length
+//     ) {
+//       const firstStudent = studentRecords[0];
+//       await BookingEmergencyMeta.create(
+//         {
+//           studentId: firstStudent.id,
+//           emergencyFirstName: data.emergency.emergencyFirstName,
+//           emergencyLastName: data.emergency.emergencyLastName,
+//           emergencyPhoneNumber: data.emergency.emergencyPhoneNumber,
+//           emergencyRelation: data.emergency.emergencyRelation,
+//           createdAt: new Date(),
+//           updatedAt: new Date(),
+//         },
+//         { transaction: t },
+//       );
+//     }
+
+
+
+//     // await t.commit();
+
+//     /* ================= STARTER PACK FIRST ================= */
+
+//     console.log("🔥 ===== STARTER PACK FLOW START =====");
+
+//     const venueForStarter = await Venue.findByPk(data.venueId);
+
+//     console.log("🔥 booking venueId:", data.venueId);
+//     console.log("🔥 venue found:", !!venueForStarter);
+//     console.log("🔥 starterPack flag:", venueForStarter?.starterPack);
+
+//     if (venueForStarter?.starterPack) {
+//       console.log("🔥 Starter pack enabled for venue");
+
+//       const parent = data.parents?.[0];
+//       if (!parent) {
+//         console.log("❌ Parent missing");
+//         throw new Error("Parent required for starter pack");
+//       }
+
+//       // ✅ Use frontend price directly
+//       const starterPackAmount = Number(data.starterPack || 0);
+
+//       if (starterPackAmount > 0) {
+//         console.log("🔥 Starter Pack Amount from frontend:", starterPackAmount);
+
+//         console.log("🔥 Calling chargeStarterPack...");
+//         const stripeRes = await chargeStarterPack({
+//           name: `${parent.parentFirstName} ${parent.parentLastName}`,
+//           email: parent.parentEmail,
+//           starterPack: { price: starterPackAmount }, // pass dynamic price
+//         });
+
+//         console.log("🔥 Stripe Response:", stripeRes);
+
+//         if (!stripeRes?.status) {
+//           console.log("❌ Stripe returned failure:", stripeRes?.message);
+//           throw new Error(stripeRes?.message || "Starter pack payment failed");
+//         }
+
+//         console.log("🔥 Stripe success, saving BookingPayment...");
+//         await createBookingPayment({
+//           bookingId: booking.id,
+//           studentId: studentRecords[0]?.id,
+//           // ✅ ADD THESE
+//           firstName:
+//             data.payment?.firstName || data.parents?.[0]?.parentFirstName || "",
+//           lastName:
+//             data.payment?.lastName || data.parents?.[0]?.parentLastName || "",
+//           email: data.payment?.email || data.parents?.[0]?.parentEmail || "",
+//           parent,
+//           amount: starterPackAmount, // **dynamic from frontend**
+//           paymentType: "stripe",
+//           paymentCategory: "starter_pack",
+//           paymentStatus: "paid", // 🔥 ADD THIS
+//           gatewayResponse: stripeRes.raw,
+//           // transaction: t,
+//         });
+
+//         console.log("🔥 Starter pack payment saved successfully");
+//       } else {
+//         console.log("⚠️ Starter pack amount invalid or 0");
+//       }
+//     }
+
+//     console.log("🔥 ===== STARTER PACK FLOW END =====");
+
+//     // Payment processing (same as your logic but fixed typo and consistency)
+//     if (booking.paymentPlanId && data.payment?.paymentType) {
+//       const venue = await Venue.findByPk(data.venueId);
+//       const venueOwnerAdmin = await Admin.findByPk(venue.createdBy);
+//       const overrideToken = venueOwnerAdmin?.GC_FRANCHISE_TOKEN || null;
+//       // No switching
+//       const paymentType = data.payment?.paymentType || "bank";
+//       if (DEBUG) {
+//         console.log("Step 5: Start payment process, paymentType:", paymentType);
+//       }
+//       // const isHQVenue = !overrideToken;
+//       if (DEBUG)
+//         console.log("Step 5: Start payment process, paymentType:", paymentType);
+
+//       let paymentStatusFromGateway = "pending";
+//       const firstStudentId = studentRecords[0]?.id;
+
+//       try {
+//         const paymentPlan = booking.paymentPlanId
+//           ? await PaymentPlan.findByPk(booking.paymentPlanId, {})
+//           : null;
+
+//         // fetch this paymentPlanId duration and interval firstly
+//         if (!paymentPlan) {
+//           throw new Error("Payment Plan not found for this booking.");
+//         }
+
+//         // 🔹 Step 2: Extract duration & interval
+//         const planDuration = Number(paymentPlan.duration || 0); // e.g., 1, 3, 6, 12
+//         const planInterval = paymentPlan.interval || "Month"; // usually "month"
+
+//         // 🔹 Step 3: Check type of plan
+//         const isShortTerm = planDuration === 1 && planInterval === "Month";
+//         const isMembership = !isShortTerm;
+
+//         // 🔹 Step 4: Optional logging for debugging
+//         if (DEBUG) {
+//           console.log("PaymentPlan fetched:", paymentPlan.id);
+//           console.log("Duration:", planDuration, "Interval:", planInterval);
+//           console.log("Is short-term plan:", isShortTerm);
+//           console.log("Is membership plan:", isMembership);
+//         }
+
+//         // ✅ Fetch effective classScheduleId from first student
+//         let effectiveScheduleId = null;
+
+//         // Check if data.students array exists and has at least 1 student
+//         if (Array.isArray(data.students) && data.students.length > 0) {
+//           effectiveScheduleId = data.students[0].classScheduleId;
+//         }
+
+//         if (!effectiveScheduleId) {
+//           throw new Error("Cannot determine classScheduleId: No student found");
+//         }
+
+//         // Fetch the ClassSchedule
+//         const classSchedule = await ClassSchedule.findByPk(effectiveScheduleId);
+
+//         if (!classSchedule) {
+//           throw new Error(
+//             `ClassSchedule not found for ID: ${effectiveScheduleId}`,
+//           );
+//         }
+
+//         // Safely parse termIds (DB has JSON array string)
+//         let termIds = [];
+//         if (Array.isArray(classSchedule.termIds)) {
+//           termIds = classSchedule.termIds;
+//         } else if (typeof classSchedule.termIds === "string") {
+//           try {
+//             termIds = JSON.parse(classSchedule.termIds);
+//           } catch (err) {
+//             console.error(
+//               "Failed to parse classSchedule.termIds:",
+//               classSchedule.termIds,
+//             );
+//             termIds = [];
+//           }
+//         }
+
+//         // Fetch Terms
+//         const terms = await Term.findAll({
+//           where: { id: termIds || [] },
+//         });
+
+//         // Console all terms
+//         console.log("Fetched Terms for ClassSchedule:");
+//         console.log(JSON.stringify(terms, null, 2)); // Proper formatted output
+//         console.log("================================");
+
+//         console.log("========== TERMS SESSION CHECK ==========");
+
+//         const today = new Date();
+//         today.setHours(0, 0, 0, 0);
+
+//         const passedSessions = [];
+//         const upcomingSessions = [];
+
+//         let totalPassedSessions = 0;
+//         let totalUpcomingSessions = 0;
+//         let remainingLessons = 0;
+//         let proRataAmount = 0;
+
+//         terms.forEach((term) => {
+//           let sessions = [];
+
+//           if (typeof term.sessionsMap === "string") {
+//             try {
+//               sessions = JSON.parse(term.sessionsMap);
+//             } catch (err) {
+//               console.error("Failed to parse sessionsMap:", term.sessionsMap);
+//               sessions = [];
+//             }
+//           }
+
+//           sessions.forEach((session) => {
+//             const sessionDate = new Date(session.sessionDate);
+//             sessionDate.setHours(0, 0, 0, 0);
+
+//             if (sessionDate < today) {
+//               passedSessions.push(session);
+//             } else {
+//               upcomingSessions.push(session);
+//             }
+//           });
+
+//           // totalPassedSessions += passedSessions.length;
+//           // totalUpcomingSessions += upcomingSessions.length;
+
+//           console.log(`\n===== Term: ${term.termName} =====`);
+//           console.log("✅ Passed Sessions:", passedSessions);
+//           console.log("🕒 Upcoming Sessions:", upcomingSessions);
+//         });
+//         totalPassedSessions = passedSessions.length;
+//         totalUpcomingSessions = upcomingSessions.length;
+//         const monthlyClassCount = {};
+
+//         upcomingSessions.forEach((upcomingSession) => {
+//           const date = new Date(upcomingSession.sessionDate);
+
+//           const year = date.getFullYear();
+//           const month = date.getMonth() + 1;
+
+//           const key = year + "-" + (month < 10 ? "0" + month : month);
+
+//           if (!monthlyClassCount[key]) {
+//             monthlyClassCount[key] = {
+//               year: year,
+//               month: month,
+//               classCount: 0,
+//             };
+//           }
+
+//           monthlyClassCount[key].classCount++;
+//         });
+
+//         // ✅ Convert to array + sort by year then month
+//         const formattedMonthlyClassCount = Object.values(
+//           monthlyClassCount,
+//         ).sort((a, b) =>
+//           a.year === b.year ? a.month - b.month : a.year - b.year,
+//         );
+
+//         const startDate = new Date(data.startDate);
+//         startDate.setHours(0, 0, 0, 0);
+
+//         const allSessions = upcomingSessions
+//           .map((s) => {
+//             const d = new Date(s.sessionDate);
+//             d.setHours(0, 0, 0, 0);
+//             return d;
+//           })
+//           .sort((a, b) => a - b);
+
+//         const selectedMonth = startDate.getMonth();
+//         const selectedYear = startDate.getFullYear();
+
+//         const monthSessions = allSessions.filter(
+//           (d) =>
+//             d.getMonth() === selectedMonth && d.getFullYear() === selectedYear,
+//         );
+
+//         const remainingSessions = monthSessions.filter((d) => d >= startDate);
+
+//         remainingLessons = remainingSessions.length;
+//         proRataAmount = remainingLessons * paymentPlan.priceLesson;
+
+//         const firstSessionOfMonth = monthSessions[0];
+
+//         if (
+//           firstSessionOfMonth &&
+//           startDate.getTime() === firstSessionOfMonth.getTime()
+//         ) {
+//           remainingLessons = 0;
+//           proRataAmount = 0;
+//         }
+
+//         console.log("\n========== SUMMARY ==========");
+//         console.log("Total Passed Sessions:", totalPassedSessions);
+//         console.log("Total Upcoming Sessions:", totalUpcomingSessions);
+//         console.log(`monthlyClassCount - `, formattedMonthlyClassCount);
+//         console.log("================================");
+
+//         if (!formattedMonthlyClassCount.length) {
+//           throw new Error("No upcoming sessions found");
+//         }
+
+//         const firstPaymentMonth = formattedMonthlyClassCount[0].month;
+//         const firstPaymentYear = formattedMonthlyClassCount[0].year;
+
+//         // 🔹 First Payment Date dynamically calculated
+//         const firstPaymentDate = new Date(firstPaymentYear, firstPaymentMonth - 1, 1); // 1st day of month
+//         const formattedFirstPaymentDate = formatDateLocal(firstPaymentDate);
+
+//         console.log("🔥 firstPaymentDate:", formattedFirstPaymentDate);
+
+//         const firstPaymentAmount =
+//           paymentPlan.priceLesson * formattedMonthlyClassCount[0].classCount;
+
+//         console.log(
+//           `First payment will be for month: ${firstPaymentMonth}, year: ${firstPaymentYear}, amount: ${firstPaymentAmount}`,
+//         );
+
+//         console.log("🔥 Calculated Pro-Rata:", proRataAmount);
+
+//         const recurringAmount = firstPaymentAmount;
+
+//         const proRataTotal = Number(data?.payment?.proRataAmount ?? 0);
+
+//         // ✅ Step 2: frontend should send price only
+//         const expectedTotal = recurringAmount + proRataTotal;
+
+//         // console.log("FRONTEND PRICE:", frontendPrice);
+//         console.log("EXPECTED TOTAL:", expectedTotal);
+//         console.log("Recurring:", recurringAmount);
+//         console.log("ProRata:", proRataTotal);
+//         console.log("✅ Frontend total matches backend calculation");
+
+//         const merchantRef = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
+
+//         let gatewayResponse = null;
+//         let goCardlessCustomer = null;
+//         let goCardlessBankAccount = null;
+//         let goCardlessBillingRequest = null;
+//         let recurringContractRes = null;
+//         let recurringContractId = null;
+//         let recurringDirectDebitRef = null;
+
+//         if (paymentType === "bank") {
+//           let gcCustomer = null;
+//           let gcBankAccount = null;
+//           let mandateId = null;
+
+//           try {
+//             // ================= Step 1: Create Customer + Bank Account =================
+//             const customerPayload = {
+//               email: data.payment.email || data.parents?.[0]?.parentEmail || "",
+//               given_name:
+//                 data.payment.firstName || data.parents?.[0]?.parentFirstName,
+//               family_name:
+//                 data.payment.lastName || data.parents?.[0]?.parentLastName,
+//               address_line1: data.payment.addressLine1 || "",
+//               city: data.payment.city || "",
+//               postal_code: data.payment.postalCode || "",
+//               country_code: data.payment.countryCode || "GB",
+//               account_holder_name: data.payment.account_holder_name || "",
+//               account_number: data.payment.account_number || "",
+//               branch_code: data.payment.branch_code || "",
+//             };
+
+//             const createCustomerRes = await createCustomer(
+//               customerPayload,
+//               overrideToken,
+//             );
+//             console.log(
+//               "🔹 Using GoCardless token (first 10 chars):",
+//               overrideToken || "None",
+//             );
+//             if (!createCustomerRes?.status || !createCustomerRes?.customer) {
+//               throw new Error(
+//                 `Failed to create GoCardless customer: ${createCustomerRes?.message || "No customer returned"}`,
+//               );
+//             }
+
+//             gcCustomer = createCustomerRes.customer;
+
+//             if (!createCustomerRes?.bankAccount) {
+//               throw new Error("GoCardless bank account creation failed");
+//             }
+
+//             gcBankAccount = createCustomerRes.bankAccount;
+//             if (!gcBankAccount?.id) {
+//               throw new Error(
+//                 "GoCardless bank account creation failed: ID missing",
+//               );
+//             }
+
+//             const createMandateRes = await createMandate(
+//               {
+//                 customerBankAccountId: gcBankAccount.id,
+//                 contract: { bookingId: booking.bookingId }, // number or string works now
+//                 scheme: "bacs",
+//               },
+//               overrideToken,
+//             );
+//             if (createMandateRes?.mandate?.status === "pending_submission") {
+//               paymentStatusFromGateway = "processing";
+//             }
+
+//             if (createMandateRes?.mandate?.status === "submitted") {
+//               paymentStatusFromGateway = "contract_created";
+//             }
+
+//             if (createMandateRes?.mandate?.status === "active") {
+//               paymentStatusFromGateway = "active";
+//             }
+
+//             if (createMandateRes?.mandate?.status === "failed") {
+//               paymentStatusFromGateway = "failed";
+//             }
+
+//             if (!createMandateRes?.status || !createMandateRes?.mandate?.id) {
+//               throw new Error(
+//                 `Failed to create GoCardless mandate: ${createMandateRes?.message || "No mandate returned"}`,
+//               );
+//             }
+
+//             mandateId = createMandateRes.mandate.id;
+//             console.log("✅ GoCardless mandate created:", mandateId);
+
+//             // ================= Step 2: ONE-OFF for First Month =================
+
+//             const termNotStarted = totalPassedSessions === 0;
+//             // const frontendProRata = Number(data.payment?.proRataAmount || 0);
+
+//             const firstMonthAmount = proRataTotal;
+
+//             // 🔥 Create ONE-OFF payment using createBillingRequest
+//             if (firstMonthAmount > 0) {
+//               console.log(
+//                 "🔥 Term started → Creating ONE-OFF via Direct Payment",
+//               );
+
+//               const paymentPayload = {
+//                 amount: firstMonthAmount, // in pence
+//                 currency: "GBP",
+//                 mandateId: mandateId, // ✅ correct key
+//                 description: `Pro-rata payment - ${classSchedule.className}`,
+//               };
+
+//               console.log(
+//                 "💡 Creating Direct Payment with mandateId:",
+//                 mandateId,
+//               );
+
+//               const amountInPence = Math.round(firstMonthAmount * 100);
+
+//               console.log("💰 Amount in pence:", amountInPence);
+
+//               const paymentRes = await createPayment(
+//                 {
+//                   amount: amountInPence,
+//                   currency: "GBP",
+//                   mandateId: mandateId,
+//                   description: `Pro-rata payment - ${classSchedule.className} | studentId: ${firstStudentId}`,
+//                 },
+//                 overrideToken,
+//               );
+//               const merchantRef = paymentRes?.data?.Id;
+
+//               if (!paymentRes.status) {
+//                 throw new Error(
+//                   `Failed to create GoCardless payment: ${paymentRes.message}`,
+//                 );
+//               }
+
+//               // Save payment in your DB
+//               await createBookingPayment({
+//                 bookingId: booking.id,
+//                 studentId: firstStudentId,
+//                 parent: data.parents?.[0],
+//                 firstName:
+//                   data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+//                 lastName:
+//                   data.payment?.lastName || data.parents?.[0]?.parentLastName,
+//                 email: data.payment?.email || data.parents?.[0]?.parentEmail,
+//                 amount: firstMonthAmount,
+//                 merchantRef: merchantRef,
+//                 goCardlessMandateId: mandateId,
+//                 goCardlessPaymentId: paymentRes.payment.id, // ✅ save payment id
+//                 paymentType: "bank",
+//                 paymentCategory: "pro_rata",
+//                 paymentStatus: paymentRes.payment.status,
+//                 gatewayResponse: paymentRes,
+//                 currency: "GBP",
+//               });
+
+//               console.log("✅ First month ONE-OFF created via Direct Payment");
+//             }
+//             // 🔥 FULL PAYMENT FOR 1 MONTH PLAN
+//             if (
+//               paymentPlan.duration === 1 &&
+//               (!data.payment?.proRataAmount || data.payment.proRataAmount === 0)
+//             ) {
+//               console.log("🔥 One month plan → creating single payment");
+
+//               const amountInPence = Math.round(recurringAmount * 100);
+
+//               const paymentRes = await createPayment(
+//                 {
+//                   amount: amountInPence,
+//                   currency: "GBP",
+//                   mandateId: mandateId,
+//                   description: `Full payment - ${classSchedule.className}`,
+//                 },
+//                 overrideToken,
+//               );
+//               const merchantRef = paymentRes?.data?.Id;
+//               if (!paymentRes.status) {
+//                 throw new Error(`Payment failed: ${paymentRes.message}`);
+//               }
+
+//               await createBookingPayment({
+//                 bookingId: booking.id,
+//                 studentId: firstStudentId,
+//                 firstName:
+//                   data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+//                 lastName:
+//                   data.payment?.lastName || data.parents?.[0]?.parentLastName,
+//                 email: data.payment?.email || data.parents?.[0]?.parentEmail,
+//                 merchantRef: merchantRef,
+//                 amount: recurringAmount,
+//                 paymentType: "bank",
+//                 paymentCategory: "full_payment",
+//                 paymentStatus: paymentRes.payment.status,
+//                 goCardlessMandateId: mandateId,
+//                 goCardlessPaymentId: paymentRes.payment.id,
+//                 gatewayResponse: paymentRes,
+//                 transaction: t,
+//               });
+
+//               console.log("✅ One month payment saved");
+//             }
+
+//             // ================= Step 3: Subscription ONLY if duration > 1 =================
+
+//             if (paymentPlan.duration > 1) {
+//               console.log("🔥 Creating subscription for remaining months");
+
+//               let remainingMonths;
+
+//               if (termNotStarted) {
+//                 // Term abhi start nahi hua
+//                 remainingMonths = paymentPlan.duration;
+//                 console.log("🔥 Full subscription:", remainingMonths);
+//               } else {
+//                 // Term already started
+//                 remainingMonths = paymentPlan.duration - 1;
+//                 console.log("🔥 Remaining months:", remainingMonths);
+//               }
+
+//               const startDate =
+//                 createMandateRes.mandate.next_possible_charge_date;
+//               const subscriptionPayload = {
+//                 mandateId,
+//                 amount: gbpToPence(recurringAmount),
+//                 currency: "GBP",
+//                 interval: 1,
+//                 intervalUnit: "monthly",
+//                 dayOfMonth: 1,
+//                 count: remainingMonths,
+//                 name: `Recurring Plan - ${classSchedule.className}`,
+//                 start_date: startDate,
+//                 // startDate: data.startDate, // 👈 ye hona chahiye
+//                 // startDate: calculateContractStartDate(), // next month
+//                 retryIfPossible: true,
+//                 metadata: { bookingId: booking.id },
+//               };
+
+//               const subscriptionRes = await createSubscription(
+//                 subscriptionPayload,
+//                 overrideToken,
+//               );
+
+//               if (!subscriptionRes.status)
+//                 throw new Error(subscriptionRes.message);
+//               console.log(
+//                 "Subscription ID going to DB:",
+//                 subscriptionRes.subscription.id,
+//               );
+//               await createBookingPayment({
+//                 bookingId: booking.id,
+//                 studentId: firstStudentId,
+//                 parent: data.parents?.[0],
+//                 // ✅ ADD THESE
+//                 firstName:
+//                   data.payment?.firstName ||
+//                   data.parents?.[0]?.parentFirstName ||
+//                   "",
+//                 lastName:
+//                   data.payment?.lastName ||
+//                   data.parents?.[0]?.parentLastName ||
+//                   "",
+//                 email:
+//                   data.payment?.email || data.parents?.[0]?.parentEmail || "",
+//                 amount: recurringAmount,
+//                 paymentType: "bank",
+//                 paymentCategory: "recurring",
+//                 paymentStatus: paymentStatusFromGateway, // ✅ MUST ADD
+//                 // ✅ ADD THESE TWO
+//                 goCardlessMandateId: mandateId || null,
+
+//                 goCardlessSubscriptionId:
+//                   subscriptionRes.subscription.id || null,
+//                 gatewayResponse: {
+//                   goCardlessCustomer: gcCustomer,
+//                   goCardlessBankAccount: gcBankAccount,
+//                   goCardlessSubscription: subscriptionRes.subscription,
+//                 },
+//               });
+
+//               console.log("✅ Subscription created for remaining months");
+//             } else {
+//               console.log("🔥 Duration = 1 → No subscription created");
+//             }
+//           } catch (err) {
+//             // if (gcCustomer?.id)
+//             //   await removeCustomer(gcCustomer.id, overrideToken);
+//             throw new Error(`GoCardless Payment Error: ${err.message}`);
+//           }
+//         } else if (paymentType === "accesspaysuite") {
+//           if (DEBUG) console.log("🔁 Processing Access PaySuite payment");
+
+//           // 1️⃣ GET SCHEDULE
+//           const schedulesRes = await getSchedules();
+
+//           if (!schedulesRes.status)
+//             throw new Error("Failed to fetch APS schedules");
+
+//           const services = schedulesRes.data?.Services || [];
+//           const schedules = services.flatMap((s) => s.Schedules || []);
+
+//           const matchedSchedule = findMatchingSchedule(schedules, paymentPlan);
+
+//           if (!matchedSchedule)
+//             throw new Error("AccessPaySuite schedule not found");
+
+//           /*
+//           =====================================
+//           2️⃣ CREATE CUSTOMER
+//           =====================================
+//            */
+
+//           const customerPayload = {
+//             email: data.payment?.email || data.parents?.[0]?.parentEmail,
+//             title: "Mr",
+//             customerRef: `CUS-${booking.id}-${Date.now()}`,
+//             firstName:
+//               data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+//             surname:
+//               data.payment?.lastName || data.parents?.[0]?.parentLastName,
+//             accountNumber: data.payment?.account_number,
+//             bankSortCode: data.payment?.branch_code,
+//             accountHolderName:
+//               data.payment?.account_holder_name ||
+//               `${data.parents?.[0]?.parentFirstName} ${data.parents?.[0]?.parentLastName}`,
+//             line1: data.payment?.address_line1 || "Test Address",
+//             town: data.payment?.city || "London",
+//             postcode: data.payment?.postcode || "SW1A1AA",
+//             country: "GB",
+//           };
+
+//           const customerRes =
+//             await createAccessPaySuiteCustomer(customerPayload);
+
+//           if (!customerRes.status) throw new Error(customerRes.message);
+
+//           const customerId =
+//             customerRes.data?.CustomerId || customerRes.data?.Id;
+
+//           if (!customerId) throw new Error("APS: Customer ID missing");
+
+//           /*
+//           =====================================
+//           3️⃣ CREATE CONTRACT
+//            =====================================
+//           */
+
+//           // ✅ Dynamic contract start date
+//           const apsStartDate = getAPSNextPaymentDateFixed(0); // monthOffset = 0
+//           if (DEBUG) console.log("🔥 APS Contract Start Date (1st of month):", apsStartDate);
+//           const contractPayload = {
+//             ScheduleId: matchedSchedule.ScheduleId,
+//             Amount: recurringAmount,
+//             Start: apsStartDate,
+//             TerminationType: paymentPlan.duration ? "Fixed term" : "Until further notice",
+//           };
+
+//           if (paymentPlan.duration) {
+//             const start = new Date(apsStartDate);
+//             const end = new Date(start.getFullYear(), start.getMonth() + Number(paymentPlan.duration), 1);
+//             contractPayload.TerminationDate = formatDateLocal(end);
+//           }
+
+//           // Debug log
+//           console.log(
+//             "APS Contract Payload:",
+//             JSON.stringify(contractPayload, null, 2)
+//           );
+//           const contractRes = await createContract(customerId, contractPayload);
+
+//           if (!contractRes.status) {
+//             console.log("APS Error Response:", contractRes);
+//             throw new Error(contractRes.message || "APS Contract creation failed");
+//           }
+
+//           const contractId =
+//             contractRes.data?.contract?.Id || contractRes.data?.Id;
+
+//           const directDebitRef =
+//             contractRes.data?.contract?.DirectDebitRef ||
+//             contractRes.data?.DirectDebitRef;
+
+//           /*
+//           =====================================
+//           4️⃣ PRO-RATA PAYMENT
+//           =====================================
+//           */
+
+//           if (proRataTotal > 0) {
+//             if (DEBUG) console.log("🔥 APS PRO-RATA:", proRataTotal);
+
+//             const proRataRes = await createContractPayment(contractId, {
+//               amount: proRataTotal,
+//               // date: startDate,
+//               date: apsStartDate,
+//               description: `Pro-Rata - ${classSchedule.className}`,
+//               reference: `PR-${booking.id}-${Date.now()}`,
+//             });
+
+//             if (!proRataRes.status) throw new Error(proRataRes.message);
+
+//             await BookingPayment.create({
+//               bookingId: booking.id,
+//               paymentPlanId: booking.paymentPlanId,
+//               studentId: firstStudentId,
+//               firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+//               lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName,
+//               email: data.payment?.email || data.parents?.[0]?.parentEmail,
+//               merchantRef: proRataRes?.data?.Id,
+//               price: proRataTotal,
+//               paymentType: "accesspaysuite",
+//               paymentCategory: "pro_rata",
+//               amount: proRataTotal,
+//               currency: "GBP",
+//               paymentStatus: "pending",
+//               contractId,
+//               directDebitRef,
+//               gatewayResponse: proRataRes.data,
+//               createdAt: new Date(),
+//               updatedAt: new Date(),
+//             });
+//           }
+
+//           /*
+//           =====================================
+//           5️⃣ ONE MONTH PLAN
+//           =====================================
+//           */
+
+//           if (paymentPlan.duration === 1 && proRataTotal === 0) {
+
+//             const fullRes = await createContractPayment(contractId, {
+//               amount: recurringAmount,
+//               // date: startDate,
+//               date: apsStartDate,
+//               description: `Full payment - ${classSchedule.className}`,
+//               reference: `FULL-${booking.id}-${Date.now()}`,
+//             });
+
+//             if (!fullRes.status) throw new Error(fullRes.message);
+
+//             await BookingPayment.create({
+//               bookingId: booking.id,
+//               paymentPlanId: booking.paymentPlanId,
+//               studentId: firstStudentId,
+//               firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+//               lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName,
+//               email: data.payment?.email || data.parents?.[0]?.parentEmail,
+
+//               merchantRef: fullRes?.data?.Id,
+
+//               price: recurringAmount,
+//               paymentType: "accesspaysuite",
+//               paymentCategory: "full_payment",
+//               amount: recurringAmount,
+//               currency: "GBP",
+//               paymentStatus: "pending",
+
+//               contractId,
+//               directDebitRef,
+//               gatewayResponse: fullRes.data,
+
+//               createdAt: new Date(),
+//               updatedAt: new Date(),
+//             });
+//           }
+
+//           /*
+//           =====================================
+//          6️⃣ RECURRING MEMBERSHIP
+//          =====================================
+//           */
+//           if (paymentPlan.duration > 1) {
+
+//             const recurringMonths = proRataTotal > 0
+//               ? paymentPlan.duration - 1
+//               : paymentPlan.duration;
+
+//             for (let i = 0; i < recurringMonths; i++) {
+//               // ✅ Always 1st of month
+//               const paymentDate = getAPSNextPaymentDateFixed(i + 1);
+
+//               const paymentRes = await createContractPayment(contractId, {
+//                 amount: recurringAmount,
+//                 date: paymentDate, // APS requires YYYY-MM-01
+//                 description: `Month ${i + 1} - ${classSchedule.className}`,
+//                 reference: `REC-${booking.id}-${i}-${Date.now()}`
+//               });
+
+//               if (!paymentRes.status) throw new Error(paymentRes.message);
+
+//               await BookingPayment.create({
+//                 bookingId: booking.id,
+//                 paymentPlanId: booking.paymentPlanId,
+//                 studentId: firstStudentId,
+//                 firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+//                 lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName,
+//                 email: data.payment?.email || data.parents?.[0]?.parentEmail,
+
+//                 price: recurringAmount,
+//                 amount: recurringAmount,
+//                 currency: "GBP",
+
+//                 paymentType: "accesspaysuite",
+//                 paymentCategory: "recurring",
+//                 paymentStatus: "pending",
+
+//                 contractId,
+//                 directDebitRef,
+//                 merchantRef: paymentRes?.data?.Id,
+//                 gatewayResponse: paymentRes.data,
+
+//                 createdAt: new Date(),
+//                 updatedAt: new Date(),
+//               });
+//             }
+
+//             if (DEBUG) console.log("✅ APS All recurring payments created");
+//           }
+
+//           // if (paymentPlan.duration > 1) {
+//           //   await BookingPayment.create({
+//           //     bookingId: booking.id,
+//           //     paymentPlanId: booking.paymentPlanId,
+//           //     studentId: firstStudentId,
+//           //     firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+//           //     lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName,
+//           //     email: data.payment?.email || data.parents?.[0]?.parentEmail,
+
+//           //     price: recurringAmount,
+
+//           //     paymentType: "accesspaysuite",
+//           //     paymentCategory: "recurring",
+//           //     amount: recurringAmount,
+//           //     currency: "GBP",
+//           //     paymentStatus: "pending",
+//           //     contractId,
+//           //     directDebitRef,
+//           //     gatewayResponse: contractRes.data,
+//           //     createdAt: new Date(),
+//           //     updatedAt: new Date(),
+//           //   });
+
+//           //   if (DEBUG) console.log("✅ APS Recurring membership saved");
+//           // }
+//         }
+
+//         if (paymentStatusFromGateway === "failed")
+//           throw new Error("Payment failed. Booking not created.");
+
+//         if (DEBUG) {
+//           console.log(
+//             "🔍 [DEBUG] Payment processed with status:",
+//             paymentStatusFromGateway,
+//           );
+//         }
+//       } catch (error) {
+//         if (!t.finished) await t.rollback();
+//         return { status: false, message: error.message };
+//       }
+//     }
+//     await t.commit();
+//     return {
+//       status: true,
+//       data: {
+//         bookingId: booking.bookingId,
+//         booking,
+//         studentId: studentRecords[0]?.id,
+//         studentFirstName: studentRecords[0]?.studentFirstName,
+//         studentLastName: studentRecords[0]?.studentLastName,
+//       },
+//     };
+//   } catch (error) {
+//     await t.rollback();
+//     return { status: false, message: error.message };
+//   }
+// };
 
 exports.getAllBookingsWithStats = async (filters = {}) => {
   await autoSyncFreezeBilling();
