@@ -65,6 +65,11 @@ const BookingPayment = sequelize.define(
       type: DataTypes.STRING(100),
       allowNull: true,
     },
+    dueDate: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+      comment: "Scheduled payment date for recurring payments",
+    },
     // Add this inside your BookingPayment.define fields
     paymentType: {
       type: DataTypes.ENUM(

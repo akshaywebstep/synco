@@ -137,6 +137,7 @@ async function createBookingPayment({
   email,
   amount,
   paymentType,
+  dueDate,
   description,
   paymentCategory = "recurring",
   gatewayResponse = null,
@@ -156,6 +157,7 @@ async function createBookingPayment({
     amount,
     price: amount,
     paymentType,
+    dueDate,
     description,
     paymentCategory,
     paymentStatus, // ✅ NOW real status use hoga
@@ -2535,6 +2537,10 @@ exports.convertToMembership = async (data, options) => {
                   `Failed to create GoCardless payment: ${paymentRes.message}`
                 );
               }
+              const dueDate =
+                paymentRes?.payment?.charge_date
+                  ? new Date(paymentRes.payment.charge_date)
+                  : new Date();
 
               // Save payment in your DB
               await createBookingPayment({
@@ -2554,6 +2560,7 @@ exports.convertToMembership = async (data, options) => {
                 amount: firstMonthAmount,
                 paymentType: "bank",
                 paymentCategory: "pro_rata",
+                dueDate: dueDate,
                 paymentStatus: paymentRes.payment.status,
                 gatewayResponse: paymentRes,
                 currency: "GBP",
@@ -2582,6 +2589,11 @@ exports.convertToMembership = async (data, options) => {
               if (!paymentRes.status) {
                 throw new Error(`Payment failed: ${paymentRes.message}`);
               }
+              const dueDate =
+                paymentRes?.payment?.charge_date
+                  ? new Date(paymentRes.payment.charge_date)
+                  : new Date();
+
 
               await createBookingPayment({
                 bookingId: booking.id,
@@ -2593,6 +2605,7 @@ exports.convertToMembership = async (data, options) => {
                 email:
                   data.payment?.email || data.parents?.[0]?.parentEmail,
                 amount: recurringAmount,
+                dueDate: dueDate,
                 paymentType: "bank",
                 paymentCategory: "full_payment",
                 paymentStatus: paymentRes.payment.status,
@@ -2650,37 +2663,57 @@ exports.convertToMembership = async (data, options) => {
                 "Subscription ID going to DB:",
                 subscriptionRes.subscription.id,
               );
-              await createBookingPayment({
-                bookingId: booking.id,
-                studentId: firstStudentId,
-                parent: data.parents?.[0],
-                // ✅ ADD THESE
-                firstName:
-                  data.payment?.firstName ||
-                  data.parents?.[0]?.parentFirstName ||
-                  "",
-                lastName:
-                  data.payment?.lastName ||
-                  data.parents?.[0]?.parentLastName ||
-                  "",
-                email:
-                  data.payment?.email || data.parents?.[0]?.parentEmail || "",
-                amount: recurringAmount,
-                paymentType: "bank",
-                paymentCategory: "recurring",
-                paymentStatus: paymentStatusFromGateway, // ✅ MUST ADD
-                // ✅ ADD THESE TWO
-                goCardlessMandateId: mandateId || null,
+              const upcomingPayments =
+                subscriptionRes.subscription?.upcoming_payments || [];
 
-                goCardlessSubscriptionId:
-                  subscriptionRes.subscription.id || null,
-                gatewayResponse: {
-                  goCardlessCustomer: gcCustomer,
-                  goCardlessBankAccount: gcBankAccount,
-                  goCardlessSubscription: subscriptionRes.subscription,
-                },
-              });
+              for (const payment of upcomingPayments) {
 
+                const dueDate = payment?.charge_date
+                  ? new Date(payment.charge_date)
+                  : null;
+
+                const amount = payment.amount / 100; // pence → GBP
+
+                await createBookingPayment({
+                  bookingId: booking.id,
+                  studentId: firstStudentId,
+                  parent: data.parents?.[0],
+
+                  firstName:
+                    data.payment?.firstName ||
+                    data.parents?.[0]?.parentFirstName ||
+                    "",
+
+                  lastName:
+                    data.payment?.lastName ||
+                    data.parents?.[0]?.parentLastName ||
+                    "",
+
+                  email:
+                    data.payment?.email ||
+                    data.parents?.[0]?.parentEmail ||
+                    "",
+
+                  amount: amount,
+                  currency: "GBP",
+
+                  paymentType: "bank",
+                  paymentCategory: "recurring",
+                  paymentStatus: paymentStatusFromGateway || "pending",
+
+                  dueDate: dueDate, // ✅ IMPORTANT
+
+                  goCardlessMandateId: mandateId,
+                  goCardlessSubscriptionId: subscriptionRes.subscription.id,
+
+                  gatewayResponse: {
+                    goCardlessCustomer: gcCustomer,
+                    goCardlessBankAccount: gcBankAccount,
+                    goCardlessSubscription: subscriptionRes.subscription,
+                  },
+                });
+
+              }
               console.log("✅ Subscription created for remaining months");
             } else {
               console.log("🔥 Duration = 1 → No subscription created");
@@ -2789,6 +2822,31 @@ exports.convertToMembership = async (data, options) => {
             contractRes.data?.contract?.DirectDebitRef ||
             contractRes.data?.DirectDebitRef;
 
+          // Save contract creation as a payment record (optional, if APS returns a due date here)
+          if (contractRes.data?.DueDate) {
+            await BookingPayment.create({
+              bookingId: booking.id,
+              paymentPlanId: booking.paymentPlanId,
+              studentId: firstStudentId,
+              firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
+              lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName,
+              email: data.payment?.email || data.parents?.[0]?.parentEmail,
+              price: recurringAmount,
+              amount: recurringAmount,
+              currency: "GBP",
+              paymentType: "accesspaysuite",
+              paymentCategory: "contract",
+              paymentStatus: "pending",
+              contractId,
+              directDebitRef,
+              merchantRef: contractRes.data?.Id,
+              dueDate: new Date(contractRes.data.DueDate),
+              gatewayResponse: contractRes.data,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+          }
+
           /*
           =====================================
           4️⃣ PRO-RATA PAYMENT
@@ -2818,6 +2876,7 @@ exports.convertToMembership = async (data, options) => {
               price: proRataTotal,
               paymentType: "accesspaysuite",
               paymentCategory: "pro_rata",
+              dueDate: new Date(proRataRes.data?.DueDate), // ✅ APS response se
               amount: proRataTotal,
               currency: "GBP",
               paymentStatus: "pending",
@@ -2859,6 +2918,7 @@ exports.convertToMembership = async (data, options) => {
               price: recurringAmount,
               paymentType: "accesspaysuite",
               paymentCategory: "full_payment",
+              dueDate: new Date(fullRes.data?.DueDate), // ✅ APS response se
               amount: recurringAmount,
               currency: "GBP",
               paymentStatus: "pending",
@@ -2908,7 +2968,7 @@ exports.convertToMembership = async (data, options) => {
                 price: recurringAmount,
                 amount: recurringAmount,
                 currency: "GBP",
-
+                dueDate: new Date(paymentRes.data?.DueDate), // ✅ APS response se
                 paymentType: "accesspaysuite",
                 paymentCategory: "recurring",
                 paymentStatus: "pending",
@@ -2926,32 +2986,6 @@ exports.convertToMembership = async (data, options) => {
 
             if (DEBUG) console.log("✅ APS All recurring payments created");
           }
-
-          // if (paymentPlan.duration > 1) {
-          //   await BookingPayment.create({
-          //     bookingId: booking.id,
-          //     paymentPlanId: booking.paymentPlanId,
-          //     studentId: firstStudentId,
-          //     firstName: data.payment?.firstName || data.parents?.[0]?.parentFirstName,
-          //     lastName: data.payment?.lastName || data.parents?.[0]?.parentLastName,
-          //     email: data.payment?.email || data.parents?.[0]?.parentEmail,
-
-          //     price: recurringAmount,
-
-          //     paymentType: "accesspaysuite",
-          //     paymentCategory: "recurring",
-          //     amount: recurringAmount,
-          //     currency: "GBP",
-          //     paymentStatus: "pending",
-          //     contractId,
-          //     directDebitRef,
-          //     gatewayResponse: contractRes.data,
-          //     createdAt: new Date(),
-          //     updatedAt: new Date(),
-          //   });
-
-          //   if (DEBUG) console.log("✅ APS Recurring membership saved");
-          // }
         }
 
         if (paymentStatusFromGateway === "failed")
