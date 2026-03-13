@@ -48,9 +48,8 @@ exports.createRecruitmentFranchiseLead = async (data) => {
           );
         } else {
           // Build candidate full name
-          const candidateName = `${lead.firstName || ""} ${
-            lead.lastName || ""
-          }`.trim();
+          const candidateName = `${lead.firstName || ""} ${lead.lastName || ""
+            }`.trim();
 
           // Ensure applicationStatus fallback
           const applicationStatus = lead.status || "Pending";
@@ -100,9 +99,16 @@ exports.createRecruitmentFranchiseLead = async (data) => {
   } catch (error) {
     console.error("❌ Error creating createRecruitmentFranchiseLead:", error);
 
+    let message = error.message;
+
+    // Handle unique constraint error properly
+    if (error.name === "SequelizeUniqueConstraintError") {
+      message = error.errors[0].message || "Email already exists";
+    }
+
     return {
       status: false,
-      message: error.message,
+      message: message,
     };
   }
 };
@@ -260,8 +266,8 @@ exports.getAllFranchiseRecruitmentLead = async (adminId) => {
           percent:
             totalFranchiseLeads > 0
               ? ((totalNewFranchiseLeads / totalFranchiseLeads) * 100).toFixed(
-                  2
-                ) + "%"
+                2
+              ) + "%"
               : "0%",
         },
         {
@@ -270,7 +276,7 @@ exports.getAllFranchiseRecruitmentLead = async (adminId) => {
           percent:
             totalFranchiseLeads > 0
               ? ((totalToAssessments / totalFranchiseLeads) * 100).toFixed(2) +
-                "%"
+              "%"
               : "0%",
         },
         {
@@ -279,7 +285,7 @@ exports.getAllFranchiseRecruitmentLead = async (adminId) => {
           percent:
             totalFranchiseLeads > 0
               ? ((totalLeadsToSales / totalFranchiseLeads) * 100).toFixed(2) +
-                "%"
+              "%"
               : "0%",
         },
       ],
@@ -435,8 +441,8 @@ exports.getFranchiseRecruitmentLeadById = async (id, adminId) => {
               ClassSchedule.findByPk(item.classId),
               item.assignToVenueManagerId
                 ? Admin.findByPk(item.assignToVenueManagerId, {
-                    attributes: ["id", "firstName", "lastName", "email"],
-                  })
+                  attributes: ["id", "firstName", "lastName", "email"],
+                })
                 : null,
             ]);
 
@@ -552,12 +558,10 @@ exports.sendEmail = async ({ recruitmentLeadId, admin }) => {
       };
     }
 
-    const candidateName = `${lead.firstName || ""} ${
-      lead.lastName || ""
-    }`.trim();
-    const adminName = `${admin?.firstName || "Admin"} ${
-      admin?.lastName || ""
-    }`.trim();
+    const candidateName = `${lead.firstName || ""} ${lead.lastName || ""
+      }`.trim();
+    const adminName = `${admin?.firstName || "Admin"} ${admin?.lastName || ""
+      }`.trim();
 
     // 2️⃣ Load email template
     const {
@@ -630,12 +634,10 @@ exports.sendOfferEmail = async ({ recruitmentLeadId, admin }) => {
       };
     }
 
-    const candidateName = `${lead.firstName || ""} ${
-      lead.lastName || ""
-    }`.trim();
-    const adminName = `${admin?.firstName || "Admin"} ${
-      admin?.lastName || ""
-    }`.trim();
+    const candidateName = `${lead.firstName || ""} ${lead.lastName || ""
+      }`.trim();
+    const adminName = `${admin?.firstName || "Admin"} ${admin?.lastName || ""
+      }`.trim();
 
     // 2️⃣ Load email template
     const {
@@ -984,10 +986,10 @@ exports.getAllFranchiseRecruitmentLeadRport = async (adminId, dateRange) => {
       : "0%";
     const totalPracticalGrade = totalPracticalLeadsWithAssessment
       ? Math.round(
-          (totalPracticalLeadsWithAssessment /
-            yearlyCounters.thisYear.totalLeads) *
-            100
-        ) + "%"
+        (totalPracticalLeadsWithAssessment /
+          yearlyCounters.thisYear.totalLeads) *
+        100
+      ) + "%"
       : "0%";
 
     const calcRate = (v, t) =>
