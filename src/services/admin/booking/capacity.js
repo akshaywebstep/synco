@@ -59,7 +59,8 @@ exports.getAllBookings = async (adminId, filters = {}) => {
         ...venueWhere,
         createdBy: createdByIds, // ✅ updated
       },
-      order: [["id", "ASC"]],
+      // order: [["id", "ASC"]],
+      order: [["createdAt", "DESC"]], // ✅ nayi venues upar
     });
 
     // --- FETCH CLASS SCHEDULES for these venues ---
@@ -68,12 +69,12 @@ exports.getAllBookings = async (adminId, filters = {}) => {
         venueId: allVenues.map((v) => v.id),
       },
       include: [{ model: Venue, as: "venue" }],
-      order: [["id", "ASC"]],
+      order: [["createdAt", "DESC"]], // latest classes pehle
     });
 
     // --- FETCH BOOKINGS ---
     const bookings = await Booking.findAll({
-      order: [["id", "ASC"]],
+      order: [["createdAt", "DESC"]],
       where: trialWhere,
       include: [
         {
@@ -202,15 +203,15 @@ exports.getAllBookings = async (adminId, filters = {}) => {
     });
 
     // --- CALCULATE STATS ---
-    venues = Object.values(venueMap).map((venue) => {
-      let totalCapacity = 0;
-      let totalBooked = 0;
-      let memberCount = 0;
-      let freeTrialCount = 0;
+    // --- CALCULATE STATS AND PRESERVE ORDER OF NEW VENUES ---
+    venues = allVenues.map((venue) => {
+      const v = venueMap[venue.id];
+      if (!v) return null;
 
-      venue.classes = venue.classes.map((cls) => {
+      v.classes = v.classes.map((cls) => {
         const activeBookings = cls.bookings.filter(
-          (booking) => ["active", "pending", "attended", "froze", "request_to_cancel", "waiting list"].includes(booking.status)
+          (booking) =>
+            ["active", "pending", "attended", "froze", "request_to_cancel", "waiting list"].includes(booking.status)
         );
 
         const clsTotalBooked = activeBookings.reduce(
@@ -220,7 +221,6 @@ exports.getAllBookings = async (adminId, filters = {}) => {
 
         let clsMembers = 0;
         let clsFreeTrials = 0;
-
         activeBookings.forEach((booking) => {
           if (booking.bookingType === "paid") clsMembers += booking.students.length;
           if (booking.bookingType === "free") clsFreeTrials += booking.students.length;
@@ -240,8 +240,8 @@ exports.getAllBookings = async (adminId, filters = {}) => {
         return { ...cls, stats: clsStats };
       });
 
-      return venue;
-    });
+      return v;
+    }).filter(Boolean); // remove nulls if any
 
     // ✅ Remove venues with no classes
     venues = venues.filter((venue) => venue.classes.length > 0);
