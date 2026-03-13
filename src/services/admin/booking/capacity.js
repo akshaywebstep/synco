@@ -4,6 +4,7 @@ const {
   BookingStudentMeta,
   ClassSchedule,
   Venue,
+  Admin,
 } = require("../../../models");
 const { Op } = require("sequelize");
 
@@ -32,11 +33,31 @@ exports.getAllBookings = async (adminId, filters = {}) => {
       venueWhere.createdAt = { [Op.lte]: new Date(filters.toDate + " 23:59:59") };
     }
 
-    // --- FETCH VENUES created by this admin ---
+    // --- Determine which admins’ venues this admin can see ---
+    const currentAdmin = await Admin.findByPk(adminId);
+    if (!currentAdmin) {
+      return { status: false, message: "Admin not found", data: [] };
+    }
+
+    let createdByIds = [];
+
+    // SuperAdmin sees own + franchisee venues
+    if (!currentAdmin.superAdminId) {
+      const childAdmins = await Admin.findAll({
+        where: { superAdminId: adminId },
+        attributes: ["id"],
+      });
+      createdByIds = [adminId, ...childAdmins.map(a => a.id)];
+    } else {
+      // Franchise sees only own venues
+      createdByIds = [adminId];
+    }
+
+    // --- FETCH VENUES created by allowed admins ---
     const allVenues = await Venue.findAll({
       where: {
         ...venueWhere,
-        createdBy: adminId,
+        createdBy: createdByIds, // ✅ updated
       },
       order: [["id", "ASC"]],
     });
@@ -55,14 +76,33 @@ exports.getAllBookings = async (adminId, filters = {}) => {
       order: [["id", "ASC"]],
       where: trialWhere,
       include: [
-        { model: BookingStudentMeta, as: "students" },
+        {
+          model: BookingStudentMeta,
+          as: "students",
+          where: filters.classScheduleId
+            ? { classScheduleId: filters.classScheduleId } // ✅ filter by classScheduleId
+            : undefined,
+          required: false, // so bookings without students still appear
+        },
         {
           model: ClassSchedule,
           as: "classSchedule",
-          where: { venueId: allVenues.map((v) => v.id) },
           include: [{ model: Venue, as: "venue" }],
+          required: false,
         },
       ],
+    });
+    // ✅ Debug: Console log all bookings
+    console.log("Total bookings fetched:", bookings.length);
+    bookings.forEach((booking, index) => {
+      console.log(`Booking ${index + 1} - ID:`, booking.id);
+      console.log("Booking Type:", booking.bookingType);
+      console.log("Status:", booking.status);
+      console.log("ClassSchedule included:", booking.classSchedule ? booking.classSchedule.id : "None");
+      console.log("Students:");
+      booking.students.forEach((s) => {
+        console.log(`  Student ID: ${s.id}, Name: ${s.studentFirstName} ${s.studentLastName}, classScheduleId: ${s.classScheduleId}`);
+      });
     });
 
     // --- BUILD VENUE MAP ---
@@ -108,42 +148,56 @@ exports.getAllBookings = async (adminId, filters = {}) => {
 
     // --- MAP BOOKINGS INTO CLASSES ---
     bookings.forEach((booking) => {
-      const venue = booking.classSchedule?.venue;
-      const classSchedule = booking.classSchedule;
-      if (!venue) return;
+      booking.students?.forEach((student) => {
+        const classScheduleId = student.classScheduleId;
+        if (!classScheduleId) return;
 
-      const venueEntry = venueMap[venue.id];
-      if (!venueEntry) return;
+        // --- Find classSchedule and venue ---
+        const cls = allClassSchedules.find((c) => c.id === classScheduleId);
+        if (!cls) return;
 
-      let classEntry = venueEntry.classes.find(
-        (cls) => cls.id === classSchedule.id
-      );
-      if (!classEntry) {
-        classEntry = {
-          id: classSchedule.id,
-          day: classSchedule.day,
-          className: classSchedule.className,
-          startTime: classSchedule.startTime,
-          endTime: classSchedule.endTime,
-          capacity: classSchedule.capacity,
-          totalCapacity: classSchedule.totalCapacity, // ✅ preserve
-          bookings: [],
-        };
-        venueEntry.classes.push(classEntry);
-      }
+        const venueId = cls.venueId;
+        const venueEntry = venueMap[venueId];
+        if (!venueEntry) return;
 
-      classEntry.bookings.push({
-        id: booking.id,
-        bookingType: booking.bookingType,
-        status: booking.status,
-        trialDate: booking.trialDate,
-        students:
-          booking.students?.map((s) => ({
-            id: s.id,
-            studentFirstName: s.studentFirstName,
-            studentLastName: s.studentLastName,
-            age: s.age,
-          })) || [],
+        // --- Check if class already exists in venue.classes ---
+        let classEntry = venueEntry.classes.find((c) => c.id === classScheduleId);
+        if (!classEntry) {
+          classEntry = {
+            id: cls.id,
+            className: cls.className,
+            day: cls.day,
+            startTime: cls.startTime,
+            endTime: cls.endTime,
+            capacity: cls.capacity,
+            totalCapacity: cls.totalCapacity,
+            bookings: [],
+          };
+          venueEntry.classes.push(classEntry);
+        }
+
+        // --- Check if booking entry exists ---
+        let bookingEntry = classEntry.bookings.find((b) => b.id === booking.id);
+        if (!bookingEntry) {
+          bookingEntry = {
+            id: booking.id,
+            bookingType: booking.bookingType,
+            status: booking.status,
+            trialDate: booking.trialDate,
+            students: [],
+          };
+          classEntry.bookings.push(bookingEntry);
+        }
+
+        // --- Push student info only if not already added ---
+        if (!bookingEntry.students.some((s) => s.id === student.id)) {
+          bookingEntry.students.push({
+            id: student.id,
+            studentFirstName: student.studentFirstName,
+            studentLastName: student.studentLastName,
+            age: student.age,
+          });
+        }
       });
     });
 
@@ -156,7 +210,7 @@ exports.getAllBookings = async (adminId, filters = {}) => {
 
       venue.classes = venue.classes.map((cls) => {
         const activeBookings = cls.bookings.filter(
-          (booking) => ["active", "pending", "attended", "froze", "request_to_cancel","waiting list"].includes(booking.status)
+          (booking) => ["active", "pending", "attended", "froze", "request_to_cancel", "waiting list"].includes(booking.status)
         );
 
         const clsTotalBooked = activeBookings.reduce(
@@ -255,11 +309,11 @@ exports.getAllBookings = async (adminId, filters = {}) => {
         ),
       0
     );
-    
+
     globalStats.occupancyRate = globalStats.totalCapacity
       ? Math.round((globalStats.totalBooked / globalStats.totalCapacity) * 100)
       : 0;
-      
+
     return {
       status: true,
       message: "Fetched venues with stats",
