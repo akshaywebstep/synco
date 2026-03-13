@@ -100,34 +100,56 @@ async function handleResponse(response) {
     rawText = await response.text();
     result = rawText ? JSON.parse(rawText) : null;
   } catch (e) {
-    // non-JSON response
+    // non JSON response
   }
 
   if (!response.ok) {
     let message = "API request failed";
 
-    // ✅ Handle GoCardless structured errors properly
+    // ✅ GoCardless detailed errors
     if (result?.error?.errors?.length) {
       message = result.error.errors
         .map((err) => {
           const field = err.field ? err.field.replace(/_/g, " ") : "";
-          const formattedField = field.charAt(0).toUpperCase() + field.slice(1);
-          return field ? `${formattedField} ${err.message}` : err.message;
+          const formattedField = field
+            ? field.charAt(0).toUpperCase() + field.slice(1)
+            : "";
+
+          const msg = err.message || "";
+          const reason = err.reason ? err.reason.replace(/_/g, " ") : "";
+
+          // avoid duplicate message
+          if (msg.toLowerCase() === reason.toLowerCase()) {
+            return msg;
+          }
+
+          if (formattedField) {
+            return `${formattedField} ${msg}`.trim();
+          }
+
+          if (msg && reason) {
+            return `${msg} (${reason})`;
+          }
+
+          return msg || reason;
         })
         .join(", ");
     }
 
-    // fallback to main message
+    // ✅ fallback main error message
     else if (result?.error?.message) {
       message = result.error.message;
     }
 
-    // fallback generic errors
+    // ✅ generic API errors
     else if (result?.errors?.length) {
       message = result.errors
         .map((e) => e.message || e.reason || JSON.stringify(e))
         .join(", ");
-    } else if (typeof rawText === "string" && rawText.trim()) {
+    }
+
+    // ✅ raw fallback
+    else if (typeof rawText === "string" && rawText.trim()) {
       message = rawText;
     }
 
@@ -141,12 +163,14 @@ async function handleResponse(response) {
       status: false,
       message,
       error: result || rawText,
+      statusCode: response.status,
     };
   }
 
   return {
     status: true,
     data: result,
+    statusCode: response.status,
   };
 }
 

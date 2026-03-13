@@ -970,6 +970,7 @@ exports.getAllBookings = async (filters = {}) => {
 
     // ✅ Current period stats
     const totalFreeTrials = finalBookings.length;
+
     const attendedCount = finalBookings.filter(
       (b) => b.status === "attended"
     ).length;
@@ -977,7 +978,44 @@ exports.getAllBookings = async (filters = {}) => {
       totalFreeTrials > 0
         ? Math.round((attendedCount / totalFreeTrials) * 100)
         : 0;
-    const trialsToMembers = finalBookings.filter(b => b.isConvertedToMembership).length;
+    // ✅ Fetch converted trial bookings separately
+    const convertedTrialBookings = await Booking.findAll({
+      where: {
+        bookingType: "paid",
+        serviceType: "weekly class membership",
+        isConvertedToMembership: 1,
+        ...accessControl,
+      },
+      include: [
+        {
+          model: BookingStudentMeta,
+          as: "students",
+          include: [
+            {
+              model: ClassSchedule,
+              as: "classSchedule",
+              include: [
+                {
+                  model: Venue,
+                  as: "venue",
+                },
+              ],
+            },
+          ],
+          required: false,
+        },
+      ],
+    });
+    console.log(
+      "Converted Trial Bookings Count:",
+      convertedTrialBookings.length
+    );
+    console.log(
+      "Converted Booking IDs:",
+      convertedTrialBookings.map(b => b.id)
+    );
+
+    const trialsToMembers = convertedTrialBookings.length;
     // ✅ Top Performer (Admin/Agent with most bookings)
     let topPerformer = null;
     if (allBookedBy.length > 0) {

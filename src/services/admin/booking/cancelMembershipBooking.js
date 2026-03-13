@@ -108,7 +108,7 @@ exports.createCancelBooking = async ({
             const cancelRes = await cancelGoCardlessPayment(paymentId);
 
             if (!cancelRes.status)
-              throw new Error("Failed to cancel GoCardless payment");
+              throw new Error(cancelRes.message || "Failed to cancel GoCardless payment");
 
             await payment.update(
               { paymentStatus: "cancelled" },
@@ -122,7 +122,7 @@ exports.createCancelBooking = async ({
               await refundGoCardlessPayment(paymentId);
 
             if (!refundRes.status)
-              throw new Error("Failed to refund GoCardless payment");
+              throw new Error(refundRes.message || "Failed to refund GoCardless payment");
 
             await payment.update(
               { paymentStatus: "refunded" },
@@ -144,9 +144,18 @@ exports.createCancelBooking = async ({
           const subCancelRes =
             await cancelGoCardlessSubscription(subscriptionId);
 
-          if (!subCancelRes.status)
-            throw new Error("Failed to cancel subscription");
+          if (!subCancelRes.status) {
 
+            // ignore already cancelled subscription
+            if (
+              subCancelRes.message?.toLowerCase().includes("cancel")
+            ) {
+              console.log("⚠️ Subscription already cancelled");
+            } else {
+              throw new Error(subCancelRes.message || "Failed to cancel subscription");
+            }
+
+          }
           await payment.update(
             { paymentStatus: "cancelled" },
             { transaction: t }
@@ -183,10 +192,9 @@ exports.createCancelBooking = async ({
         // PAID PAYMENT → DO NOTHING
         // --------------------------------------------------
 
+        // ❌ NEVER cancel if already paid
         if (status === "paid" || status === "confirmed") {
-
-          console.log("✅ Payment already paid, skipping cancel");
-
+          console.log("✅ Payment already paid, skipping cancellation");
           continue;
         }
 
@@ -197,7 +205,8 @@ exports.createCancelBooking = async ({
         if (
           status === "pending" ||
           status === "pending_submission" ||
-          status === "submitted"
+          status === "submitted" ||
+          status === "processing"
         ) {
 
           await payment.update(
@@ -249,6 +258,9 @@ exports.createCancelBooking = async ({
           console.log("Contract archived");
 
           apsContractHandled = true;
+          // IMPORTANT
+          paymentCancelled = true;
+
         }
       }
 

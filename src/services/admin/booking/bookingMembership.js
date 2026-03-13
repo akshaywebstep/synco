@@ -2023,10 +2023,12 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
         ),
       },
       totalRevenue: {
-        totalRevenue: currentStats.totalRevenue,
-        percentage: calculatePercentageChange(
-          currentStats.totalRevenue,
-          previousStats.totalRevenue,
+        totalRevenue: Number(currentStats.totalRevenue.toFixed(2)),
+        percentage: Number(
+          calculatePercentageChange(
+            currentStats.totalRevenue,
+            previousStats.totalRevenue
+          ).toFixed(2)
         ),
       },
       avgMonthlyFee: {
@@ -2530,8 +2532,8 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
         change: calcChange(totalSales, prevTotalSales),
       },
       totalRevenue: {
-        value: totalRevenue,
-        change: calcChange(totalRevenue, prevTotalRevenue),
+        value: Number(totalRevenue.toFixed(2)),
+        change: Number(calcChange(totalRevenue, prevTotalRevenue).toFixed(2)),
       },
       avgMonthlyFee: {
         value: avgMonthlyFee,
