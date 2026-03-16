@@ -2017,7 +2017,8 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
         totalStudents,
         totalRevenue,
         avgMonthlyFee: Math.round(avgMonthlyFee * 100) / 100,
-        avgLifeCycle: Math.round(avgLifeCycle * 100) / 100,
+        // avgLifeCycle: Math.round(avgLifeCycle * 100) / 100,
+        avgLifeCycle: Math.round(avgLifeCycle)
       };
     };
     const currentStats = calculateStats(currentYearBookings);
@@ -2048,7 +2049,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
         ),
       },
       avgLifeCycle: {
-        avgLifeCycle: currentStats.avgLifeCycle,
+        avgLifeCycle: `${Math.round(currentStats.avgLifeCycle)} months`,
         percentage: calculatePercentageChange(
           currentStats.avgLifeCycle,
           previousStats.avgLifeCycle,
