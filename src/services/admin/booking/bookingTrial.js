@@ -702,7 +702,13 @@ exports.getAllBookings = async (filters = {}) => {
 
     if (filters.venueId) trialWhere.venueId = filters.venueId;
     if (filters.trialDate) trialWhere.trialDate = filters.trialDate;
-    if (filters.status) trialWhere.status = filters.status;
+    if (filters.status) {
+      if (Array.isArray(filters.status)) {
+        trialWhere.status = { [Op.in]: filters.status };
+      } else {
+        trialWhere.status = filters.status;
+      }
+    }
 
     let allowedAdminIds = [];
 
