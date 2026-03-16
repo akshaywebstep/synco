@@ -907,8 +907,16 @@ exports.getAllBookings = async (filters = {}) => {
 
         const { venue: _venue, ...bookingData } = booking.dataValues;
 
-        const venue =
-          booking.students?.[0]?.classSchedule?.venue || null;
+        let venue = null;
+
+        if (booking.students && booking.students.length) {
+          for (const s of booking.students) {
+            if (s.classSchedule?.venue) {
+              venue = s.classSchedule.venue;
+              break;
+            }
+          }
+        }
 
         return {
           ...bookingData,
