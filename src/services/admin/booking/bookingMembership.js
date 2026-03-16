@@ -1654,7 +1654,7 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
       whereBooking[Op.or] = durationConditions;
     }
 
-    
+
 
     // Date filters
     if (filters.dateBooked) {
@@ -2128,22 +2128,28 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
       whereVenue.name = { [Op.like]: `%${filters.venueName}%` };
 
     if (filters.duration) {
-      const raw = filters.duration.toLowerCase().trim();
+      const durations = Array.isArray(filters.duration)
+        ? filters.duration
+        : [filters.duration];
 
-      const match = raw.match(/^(\d+)\s*(months?|weeks?|days?)$/);
+      const durationConditions = [];
 
-      if (match) {
-        const durationValue = match[1];
-        const intervalValue = match[2];
+      durations.forEach((d) => {
+        const raw = d.toLowerCase().trim();
+        const match = raw.match(/^(\d+)\s*(months?|weeks?|days?)$/);
 
-        whereBooking["$paymentPlan.duration$"] = durationValue;
-        whereBooking["$paymentPlan.interval$"] = {
-          [Op.like]: `%${intervalValue}%`,
-        };
-      } else {
-        whereBooking["$paymentPlan.duration$"] = {
-          [Op.like]: `%${raw}%`,
-        };
+        if (match) {
+          durationConditions.push({
+            "$paymentPlan.duration$": match[1],
+            "$paymentPlan.interval$": {
+              [Op.like]: `%${match[2]}%`,
+            },
+          });
+        }
+      });
+
+      if (durationConditions.length) {
+        whereBooking[Op.or] = durationConditions;
       }
     }
 
@@ -2402,6 +2408,7 @@ exports.getActiveMembershipBookings = async (filters = {}) => {
         startDate: booking.startDate,
         dateBooked: booking.createdAt,
         venueId: booking.venueId,
+        createdAt: booking.createdAt,
 
         // Full classSchedule + venue
         // classSchedule: booking.classSchedule || null,
