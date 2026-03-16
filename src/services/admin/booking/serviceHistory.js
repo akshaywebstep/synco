@@ -2764,4 +2764,312 @@ exports.getAccountInformation = async (parentAdminId) => {
   }
 };
 
+exports.updateAccountInformation = async (parentAdminId, payload) => {
+
+  try {
+
+    const { parent, student } = payload;
+
+    /* ---------------------------------------------
+       UPSERT PARENT (USING studentId FK)
+    ----------------------------------------------*/
+
+    const upsertParent = async (Model, studentId, parentData) => {
+
+      const existingParent = await Model.findOne({
+        where: {
+          studentId,
+          parentEmail: parentData.parentEmail
+        }
+      });
+      // 🔒 EMAIL CHANGE NOT ALLOWED
+      if (existingParent) {
+
+        if (
+          parentData.parentEmail &&
+          parentData.parentEmail !== existingParent.parentEmail
+        ) {
+          throw new Error("Parent email cannot be changed");
+        }
+
+        await existingParent.update({
+          parentFirstName: parentData.parentFirstName,
+          parentLastName: parentData.parentLastName,
+          parentPhoneNumber: parentData.parentPhoneNumber,
+          relationToChild: parentData.relationToChild || parentData.relationChild,
+          howDidYouHear: parentData.howDidYouHear || parentData.howDidHear
+        });
+
+        return existingParent;
+      }
+
+      return Model.create({
+        ...parentData,
+        studentId
+      });
+
+    };
+
+
+    /* ---------------------------------------------
+       UPSERT STUDENT
+    ----------------------------------------------*/
+
+    const upsertStudent = async (Model, bookingKey, bookingId, studentData) => {
+
+      // copy payload
+      const data = { ...studentData };
+
+      // map field for models jaha column medicalInfo hai
+      if (Model === OneToOneStudent || Model === BirthdayPartyStudent) {
+        data.medicalInfo = studentData.medicalInformation;
+        delete data.medicalInformation;
+      }
+
+      const students = await Model.findAll({
+        where: {
+          [bookingKey]: bookingId,
+          studentFirstName: studentData.studentFirstName,
+          studentLastName: studentData.studentLastName
+        }
+      });
+
+      if (students.length) {
+
+        for (const s of students) {
+          await s.update(data);
+        }
+
+        return students[0];
+      }
+
+      return Model.create({
+        ...data,
+        [bookingKey]: bookingId
+      });
+
+    };
+
+
+    /* =============================================
+       WEEKLY BOOKINGS
+    ============================================= */
+
+    const weeklyBookings = await Booking.findAll({
+      where: { parentAdminId }
+    });
+
+    for (const booking of weeklyBookings) {
+
+      let students = await BookingStudentMeta.findAll({
+        where: { bookingTrialId: booking.id }
+      });
+
+      if (student) {
+
+        const newStudent = await upsertStudent(
+          BookingStudentMeta,
+          "bookingTrialId",
+          booking.id,
+          student
+        );
+
+        students.push(newStudent);
+
+      }
+
+      if (parent) {
+
+        for (const s of students) {
+
+          await upsertParent(
+            BookingParentMeta,
+            s.id,
+            {
+              parentFirstName: parent.parentFirstName,
+              parentLastName: parent.parentLastName,
+              parentEmail: parent.parentEmail,
+              parentPhoneNumber: parent.parentPhoneNumber,
+              relationToChild: parent.relationChild,
+              howDidYouHear: parent.howDidHear
+            }
+          );
+
+        }
+
+      }
+
+    }
+
+
+    /* =============================================
+       ONE TO ONE BOOKINGS
+    ============================================= */
+
+    const oneToOneBookings = await OneToOneBooking.findAll({
+      where: { parentAdminId }
+    });
+
+    for (const booking of oneToOneBookings) {
+
+      let students = await OneToOneStudent.findAll({
+        where: { oneToOneBookingId: booking.id }
+      });
+
+      if (student) {
+
+        const newStudent = await upsertStudent(
+          OneToOneStudent,
+          "oneToOneBookingId",
+          booking.id,
+          student
+        );
+
+        students.push(newStudent);
+
+      }
+
+      if (parent) {
+
+        for (const s of students) {
+
+          await upsertParent(
+            OneToOneParent,
+            s.id,
+            {
+              parentFirstName: parent.parentFirstName,
+              parentLastName: parent.parentLastName,
+              parentEmail: parent.parentEmail,
+              phoneNumber: parent.parentPhoneNumber,
+              relationChild: parent.relationChild,
+              howDidHear: parent.howDidHear
+            }
+          );
+
+        }
+
+      }
+
+    }
+
+
+    /* =============================================
+       BIRTHDAY BOOKINGS
+    ============================================= */
+
+    const birthdayBookings = await BirthdayPartyBooking.findAll({
+      where: { parentAdminId }
+    });
+
+    for (const booking of birthdayBookings) {
+
+      let students = await BirthdayPartyStudent.findAll({
+        where: { birthdayPartyBookingId: booking.id }
+      });
+
+      if (student) {
+
+        const newStudent = await upsertStudent(
+          BirthdayPartyStudent,
+          "birthdayPartyBookingId",
+          booking.id,
+          student
+        );
+
+        students.push(newStudent);
+
+      }
+
+      if (parent) {
+
+        for (const s of students) {
+
+          await upsertParent(
+            BirthdayPartyParent,
+            s.id,
+            {
+              parentFirstName: parent.parentFirstName,
+              parentLastName: parent.parentLastName,
+              parentEmail: parent.parentEmail,
+              parentPhoneNumber: parent.parentPhoneNumber,
+              relationChild: parent.relationChild,
+              howDidHear: parent.howDidHear
+            }
+          );
+
+        }
+
+      }
+
+    }
+
+
+    /* =============================================
+       HOLIDAY BOOKINGS
+    ============================================= */
+
+    const holidayBookings = await HolidayBooking.findAll({
+      where: { parentAdminId }
+    });
+
+    for (const booking of holidayBookings) {
+
+      let students = await HolidayBookingStudentMeta.findAll({
+        where: { bookingId: booking.id }
+      });
+
+      if (student) {
+
+        const newStudent = await upsertStudent(
+          HolidayBookingStudentMeta,
+          "bookingId",
+          booking.id,
+          student
+        );
+
+        students.push(newStudent);
+
+      }
+
+      if (parent) {
+
+        for (const s of students) {
+
+          await upsertParent(
+            HolidayBookingParentMeta,
+            s.id,
+            {
+              parentFirstName: parent.parentFirstName,
+              parentLastName: parent.parentLastName,
+              parentEmail: parent.parentEmail,
+              parentPhoneNumber: parent.parentPhoneNumber,
+              relationChild: parent.relationChild,
+              howDidHear: parent.howDidHear
+            }
+          );
+
+        }
+
+      }
+
+    }
+
+
+    return {
+      status: true,
+      message: "Account information updated successfully"
+    };
+
+  } catch (error) {
+
+    console.error("❌ updateAccountInformation error:", error);
+
+    return {
+      status: false,
+      message: error.message
+    };
+
+  }
+
+};
 

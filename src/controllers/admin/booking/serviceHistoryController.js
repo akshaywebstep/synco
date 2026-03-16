@@ -921,3 +921,38 @@ exports.getAccountInformation = async (req, res) => {
         });
     }
 };
+
+exports.updateAccountInformation = async (req, res) => {
+  try {
+
+    const parentAdminId = req.params.parentAdminId;
+    const payload = req.body;
+
+    if (!parentAdminId) {
+      return res.status(400).json({
+        status: false,
+        message: "parentAdminId is required"
+      });
+    }
+
+    const result = await accountProfileService.updateAccountInformation(
+      parentAdminId,
+      payload
+    );
+
+    if (!result.status) {
+      return res.status(400).json(result);
+    }
+
+    return res.status(200).json(result);
+
+  } catch (error) {
+
+    console.error("❌ UPDATE ACCOUNT ERROR:", error);
+
+    return res.status(500).json({
+      status: false,
+      message: "Internal server error"
+    });
+  }
+};

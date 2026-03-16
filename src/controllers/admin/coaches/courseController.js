@@ -153,6 +153,31 @@ exports.createCourse = async (req, res) => {
       return res.status(500).json({ status: false, message: result.message });
     }
 
+    // Step 8: Notify specific coaches if notifiedUsers exist
+    if (formData.notifiedUsers) {
+
+      let users = formData.notifiedUsers;
+
+      // agar string aaye to parse karo
+      if (typeof users === "string") {
+        users = JSON.parse(users);
+      }
+
+      if (Array.isArray(users)) {
+        for (const coachId of users) {
+          await createNotification(
+            { ...req, notificationAdminId: coachId },
+            "New Course Assigned",
+            `A new course "${formData.title}" has been assigned to you.`,
+            "Announcements",
+            "global"
+          );
+        }
+
+        if (DEBUG) console.log("📢 Coach notifications sent:", users);
+      }
+    }
+
     if (DEBUG) console.log("🎉 Course created successfully");
     return res.status(201).json({
       status: true,

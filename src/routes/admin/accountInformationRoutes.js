@@ -8,6 +8,7 @@ const {
   updateBooking,
   getBookingById,
   getVenuesWithClassesFromBookings,
+  // getAllAccountInformation,
 } = require("../../controllers/admin/accountInformations/accountInformationController");
 
 router.get(
@@ -16,6 +17,13 @@ router.get(
   permissionMiddleware("account-information", "view-listing"),
   getAllStudentsListing
 );
+
+// router.get(
+//   "/:parentAdminId",
+//   authMiddleware,
+//   permissionMiddleware("account-information", "view-listing"),
+//   getAllAccountInformation
+// );
 
 router.put(
   "/:bookingId",

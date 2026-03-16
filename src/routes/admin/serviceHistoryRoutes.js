@@ -9,6 +9,7 @@ const {
     updateBooking,
     updateBookingStudents,
     getAccountInformation,
+    updateAccountInformation,
 } = require("../../controllers/admin/booking/serviceHistoryController");
 
 // router.get("/selected/:id", authMiddleware, getSelectedBookFreeTrials);
@@ -24,6 +25,14 @@ router.get(
     authMiddleware,
     permissionMiddleware("service-history", "view-listing"),
     getAccountInformation
+);
+
+// update booking not completed yet
+router.put(
+    "/account-information/update/:parentAdminId",
+    authMiddleware,
+    permissionMiddleware("service-history", "view-listing"),
+    updateAccountInformation
 );
 
 router.put(

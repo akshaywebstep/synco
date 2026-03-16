@@ -23,7 +23,7 @@ const RecruitmentLead = sequelize.define(
     email: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true,
+      // unique: true,
     },
 
     // ⭐ NEW FIELD
