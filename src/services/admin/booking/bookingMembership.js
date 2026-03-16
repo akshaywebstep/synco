@@ -1654,26 +1654,43 @@ exports.getAllBookingsWithStats = async (filters = {}) => {
       whereBooking[Op.or] = durationConditions;
     }
 
-    // ✅ Date filters
-    if (filters.fromDate) filters.dateFrom = filters.fromDate;
-    if (filters.toDate) filters.dateTo = filters.toDate;
+    
 
     // Date filters
     if (filters.dateBooked) {
-      const start = new Date(`${filters.dateBooked} 00:00:00`);
-      const end = new Date(`${filters.dateBooked} 23:59:59`);
+      const start = new Date(filters.dateBooked);
+      const end = new Date(filters.dateBooked);
+
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
+
       whereBooking.createdAt = { [Op.between]: [start, end] };
-    } else if (filters.dateFrom && filters.dateTo) {
-      const start = new Date(`${filters.dateFrom} 00:00:00`);
-      const end = new Date(`${filters.dateTo} 23:59:59`);
+    }
+    else if (filters.dateFrom && filters.dateTo) {
+      const start = new Date(filters.dateFrom);
+      const end = new Date(filters.dateTo);
+
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
+
       whereBooking.createdAt = { [Op.between]: [start, end] };
-    } else if (filters.dateFrom) {
-      const start = new Date(`${filters.dateFrom} 00:00:00`);
+    }
+    else if (filters.dateFrom) {
+      const start = new Date(filters.dateFrom);
+      start.setHours(0, 0, 0, 0);
+
       whereBooking.createdAt = { [Op.gte]: start };
-    } else if (filters.dateTo) {
-      const end = new Date(`${filters.dateTo} 23:59:59`);
+    }
+    else if (filters.dateTo) {
+      const end = new Date(filters.dateTo);
+      end.setHours(23, 59, 59, 999);
+
       whereBooking.createdAt = { [Op.lte]: end };
     }
+
+    // ✅ Date filters
+    if (filters.fromDate) filters.dateFrom = filters.fromDate;
+    if (filters.toDate) filters.dateTo = filters.toDate;
 
     const bookings = await Booking.findAll({
       where: {
