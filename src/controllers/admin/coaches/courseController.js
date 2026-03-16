@@ -413,6 +413,7 @@ exports.updateCourse = async (req, res) => {
       formData.isCompulsory = formData.isCompulsory === "true";
 
     if (DEBUG_MODE) console.log("🧹 Normalized Data:", formData);
+    const notifiedUsers = formData.notifiedUsers;
 
     // 7️⃣ Allowed Fields Whitelist
     const allowedFields = [
@@ -470,9 +471,10 @@ exports.updateCourse = async (req, res) => {
     );
 
     // 📢 Announcement for selected coaches
-    if (formData.notifiedUsers) {
+    // 📢 Announcement for selected coaches
+    if (notifiedUsers) {
 
-      let recipients = formData.notifiedUsers;
+      let recipients = notifiedUsers;
 
       if (typeof recipients === "string") {
         recipients = JSON.parse(recipients);
