@@ -11,66 +11,45 @@ exports.processEvent = async (event) => {
 
     console.log("🔥 GoCardless Webhook Event:", action);
 
-    // Parent payment by mandate
-    const parentPayment = await BookingPayment.findOne({
-      where: { goCardlessMandateId: mandateId },
+    // ✅ Find existing payment by mandate + paymentId
+    const paymentRecord = await BookingPayment.findOne({
+      where: {
+        goCardlessMandateId: mandateId,
+        goCardlessPaymentId: paymentId, // ensures only existing
+      },
     });
-    if (!parentPayment) {
-      console.warn(`⚠️ Parent payment not found for mandate: ${mandateId}`);
-      return;
+
+    if (!paymentRecord) {
+      console.warn(`⚠️ Payment not found in DB, skipping update for mandate: ${mandateId}, payment: ${paymentId}`);
+      return; // **do not create anything new**
     }
 
-    // Prevent duplicate payments
-    const existingPayment = await BookingPayment.findOne({
-      where: { goCardlessPaymentId: paymentId },
-    });
-    if (existingPayment) {
-      console.log(`⚠️ Duplicate GoCardless payment ignored: ${paymentId}`);
-      return;
-    }
-
+    // 🔹 Update status based on action
     switch (action) {
       case "created":
-        console.log(`🔥 Creating payment record for bookingId: ${parentPayment.bookingId}`);
-
-        // Create payment using parent payment details
-        await BookingPayment.create({
-          bookingId: parentPayment.bookingId,
-          firstName: parentPayment.firstName,
-          lastName: parentPayment.lastName,
-          email: parentPayment.email,
-          paymentType: "bank",
-          paymentCategory: parentPayment.paymentCategory || "recurring",
-          price: parentPayment.price,
-          currency: parentPayment.currency,
-          paymentStatus: "processing",
-          goCardlessPaymentId: paymentId,
-          goCardlessMandateId: mandateId,
-          goCardlessSubscriptionId: subscriptionId,
-        });
-
-        console.log(`✅ Payment created for bookingId: ${parentPayment.bookingId}`);
+        console.log(`ℹ️ Payment already exists, no new creation for paymentId: ${paymentId}`);
         break;
 
       case "confirmed":
-        await BookingPayment.update(
-          { paymentStatus: "paid" },
-          { where: { goCardlessPaymentId: paymentId } }
-        );
-        console.log(`✅ Payment confirmed: ${paymentId} marked as PAID`);
+        if (paymentRecord.paymentStatus !== "paid") {
+          paymentRecord.paymentStatus = "paid";
+          await paymentRecord.save();
+          console.log(`✅ Payment confirmed: ${paymentId} marked as PAID`);
+        }
         break;
 
       case "failed":
-        await BookingPayment.update(
-          { paymentStatus: "failed" },
-          { where: { goCardlessPaymentId: paymentId } }
-        );
-        console.log(`❌ Payment failed: ${paymentId} marked as FAILED`);
+        if (paymentRecord.paymentStatus !== "failed") {
+          paymentRecord.paymentStatus = "failed";
+          await paymentRecord.save();
+          console.log(`❌ Payment failed: ${paymentId} marked as FAILED`);
+        }
         break;
 
       default:
         console.log(`ℹ️ Unhandled action: ${action}`);
     }
+
   } catch (error) {
     console.error("❌ GoCardless Webhook Service Error:", error);
   }
