@@ -848,7 +848,16 @@ exports.getAllBookings = async (filters = {}) => {
               required: false,
             },
           ],
-          required: false,
+          required: true,
+        },
+        // ✅ YEH NAYA ADD KIYA
+        {
+          model: Venue,
+          as: "venue",
+          where: filters.venueName
+            ? { name: { [Op.like]: `%${filters.venueName}%` } }
+            : undefined,
+          required: !!filters.venueName,
         },
         {
           model: Admin,
