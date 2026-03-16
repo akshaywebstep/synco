@@ -5,7 +5,7 @@ const courseService = require("../../../services/admin/coaches/courseService.js"
 const { Course } = require("../../../models");
 
 const { logActivity } = require("../../../utils/admin/activityLogger");
-const { createNotification } = require("../../../utils/admin/notificationHelper");
+const { createNotification, createCustomNotificationForAdmins } = require("../../../utils/admin/notificationHelper");
 const { uploadToFTP } = require("../../../utils/uploadToFTP");
 const { getMainSuperAdminOfAdmin } = require("../../../utils/auth");
 
@@ -153,28 +153,26 @@ exports.createCourse = async (req, res) => {
       return res.status(500).json({ status: false, message: result.message });
     }
 
-    // Step 8: Notify specific coaches if notifiedUsers exist
+    // Step 8: Send announcement to selected coaches
     if (formData.notifiedUsers) {
 
-      let users = formData.notifiedUsers;
+      let recipients = formData.notifiedUsers;
 
-      // agar string aaye to parse karo
-      if (typeof users === "string") {
-        users = JSON.parse(users);
+      if (typeof recipients === "string") {
+        recipients = JSON.parse(recipients);
       }
 
-      if (Array.isArray(users)) {
-        for (const coachId of users) {
-          await createNotification(
-            { ...req, notificationAdminId: coachId },
-            "New Course Assigned",
-            `A new course "${formData.title}" has been assigned to you.`,
-            "Announcements",
-            "global"
-          );
-        }
+      if (Array.isArray(recipients) && recipients.length > 0) {
 
-        if (DEBUG) console.log("📢 Coach notifications sent:", users);
+        await createCustomNotificationForAdmins({
+          title: "New Course Assigned",
+          description: `Course "${formData.title}" has been assigned by ${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""}`,
+          category: "Announcements",
+          createdByAdminId: req.admin?.id,
+          recipientAdminIds: recipients
+        });
+
+        if (DEBUG) console.log("📢 Coach announcement sent:", recipients);
       }
     }
 
@@ -470,6 +468,29 @@ exports.updateCourse = async (req, res) => {
       }`,
       "System"
     );
+
+    // 📢 Announcement for selected coaches
+    if (formData.notifiedUsers) {
+
+      let recipients = formData.notifiedUsers;
+
+      if (typeof recipients === "string") {
+        recipients = JSON.parse(recipients);
+      }
+
+      if (Array.isArray(recipients) && recipients.length > 0) {
+
+        await createCustomNotificationForAdmins({
+          title: "Course Updated",
+          description: `Course "${formData.title}" has been updated by ${req?.admin?.firstName || "Admin"} ${req?.admin?.lastName || ""}`,
+          category: "Announcements",
+          createdByAdminId: req.admin?.id,
+          recipientAdminIds: recipients
+        });
+
+        if (DEBUG_MODE) console.log("📢 Coach update announcement sent:", recipients);
+      }
+    }
 
     if (DEBUG_MODE) console.log("🎉 Course updated successfully");
     if (DEBUG_MODE) console.log("🔄 ===== UPDATE COURSE END =====");
