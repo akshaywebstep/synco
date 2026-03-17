@@ -362,4 +362,14 @@ sessions remaining: 6
 
 
 
+Result
+Booking Source	Venue Owner	Payment Gateway	Token
+Website	Franchise	GoCardless	Franchise Token
+Website	Super Admin	GoCardless	Head Office Token
+Admin Portal	Franchise	AccessPaySuite	existing
+Admin Portal	Super Admin	AccessPaySuite	existing
+
+
+Open website mai jo booking payment hai bo vanswebstep@gmail.com iss email par jaati hai or isme appconfig se key uthata hai super admin goacardless-> sirf goacrdless se payment hoti hai open wale se
+
 

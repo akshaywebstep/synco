@@ -484,12 +484,18 @@ exports.getWaitingList = async (filters = {}) => {
       throw new Error("Access denied: no allowed admins");
     }
     if (filters.bookedBy) {
-      // Ensure bookedBy is always an array
       const bookedByArray = Array.isArray(filters.bookedBy)
         ? filters.bookedBy
         : [filters.bookedBy];
 
-      trialWhere.bookedBy = { [Op.in]: bookedByArray };
+      // Only admin bookings filter
+      trialWhere[Op.or] = [
+        { bookedBy: { [Op.in]: bookedByArray } },
+        {
+          bookedBy: null,
+          source: "website",
+        },
+      ];
     }
 
     // ---- Date filters ----
@@ -1014,7 +1020,8 @@ exports.createBooking = async (data, options) => {
         // 🛡️ Safety net (old parent but referralCode missing)
         if (!isCreated && !admin.referralCode) {
           admin.referralCode = generateReferralCode();
-          await admin.save({ transaction });
+          // await admin.save({ transaction });
+          await admin.save({ transaction: t });
         }
         parentAdminId = admin.id;
       }
@@ -2945,7 +2952,7 @@ exports.convertToMembership = async (data, options) => {
 
             for (let i = 0; i < recurringMonths; i++) {
 
-             
+
               // ✅ Always 1st of month
               const paymentDate = getAPSNextPaymentDateFixed(i + 1);
 

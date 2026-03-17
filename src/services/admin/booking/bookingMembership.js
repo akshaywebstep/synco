@@ -656,7 +656,12 @@ exports.createBooking = async (data, options) => {
     if (booking.paymentPlanId && data.payment?.paymentType) {
       const venue = await Venue.findByPk(data.venueId);
       const venueOwnerAdmin = await Admin.findByPk(venue.createdBy);
-      const overrideToken = venueOwnerAdmin?.GC_FRANCHISE_TOKEN || null;
+      // const overrideToken = venueOwnerAdmin?.GC_FRANCHISE_TOKEN || null;
+      let overrideToken = null;
+
+      if (venueOwnerAdmin?.GC_FRANCHISE_TOKEN) {
+        overrideToken = venueOwnerAdmin.GC_FRANCHISE_TOKEN;
+      }
       // No switching
       const paymentType = data.payment?.paymentType || "bank";
       if (DEBUG) {
