@@ -852,7 +852,46 @@ exports.getAllBirthdayPartyLeadsSales = async (
       return `${val >= 0 ? "+" : ""}${val}%`;
     };
 
+    const allowedLeadIds = await BirthdayPartyLead.findAll({
+      attributes: ["id"],
+      where: whereLead,
+      raw: true
+    });
+
+    const leadIds = allowedLeadIds.map(l => l.id);
+
+    if (!leadIds.length) {
+      return {
+        status: true,
+        message: "No leads found for the selected filters.",
+        summary: {
+          totalRevenue: { amount: 0, percentage: "+0%" },
+          goldPackageRevenue: { amount: 0, percentage: "+0%" },
+          silverPackageRevenue: { amount: 0, percentage: "+0%" },
+          topSalesAgent: null
+        },
+        data: []
+      };
+    }
+
     const totalRevenueThisMonth = await BirthdayPartyPayment.sum("amount", {
+      include: [
+        {
+          model: BirthdayPartyBooking,
+          as: "booking",
+          required: true,
+          include: [
+            {
+              model: BirthdayPartyLead,
+              as: "lead",
+              required: true,
+              where: {
+                leadId: { [Op.in]: leadIds }
+              }// ✅ same filter used
+            },
+          ],
+        },
+      ],
       where: {
         paymentStatus: "paid",
         createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
@@ -860,12 +899,28 @@ exports.getAllBirthdayPartyLeadsSales = async (
     });
 
     const totalRevenueLastMonth = await BirthdayPartyPayment.sum("amount", {
+      include: [
+        {
+          model: BirthdayPartyBooking,
+          as: "booking",
+          required: true,
+          include: [
+            {
+              model: BirthdayPartyLead,
+              as: "lead",
+              required: true,
+              where: {
+                leadId: { [Op.in]: leadIds }
+              }, // ✅ IMPORTANT
+            },
+          ],
+        },
+      ],
       where: {
         paymentStatus: "paid",
         createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
       },
     });
-
     const getSourceRevenue = async (packageInterest, start, end) => {
       return await BirthdayPartyPayment.sum("amount", {
         include: [
@@ -879,9 +934,10 @@ exports.getAllBirthdayPartyLeadsSales = async (
                 as: "lead",
                 required: true,
                 where: {
-                  packageInterest, // gold / silver
+                  leadId: { [Op.in]: leadIds }, // ✅ reuse filter
+                  packageInterest,
                   createdAt: {
-                    [Op.between]: [start, end], // ✅ DATE FILTER HERE
+                    [Op.between]: [start, end],
                   },
                 },
               },
@@ -889,7 +945,7 @@ exports.getAllBirthdayPartyLeadsSales = async (
           },
         ],
         where: {
-          paymentStatus: "paid", // ✅ only successful payments
+          paymentStatus: "paid",
         },
       });
     };
@@ -904,8 +960,11 @@ exports.getAllBirthdayPartyLeadsSales = async (
         [sequelize.fn("COUNT", sequelize.col("BirthdayPartyLead.id")), "leadCount"],
       ],
       where: {
-        status: "active",
-      },
+        id: { [Op.in]: leadIds }
+      }, // ✅ same filter
+      // where: {
+      //   status: "active",
+      // },
       include: [
         {
           model: Admin,
@@ -1302,6 +1361,21 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
     };
 
     const totalRevenueThisMonth = await BirthdayPartyPayment.sum("amount", {
+      include: [
+        {
+          model: BirthdayPartyBooking,
+          as: "booking",
+          required: true,
+          include: [
+            {
+              model: BirthdayPartyLead,
+              as: "lead",
+              required: true,
+              where: whereLead
+            }
+          ]
+        }
+      ],
       where: {
         paymentStatus: "paid",
         createdAt: { [Op.between]: [startOfThisMonth, endOfThisMonth] },
@@ -1309,6 +1383,21 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
     });
 
     const totalRevenueLastMonth = await BirthdayPartyPayment.sum("amount", {
+      include: [
+        {
+          model: BirthdayPartyBooking,
+          as: "booking",
+          required: true,
+          include: [
+            {
+              model: BirthdayPartyLead,
+              as: "lead",
+              required: true,
+              where: whereLead
+            }
+          ]
+        }
+      ],
       where: {
         paymentStatus: "paid",
         createdAt: { [Op.between]: [startOfLastMonth, endOfLastMonth] },
@@ -1328,6 +1417,7 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
                 as: "lead",
                 required: true,
                 where: {
+                  ...whereLead,
                   packageInterest, // gold / silver
                   createdAt: {
                     [Op.between]: [start, end], // ✅ DATE FILTER HERE
@@ -1356,6 +1446,7 @@ exports.getAllBirthdayPartyLeadsSalesAll = async (
       ],
       where: {
         status: "active",
+        ...whereLead
       },
       include: [
         {
@@ -2582,14 +2673,18 @@ exports.getAllBirthdayPartyAnalytics = async (
 
     // ✅ Renewal Breakdown (Gold, Silver, Platinum)
     const renewalBreakdownRaw = await BirthdayPartyBooking.findAll({
-      where: {
-        createdAt: {
-          [Op.between]: [
-            moment().startOf("year").toDate(),
-            moment().endOf("year").toDate()
-          ]
+      include: [
+        {
+          model: BirthdayPartyLead,
+          as: "lead",
+          attributes: [],
+          where: {
+            ...whereLead,
+            packageInterest: { [Op.in]: ["Gold", "Silver"] }
+          },
+          required: true
         }
-      },
+      ],
       attributes: [
         [col("lead.packageInterest"), "packageName"], // join with lead’s package
         [fn("COUNT", col("BirthdayPartyBooking.id")), "count"],
