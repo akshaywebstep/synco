@@ -348,13 +348,24 @@ exports.getBookingByIdForWebsitePreview = async (
               as: "emergencyContacts",
               required: false,
             },
+            {
+              model: ClassSchedule,
+              as: "classSchedule",
+              required: false,
+              include: [
+                {
+                  model: Venue,
+                  as: "venue",
+                  required: false,
+                },
+              ],
+            },
           ],
         },
         {
-          model: ClassSchedule,
-          as: "classSchedule",
-          required: true,
-          include: [{ model: Venue, as: "venue", required: true }],
+          model: Venue,
+          as: "venue",
+          required: false,
         },
       ],
     });
@@ -363,7 +374,7 @@ exports.getBookingByIdForWebsitePreview = async (
       return { status: false, message: "Booking not found or not authorized." };
     }
 
-    const venue = booking.classSchedule?.venue;
+    const venue = booking.venue || booking.students?.[0]?.classSchedule?.venue;
 
     // 2️⃣ Handle PaymentGroups
     let paymentGroups = [];
@@ -469,6 +480,8 @@ exports.getBookingByIdForWebsitePreview = async (
         age: s.age,
         gender: s.gender,
         medicalInformation: s.medicalInformation,
+        classScheduleId: s.classScheduleId,
+        classSchedule: s.classSchedule ? s.classSchedule.toJSON() : null,
       })) || [];
 
     const parents =
@@ -484,18 +497,9 @@ exports.getBookingByIdForWebsitePreview = async (
           relationToChild: p.relationToChild,
           howDidYouHear: p.howDidYouHear,
         })) || [];
-
     const emergency =
-      booking.students
-        ?.flatMap((s) => s.emergencyContacts || [])
-        .map((e) => ({
-          id: e.id,
-          emergencyId: e.emergencyId,
-          emergencyFirstName: e.emergencyFirstName,
-          emergencyLastName: e.emergencyLastName,
-          emergencyPhoneNumber: e.emergencyPhoneNumber,
-          emergencyRelation: e.emergencyRelation,
-        })) || [];
+      booking.students?.find((s) => s.emergencyContacts?.length)
+        ?.emergencyContacts?.[0]?.toJSON() || null;
 
     // 5️⃣ Build final response
     const response = {
@@ -509,13 +513,13 @@ exports.getBookingByIdForWebsitePreview = async (
       className: booking.className,
       classTime: booking.classTime,
       venueId: booking.venueId,
+      venue: venue,
       status: booking.status,
       totalStudents: booking.totalStudents,
       createdAt: booking.createdAt,
       students,
       parents,
       emergency,
-      classSchedule: booking.classSchedule || {},
       paymentGroups: paymentGroups.map((pg) => ({
         id: pg.id,
         name: pg.name,
@@ -568,8 +572,11 @@ exports.getAllAgents = async (superAdminId) => {
   try {
     const admins = await Admin.findAll({
       where: {
-        superAdminId: Number(superAdminId),
-        status: "active", // ✅ only active
+        status: "active",
+        [Op.or]: [
+          { superAdminId: Number(superAdminId) }, // uske banaye admins
+          { id: Number(superAdminId) } // login super admin khud
+        ],
       },
       include: [
         {
@@ -577,7 +584,7 @@ exports.getAllAgents = async (superAdminId) => {
           as: "role",
           attributes: ["id", "role"],
           where: {
-            role: "Admin", // ✅ only Admin role
+            role: ["Admin", "Super Admin"],
           },
           required: true,
         },

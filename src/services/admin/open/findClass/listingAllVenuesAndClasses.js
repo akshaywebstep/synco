@@ -8,6 +8,9 @@ const {
   PaymentGroup,
   PaymentGroupHasPlan,
   SessionExercise,
+  StarterPack,
+  Admin,
+  AdminRole,
 } = require("../../../../models");
 
 const { Op, Sequelize } = require("sequelize");
@@ -104,15 +107,6 @@ async function getCoordinatesFromPostcode(postcode) {
   return null;
 }
 
-function parseSafeArray(value) {
-  if (!value) return [];
-  try {
-    return typeof value === "string" ? JSON.parse(value) : value;
-  } catch {
-    return [];
-  }
-}
-
 function deg2rad(deg) {
   return deg * (Math.PI / 180);
 }
@@ -183,7 +177,7 @@ exports.getAllVenuesWithClasses = async ({
 
       venues = await Venue.findAll({
         where: {
-          ...venueWhere, 
+          ...venueWhere,
           ...whereCondition,
         },
 
@@ -390,6 +384,7 @@ exports.getAllVenuesWithClasses = async ({
           createdAt: venue.createdAt,
           postal_code: venue.postal_code,
           distanceMiles,
+          createdBy: venue.createdBy,
           classes: venueClasses,
 
           paymentGroups: paymentGroups.map((pg) => ({
@@ -443,7 +438,26 @@ exports.getClassById = async (classId) => {
       where: {
         id: classId,
       },
-      include: [{ model: Venue, as: "venue" }], // ✅ ensure venue belongs to admin
+      include: [{
+        model: Venue, as: "venue",
+        attributes: { include: ["starterPack"] }, // ✅ starterPack same as before
+
+        include: [
+          {
+            model: Admin,
+            as: "admins", // Venue.createdBy → Admin.id
+            attributes: ["id", "firstName", "lastName", "email", "roleId"],
+
+            include: [
+              {
+                model: AdminRole,
+                as: "role",
+                attributes: ["id", "role"]
+              }
+            ]
+          }
+        ]
+      }], // ✅ ensure venue belongs to admin
     });
 
     if (!cls) {
@@ -451,6 +465,48 @@ exports.getClassById = async (classId) => {
     }
 
     const venue = cls.venue;
+    // =====================
+    // Fetch enabled starter packs for this venue/admin
+    // =====================
+    let starterPacks = await StarterPack.findAll({
+      where: {
+        enabled: true,           // only enabled packs
+      },
+      attributes: [
+        "id",
+        "title",
+        "description",
+        "price",
+        "mandatory",
+        "appliesOnTrialConversion",
+        "appliesOnDirectMembership",
+        "paymentRouting",
+      ],
+    });
+
+    // =====================
+    // Attach starterPack ONLY if exists
+    // =====================
+    if (starterPacks.length) {
+      cls.dataValues.starterPack = starterPacks; // show starter pack if enabled
+    }
+    // =====================
+    // Fetch other classes of SAME venue
+    // =====================
+    const venueClasses = await ClassSchedule.findAll({
+      where: {
+        venueId: venue.id,          // ✅ same venue only
+      },
+      attributes: [
+        "id",
+        "className",
+        "capacity",
+        "startTime",
+        "endTime",
+        "day",
+      ],
+    });
+
 
     // =====================
     // Parse termGroupId → array
@@ -550,7 +606,7 @@ exports.getClassById = async (classId) => {
       });
     }
     venue.dataValues.paymentGroups = paymentGroups;
-
+    cls.dataValues.venueClasses = venueClasses;
     return { status: true, message: "Class and full details fetched successfully.", data: cls };
   } catch (error) {
     console.error("❌ getClassById Error:", error.message);

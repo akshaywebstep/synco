@@ -533,7 +533,7 @@ exports.createBooking = async (req, res) => {
         title: "Free Trial Booked",
         description: `Your free trial is scheduled on ${booking.trialDate}.`,
         category: "Updates",
-        createdByAdminId: req.admin.id,
+        createdByAdminId: req.admin?.id || null,
         recipientAdminIds: [actualParentAdminId],
       });
 

@@ -43,6 +43,11 @@ const BirthdayPartyLead = sequelize.define(
             comment: "Planned date & time of the birthday party",
         },
 
+        availableDays: {
+            type: DataTypes.ENUM('sat', 'sun', 'mon-fri'),
+            allowNull: true,
+            comment: "Available Days for lessons"
+        },
         packageInterest: {
             type: DataTypes.STRING,
             allowNull: true,
@@ -88,18 +93,6 @@ const BirthdayPartyLead = sequelize.define(
             onUpdate: "CASCADE",
             onDelete: "SET NULL",
         },
-
-        // ✅ Foreign key for the admin who created this lead
-        // createdBy: {
-        //     type: DataTypes.BIGINT.UNSIGNED,
-        //     allowNull: false,
-        //     references: {
-        //         model: "admins",
-        //         key: "id",
-        //     },
-        //     onUpdate: "CASCADE",
-        //     onDelete: "RESTRICT",
-        // },
 
         // ✅ Soft delete support
         deletedAt: {

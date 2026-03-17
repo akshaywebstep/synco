@@ -66,14 +66,6 @@ const parseSessionPlanGroupLevels = async (spg) => {
   return spg;
 };
 
-function parseSafeArray(value) {
-  if (!value) return [];
-  try {
-    return typeof value === "string" ? JSON.parse(value) : value;
-  } catch {
-    return [];
-  }
-}
 
 function deg2rad(deg) {
   return deg * (Math.PI / 180);

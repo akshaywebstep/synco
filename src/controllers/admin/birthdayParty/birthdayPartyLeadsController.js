@@ -112,6 +112,7 @@ exports.createBirthdayPartyLeads = async (req, res) => {
         phoneNumber: formData.phoneNumber || null,
         email: formData.email || null,
         postCode: formData.postCode || null,
+        availableDays: formData.availableDays || null,
         notes: formData.notes || null,
         status: "pending",
         createdBy,
